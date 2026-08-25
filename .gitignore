@@ -1,0 +1,7 @@
+/build/
+/out/
+/upstream-ultrastarfox/
+/upstream-retro-cpu/
+/upstream-snes-spc/
+__pycache__/
+*.pyc
