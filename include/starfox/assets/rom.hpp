@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -31,6 +32,7 @@ public:
     using Entries = std::unordered_map<std::string, std::vector<std::uint32_t>>;
 
     [[nodiscard]] static SymbolMap load(const std::filesystem::path& path);
+    [[nodiscard]] static SymbolMap parse(std::string_view text);
     [[nodiscard]] const std::vector<std::uint32_t>& find(const std::string& name) const;
     [[nodiscard]] const Entries& entries() const noexcept;
 

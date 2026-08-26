@@ -198,6 +198,13 @@ starfox::assets::RomImage make_empty_controller_rom() {
 } // namespace
 
 int main() {
+    const auto parsed_symbols = starfox::assets::SymbolMap::parse(
+        "EXAMPLE $123456\r\nignored report row\r\nexample $00abcd\r\n");
+    require(parsed_symbols.find("example").size() == 2
+            && parsed_symbols.find("EXAMPLE")[0] == 0x123456U
+            && parsed_symbols.find("example")[1] == 0x00abcdU,
+        "memory-backed symbol parsing diverged from file parsing");
+
     const auto rom = make_rom();
     const starfox::assets::ShapeDecoder decoder{rom};
     const auto shape = decoder.decode(0x008100, "triangle");

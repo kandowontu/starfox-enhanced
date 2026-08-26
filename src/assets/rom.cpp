@@ -72,12 +72,18 @@ std::int16_t RomImage::read_i16(std::uint32_t snes_address) const {
 }
 
 SymbolMap SymbolMap::load(const std::filesystem::path& path) {
-    std::ifstream stream{path};
+    std::ifstream stream{path, std::ios::binary};
     if (!stream) {
         throw std::runtime_error{"unable to open symbol map: " + path.string()};
     }
+    const std::string text{
+        std::istreambuf_iterator<char>{stream}, std::istreambuf_iterator<char>{}};
+    return parse(text);
+}
 
+SymbolMap SymbolMap::parse(std::string_view text) {
     SymbolMap result;
+    std::istringstream stream{std::string{text}};
     std::string line;
     while (std::getline(stream, line)) {
         std::istringstream row{line};

@@ -6,9 +6,10 @@ presents at 60 frames per second while preserving the original game's intended
 NTSC simulation speed and assembled model data.
 
 This repository is an early playable fidelity pass. The prebuilt Windows
-executable is in `dist/StarFoxEnhanced`; supply your own assembled `SF.SFC` and
-`SYMBOLS.TXT` beside it, or run it from this source checkout after completing
-the source setup below. No GitHub release has been published yet.
+executable in `dist/StarFoxEnhanced` is a single-file build: its pinned,
+assembled UltraStarFox ROM and symbol data are embedded as Windows resources,
+so recipients can run `starfox_pc.exe` without installing dependencies or
+supplying adjacent data files. No GitHub release has been published yet.
 
 ## Known first-pass fidelity issues
 
@@ -47,8 +48,14 @@ C++.
 
 ## Quick start (Windows)
 
-The project does not redistribute Nintendo game data. Build the pinned
-UltraStarFox source first so these local files exist:
+The tracked prebuilt executable can be launched directly:
+
+```powershell
+.\dist\StarFoxEnhanced\starfox_pc.exe
+```
+
+To rebuild the executable from source, first build the pinned UltraStarFox
+source so these local inputs exist:
 
 ```text
 upstream-ultrastarfox/SF.SFC
@@ -68,9 +75,9 @@ title screen. A development map can be selected explicitly:
 .\play-starfox.ps1 LEVEL1_1
 ```
 
-The executable also finds `SF.SFC` and `SYMBOLS.TXT` automatically when they
-are beside it, in the current directory, or in the project's
-`upstream-ultrastarfox` directory.
+The Windows build embeds those inputs by default. Explicit external files can
+still be passed to the executable for development and source-to-port
+comparisons.
 
 ## UltraStarFox source setup
 

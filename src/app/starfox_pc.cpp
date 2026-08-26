@@ -27,16 +27,72 @@
 #include <filesystem>
 #include <iostream>
 #include <optional>
+#include <span>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
 namespace {
 
 using starfox::input::ButtonMask;
+
+struct RuntimeAssets {
+    starfox::assets::RomImage rom;
+    starfox::assets::SymbolMap symbols;
+};
+
+#if defined(_WIN32) && defined(STARFOX_HAS_EMBEDDED_ASSETS)
+std::span<const std::uint8_t> embedded_resource(int identifier) {
+    const auto module = GetModuleHandleW(nullptr);
+    const auto resource = FindResourceW(
+        module, MAKEINTRESOURCEW(identifier), MAKEINTRESOURCEW(10));
+    if (resource == nullptr) {
+        throw std::runtime_error{"embedded Star Fox asset resource is missing"};
+    }
+    const auto loaded = LoadResource(module, resource);
+    const auto size = SizeofResource(module, resource);
+    if (loaded == nullptr || size == 0) {
+        throw std::runtime_error{"embedded Star Fox asset resource is invalid"};
+    }
+    const auto* data = static_cast<const std::uint8_t*>(LockResource(loaded));
+    if (data == nullptr) {
+        throw std::runtime_error{"embedded Star Fox asset resource is invalid"};
+    }
+    return std::span<const std::uint8_t>{
+        data, static_cast<std::size_t>(size)};
+}
+
+RuntimeAssets load_embedded_assets() {
+    constexpr int rom_resource = 101;
+    constexpr int symbols_resource = 102;
+    const auto rom_data = embedded_resource(rom_resource);
+    const auto symbol_data = embedded_resource(symbols_resource);
+    return {
+        starfox::assets::RomImage{
+            std::vector<std::uint8_t>{rom_data.begin(), rom_data.end()}},
+        starfox::assets::SymbolMap::parse(std::string_view{
+            reinterpret_cast<const char*>(symbol_data.data()), symbol_data.size()}),
+    };
+}
+#endif
+
+RuntimeAssets load_external_assets(
+    const std::filesystem::path& rom_path,
+    const std::filesystem::path& symbols_path) {
+    return {
+        starfox::assets::RomImage::load(rom_path),
+        starfox::assets::SymbolMap::load(symbols_path),
+    };
+}
 
 class SdlContext {
 public:
@@ -254,48 +310,54 @@ CameraPoint world_to_camera(
 
 int main(int argc, char** argv) {
     try {
-        std::filesystem::path rom_path;
-        std::filesystem::path symbols_path;
         std::string initial_map = "TITLEMAP";
-        if (argc == 1 || argc == 2) {
-            const auto executable_directory =
-                std::filesystem::absolute(argv[0]).parent_path();
-            const auto workspace = executable_directory.parent_path().parent_path();
-            const auto current = std::filesystem::current_path();
-            const std::array candidates{
-                std::pair{executable_directory / "SF.SFC",
-                    executable_directory / "SYMBOLS.TXT"},
-                std::pair{current / "SF.SFC", current / "SYMBOLS.TXT"},
-                std::pair{current / "upstream-ultrastarfox" / "SF.SFC",
-                    current / "upstream-ultrastarfox" / "SYMBOLS.TXT"},
-                std::pair{workspace / "upstream-ultrastarfox" / "SF.SFC",
-                    workspace / "upstream-ultrastarfox" / "SYMBOLS.TXT"},
-            };
-            for (const auto& [candidate_rom, candidate_symbols] : candidates) {
-                if (std::filesystem::exists(candidate_rom)
-                    && std::filesystem::exists(candidate_symbols)) {
-                    rom_path = candidate_rom;
-                    symbols_path = candidate_symbols;
-                    break;
+        const auto assets = [&]() -> RuntimeAssets {
+            if (argc == 1 || argc == 2) {
+                if (argc == 2) initial_map = argv[1];
+#if defined(_WIN32) && defined(STARFOX_HAS_EMBEDDED_ASSETS)
+                return load_embedded_assets();
+#else
+                std::filesystem::path rom_path;
+                std::filesystem::path symbols_path;
+                const auto executable_directory =
+                    std::filesystem::absolute(argv[0]).parent_path();
+                const auto workspace = executable_directory.parent_path().parent_path();
+                const auto current = std::filesystem::current_path();
+                const std::array candidates{
+                    std::pair{executable_directory / "SF.SFC",
+                        executable_directory / "SYMBOLS.TXT"},
+                    std::pair{current / "SF.SFC", current / "SYMBOLS.TXT"},
+                    std::pair{current / "upstream-ultrastarfox" / "SF.SFC",
+                        current / "upstream-ultrastarfox" / "SYMBOLS.TXT"},
+                    std::pair{workspace / "upstream-ultrastarfox" / "SF.SFC",
+                        workspace / "upstream-ultrastarfox" / "SYMBOLS.TXT"},
+                };
+                for (const auto& [candidate_rom, candidate_symbols] : candidates) {
+                    if (std::filesystem::exists(candidate_rom)
+                        && std::filesystem::exists(candidate_symbols)) {
+                        rom_path = candidate_rom;
+                        symbols_path = candidate_symbols;
+                        break;
+                    }
                 }
+                if (rom_path.empty()) {
+                    throw std::runtime_error{
+                        "SF.SFC and SYMBOLS.TXT were not found beside the executable "
+                        "or in upstream-ultrastarfox"};
+                }
+                return load_external_assets(rom_path, symbols_path);
+#endif
             }
-            if (rom_path.empty()) {
-                throw std::runtime_error{
-                    "SF.SFC and SYMBOLS.TXT were not found beside the executable "
-                    "or in upstream-ultrastarfox"};
+            if (argc == 3 || argc == 4) {
+                if (argc == 4) initial_map = argv[3];
+                return load_external_assets(argv[1], argv[2]);
             }
-            if (argc == 2) initial_map = argv[1];
-        } else if (argc == 3 || argc == 4) {
-            rom_path = argv[1];
-            symbols_path = argv[2];
-            if (argc == 4) initial_map = argv[3];
-        } else {
             std::cerr << "usage: starfox_pc [MAP]\n"
                          "   or: starfox_pc ROM SYMBOLS [MAP]\n";
-            return 2;
-        }
-        const auto rom = starfox::assets::RomImage::load(rom_path);
-        const auto symbols = starfox::assets::SymbolMap::load(symbols_path);
+            throw std::runtime_error{"invalid command-line arguments"};
+        }();
+        const auto& rom = assets.rom;
+        const auto& symbols = assets.symbols;
         const starfox::assets::ShapeDecoder decoder{rom, symbols};
         const auto trigonometry = starfox::simulation::TrigTables::load(rom, symbols);
         starfox::simulation::GameSimulation game{
@@ -768,7 +830,13 @@ int main(int argc, char** argv) {
         }
         return 0;
     } catch (const std::exception& error) {
+        const std::string message =
+            std::string{"Star Fox Enhanced could not start:\n\n"} + error.what();
         std::cerr << "starfox_pc failed: " << error.what() << '\n';
+#if defined(_WIN32)
+        MessageBoxA(nullptr, message.c_str(), "Star Fox Enhanced",
+            MB_OK | MB_ICONERROR | MB_TASKMODAL);
+#endif
         return 1;
     }
 }

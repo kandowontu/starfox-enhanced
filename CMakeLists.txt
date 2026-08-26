@@ -4,6 +4,14 @@ project(starfox_enhanced VERSION 0.1.0 LANGUAGES CXX)
 
 option(STARFOX_BUILD_TESTS "Build deterministic timing tests" ON)
 option(STARFOX_BUILD_RUNTIME "Build the SDL3 native PC runtime" ON)
+option(STARFOX_EMBED_RUNTIME_ASSETS
+    "Embed SF.SFC and SYMBOLS.TXT into the Windows runtime" ON)
+set(STARFOX_ROM_FILE
+    "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
+    CACHE FILEPATH "Assembled UltraStarFox ROM used by the native runtime")
+set(STARFOX_SYMBOLS_FILE
+    "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT"
+    CACHE FILEPATH "UltraStarFox symbol table used by the native runtime")
 
 include(FetchContent)
 FetchContent_Declare(
@@ -127,6 +135,27 @@ if(STARFOX_BUILD_RUNTIME)
 
     add_executable(starfox_pc src/app/starfox_pc.cpp)
     target_link_libraries(starfox_pc PRIVATE starfox_core SDL3::SDL3)
+    if(WIN32 AND STARFOX_EMBED_RUNTIME_ASSETS)
+        if(EXISTS "${STARFOX_ROM_FILE}" AND EXISTS "${STARFOX_SYMBOLS_FILE}")
+            enable_language(RC)
+            file(TO_CMAKE_PATH "${STARFOX_ROM_FILE}" STARFOX_EMBEDDED_ROM)
+            file(TO_CMAKE_PATH "${STARFOX_SYMBOLS_FILE}" STARFOX_EMBEDDED_SYMBOLS)
+            configure_file(
+                src/app/starfox_assets.rc.in
+                "${CMAKE_CURRENT_BINARY_DIR}/starfox_assets.rc"
+                @ONLY
+            )
+            target_sources(starfox_pc PRIVATE
+                "${CMAKE_CURRENT_BINARY_DIR}/starfox_assets.rc")
+            target_compile_definitions(starfox_pc PRIVATE
+                STARFOX_HAS_EMBEDDED_ASSETS=1)
+            set(STARFOX_RUNTIME_ASSETS_EMBEDDED TRUE)
+        else()
+            message(WARNING
+                "Embedded runtime assets requested, but SF.SFC or SYMBOLS.TXT "
+                "is missing. starfox_pc will require external asset files.")
+        endif()
+    endif()
     if(MINGW)
         target_link_options(starfox_pc PRIVATE -static -static-libgcc -static-libstdc++)
     endif()
@@ -221,6 +250,21 @@ if(STARFOX_BUILD_TESTS)
                     "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;STARFOX_TEST_FRAMES=6"
                 TIMEOUT 10
             )
+            if(STARFOX_RUNTIME_ASSETS_EMBEDDED)
+                file(MAKE_DIRECTORY
+                    "${CMAKE_CURRENT_BINARY_DIR}/embedded-runtime-smoke")
+                add_test(
+                    NAME starfox_embedded_runtime_smoke
+                    COMMAND "$<TARGET_FILE:starfox_pc>"
+                )
+                set_tests_properties(starfox_embedded_runtime_smoke PROPERTIES
+                    WORKING_DIRECTORY
+                        "${CMAKE_CURRENT_BINARY_DIR}/embedded-runtime-smoke"
+                    ENVIRONMENT
+                        "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;STARFOX_TEST_FRAMES=6"
+                    TIMEOUT 10
+                )
+            endif()
         endif()
     endif()
 
