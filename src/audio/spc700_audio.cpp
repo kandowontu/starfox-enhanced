@@ -76,6 +76,17 @@ struct Spc700Audio::Impl {
     }
 
     void begin_upload() noexcept {
+        if (loaded) {
+            // A real SPC reset returns to the IPL without clearing ARAM. The
+            // running driver modifies its work area after the initial upload,
+            // so preserve that live RAM before applying the next bank overlay.
+            std::array<std::uint8_t, spc_file_size> snapshot{};
+            spc_init_header(snapshot.data());
+            spc_save_spc(spc, snapshot.data());
+            std::copy(snapshot.begin() + kSpcRamOffset,
+                      snapshot.begin() + kSpcRamOffset + kSpcRamSize,
+                      aram.begin());
+        }
         uploading = true;
         loaded = false;
         upload_state = UploadState::waiting_for_address_low;
@@ -137,6 +148,14 @@ struct Spc700Audio::Impl {
             if (write.port == 1U) {
                 transfer_enabled = write.value != 0U;
                 upload_state = UploadState::waiting_for_token;
+            } else if (write.port == 0U) {
+                // The IPL's final execute packet is ordered differently from
+                // a data block: address on ports 2/3, then the token on port
+                // 0, with the zero high byte on port 1 written afterwards.
+                // Therefore no transfer flag precedes this token.
+                transfer_enabled = false;
+                execute_address = upload_address;
+                load_driver();
             } else if (write.port == 2U) {
                 upload_address = write.value;
                 upload_state = UploadState::waiting_for_address_high;
@@ -225,6 +244,16 @@ std::size_t Spc700Audio::uploaded_bytes() const noexcept {
     return impl_->upload_count;
 }
 
+std::array<std::uint8_t, 4> Spc700Audio::output_ports() const noexcept {
+    if (!impl_->loaded) return {};
+    return {
+        static_cast<std::uint8_t>(spc_read_port(impl_->spc, 0, 0)),
+        static_cast<std::uint8_t>(spc_read_port(impl_->spc, 0, 1)),
+        static_cast<std::uint8_t>(spc_read_port(impl_->spc, 0, 2)),
+        static_cast<std::uint8_t>(spc_read_port(impl_->spc, 0, 3)),
+    };
+}
+
 Spc700Audio::State Spc700Audio::state() const {
     if (!impl_->loaded) return {};
     std::array<std::uint8_t, spc_file_size> snapshot{};
@@ -242,6 +271,12 @@ Spc700Audio::State Spc700Audio::state() const {
         snapshot[kSpcDspOffset + 0x4cU],
         static_cast<std::int8_t>(snapshot[kSpcDspOffset + 0x0cU]),
         static_cast<std::int8_t>(snapshot[kSpcDspOffset + 0x1cU]),
+        {
+            static_cast<std::uint8_t>(spc_read_port(impl_->spc, 0, 0)),
+            static_cast<std::uint8_t>(spc_read_port(impl_->spc, 0, 1)),
+            static_cast<std::uint8_t>(spc_read_port(impl_->spc, 0, 2)),
+            static_cast<std::uint8_t>(spc_read_port(impl_->spc, 0, 3)),
+        },
     };
 }
 

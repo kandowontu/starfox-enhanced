@@ -69,6 +69,7 @@ struct Wdc65816::Impl {
     std::vector<std::uint8_t> wram = std::vector<std::uint8_t>(0x20000U);
     std::array<std::uint8_t, 2> controller{};
     std::array<std::uint8_t, 4> apu_ports{0xaaU, 0xbbU, 0U, 0U};
+    bool apu_output_connected{};
     bool apu_upload_active{};
     std::uint8_t apu_upload_clear_sequence{};
     std::array<std::uint8_t, 0x300> superfx_registers{};
@@ -92,6 +93,7 @@ struct Wdc65816::Impl {
     std::uint32_t m_dustpnts{};
     std::uint32_t m_rand{};
     std::uint32_t mcrotwmatzxy16{};
+    std::uint32_t mwmatrotp16{};
     std::uint32_t sintab16{};
     std::uint32_t m_rotx{};
     std::uint32_t m_roty{};
@@ -99,7 +101,13 @@ struct Wdc65816::Impl {
     std::uint32_t m_wmat11{};
     std::uint32_t mclrmapscreen{};
     std::uint32_t mdrawsprite32{};
+    std::uint32_t musprite{};
     std::uint32_t mdrawsphere{};
+    std::uint32_t mcalc_circle{};
+    std::uint32_t mcopyface{};
+    std::uint32_t mfprintstr{};
+    std::uint32_t msprintstr{};
+    std::uint32_t mshowteammate2{};
     std::uint32_t textureaddrtab{};
     std::uint32_t bitmap1{};
     std::uint32_t msprite{};
@@ -107,6 +115,8 @@ struct Wdc65816::Impl {
     std::uint32_t m_xc{};
     std::uint32_t m_yc{};
     std::uint32_t m_radius{};
+    std::uint32_t m_sprsize{};
+    std::uint32_t m_sprxscale{};
     std::uint32_t m_bigx{};
     std::uint32_t m_bigy{};
     std::uint32_t m_bigz{};
@@ -132,6 +142,7 @@ struct Wdc65816::Impl {
     std::uint32_t m_x1{};
     std::uint32_t m_viewposx{};
     std::uint32_t m_y1{};
+    std::uint32_t m_z1{};
     std::uint32_t m_scrollxoff{};
     std::uint32_t m_sineoffset{};
     std::uint32_t testk{};
@@ -144,6 +155,7 @@ struct Wdc65816::Impl {
     std::uint32_t bholetab{};
     std::uint32_t bholetabend{};
     std::vector<ApuPortWrite> apu_writes;
+    std::uint64_t apu_upload_generation{};
     std::vector<std::uint32_t> unknown_superfx_launches;
     std::uint32_t apu_clock_offset{};
     WDC65C816 cpu{&bus};
@@ -223,7 +235,13 @@ struct Wdc65816::Impl {
                 self.apu_ports = {0xaaU, 0xbbU, 0U, 0U};
                 self.apu_upload_active = true;
                 self.apu_upload_clear_sequence = 0U;
-            } else {
+                ++self.apu_upload_generation;
+            } else if (self.apu_upload_active || !self.apu_output_connected) {
+                // During an IPL transfer, each CPU write is synchronously
+                // echoed by the boot ROM. Before an external SPC core is
+                // attached, retain that mirror for standalone CPU tests.
+                // Once attached, normal driver reads must come from the
+                // SPC700's output latch rather than the CPU's own input.
                 self.apu_ports[port] = *data;
             }
             if (self.apu_upload_active) {
@@ -301,6 +319,7 @@ struct Wdc65816::Impl {
           m_dustpnts(find_symbol(symbols, "M_DUSTPNTS")),
           m_rand(find_symbol(symbols, "M_RAND")),
           mcrotwmatzxy16(find_rom_symbol(symbols, "MCROTWMATZXY16")),
+          mwmatrotp16(find_rom_symbol(symbols, "MWMATROTP16")),
           sintab16(find_rom_symbol(symbols, "SINTAB16")),
           m_rotx(find_symbol(symbols, "M_ROTX")),
           m_roty(find_symbol(symbols, "M_ROTY")),
@@ -308,7 +327,13 @@ struct Wdc65816::Impl {
           m_wmat11(find_symbol(symbols, "M_WMAT11")),
           mclrmapscreen(find_rom_symbol(symbols, "MCLRMAPSCREEN")),
           mdrawsprite32(find_rom_symbol(symbols, "MDRAWSPRITE32")),
+          musprite(find_rom_symbol(symbols, "MUSPRITE")),
           mdrawsphere(find_rom_symbol(symbols, "MDRAWSPHERE")),
+          mcalc_circle(find_rom_symbol(symbols, "MCALC_CIRCLE")),
+          mcopyface(find_rom_symbol(symbols, "MCOPYFACE")),
+          mfprintstr(find_rom_symbol(symbols, "MFPRINTSTR")),
+          msprintstr(find_rom_symbol(symbols, "MSPRINTSTR")),
+          mshowteammate2(find_rom_symbol(symbols, "MSHOWTEAMMATE2")),
           textureaddrtab(find_rom_symbol(symbols, "TEXTUREADDRTAB")),
           bitmap1(find_symbol(symbols, "BITMAP1")),
           msprite(find_symbol(symbols, "MSPRITE")),
@@ -316,6 +341,8 @@ struct Wdc65816::Impl {
           m_xc(find_symbol(symbols, "M_XC")),
           m_yc(find_symbol(symbols, "M_YC")),
           m_radius(find_symbol(symbols, "M_RADIUS")),
+          m_sprsize(find_symbol(symbols, "M_SPRSIZE")),
+          m_sprxscale(find_symbol(symbols, "M_SPRXSCALE")),
           m_bigx(find_symbol(symbols, "M_BIGX")),
           m_bigy(find_symbol(symbols, "M_BIGY")),
           m_bigz(find_symbol(symbols, "M_BIGZ")),
@@ -334,6 +361,7 @@ struct Wdc65816::Impl {
           m_x1(find_symbol(symbols, "M_X1")),
           m_viewposx(find_symbol(symbols, "M_VIEWPOSX")),
           m_y1(find_symbol(symbols, "M_Y1")),
+          m_z1(find_symbol(symbols, "M_Z1")),
           m_scrollxoff(find_symbol(symbols, "M_SCROLLXOFF")),
           m_sineoffset(find_symbol(symbols, "M_SINEOFFSET")),
           testk(find_symbol(symbols, "TESTK")),
@@ -904,6 +932,28 @@ struct Wdc65816::Impl {
         }
     }
 
+    void rotate_world_point() {
+        const std::array<std::int16_t, 3> point{
+            signed16(read_superfx16(m_x1)),
+            signed16(read_superfx16(m_y1)),
+            signed16(read_superfx16(m_z1)),
+        };
+        std::array<std::int16_t, 9> matrix{};
+        for (std::size_t index = 0; index < matrix.size(); ++index) {
+            matrix[index] = signed16(read_superfx16(
+                m_wmat11 + static_cast<std::uint32_t>(index * 2U)));
+        }
+        for (std::size_t column = 0; column < 3U; ++column) {
+            auto value = multiply_q15_exact(point[0], matrix[column]);
+            value = add_word(value,
+                multiply_q15_exact(point[1], matrix[3U + column]));
+            value = add_word(value,
+                multiply_q15_exact(point[2], matrix[6U + column]));
+            write_superfx16(m_bigx + static_cast<std::uint32_t>(column * 2U),
+                static_cast<std::uint16_t>(value));
+        }
+    }
+
     std::uint32_t texture_pointer(std::uint16_t sprite) const {
         const auto entry = textureaddrtab + static_cast<std::uint32_t>(sprite) * 3U;
         return static_cast<std::uint32_t>(rom->read8(entry))
@@ -911,10 +961,27 @@ struct Wdc65816::Impl {
             | (static_cast<std::uint32_t>(rom->read8(entry + 2U)) << 16U);
     }
 
+    std::uint8_t texture_byte(
+        std::uint16_t sprite, std::uint32_t source, std::uint32_t offset) const {
+        try {
+            return rom->read8(source + offset);
+        } catch (const std::out_of_range& error) {
+            std::ostringstream message;
+            message << error.what() << " (texture sprite=$" << std::hex
+                    << sprite << ", source=$" << source << ", offset=$"
+                    << offset << ')';
+            throw std::out_of_range{message.str()};
+        }
+    }
+
     void write_planet_pixel(std::int32_t x, std::int32_t y, std::uint8_t colour) noexcept {
         if (x < 0 || y < 0 || x >= 128 || y >= 128 || colour == 0U) return;
-        const auto tile = static_cast<std::uint32_t>(y >> 3) * 16U
-            + static_cast<std::uint32_t>(x >> 3);
+        // SETCHARMAPPLAN_L lays the 16x16 8-bpp bitmap out column-major:
+        // moving one tile right adds 16, while moving down adds one. Using a
+        // conventional row-major index only became obvious during the zoom,
+        // where it transposed each tile into a block of apparent static.
+        const auto tile = static_cast<std::uint32_t>(x >> 3) * 16U
+            + static_cast<std::uint32_t>(y >> 3);
         const auto row = static_cast<std::uint32_t>(y & 7);
         const auto mask = static_cast<std::uint8_t>(0x80U >> (x & 7));
         const auto base = static_cast<std::uint16_t>(bitmap1
@@ -935,6 +1002,19 @@ struct Wdc65816::Impl {
 
     void draw_planet_sprite32() {
         const auto sprite = read_superfx16(msprite);
+        // PLANETS marks spherical entries with bit 7, then clears that bit
+        // immediately before launching MDRAWTSPHERE. RetroCPU currently
+        // misses the 8-bit BMI on this path, so the marker can arrive at the
+        // translated flat-sprite entry instead. Recover the source branch
+        // here instead of indexing TEXTUREADDRTAB with the bogus $80 bit.
+        const auto planet_texture = static_cast<std::uint8_t>(sprite & 0x7fU);
+        if ((sprite & 0x80U) != 0U
+            || (planet_texture >= 0x34U && planet_texture <= 0x38U)) {
+            write_superfx16(msprite,
+                static_cast<std::uint16_t>(planet_texture));
+            draw_planet_sphere();
+            return;
+        }
         const auto source = texture_pointer(sprite);
         const auto left = static_cast<std::int32_t>(signed16(read_superfx16(m_xc))) - 16;
         const auto top = static_cast<std::int32_t>(signed16(read_superfx16(m_yc))) - 16;
@@ -942,8 +1022,50 @@ struct Wdc65816::Impl {
         for (std::int32_t y = 0; y < 32; ++y) {
             for (std::int32_t x = 0; x < 32; ++x) {
                 const auto texel = static_cast<std::uint8_t>(
-                    rom->read8(source + static_cast<std::uint32_t>(y) * 256U
-                        + static_cast<std::uint32_t>(x)) >> 4U);
+                    texture_byte(sprite, source,
+                        static_cast<std::uint32_t>(y) * 256U
+                            + static_cast<std::uint32_t>(x)) >> 4U);
+                if (texel != 0U) {
+                    write_planet_pixel(left + x, top + y,
+                        static_cast<std::uint8_t>((palette << 4U) | texel));
+                }
+            }
+        }
+    }
+
+    void draw_planet_scaled_sprite() {
+        const auto sprite = read_superfx16(msprite);
+        const auto planet_texture = static_cast<std::uint8_t>(sprite & 0x7fU);
+        if ((sprite & 0x80U) != 0U
+            || (planet_texture >= 0x34U && planet_texture <= 0x38U)) {
+            write_superfx16(msprite,
+                static_cast<std::uint16_t>(planet_texture));
+            draw_planet_sphere();
+            return;
+        }
+        const auto source = texture_pointer(sprite);
+        const auto centre_x = static_cast<std::int32_t>(
+            signed16(read_superfx16(m_xc)));
+        const auto centre_y = static_cast<std::int32_t>(
+            signed16(read_superfx16(m_yc)));
+        const auto source_size = std::max<std::int32_t>(1,
+            signed16(read_superfx16(m_sprsize)));
+        const auto output_size = std::max<std::int32_t>(1,
+            signed16(read_superfx16(m_sprxscale)));
+        const auto left = centre_x - output_size / 2;
+        const auto top = centre_y - output_size / 2;
+        const auto palette = static_cast<std::uint8_t>(
+            read_superfx16(mspr_pal) & 15U);
+        for (std::int32_t y = 0; y < output_size; ++y) {
+            const auto source_y = std::clamp(
+                y * source_size / output_size, 0, 31);
+            for (std::int32_t x = 0; x < output_size; ++x) {
+                const auto source_x = std::clamp(
+                    x * source_size / output_size, 0, 31);
+                const auto texel = static_cast<std::uint8_t>(
+                    texture_byte(sprite, source,
+                        static_cast<std::uint32_t>(source_y) * 256U
+                            + static_cast<std::uint32_t>(source_x)) >> 4U);
                 if (texel != 0U) {
                     write_planet_pixel(left + x, top + y,
                         static_cast<std::uint8_t>((palette << 4U) | texel));
@@ -954,7 +1076,14 @@ struct Wdc65816::Impl {
 
     void draw_planet_sphere() {
         constexpr double tau = 6.283185307179586476925286766559;
-        const auto sprite = read_superfx16(msprite);
+        // PLANETS stores the sphere marker in bit 7 and may retain unrelated
+        // high-byte scratch bits in M_SPRITE while entering MDRAWSPHERE. The
+        // original GSU consumes only the 7-bit texture index. Indexing the
+        // host pointer table with the full word (for Venom this was $0838)
+        // wandered into unrelated ROM bytes and eventually tried to sample
+        // $70:0c6d as LoROM.
+        const auto sprite = static_cast<std::uint16_t>(
+            read_superfx16(msprite) & 0x007fU);
         const auto source = texture_pointer(sprite);
         const auto centre_x = static_cast<std::int32_t>(signed16(read_superfx16(m_xc)));
         const auto centre_y = static_cast<std::int32_t>(signed16(read_superfx16(m_yc)));
@@ -998,27 +1127,43 @@ struct Wdc65816::Impl {
                 const auto ny = -static_cast<double>(dy) / radius;
                 const auto nz = std::sqrt(std::max(0.0, 1.0 - nx * nx - ny * ny));
 
-                // Apply the inverse Z-X-Y object rotation to the visible
-                // surface normal. The source uses the same Euler order in
-                // MCROTMATZXY16 before converting this vector to UV space.
-                const auto zx = cz * nx + sz * ny;
-                const auto zy = -sz * nx + cz * ny;
-                const auto zz = nz;
-                const auto xx = zx;
-                const auto xy = cx * zy + sx * zz;
-                const auto xz = -sx * zy + cx * zz;
-                const auto tx = cy * xx - sy * xz;
-                const auto ty = xy;
-                const auto tz = sy * xx + cy * xz;
-                auto u = static_cast<std::int32_t>(std::floor(
-                    (std::atan2(tz, tx) / tau + 0.5) * 64.0)) & 63;
-                auto v = static_cast<std::int32_t>(std::floor(
-                    (0.5 - std::asin(std::clamp(ty, -1.0, 1.0))
-                        / 3.1415926535897932384626433832795) * 32.0));
-                v = std::clamp(v, 0, 31);
-                const auto texel = static_cast<std::uint8_t>(rom->read8(source
-                    + static_cast<std::uint32_t>(v) * 256U
-                    + static_cast<std::uint32_t>(u)) >> 4U);
+                // Recreate MCROTMATZXY16's Z-X-Y matrix and map the visible
+                // sphere normal back into texture space through rows two
+                // and one. This keeps the fixed axial tilt while ROty
+                // advances the texture during SPINPLANETS.
+                const auto m11 = sz * sy * sx + cz * cy;
+                const auto m12 = cz * sy * sx - sz * cy;
+                const auto m13 = cx * sy;
+                const auto m21 = cx * sz;
+                const auto m22 = cx * cz;
+                const auto m23 = -sx;
+                // MGENUVLIST advances the first coordinate through the
+                // scaled matrix's second row (M21/M22/M23), then derives the
+                // second from its first row. Using columns here rotates and
+                // transposes every planet texture even though the silhouette
+                // remains plausible.
+                const auto tx = m21 * nx + m22 * ny + m23 * nz;
+                const auto ty = m11 * nx + m12 * ny + m13 * nz;
+                // MPLANET's UV lists use the rotated Cartesian surface
+                // vector directly around the $4000 fixed-point centre.
+                // MERGE packs the high bytes, shifts them twice and masks
+                // with $1f3f. Consequently the projected coordinate is
+                // centred at texel 16, advances by 32 texels per unit and
+                // wraps in the 64x32 source cell. Clamping it edge-to-edge
+                // changes the source phase and turns Titania's diagonal
+                // bands into a concentric ring.
+                // MERGE places R7's high byte above R8's high byte before
+                // the shift. The first UV list (matrix row two) therefore
+                // selects the 32 texture rows, while row one selects the 64
+                // columns. Reversing those axes makes latitude bands rotate
+                // into concentric circles.
+                const auto u = static_cast<std::int32_t>(std::floor(
+                    16.0 + ty * 32.0)) & 63;
+                const auto v = static_cast<std::int32_t>(std::floor(
+                    16.0 + tx * 32.0)) & 31;
+                const auto texel = static_cast<std::uint8_t>(texture_byte(
+                    sprite, source, static_cast<std::uint32_t>(v) * 256U
+                        + static_cast<std::uint32_t>(u)) >> 4U);
                 if (texel == 0U) continue;
 
                 const auto diffuse = (nx * light_x + ny * light_y + nz * light_z)
@@ -1069,6 +1214,10 @@ struct Wdc65816::Impl {
             calculate_world_matrix();
             return;
         }
+        if (mwmatrotp16 != 0U && address == mwmatrotp16) {
+            rotate_world_point();
+            return;
+        }
         if (mclrmapscreen != 0U && address == mclrmapscreen) {
             clear_planet_bitmap();
             return;
@@ -1077,8 +1226,23 @@ struct Wdc65816::Impl {
             draw_planet_sprite32();
             return;
         }
+        if (musprite != 0U && address == musprite) {
+            draw_planet_scaled_sprite();
+            return;
+        }
         if (mdrawsphere != 0U && address == mdrawsphere) {
             draw_planet_sphere();
+            return;
+        }
+        // These routines update only the source bitmap/window. Their visible
+        // output is composed by the PC renderer from the state that the
+        // surrounding 65C816 routines maintain, so completion is immediate
+        // just as it is for the other translated Super FX entry points.
+        if ((mcalc_circle != 0U && address == mcalc_circle)
+            || (mcopyface != 0U && address == mcopyface)
+            || (mfprintstr != 0U && address == mfprintstr)
+            || (msprintstr != 0U && address == msprintstr)
+            || (mshowteammate2 != 0U && address == mshowteammate2)) {
             return;
         }
         if (mdecrunch == 0U || address != mdecrunch) {
@@ -1227,6 +1391,12 @@ void Wdc65816::set_apu_clock_offset(std::uint32_t clocks) noexcept {
     impl_->apu_clock_offset = clocks;
 }
 
+void Wdc65816::set_apu_output_ports(
+    const std::array<std::uint8_t, 4>& ports) noexcept {
+    impl_->apu_output_connected = true;
+    if (!impl_->apu_upload_active) impl_->apu_ports = ports;
+}
+
 const SnesPpuState& Wdc65816::ppu_state() const noexcept {
     return impl_->ppu;
 }
@@ -1234,6 +1404,10 @@ const SnesPpuState& Wdc65816::ppu_state() const noexcept {
 const std::vector<std::uint32_t>& Wdc65816::unknown_superfx_launches()
     const noexcept {
     return impl_->unknown_superfx_launches;
+}
+
+std::uint64_t Wdc65816::apu_upload_generation() const noexcept {
+    return impl_->apu_upload_generation;
 }
 
 void Wdc65816::write_cgram(
@@ -1261,6 +1435,16 @@ void Wdc65816::upload_oam(std::uint32_t source, std::size_t length) {
     for (std::size_t index = 0; index < length; ++index) {
         impl_->ppu.oam[index] = impl_->read8(source + static_cast<std::uint32_t>(index));
     }
+}
+
+void Wdc65816::set_bg1_scroll(std::int16_t x, std::int16_t y) noexcept {
+    impl_->ppu.bg1_scroll_x = x;
+    impl_->ppu.bg1_scroll_y = y;
+}
+
+void Wdc65816::draw_planet_sphere(std::uint16_t sprite) {
+    impl_->write_superfx16(impl_->msprite, sprite);
+    impl_->draw_planet_sphere();
 }
 
 void Wdc65816::set_bg2_vertical_offsets_enabled(bool enabled) noexcept {

@@ -9,6 +9,9 @@ namespace {
 
 constexpr std::uint64_t kNanosecondsPerSecond = 1'000'000'000ULL;
 constexpr double kAnglePeriod = 65'536.0;
+constexpr std::uint32_t kPresentationTimebaseHz = 720U;
+constexpr std::uint32_t kSubphasesPerRasterPhase =
+    kPresentationTimebaseHz / kPresentationHz;
 
 double interpolate_angle(std::uint16_t from, std::uint16_t to, double alpha) noexcept {
     auto delta = static_cast<std::int32_t>(to) - static_cast<std::int32_t>(from);
@@ -38,6 +41,34 @@ double interpolate_word(std::int32_t from, std::int32_t to, double alpha) noexce
 }
 
 } // namespace
+
+RasterPhaseBatch RasterPhaseClock::advance(
+    std::uint32_t presentation_hz,
+    std::uint32_t speed_multiplier) {
+    if (presentation_hz == 0U
+        || kPresentationTimebaseHz % presentation_hz != 0U) {
+        throw std::invalid_argument{
+            "presentation_hz must be a nonzero divisor of 720"};
+    }
+    if (speed_multiplier == 0U) {
+        throw std::invalid_argument{"speed_multiplier cannot be zero"};
+    }
+    const auto accumulated = static_cast<std::uint64_t>(subphase_units_)
+        + static_cast<std::uint64_t>(kPresentationTimebaseHz / presentation_hz)
+            * speed_multiplier;
+    const auto phases = accumulated / kSubphasesPerRasterPhase;
+    subphase_units_ = static_cast<std::uint32_t>(
+        accumulated % kSubphasesPerRasterPhase);
+    return {
+        static_cast<std::uint32_t>(phases),
+        static_cast<double>(subphase_units_)
+            / static_cast<double>(kSubphasesPerRasterPhase),
+    };
+}
+
+void RasterPhaseClock::reset() noexcept {
+    subphase_units_ = 0U;
+}
 
 FixedStepClock::FixedStepClock(
     std::uint32_t simulation_hz,

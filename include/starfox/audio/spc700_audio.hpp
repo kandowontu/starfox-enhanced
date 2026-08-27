@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <array>
 #include <memory>
 #include <span>
 #include <vector>
@@ -27,6 +28,7 @@ public:
         std::uint8_t dsp_key_on{};
         std::int8_t main_volume_left{};
         std::int8_t main_volume_right{};
+        std::array<std::uint8_t, 4> output_ports{};
     };
 
     static constexpr std::uint32_t sample_rate = 32'000;
@@ -46,6 +48,7 @@ public:
 
     [[nodiscard]] bool driver_loaded() const noexcept;
     [[nodiscard]] std::size_t uploaded_bytes() const noexcept;
+    [[nodiscard]] std::array<std::uint8_t, 4> output_ports() const noexcept;
     [[nodiscard]] State state() const;
 
 private:

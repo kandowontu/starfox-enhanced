@@ -5,6 +5,9 @@
 #include "starfox/render/software_renderer.hpp"
 
 #include <cstdint>
+#include <cstddef>
+#include <optional>
+#include <string_view>
 
 namespace starfox::render {
 
@@ -32,6 +35,25 @@ public:
         std::int32_t x,
         std::int32_t y,
         Framebuffer& target,
+        std::uint8_t colour_index_base = 7U * 16U,
+        std::optional<std::uint8_t> forced_colour = std::nullopt,
+        std::int32_t right_clip = 224,
+        std::size_t max_characters = 256U) const;
+
+    // Draw one of FACEDATA's original 32x40, 4-bpp portrait frames.
+    void draw_face(
+        std::uint8_t frame,
+        std::int32_t x,
+        std::int32_t y,
+        Framebuffer& target,
+        std::uint8_t colour_index_base = 7U * 16U) const;
+
+    void draw_ascii(
+        std::string_view text,
+        std::int32_t x,
+        std::int32_t y,
+        Framebuffer& target,
+        std::uint8_t colour = 14U,
         std::uint8_t colour_index_base = 7U * 16U) const;
 
 private:
@@ -41,6 +63,7 @@ private:
     std::uint32_t game_font_widths_{};
     std::uint32_t game_font_glyphs_{};
     std::uint32_t game_font_translation_{};
+    std::uint32_t face_data_{};
 };
 
 } // namespace starfox::render

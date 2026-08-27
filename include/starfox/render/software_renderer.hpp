@@ -23,6 +23,9 @@ struct RenderPose {
     std::uint32_t colour_frame{};
     std::int32_t texture_scroll_x{};
     std::int32_t texture_scroll_y{};
+    // afexp/al_count: MOBJ offsets each face along its signed normal as the
+    // destroyed model breaks apart.
+    std::uint8_t explosion_progress{};
     std::array<std::int16_t, 9> rotation_matrix{};
     bool use_rotation_matrix{};
     std::array<std::int16_t, 3> depth_thresholds{2'560, 3'328, 3'840};
@@ -35,6 +38,9 @@ struct RenderPose {
     bool simple_scaled_sprite{};
     std::uint8_t simple_sprite_colour{};
     std::int16_t simple_sprite_world_size{};
+    // Presentation-only fallback for a long tapered solid crossing the near
+    // plane. It retains the model's material while drawing its centre axis.
+    bool collapse_to_axis_line{};
 };
 
 void apply_original_depth_tables(
@@ -48,7 +54,10 @@ struct RenderSettings {
     // MOBJ.MC projects with (coordinate * 256) / z before adding the
     // 112x96 vanishing point.
     double focal_length{256.0};
-    bool backface_culling{true};
+    // Retail shapes carry explicit Super FX visibility triples (and BSP
+    // ordering). Applying a second vertex-winding test hides their selected
+    // filled faces, so source rendering leaves generic culling disabled.
+    bool backface_culling{false};
     std::uint8_t background_colour{};
     std::uint8_t colour_index_base{};
 };

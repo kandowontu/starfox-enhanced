@@ -19,6 +19,7 @@ constexpr std::uint32_t kOriginalFreeList = 0x0012afU;
 constexpr std::uint32_t kOriginalFadeDirection = 0x001930U;
 constexpr std::uint32_t kOriginalFade = 0x001931U;
 constexpr std::uint32_t kOriginalDisplay = 0x7e4655U;
+constexpr std::uint32_t kOriginalGameFrame = 0x001640U;
 constexpr std::uint32_t kOriginalBackgroundFlags = 0x001a16U;
 constexpr std::uint32_t kOriginalBackgroundDmaList = 0x001764U;
 constexpr std::uint32_t kOriginalCurrentBackground = 0x0017c6U;
@@ -147,10 +148,21 @@ void MapVm::sync_display_to_cpu() {
 void MapVm::set_display_brightness(std::uint8_t brightness) {
     brightness &= 0x0fU;
     fade_direction_ = 0;
+    slow_fade_frame_valid_ = false;
     fade_value_ = brightness;
     screen_enabled_ = true;
     sync_display_to_cpu();
     write_native_byte(0x002100U, brightness);
+}
+
+void MapVm::start_display_fade(std::int8_t direction) {
+    fade_direction_ = direction;
+    slow_fade_frame_valid_ = false;
+    if (direction > 0 && !screen_enabled_) {
+        fade_value_ = 0U;
+        screen_enabled_ = true;
+    }
+    sync_display_to_cpu();
 }
 
 void MapVm::tick_video_phase() {
@@ -158,10 +170,25 @@ void MapVm::tick_video_phase() {
         return;
     }
     if (fade_direction_ < 0) {
+        // IRQ.ASM's -3 title fade advances only while GAMEFRAME is odd.
+        // GAMEFRAME is a 20 Hz source counter. The three 60 Hz presentations
+        // of an odd source frame therefore share one brightness decrement;
+        // applying it once per presentation makes this fade three times too
+        // fast and exposes the next screen's setup animation.
+        if (fade_direction_ == -3) {
+            const auto game_frame = cpu_.read8(kOriginalGameFrame);
+            if ((game_frame & 1U) == 0U
+                || (slow_fade_frame_valid_ && slow_fade_frame_ == game_frame)) {
+                return;
+            }
+            slow_fade_frame_ = game_frame;
+            slow_fade_frame_valid_ = true;
+        }
         const auto steps = fade_direction_ == -2 ? 2U : 1U;
         if (fade_value_ <= steps) {
             fade_value_ = 0;
             fade_direction_ = 0;
+            slow_fade_frame_valid_ = false;
             screen_enabled_ = false;
         } else {
             fade_value_ = static_cast<std::uint8_t>(fade_value_ - steps);

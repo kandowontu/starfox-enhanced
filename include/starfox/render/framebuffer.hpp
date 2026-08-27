@@ -19,6 +19,13 @@ public:
     [[nodiscard]] std::uint32_t height() const noexcept { return height_; }
     [[nodiscard]] const std::vector<std::uint8_t>& pixels() const noexcept { return pixels_; }
 
+    void resize(std::uint32_t width, std::uint32_t height) {
+        if (width == width_ && height == height_) return;
+        width_ = width;
+        height_ = height;
+        pixels_.assign(static_cast<std::size_t>(width) * height, 0U);
+    }
+
     void clear(std::uint8_t colour = 0) noexcept {
         std::fill(pixels_.begin(), pixels_.end(), colour);
     }

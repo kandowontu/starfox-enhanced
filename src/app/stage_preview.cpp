@@ -337,6 +337,8 @@ int main(int argc, char** argv) {
             pose.use_rotation_matrix = true;
             pose.animation_frame = display_frame(object.animation_frame);
             pose.colour_frame = display_frame(object.colour_frame);
+            pose.explosion_progress = (object.flags & 0x01U) != 0U
+                ? object.count : 0U;
             pose.texture_scroll_x = object.texture_scroll_x;
             pose.texture_scroll_y = object.texture_scroll_y;
             starfox::render::apply_original_depth_tables(rom,

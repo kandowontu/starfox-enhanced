@@ -238,6 +238,18 @@ int main() {
     renderer.draw(shape, alternate_pose, alternate_frame);
     require(framebuffer.pixels() != alternate_frame.pixels(),
             "renderer did not select the requested colour-animation frame");
+    auto exploding_shape = shape;
+    exploding_shape.bsp_root_address = 0U;
+    exploding_shape.faces[0].visibility_index = -1;
+    exploding_shape.faces[0].normal = {12, -8, 0};
+    starfox::render::RenderPose explosion_pose;
+    explosion_pose.explosion_progress = 8U;
+    starfox::render::Framebuffer explosion_frame{224, 192};
+    renderer.draw(exploding_shape, explosion_pose, explosion_frame);
+    starfox::render::Framebuffer intact_frame{224, 192};
+    renderer.draw(exploding_shape, {}, intact_frame);
+    require(explosion_frame.pixels() != intact_frame.pixels(),
+            "afexp model did not separate its faces as al_count advanced");
     starfox::render::Framebuffer shadow_frame{224, 192};
     starfox::render::RenderPose shadow_pose;
     shadow_pose.force_colour = true;
@@ -279,6 +291,25 @@ int main() {
                 clipped_line_frame.pixels().end(),
                 [](std::uint8_t pixel) { return pixel != 0U; }),
             "line crossing z=0 was not clipped and drawn");
+
+    auto tapered_beam = clipped_shape;
+    tapered_beam.header.shift = 7U;
+    tapered_beam.vertices = {
+        {0, 0, 0}, {-1, 0, -10}, {0, 0, 0},
+        {1, 0, -10}, {0, -2, -10}, {0, 2, -10},
+    };
+    starfox::render::RenderPose beam_pose;
+    beam_pose.x = -350.0;
+    beam_pose.z = 900.0;
+    beam_pose.force_colour = true;
+    beam_pose.forced_colour = 0x05U;
+    beam_pose.collapse_to_axis_line = true;
+    starfox::render::Framebuffer beam_frame{224, 192};
+    renderer.draw(tapered_beam, beam_pose, beam_frame);
+    const auto beam_pixels = std::count_if(beam_frame.pixels().begin(),
+        beam_frame.pixels().end(), [](std::uint8_t pixel) { return pixel != 0U; });
+    require(beam_pixels > 8U && beam_pixels <= 224U,
+            "near-camera tapered beam expanded beyond its centre axis");
 
     auto clipped_texture = clipped_shape;
     const auto texture_colour = clipped_texture.faces[0].colour_id;
@@ -323,6 +354,91 @@ int main() {
                 bottom_clipped_frame.pixels().end(),
                 [](std::uint8_t pixel) { return pixel == 5U; }),
             "exclusive source bottom clip dropped scanline 191");
+
+    auto expanded_side_shape = shape;
+    expanded_side_shape.bsp_root_address = 0;
+    expanded_side_shape.frames.clear();
+    expanded_side_shape.vertices = {
+        {112, -20, 0},
+        {140, 0, 0},
+        {112, 20, 0},
+    };
+    expanded_side_shape.faces[0].visibility_index = -1;
+    expanded_side_shape.faces[0].vertex_indices = {0, 2, 1};
+    starfox::render::RenderPose expanded_side_pose;
+    expanded_side_pose.z = 256.0;
+    expanded_side_pose.vanish_x = 128.0;
+    expanded_side_pose.vanish_y = 96.0;
+    expanded_side_pose.force_colour = true;
+    expanded_side_pose.forced_colour = 0x05U;
+    expanded_side_pose.use_rotation_matrix = true;
+    expanded_side_pose.rotation_matrix = {
+        32'767, 0, 0,
+        0, 32'767, 0,
+        0, 0, 32'767,
+    };
+    starfox::render::Framebuffer expanded_side_frame{256, 192};
+    source_projection.draw(
+        expanded_side_shape, expanded_side_pose, expanded_side_frame);
+    auto expanded_pixels = std::size_t{};
+    auto leaked_pixels = std::size_t{};
+    for (std::uint32_t y = 0; y < expanded_side_frame.height(); ++y) {
+        for (std::uint32_t x = 0; x < expanded_side_frame.width(); ++x) {
+            if (expanded_side_frame.get(x, y) != 5U) continue;
+            ++expanded_pixels;
+            leaked_pixels += x < 224U;
+        }
+    }
+    require(expanded_pixels > 100U,
+            "model crossing the expanded right column was not drawn");
+    require(leaked_pixels == 0U,
+            "expanded right-column edge wrapped into the original viewport");
+
+    auto superwide_side_shape = expanded_side_shape;
+    superwide_side_shape.vertices = {
+        {360, -20, 0},
+        {400, 0, 0},
+        {360, 20, 0},
+    };
+    auto superwide_side_pose = expanded_side_pose;
+    superwide_side_pose.vanish_x = 400.0;
+    starfox::render::Framebuffer superwide_side_frame{800, 224};
+    source_projection.draw(
+        superwide_side_shape, superwide_side_pose, superwide_side_frame);
+    auto superwide_pixels = std::size_t{};
+    auto superwide_wrapped_pixels = std::size_t{};
+    for (std::uint32_t y = 0; y < superwide_side_frame.height(); ++y) {
+        for (std::uint32_t x = 0; x < superwide_side_frame.width(); ++x) {
+            if (superwide_side_frame.get(x, y) != 5U) continue;
+            ++superwide_pixels;
+            superwide_wrapped_pixels += x < 700U;
+        }
+    }
+    require(superwide_pixels > 100U,
+            "model in the 32:9 outer column was not drawn");
+    require(superwide_wrapped_pixels == 0U,
+            "32:9 outer-column edge wrapped into the centred viewport");
+
+    auto expanded_top_shape = shape;
+    expanded_top_shape.bsp_root_address = 0;
+    expanded_top_shape.frames.clear();
+    expanded_top_shape.vertices = {
+        {-20, -120, 0},
+        {0, -100, 0},
+        {20, -120, 0},
+    };
+    expanded_top_shape.faces[0].visibility_index = -1;
+    expanded_top_shape.faces[0].vertex_indices = {0, 1, 2};
+    auto expanded_top_pose = expanded_side_pose;
+    expanded_top_pose.vanish_x = 200.0;
+    expanded_top_pose.vanish_y = 112.0;
+    starfox::render::Framebuffer expanded_top_frame{400, 224};
+    source_projection.draw(
+        expanded_top_shape, expanded_top_pose, expanded_top_frame);
+    require(std::any_of(expanded_top_frame.pixels().begin(),
+                expanded_top_frame.pixels().begin() + 16U * 400U,
+                [](std::uint8_t pixel) { return pixel == 5U; }),
+            "model crossing the two added top rows was still clipped");
 
     auto source_line_shape = shape;
     source_line_shape.bsp_root_address = 0;

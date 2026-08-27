@@ -12,6 +12,25 @@ namespace starfox::timing {
 inline constexpr std::uint32_t kSimulationHz = 20;
 inline constexpr std::uint32_t kPresentationHz = 60;
 
+struct RasterPhaseBatch {
+    std::uint32_t video_phases{};
+    double phase_fraction{};
+};
+
+// Converts an independently selected presentation rate into the cartridge's
+// fixed 60 Hz raster clock. The supported presentation rates all divide a
+// common 720 Hz timebase, so this remains exact without wall-clock drift.
+class RasterPhaseClock {
+public:
+    [[nodiscard]] RasterPhaseBatch advance(
+        std::uint32_t presentation_hz,
+        std::uint32_t speed_multiplier = 1U);
+    void reset() noexcept;
+
+private:
+    std::uint32_t subphase_units_{};
+};
+
 struct StepBatch {
     std::uint32_t simulation_steps{};
     double interpolation_alpha{};
@@ -65,4 +84,3 @@ struct RenderTransform {
     double alpha) noexcept;
 
 } // namespace starfox::timing
-

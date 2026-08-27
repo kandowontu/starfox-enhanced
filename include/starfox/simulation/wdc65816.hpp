@@ -3,6 +3,7 @@
 #include "starfox/assets/rom.hpp"
 #include "starfox/simulation/snes_ppu.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -49,9 +50,12 @@ public:
     void write16(std::uint32_t address, std::uint16_t value);
     [[nodiscard]] std::vector<ApuPortWrite> take_apu_port_writes();
     void set_apu_clock_offset(std::uint32_t clocks) noexcept;
+    void set_apu_output_ports(
+        const std::array<std::uint8_t, 4>& ports) noexcept;
     [[nodiscard]] const SnesPpuState& ppu_state() const noexcept;
     [[nodiscard]] const std::vector<std::uint32_t>& unknown_superfx_launches()
         const noexcept;
+    [[nodiscard]] std::uint64_t apu_upload_generation() const noexcept;
     void write_cgram(
         std::uint16_t first_colour,
         std::span<const std::uint16_t> colours) noexcept;
@@ -59,6 +63,8 @@ public:
         std::uint16_t byte_offset,
         std::span<const std::uint8_t> bytes) noexcept;
     void upload_oam(std::uint32_t source, std::size_t length);
+    void set_bg1_scroll(std::int16_t x, std::int16_t y) noexcept;
+    void draw_planet_sphere(std::uint16_t sprite);
     void set_bg2_vertical_offsets_enabled(bool enabled) noexcept;
     void capture_bg2_horizontal_offsets(
         std::uint16_t source, bool enabled) noexcept;

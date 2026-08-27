@@ -17,10 +17,14 @@ public:
     void draw_objects(
         const simulation::SnesPpuState& ppu,
         Framebuffer& target,
-        std::optional<std::uint8_t> priority = std::nullopt) const noexcept;
+        std::optional<std::uint8_t> priority = std::nullopt,
+        std::int32_t horizontal_origin = 0,
+        bool extend_horizontal = true,
+        bool anchor_edge_hud = false) const noexcept;
     void draw_meters(
         const simulation::MeterState& meters,
-        Framebuffer& target) const noexcept;
+        Framebuffer& target,
+        bool anchor_to_edges = false) const noexcept;
 };
 
 } // namespace starfox::render

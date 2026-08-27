@@ -80,10 +80,12 @@ void DustRenderer::draw(
             continue;
         }
         const auto clipped_z = std::min(camera_z, 4'095.0);
-        const auto screen_x = 112 + static_cast<std::int32_t>(
-            std::trunc(camera_x * 256.0 / clipped_z));
-        const auto screen_y = 96 + static_cast<std::int32_t>(
-            std::trunc(camera_y * 256.0 / clipped_z));
+        const auto screen_x = static_cast<std::int32_t>(target.width() / 2U)
+            + static_cast<std::int32_t>(
+                std::trunc(camera_x * 256.0 / clipped_z));
+        const auto screen_y = static_cast<std::int32_t>(target.height() / 2U)
+            + static_cast<std::int32_t>(
+                std::trunc(camera_y * 256.0 / clipped_z));
         if (screen_x < 0 || screen_x >= static_cast<std::int32_t>(target.width())
             || screen_y < 0 || screen_y >= static_cast<std::int32_t>(target.height())) {
             ++index;
@@ -136,9 +138,11 @@ void DustRenderer::draw_grid(
                 const auto depth = std::min<std::int16_t>(
                     original_z, kMaximumReciprocalDepth - 1);
                 const auto screen_x = simulation::add16(
-                    grid_projection(point[0], depth), 112);
+                    grid_projection(point[0], depth),
+                    static_cast<std::int16_t>(target.width() / 2U));
                 const auto screen_y = simulation::add16(
-                    grid_projection(point[1], depth), 96);
+                    grid_projection(point[1], depth),
+                    static_cast<std::int16_t>(target.height() / 2U));
                 if (static_cast<std::uint16_t>(screen_x) < target.width()
                     && static_cast<std::uint16_t>(screen_y) < target.height()) {
                     constexpr auto colour = static_cast<std::uint8_t>(

@@ -46,13 +46,19 @@ std::size_t RomImage::lorom_offset(std::uint32_t snes_address) const {
     const auto bank = static_cast<std::uint8_t>((snes_address >> 16U) & 0xffU);
     const auto address = static_cast<std::uint16_t>(snes_address & 0xffffU);
     if (address < 0x8000U) {
-        throw std::out_of_range{"LoROM address is outside the cartridge window"};
+        std::ostringstream message;
+        message << "LoROM address $" << std::hex << snes_address
+                << " is outside the cartridge window";
+        throw std::out_of_range{message.str()};
     }
 
     const auto offset = static_cast<std::size_t>(bank & 0x7fU) * 0x8000U
         + static_cast<std::size_t>(address & 0x7fffU);
     if (offset >= bytes_.size()) {
-        throw std::out_of_range{"LoROM address exceeds the supplied image"};
+        std::ostringstream message;
+        message << "LoROM address $" << std::hex << snes_address
+                << " exceeds the supplied image";
+        throw std::out_of_range{message.str()};
     }
     return offset;
 }

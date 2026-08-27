@@ -133,7 +133,14 @@ if(STARFOX_BUILD_RUNTIME)
     )
     FetchContent_MakeAvailable(SDL3)
 
-    add_executable(starfox_pc src/app/starfox_pc.cpp)
+    add_executable(starfox_pc
+        src/app/starfox_pc.cpp
+        src/app/runtime_input.cpp)
+    if(WIN32)
+        # The packaged runtime reports failures through a native message box;
+        # it should not open a second console window beside the game.
+        set_target_properties(starfox_pc PROPERTIES WIN32_EXECUTABLE TRUE)
+    endif()
     target_link_libraries(starfox_pc PRIVATE starfox_core SDL3::SDL3)
     if(WIN32 AND STARFOX_EMBED_RUNTIME_ASSETS)
         if(EXISTS "${STARFOX_ROM_FILE}" AND EXISTS "${STARFOX_SYMBOLS_FILE}")

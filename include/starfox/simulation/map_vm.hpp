@@ -68,6 +68,7 @@ public:
         return display_brightness_;
     }
     void set_display_brightness(std::uint8_t brightness);
+    void start_display_fade(std::int8_t direction);
     [[nodiscard]] std::uint16_t stage_counter() const noexcept { return stage_counter_; }
     [[nodiscard]] bool background_request_pending() const noexcept {
         return background_request_pending_;
@@ -89,12 +90,19 @@ public:
     void set_apu_clock_offset(std::uint32_t clocks) noexcept {
         cpu_.set_apu_clock_offset(clocks);
     }
+    void set_apu_output_ports(
+        const std::array<std::uint8_t, 4>& ports) noexcept {
+        cpu_.set_apu_output_ports(ports);
+    }
     [[nodiscard]] const SnesPpuState& ppu_state() const noexcept {
         return cpu_.ppu_state();
     }
     [[nodiscard]] const std::vector<std::uint32_t>& unknown_superfx_launches()
         const noexcept {
         return cpu_.unknown_superfx_launches();
+    }
+    [[nodiscard]] std::uint64_t apu_upload_generation() const noexcept {
+        return cpu_.apu_upload_generation();
     }
     void write_cgram(
         std::uint16_t first_colour,
@@ -105,6 +113,12 @@ public:
         std::uint16_t byte_offset,
         std::span<const std::uint8_t> bytes) noexcept {
         cpu_.write_vram(byte_offset, bytes);
+    }
+    void set_bg1_scroll(std::int16_t x, std::int16_t y) noexcept {
+        cpu_.set_bg1_scroll(x, y);
+    }
+    void draw_planet_sphere(std::uint16_t sprite) {
+        cpu_.draw_planet_sphere(sprite);
     }
     void upload_oam(std::uint32_t source, std::size_t length) {
         cpu_.upload_oam(source, length);
@@ -180,6 +194,8 @@ private:
     std::int8_t fade_direction_{};
     std::uint8_t fade_value_{};
     std::uint8_t display_brightness_{15};
+    std::uint8_t slow_fade_frame_{};
+    bool slow_fade_frame_valid_{};
     bool vertical_offset_enabled_{};
     bool horizontal_offset_enabled_{};
     bool z_rotation_enabled_{};

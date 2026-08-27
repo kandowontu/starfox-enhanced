@@ -45,7 +45,10 @@ std::uint8_t object_pixel(
 void SpriteRenderer::draw_objects(
     const simulation::SnesPpuState& ppu,
     Framebuffer& target,
-    std::optional<std::uint8_t> priority) const noexcept {
+    std::optional<std::uint8_t> priority,
+    std::int32_t horizontal_origin,
+    bool extend_horizontal,
+    bool anchor_edge_hud) const noexcept {
     if ((ppu.main_screen & 0x10U) == 0U) return;
     const auto size_selection = static_cast<std::size_t>(
         (ppu.object_select >> 5U) & 7U);
@@ -58,10 +61,27 @@ void SpriteRenderer::draw_objects(
         const auto high = 512U + object / 4U;
         const auto high_bits = static_cast<std::uint8_t>(
             ppu.oam[high] >> ((object & 3U) * 2U));
+        // SPRITES.ASM clears unused low-OAM records with STZ but does not
+        // always rewrite their packed high-table size bit. Treat the zeroed
+        // four-byte record as empty regardless of that stale bit. Otherwise
+        // a large tile-zero route dot wraps into a blinking strip at (0, 0).
+        if (ppu.oam[low] == 0U
+            && ppu.oam[low + 1U] == 0U
+            && ppu.oam[low + 2U] == 0U
+            && ppu.oam[low + 3U] == 0U) continue;
         auto x = static_cast<std::int32_t>(ppu.oam[low])
             | (static_cast<std::int32_t>(high_bits & 1U) << 8U);
         if (x >= 256) x -= 512;
         const auto y_byte = ppu.oam[low + 1U];
+        auto object_origin = horizontal_origin;
+        if (anchor_edge_hud && horizontal_origin > 0
+            && (y_byte < 32U || y_byte >= 168U)) {
+            // Only the top/bottom gameplay OAM bands are edge HUD artwork.
+            // Keep those labels, lives and bombs at the expanded edges. The
+            // middle band contains the cockpit crosshair and communication
+            // portraits, which must remain centred as a single composition.
+            object_origin = x < 128 ? 0 : horizontal_origin * 2;
+        }
         const auto size = static_cast<std::uint32_t>(
             sizes[(high_bits >> 1U) & 1U]);
         const auto tile = static_cast<std::uint16_t>(ppu.oam[low + 2U])
@@ -84,7 +104,11 @@ void SpriteRenderer::draw_objects(
                     continue;
                 }
                 for (std::uint32_t destination_x = 0; destination_x < size; ++destination_x) {
-                    const auto screen_x = x + static_cast<std::int32_t>(destination_x);
+                    const auto screen_x = x + object_origin
+                        + static_cast<std::int32_t>(destination_x);
+                    if (!extend_horizontal
+                        && (screen_x < horizontal_origin
+                            || screen_x >= horizontal_origin + 256)) continue;
                     if (screen_x < 0
                         || screen_x >= static_cast<std::int32_t>(target.width())) continue;
                     const auto source_x = flip_x ? size - 1U - destination_x : destination_x;
@@ -100,7 +124,8 @@ void SpriteRenderer::draw_objects(
 
 void SpriteRenderer::draw_meters(
     const simulation::MeterState& meters,
-    Framebuffer& target) const noexcept {
+    Framebuffer& target,
+    bool anchor_to_edges) const noexcept {
     if (!meters.enabled) return;
     const auto solid = [&target](
         std::int32_t x,
@@ -126,11 +151,14 @@ void SpriteRenderer::draw_meters(
             solid(x + width - 1, y + 1, 1, height - 2, colour);
         }
     };
-    box(8, 176, 40, 8, 13U);
-    solid(10, 178, std::min<std::uint8_t>(meters.damage, 36U), 4,
+    const auto left_x = anchor_to_edges ? 24 : 8;
+    const auto right_x = anchor_to_edges
+        ? static_cast<std::int32_t>(target.width()) - 64 : 176;
+    box(left_x, 176, 40, 8, 13U);
+    solid(left_x + 2, 178, std::min<std::uint8_t>(meters.damage, 36U), 4,
         meters.shield_up ? 7U : 2U);
-    box(176, 176, 40, 8, 13U);
-    solid(178, 178, std::min<std::uint8_t>(meters.boost, 36U), 4, 6U);
+    box(right_x, 176, 40, 8, 13U);
+    solid(right_x + 2, 178, std::min<std::uint8_t>(meters.boost, 36U), 4, 6U);
 
     auto maximum = meters.boss_max_health;
     auto current = meters.boss_health;
@@ -141,7 +169,10 @@ void SpriteRenderer::draw_meters(
     const auto half_scale = (maximum & 0x80U) != 0U;
     auto meter_width = half_scale ? maximum >> 1U : maximum;
     meter_width = static_cast<std::uint8_t>(meter_width + 4U);
-    const auto boss_x = 222 - static_cast<std::int32_t>(meter_width);
+    const auto boss_x = anchor_to_edges
+        ? static_cast<std::int32_t>(target.width()) - 18
+            - static_cast<std::int32_t>(meter_width)
+        : 222 - static_cast<std::int32_t>(meter_width);
     box(boss_x, 2, meter_width, 6, 14U);
     if (half_scale) current >>= 1U;
     solid(boss_x + 2, 4, current, 2, 2U);

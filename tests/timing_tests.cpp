@@ -2,6 +2,7 @@
 #include "starfox/input/input_latch.hpp"
 
 #include <chrono>
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -29,6 +30,71 @@ void test_exact_60_to_20_cadence() {
     }
 
     require(total_steps == 20, "one second must produce exactly 20 gameplay steps");
+}
+
+void test_selectable_presentation_rates_preserve_raster_pace() {
+    constexpr std::array<std::uint32_t, 6> rates{
+        20U, 30U, 60U, 120U, 240U, 360U};
+    for (const auto rate : rates) {
+        starfox::timing::RasterPhaseClock clock;
+        std::uint32_t phases = 0U;
+        double final_fraction = -1.0;
+        for (std::uint32_t frame = 0; frame < rate; ++frame) {
+            const auto batch = clock.advance(rate);
+            phases += batch.video_phases;
+            final_fraction = batch.phase_fraction;
+        }
+        require(phases == starfox::timing::kPresentationHz,
+                "presentation FPS changed the 60 Hz raster pace");
+        require(final_fraction == 0.0,
+                "presentation cadence accumulated fractional drift");
+    }
+
+    starfox::timing::RasterPhaseClock high_rate;
+    const auto first_360 = high_rate.advance(360U);
+    require(first_360.video_phases == 0U
+                && std::abs(first_360.phase_fraction - 1.0 / 6.0) < 0.000001,
+            "360 FPS did not expose fractional interpolation progress");
+    for (std::uint32_t frame = 1; frame < 6U; ++frame) {
+        static_cast<void>(high_rate.advance(360U));
+    }
+    const auto seventh_360 = high_rate.advance(360U);
+    require(seventh_360.video_phases == 0U
+                && std::abs(seventh_360.phase_fraction - 1.0 / 6.0) < 0.000001,
+            "360 FPS cadence did not repeat after one raster phase");
+}
+
+void test_fast_forward_exactly_doubles_raster_pace() {
+    constexpr std::array<std::uint32_t, 6> rates{
+        20U, 30U, 60U, 120U, 240U, 360U};
+    for (const auto rate : rates) {
+        starfox::timing::RasterPhaseClock clock;
+        std::uint32_t phases = 0U;
+        double final_fraction = -1.0;
+        for (std::uint32_t frame = 0; frame < rate; ++frame) {
+            const auto batch = clock.advance(rate, 2U);
+            phases += batch.video_phases;
+            final_fraction = batch.phase_fraction;
+        }
+        require(phases == starfox::timing::kPresentationHz * 2U,
+                "2x fast-forward did not produce exactly 120 raster phases");
+        require(final_fraction == 0.0,
+                "2x fast-forward accumulated fractional drift");
+    }
+}
+
+void test_missed_render_target_preserves_realtime_raster_pace() {
+    using namespace std::chrono_literals;
+    starfox::timing::FixedStepClock realtime_raster{
+        starfox::timing::kPresentationHz};
+    std::uint32_t phases = 0U;
+    // A requested 360 FPS mode may only render 200 actual frames on a given
+    // machine. One elapsed second must still service all sixty source rasters.
+    for (std::uint32_t frame = 0; frame < 200U; ++frame) {
+        phases += realtime_raster.advance(5ms).simulation_steps;
+    }
+    require(phases == starfox::timing::kPresentationHz,
+            "a missed render target slowed the realtime raster/audio clock");
 }
 
 void test_stall_is_bounded() {
@@ -98,6 +164,9 @@ void test_input_edges_survive_between_ticks() {
 
 int main() {
     test_exact_60_to_20_cadence();
+    test_selectable_presentation_rates_preserve_raster_pace();
+    test_fast_forward_exactly_doubles_raster_pace();
+    test_missed_render_target_preserves_realtime_raster_pace();
     test_stall_is_bounded();
     test_negative_time_is_ignored();
     test_interpolation_does_not_modify_snapshots();

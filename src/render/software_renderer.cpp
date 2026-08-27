@@ -242,12 +242,28 @@ bool source_visibility(
     const auto& a = projected[visibility.a];
     const auto& b = projected[visibility.b];
     const auto& c = projected[visibility.c];
-    const auto signed_area = (b.x - a.x) * (c.y - a.y)
-        - (b.y - a.y) * (c.x - a.x);
+    // MSH_VIZIS performs all four projected differences in 16-bit Super FX
+    // registers, then subtracts the two signed 16x16 products as a wrapping
+    // 32-bit value. Using host doubles here gave a different facing result
+    // whenever a near-plane projection crossed the signed screen-word seam;
+    // the intro lasers would then expose a broad side face as a full-screen
+    // wedge, especially while Original Speed held that source frame longer.
+    const auto bx = starfox::simulation::subtract16(
+        rounded_word(b.x), rounded_word(a.x));
+    const auto by = starfox::simulation::subtract16(
+        rounded_word(b.y), rounded_word(a.y));
+    const auto cx = starfox::simulation::subtract16(
+        rounded_word(c.x), rounded_word(a.x));
+    const auto cy = starfox::simulation::subtract16(
+        rounded_word(c.y), rounded_word(a.y));
+    const auto cross = static_cast<std::int64_t>(bx) * cy
+        - static_cast<std::int64_t>(by) * cx;
+    const auto signed_area = std::bit_cast<std::int32_t>(
+        static_cast<std::uint32_t>(cross));
     const auto odd_behind = (transformed[visibility.a].z < 0.0)
         != ((transformed[visibility.b].z < 0.0)
             != (transformed[visibility.c].z < 0.0));
-    return (signed_area < 0.0) != odd_behind;
+    return (signed_area < 0) != odd_behind;
 }
 
 RasterVertex interpolate_at(
@@ -558,14 +574,42 @@ Vec3 rotate(const assets::Vec3i& point, const RenderPose& pose, std::uint8_t shi
     return value;
 }
 
-std::int16_t source_edge_increment(
+Vec3 explosion_offset(
+    const assets::Face& face, const RenderPose& pose) {
+    if (pose.explosion_progress == 0U) return {};
+    auto direction_pose = pose;
+    direction_pose.x = 0.0;
+    direction_pose.y = 0.0;
+    direction_pose.z = 0.0;
+    direction_pose.scale = 1.0;
+    // MOBJ's mexpfacesinit negates the source X/Z face-normal bytes, rotates
+    // that vector through m_mat, then forces Y downward before multiplying by
+    // al_count and dividing by four.
+    auto direction = rotate(
+        {-face.normal.x, face.normal.y, -face.normal.z}, direction_pose, 0U);
+    direction.y = -std::abs(direction.y);
+    const auto expand = [progress = pose.explosion_progress](double value) {
+        const auto product = static_cast<std::int32_t>(std::lround(value))
+            * static_cast<std::int32_t>(progress);
+        return static_cast<double>(
+            starfox::simulation::arithmetic_shift_right(product, 2U));
+    };
+    return {expand(direction.x), expand(direction.y), expand(direction.z)};
+}
+
+std::int32_t wide_edge_increment(
     std::int32_t difference, std::int32_t scanlines) noexcept {
     if (scanlines <= 0) return 0;
     const auto reciprocal = scanlines == 1
         ? 32'767 : 32'768 / scanlines;
+    return starfox::simulation::arithmetic_shift_right(
+        static_cast<std::int32_t>(difference * reciprocal), 7);
+}
+
+std::int16_t source_edge_increment(
+    std::int32_t difference, std::int32_t scanlines) noexcept {
     return starfox::simulation::wrap16(
-        starfox::simulation::arithmetic_shift_right(
-            static_cast<std::int32_t>(difference * reciprocal), 7));
+        wide_edge_increment(difference, scanlines));
 }
 
 std::int16_t source_advance_edge(
@@ -615,21 +659,62 @@ void fill_source_polygon(
     auto y = points[minimum].y;
     if (y == maximum_y) return;
 
+    // The source scan converter keeps X in an unsigned 8.8 word. That covers
+    // the retail 0..224 clip window, but an exclusive X=256 boundary wraps to
+    // zero, while the source's -8..0 overflow guard mistakes valid X=248..255
+    // for a negative edge. Use an unwrapped host accumulator only when the
+    // viewport is wider than the cartridge raster; the 224-pixel path below
+    // retains the exact word arithmetic used by MDRAWP.MC.
+    const auto extended_x = target.width() > 224U;
+    const auto fixed_x = [extended_x](std::int32_t value) {
+        return extended_x
+            ? value << 8U
+            : static_cast<std::int32_t>(starfox::simulation::wrap16(
+                static_cast<std::int64_t>(value) << 8U));
+    };
+    const auto integer_x = [extended_x](std::int32_t value) {
+        return extended_x
+            ? starfox::simulation::arithmetic_shift_right(value, 8)
+            : source_fixed_integer(static_cast<std::int16_t>(value));
+    };
+    const auto rounded_x = [extended_x, &integer_x](std::int32_t value) {
+        return extended_x
+            ? starfox::simulation::arithmetic_shift_right(value + 127, 8)
+            : integer_x(starfox::simulation::add16(
+                static_cast<std::int16_t>(value), 127));
+    };
+    const auto advance_x = [extended_x](
+                               std::int32_t value, std::int32_t increment) {
+        return extended_x
+            ? value + increment
+            : static_cast<std::int32_t>(source_advance_edge(
+                static_cast<std::int16_t>(value),
+                static_cast<std::int16_t>(increment)));
+    };
+    const auto edge_increment = [extended_x](
+                                    std::int32_t difference,
+                                    std::int32_t scanlines) {
+        return extended_x
+            ? wide_edge_increment(difference, scanlines)
+            : static_cast<std::int32_t>(
+                source_edge_increment(difference, scanlines));
+    };
+
     struct Tracer {
         std::size_t vertex{};
         int direction{};
-        std::int16_t x{};
-        std::int16_t increment{};
+        std::int32_t x{};
+        std::int32_t increment{};
         std::int32_t remaining{};
     };
-    const auto initial_x = starfox::simulation::wrap16(
-        static_cast<std::int64_t>(points[minimum].x) << 8U);
+    const auto initial_x = fixed_x(points[minimum].x);
     Tracer left{minimum, 1, initial_x, 0, 0};
     Tracer right{minimum, -1, initial_x, 0, 0};
-    const auto begin_segment = [&points, &y](Tracer& tracer) {
+    const auto begin_segment = [
+                                   &points, &y, &fixed_x, &rounded_x,
+                                   &edge_increment](Tracer& tracer) {
         const auto count = points.size();
-        auto rounded = source_fixed_integer(starfox::simulation::add16(
-            tracer.x, 127));
+        auto rounded = rounded_x(tracer.x);
         for (std::size_t guard = 0; guard < count; ++guard) {
             tracer.vertex = tracer.direction > 0
                 ? (tracer.vertex + 1U) % count
@@ -639,13 +724,11 @@ void fill_source_polygon(
             if (scanlines < 0) return false;
             if (scanlines == 0) {
                 rounded = endpoint.x;
-                tracer.x = starfox::simulation::wrap16(
-                    static_cast<std::int64_t>(rounded) << 8U);
+                tracer.x = fixed_x(rounded);
                 continue;
             }
-            tracer.x = starfox::simulation::wrap16(
-                static_cast<std::int64_t>(rounded) << 8U);
-            tracer.increment = source_edge_increment(
+            tracer.x = fixed_x(rounded);
+            tracer.increment = edge_increment(
                 endpoint.x - rounded, scanlines);
             tracer.remaining = scanlines;
             return true;
@@ -656,8 +739,8 @@ void fill_source_polygon(
     while (y < maximum_y) {
         if (left.remaining == 0 && !begin_segment(left)) return;
         if (right.remaining == 0 && !begin_segment(right)) return;
-        const auto x1 = source_fixed_integer(left.x);
-        const auto x2 = source_fixed_integer(right.x);
+        const auto x1 = integer_x(left.x);
+        const auto x2 = integer_x(right.x);
         if (x2 >= x1) {
             for (auto x = x1; x <= x2; ++x) {
                 target.set(x, y, static_cast<std::uint8_t>(colour_index_base
@@ -665,8 +748,8 @@ void fill_source_polygon(
                         ? colour.odd : colour.even)));
             }
         }
-        left.x = source_advance_edge(left.x, left.increment);
-        right.x = source_advance_edge(right.x, right.increment);
+        left.x = advance_x(left.x, left.increment);
+        right.x = advance_x(right.x, right.increment);
         --left.remaining;
         --right.remaining;
         ++y;
@@ -712,26 +795,61 @@ void fill_source_textured_polygon(
         return starfox::simulation::wrap16(
             static_cast<std::int64_t>(value) << 8U);
     };
+    const auto extended_x = target.width() > 224U;
+    const auto fixed_x = [extended_x](std::int32_t value) {
+        return extended_x
+            ? value << 8U
+            : static_cast<std::int32_t>(starfox::simulation::wrap16(
+                static_cast<std::int64_t>(value) << 8U));
+    };
+    const auto integer_x = [extended_x](std::int32_t value) {
+        return extended_x
+            ? starfox::simulation::arithmetic_shift_right(value, 8)
+            : source_fixed_integer(static_cast<std::int16_t>(value));
+    };
+    const auto rounded_x = [extended_x, &integer_x](std::int32_t value) {
+        return extended_x
+            ? starfox::simulation::arithmetic_shift_right(value + 127, 8)
+            : integer_x(starfox::simulation::add16(
+                static_cast<std::int16_t>(value), 127));
+    };
+    const auto advance_x = [extended_x](
+                               std::int32_t value, std::int32_t increment) {
+        return extended_x
+            ? value + increment
+            : static_cast<std::int32_t>(source_advance_edge(
+                static_cast<std::int16_t>(value),
+                static_cast<std::int16_t>(increment)));
+    };
+    const auto edge_increment = [extended_x](
+                                    std::int32_t difference,
+                                    std::int32_t scanlines) {
+        return extended_x
+            ? wide_edge_increment(difference, scanlines)
+            : static_cast<std::int32_t>(
+                source_edge_increment(difference, scanlines));
+    };
 
     struct Tracer {
         std::size_t vertex{};
         int direction{};
-        std::int16_t x{};
+        std::int32_t x{};
         std::int16_t u{};
         std::int16_t v{};
-        std::int16_t x_increment{};
+        std::int32_t x_increment{};
         std::int16_t u_increment{};
         std::int16_t v_increment{};
         std::int32_t remaining{};
     };
-    Tracer left{minimum, 1, fixed(points[minimum].x),
+    Tracer left{minimum, 1, fixed_x(points[minimum].x),
         fixed(points[minimum].u), fixed(points[minimum].v)};
-    Tracer right{minimum, -1, fixed(points[minimum].x),
+    Tracer right{minimum, -1, fixed_x(points[minimum].x),
         fixed(points[minimum].u), fixed(points[minimum].v)};
-    const auto begin_segment = [&points, &fixed, &y](Tracer& tracer) {
+    const auto begin_segment = [
+                                   &points, &fixed, &fixed_x, &rounded_x,
+                                   &edge_increment, &y](Tracer& tracer) {
         const auto count = points.size();
-        auto start_x = source_fixed_integer(starfox::simulation::add16(
-            tracer.x, 127));
+        auto start_x = rounded_x(tracer.x);
         auto start_u = source_fixed_integer(tracer.u);
         auto start_v = source_fixed_integer(tracer.v);
         for (std::size_t guard = 0; guard < count; ++guard) {
@@ -745,15 +863,15 @@ void fill_source_textured_polygon(
                 start_x = endpoint.x;
                 start_u = endpoint.u;
                 start_v = endpoint.v;
-                tracer.x = fixed(start_x);
+                tracer.x = fixed_x(start_x);
                 tracer.u = fixed(start_u);
                 tracer.v = fixed(start_v);
                 continue;
             }
-            tracer.x = fixed(start_x);
+            tracer.x = fixed_x(start_x);
             tracer.u = fixed(start_u);
             tracer.v = fixed(start_v);
-            tracer.x_increment = source_edge_increment(
+            tracer.x_increment = edge_increment(
                 endpoint.x - start_x, scanlines);
             tracer.u_increment = source_edge_increment(
                 endpoint.u - start_u, scanlines);
@@ -769,8 +887,8 @@ void fill_source_textured_polygon(
     while (y < maximum_y) {
         if (left.remaining == 0 && !begin_segment(left)) return;
         if (right.remaining == 0 && !begin_segment(right)) return;
-        const auto x1 = source_fixed_integer(left.x);
-        const auto x2 = source_fixed_integer(right.x);
+        const auto x1 = integer_x(left.x);
+        const auto x2 = integer_x(right.x);
         const auto next_right_u = source_advance_edge(
             right.u, right.u_increment);
         const auto next_right_v = source_advance_edge(
@@ -802,10 +920,10 @@ void fill_source_textured_polygon(
                 v = starfox::simulation::add16(v, v_increment);
             }
         }
-        left.x = source_advance_edge(left.x, left.x_increment);
+        left.x = advance_x(left.x, left.x_increment);
         left.u = source_advance_edge(left.u, left.u_increment);
         left.v = source_advance_edge(left.v, left.v_increment);
-        right.x = source_advance_edge(right.x, right.x_increment);
+        right.x = advance_x(right.x, right.x_increment);
         right.u = next_right_u;
         right.v = next_right_v;
         --left.remaining;
@@ -1026,12 +1144,6 @@ FaceMaterial face_material(
     }
     auto even = static_cast<std::uint8_t>(byte & 0x0fU);
     auto odd = static_cast<std::uint8_t>(byte >> 4U);
-    if (material != 63U && material != 62U) {
-        // Diffuse materials use the high byte as a light-vector selector.
-        // Until the original normal/light lookup is applied, preserve their
-        // unlit base colour without inventing a second palette index.
-        odd = even;
-    }
     return {{even, odd, even != odd}, nullptr};
 }
 
@@ -1101,8 +1213,13 @@ void SoftwareRenderer::draw(
     }
     std::array<std::int8_t, 3> light{73, 73, 73};
     if (pose.use_rotation_matrix) {
+        // Point rotation consumes the columns of m_mat, but initlight's three
+        // MDOTPROD16MQ calls explicitly consume its rows. Transpose before
+        // using the shared column-vector helper so the source light follows
+        // object orientation instead of being rotated by the inverse basis.
         const auto transformed_light = starfox::simulation::transform_q15(
-            pose.rotation_matrix, {18'917, 18'917, 18'917});
+            starfox::simulation::transpose_q15(pose.rotation_matrix),
+            {18'917, 18'917, 18'917});
         for (std::size_t index = 0; index < light.size(); ++index) {
             light[index] = std::bit_cast<std::int8_t>(static_cast<std::uint8_t>(
                 std::bit_cast<std::uint16_t>(transformed_light[index]) >> 8U));
@@ -1118,8 +1235,55 @@ void SoftwareRenderer::draw(
             pose.use_rotation_matrix, pose.vanish_x, pose.vanish_y));
     }
 
+    if (pose.collapse_to_axis_line && !vertices.empty() && !shape.faces.empty()) {
+        const auto [minimum, maximum] = std::minmax_element(
+            vertices.begin(), vertices.end(), [](const auto& left, const auto& right) {
+                return left.z < right.z;
+            });
+        Vec3 near_axis{};
+        Vec3 far_axis{};
+        std::size_t near_count{};
+        std::size_t far_count{};
+        for (std::size_t index = 0; index < vertices.size(); ++index) {
+            if (vertices[index].z == maximum->z) {
+                near_axis.x += transformed_vertices[index].x;
+                near_axis.y += transformed_vertices[index].y;
+                near_axis.z += transformed_vertices[index].z;
+                ++near_count;
+            }
+            if (vertices[index].z == minimum->z) {
+                far_axis.x += transformed_vertices[index].x;
+                far_axis.y += transformed_vertices[index].y;
+                far_axis.z += transformed_vertices[index].z;
+                ++far_count;
+            }
+        }
+        if (near_count != 0U && far_count != 0U) {
+            near_axis.x /= static_cast<double>(near_count);
+            near_axis.y /= static_cast<double>(near_count);
+            near_axis.z /= static_cast<double>(near_count);
+            far_axis.x /= static_cast<double>(far_count);
+            far_axis.y /= static_cast<double>(far_count);
+            far_axis.z /= static_cast<double>(far_count);
+            if (clip_near_line(near_axis, far_axis, pose.use_rotation_matrix)) {
+                auto near_screen = project_point(near_axis, settings_.focal_length,
+                    pose.use_rotation_matrix, pose.vanish_x, pose.vanish_y);
+                auto far_screen = project_point(far_axis, settings_.focal_length,
+                    pose.use_rotation_matrix, pose.vanish_x, pose.vanish_y);
+                if (clip_screen_line(near_screen, far_screen, target,
+                        pose.use_rotation_matrix)) {
+                    const auto material = face_material(shape, shape.faces.front(),
+                        pose.colour_frame, depth_band, light, pose);
+                    draw_line(target, near_screen, far_screen, material.colour,
+                        settings_.colour_index_base);
+                }
+            }
+        }
+        return;
+    }
+
     std::vector<const assets::Face*> ordered_faces;
-    if (shape.bsp_root_address == 0) {
+    if (shape.bsp_root_address == 0 || pose.explosion_progress != 0U) {
         ordered_faces.reserve(shape.faces.size());
         for (const auto& face : shape.faces) {
             ordered_faces.push_back(&face);
@@ -1189,7 +1353,7 @@ void SoftwareRenderer::draw(
 
     for (const auto* face_pointer : ordered_faces) {
         const auto& face = *face_pointer;
-        if (face.visibility_index >= 0
+        if (pose.explosion_progress == 0U && face.visibility_index >= 0
             && static_cast<std::size_t>(face.visibility_index) < shape.visibilities.size()) {
             const auto& visibility = shape.visibilities[
                 static_cast<std::size_t>(face.visibility_index)];
@@ -1205,11 +1369,18 @@ void SoftwareRenderer::draw(
 
         const auto material = face_material(
             shape, face, pose.colour_frame, depth_band, light, pose);
+        const auto face_offset = explosion_offset(face, pose);
         if (face.sprite) {
             if (material.texture != nullptr && face.vertex_indices.size() == 1U
                 && face.vertex_indices[0] < projected.size()
                 && projected[face.vertex_indices[0]].visible) {
-                draw_textured_sprite(target, projected[face.vertex_indices[0]],
+                auto centre = transformed_vertices[face.vertex_indices[0]];
+                centre.x += face_offset.x;
+                centre.y += face_offset.y;
+                centre.z += face_offset.z;
+                draw_textured_sprite(target, project_point(centre,
+                    settings_.focal_length, pose.use_rotation_matrix,
+                    pose.vanish_x, pose.vanish_y),
                     *material.texture, settings_.colour_index_base);
             }
             continue;
@@ -1223,7 +1394,10 @@ void SoftwareRenderer::draw(
                 valid = false;
                 break;
             }
-            const auto& point = transformed_vertices[index];
+            auto point = transformed_vertices[index];
+            point.x += face_offset.x;
+            point.y += face_offset.y;
+            point.z += face_offset.z;
             any_behind = any_behind || point.z < 0.0;
             camera_polygon.push_back(point);
         }
