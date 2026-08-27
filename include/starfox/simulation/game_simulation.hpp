@@ -49,6 +49,7 @@ enum class TimingMode {
 enum class DisplayMode {
     standard_4_3,
     widescreen_16_9,
+    widescreen_16_10,
     ultrawide_21_9,
     super_ultrawide_32_9,
 };

@@ -32,8 +32,9 @@ display mode, controller remapping, and a separate Options page. Its first
 option is the Star Fox EX-style God Mode: player collision is disabled,
 regular Nova Bombs remain infinite, and holding R while pressing A fires a
 God Nuke. Standard display uses the complete 256x224 raster; Widescreen 16:9,
-Ultrawide 21:9, and Super Ultrawide 32:9 expand the intro and gameplay scene
-to 400x224, 520x224, and 800x224 respectively while keeping
+Widescreen 16:10, Ultrawide 21:9, and Super Ultrawide 32:9 expand the intro
+and gameplay scene to 400x224, 360x224, 520x224, and 800x224 respectively
+while keeping
 cartridge-authored HUD, dialogue, title, map, and control-screen artwork
 centred in their original safe area. All modes use nearest-neighbor scaling
 in a resizable window. It is a hybrid source port: a pinned 65C816 core

@@ -71,7 +71,8 @@ for inspection only.
 
 The runtime renderer is a C++ translation of the Super FX shape command
 interpreter and rasterizer. It renders the original 224x192 viewport, or a
-horizontally extended 400x224, 520x224, or 800x224 scene, into an indexed-color
+horizontally extended 360x224, 400x224, 520x224, or 800x224 scene, into an
+indexed-color
 framebuffer. It preserves source face order, fixed-point matrices, near/screen
 clipping, polygon and texture scan conversion, line rules, sprite-faces,
 shadows, LOD selection, lighting, and depth palettes.

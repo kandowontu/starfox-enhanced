@@ -13,9 +13,10 @@ namespace {
 
 constexpr std::array<std::uint16_t, 7> kPresentationRates{
     20U, 30U, 60U, 90U, 120U, 240U, 360U};
-constexpr std::array<DisplayMode, 4> kDisplayModes{
+constexpr std::array<DisplayMode, 5> kDisplayModes{
     DisplayMode::standard_4_3,
     DisplayMode::widescreen_16_9,
+    DisplayMode::widescreen_16_10,
     DisplayMode::ultrawide_21_9,
     DisplayMode::super_ultrawide_32_9,
 };

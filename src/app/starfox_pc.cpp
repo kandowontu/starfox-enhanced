@@ -48,7 +48,8 @@ using starfox::input::ButtonMask;
 
 constexpr std::uint32_t snes_width = 256U;
 constexpr std::uint32_t snes_height = 224U;
-constexpr std::uint32_t widescreen_width = 400U;
+constexpr std::uint32_t widescreen_16_9_width = 400U;
+constexpr std::uint32_t widescreen_16_10_width = 360U;
 constexpr std::uint32_t ultrawide_width = 520U;
 constexpr std::uint32_t super_ultrawide_width = 800U;
 constexpr std::uint32_t superfx_height = 192U;
@@ -82,7 +83,9 @@ std::uint32_t display_width_for(
     starfox::simulation::DisplayMode mode) noexcept {
     switch (mode) {
     case starfox::simulation::DisplayMode::widescreen_16_9:
-        return widescreen_width;
+        return widescreen_16_9_width;
+    case starfox::simulation::DisplayMode::widescreen_16_10:
+        return widescreen_16_10_width;
     case starfox::simulation::DisplayMode::ultrawide_21_9:
         return ultrawide_width;
     case starfox::simulation::DisplayMode::super_ultrawide_32_9:
@@ -385,7 +388,7 @@ private:
                 + SDL_GetError()};
         }
         const auto integer_scale = width <= snes_width
-            ? 4U : (width <= widescreen_width ? 3U : 2U);
+            ? 4U : (width <= widescreen_16_9_width ? 3U : 2U);
         SDL_SetWindowSize(window_,
             static_cast<int>(width * integer_scale),
             static_cast<int>(height * integer_scale));
@@ -1880,6 +1883,8 @@ int main(int argc, char** argv) {
                             switch (mode) {
                             case starfox::simulation::DisplayMode::widescreen_16_9:
                                 return "16 BY 9 WIDE";
+                            case starfox::simulation::DisplayMode::widescreen_16_10:
+                                return "16 BY 10 WIDE";
                             case starfox::simulation::DisplayMode::ultrawide_21_9:
                                 return "21 BY 9 ULTRA";
                             case starfox::simulation::DisplayMode::super_ultrawide_32_9:

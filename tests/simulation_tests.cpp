@@ -1869,6 +1869,10 @@ int main(int argc, char** argv) {
                 "pre-game display selector did not enable widescreen");
         drive_boot({0, starfox::input::right, 0});
         require(boot_game.display_mode()
+                    == starfox::simulation::DisplayMode::widescreen_16_10,
+                "pre-game display selector did not place 16:10 after 16:9");
+        drive_boot({0, starfox::input::right, 0});
+        require(boot_game.display_mode()
                     == starfox::simulation::DisplayMode::ultrawide_21_9,
                 "pre-game display selector did not enable 21:9 ultrawide");
         drive_boot({0, starfox::input::right, 0});
