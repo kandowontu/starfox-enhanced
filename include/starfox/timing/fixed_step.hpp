@@ -83,4 +83,11 @@ struct RenderTransform {
     const TransformSnapshot& current,
     double alpha) noexcept;
 
+// Camera scripts occasionally replace the complete fixed-point view in one
+// source update. Those are cuts, not unusually fast motion, and must not be
+// blended across the extra host presentations.
+[[nodiscard]] bool camera_transform_is_discontinuous(
+    const TransformSnapshot& previous,
+    const TransformSnapshot& current) noexcept;
+
 } // namespace starfox::timing

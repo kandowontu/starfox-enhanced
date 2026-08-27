@@ -1845,16 +1845,16 @@ int main(int argc, char** argv) {
         require(boot_game.pregame_selection() == 1U,
                 "pre-game cursor did not reach RENDER FPS");
         drive_boot({0, starfox::input::right, 0});
-        require(boot_game.presentation_fps() == 120U,
-                "pre-game render selector did not enable 120 FPS");
+        require(boot_game.presentation_fps() == 90U,
+                "pre-game render selector did not place 90 FPS after 60 FPS");
         drive_boot({0, starfox::input::left, 0});
         require(boot_game.presentation_fps() == 60U,
                 "pre-game render selector did not step backward to 60 FPS");
         drive_boot({0, starfox::input::left, 0});
         require(boot_game.presentation_fps() == 30U,
                 "pre-game render selector did not expose 30 FPS");
-        constexpr std::array<std::uint16_t, 7> presentation_cycle{
-            60U, 120U, 240U, 360U, 20U, 30U, 60U};
+        constexpr std::array<std::uint16_t, 8> presentation_cycle{
+            60U, 90U, 120U, 240U, 360U, 20U, 30U, 60U};
         for (const auto expected_fps : presentation_cycle) {
             drive_boot({0, starfox::input::right, 0});
             require(boot_game.presentation_fps() == expected_fps,

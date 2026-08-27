@@ -123,6 +123,11 @@ build/release/starfox_pc.exe path/to/SF.SFC path/to/SYMBOLS.TXT TITLEMAP
 
 Select+Start exits the PC runtime.
 
+Xbox/XInput controllers, Steam Input virtual controllers, and the Steam Deck's
+built-in controls are detected automatically. Both the D-pad and left stick
+move by default; Deck back paddles and all other exposed controls can be
+assigned from CONTROLLER REMAP.
+
 Hold Tab at any time to fast-forward the complete cartridge clock at 2x speed,
 including gameplay, frontend transitions, music, and sound effects. Releasing
 Tab immediately restores the selected game pace; render FPS is unchanged.
@@ -140,7 +145,7 @@ according to the measured 10.7 MHz workload schedule, reproducing the
 characteristic cartridge slowdown. The independently selected render FPS
 changes only how often frames are presented: an exact rational scheduler
 services the same raster phases, logic ticks, frontend timing, and audio pace
-at 20 through 360 FPS.
+at 20, 30, 60, 90, 120, 240, and 360 FPS.
 
 The port consumes the exact assembled models and fixed-point state, but it is
 not a cycle-accurate SNES emulator. Its software renderer reproduces the

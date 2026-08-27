@@ -186,6 +186,18 @@ if(STARFOX_BUILD_TESTS)
     target_link_libraries(starfox_simulation_tests PRIVATE starfox_core)
     add_test(NAME starfox_simulation_tests COMMAND starfox_simulation_tests)
 
+    if(STARFOX_BUILD_RUNTIME)
+        add_executable(starfox_runtime_input_tests
+            tests/runtime_input_tests.cpp
+            src/app/runtime_input.cpp)
+        target_link_libraries(
+            starfox_runtime_input_tests PRIVATE starfox_core SDL3::SDL3)
+        add_test(NAME starfox_runtime_input_tests COMMAND starfox_runtime_input_tests)
+        set_tests_properties(starfox_runtime_input_tests PROPERTIES
+            ENVIRONMENT "SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1"
+            TIMEOUT 10)
+    endif()
+
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
        AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT")
         add_test(

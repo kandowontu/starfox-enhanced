@@ -12,6 +12,16 @@
 
 namespace starfox::app {
 
+// Installs controller-driver defaults before SDL_INIT_GAMEPAD. Explicit user
+// or environment overrides retain priority over these application defaults.
+void configure_native_gamepad_support() noexcept;
+
+// Opens the most useful player controller when more than one mapped device is
+// present (Steam virtual/Deck first, then XInput/Xbox, then generic gamepads).
+[[nodiscard]] SDL_Gamepad* open_preferred_gamepad() noexcept;
+
+[[nodiscard]] std::string gamepad_device_label(SDL_Gamepad* gamepad);
+
 enum class BindingDevice : std::uint8_t {
     keyboard,
     gamepad,

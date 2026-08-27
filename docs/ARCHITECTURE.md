@@ -22,8 +22,8 @@ fixed 20 Hz simulation ----> previous/current fixed-point snapshots
                                       selected render FPS
                                                |
                                                v
-                                  present at 20/30/60/120/
-                                      240/360 FPS
+                                 present at 20/30/60/90/
+                                    120/240/360 FPS
 ```
 
 Input edges are latched until a simulation tick consumes them. Holding a key

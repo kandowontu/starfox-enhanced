@@ -166,6 +166,7 @@ RuntimeAssets load_external_assets(
 class SdlContext {
 public:
     SdlContext() {
+        starfox::app::configure_native_gamepad_support();
         if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_AUDIO)) {
             throw std::runtime_error{std::string{"SDL_Init: "} + SDL_GetError()};
         }
@@ -513,14 +514,6 @@ private:
     std::uint32_t presentation_hz_{starfox::timing::kPresentationHz};
 };
 
-SDL_Gamepad* open_first_gamepad() {
-    int count = 0;
-    SDL_JoystickID* gamepads = SDL_GetGamepads(&count);
-    SDL_Gamepad* result = count > 0 ? SDL_OpenGamepad(gamepads[0]) : nullptr;
-    SDL_free(gamepads);
-    return result;
-}
-
 struct RemapMenuState {
     bool active{};
     bool waiting_for_input{};
@@ -734,7 +727,7 @@ int main(int argc, char** argv) {
         };
 
         AudioOutput audio;
-        SDL_Gamepad* gamepad = open_first_gamepad();
+        SDL_Gamepad* gamepad = starfox::app::open_preferred_gamepad();
         starfox::app::InputBindings bindings;
         bindings.load();
         starfox::input::InputLatch input;
@@ -883,11 +876,11 @@ int main(int argc, char** argv) {
                 if (event.type == SDL_EVENT_QUIT) {
                     running = false;
                 } else if (event.type == SDL_EVENT_GAMEPAD_ADDED && gamepad == nullptr) {
-                    gamepad = SDL_OpenGamepad(event.gdevice.which);
+                    gamepad = starfox::app::open_preferred_gamepad();
                 } else if (event.type == SDL_EVENT_GAMEPAD_REMOVED && gamepad != nullptr
                            && SDL_GetGamepadID(gamepad) == event.gdevice.which) {
                     SDL_CloseGamepad(gamepad);
-                    gamepad = open_first_gamepad();
+                    gamepad = starfox::app::open_preferred_gamepad();
                 }
                 const auto mouse_camera_scene = game.flow_state()
                         == starfox::simulation::GameFlowState::gameplay
@@ -1095,7 +1088,16 @@ int main(int argc, char** argv) {
                     current_camera = capture_camera();
                     current_raster_motion = capture_raster_motion();
                     current_circle = game.circle_effect_state();
-                    if (game.scene_revision() != previous_scene) {
+                    const auto camera_cut =
+                        starfox::timing::camera_transform_is_discontinuous(
+                            previous_camera, current_camera);
+                    if (game.scene_revision() != previous_scene || camera_cut) {
+                        // LEVEL1_1 replaces the scramble camera with ExitBase's
+                        // view in one source update. Interpolating that cut put
+                        // the newly spawned docking station off-screen, then
+                        // huge at the right edge, for two 60 FPS presentations.
+                        // Snap the complete presentation state at any such view
+                        // discontinuity, just as we already do for scene loads.
                         previous = current;
                         previous_camera = current_camera;
                         previous_raster_motion = current_raster_motion;
@@ -1797,7 +1799,7 @@ int main(int argc, char** argv) {
                     const auto device = remap_menu.device
                             == starfox::app::BindingDevice::keyboard
                         ? std::string{"KEYBOARD"}
-                        : std::string{"GAMEPAD"};
+                        : starfox::app::gamepad_device_label(gamepad);
                     draw_centred(device, 74, 13U);
                     const auto action = std::string{"ACTION  "}
                         + std::string{starfox::app::InputBindings::action_name(

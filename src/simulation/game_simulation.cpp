@@ -11,8 +11,8 @@
 namespace starfox::simulation {
 namespace {
 
-constexpr std::array<std::uint16_t, 6> kPresentationRates{
-    20U, 30U, 60U, 120U, 240U, 360U};
+constexpr std::array<std::uint16_t, 7> kPresentationRates{
+    20U, 30U, 60U, 90U, 120U, 240U, 360U};
 constexpr std::array<DisplayMode, 4> kDisplayModes{
     DisplayMode::standard_4_3,
     DisplayMode::widescreen_16_9,

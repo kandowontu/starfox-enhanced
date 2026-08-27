@@ -133,4 +133,25 @@ RenderTransform interpolate(
     };
 }
 
+bool camera_transform_is_discontinuous(
+    const TransformSnapshot& previous,
+    const TransformSnapshot& current) noexcept {
+    // Normal flight and scripted tracking move by hundreds of source units
+    // per 20 Hz update. Scene handoffs replace VIEWPOS by several thousand;
+    // the scramble-to-ExitBase cut, for example, changes Z by about 9,600.
+    // Compare as signed 16-bit source words so a legitimate wrap at +/-32768
+    // is still treated as a short continuous movement.
+    constexpr std::int64_t maximum_continuous_step = 4'096;
+    const auto discontinuous_axis = [](std::int32_t from, std::int32_t to) {
+        auto delta = static_cast<std::int64_t>(to) - from;
+        if (delta > 32'767) delta -= 65'536;
+        else if (delta < -32'768) delta += 65'536;
+        const auto magnitude = delta < 0 ? -delta : delta;
+        return magnitude > maximum_continuous_step;
+    };
+    return discontinuous_axis(previous.x, current.x)
+        || discontinuous_axis(previous.y, current.y)
+        || discontinuous_axis(previous.z, current.z);
+}
+
 } // namespace starfox::timing

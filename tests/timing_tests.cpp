@@ -33,8 +33,8 @@ void test_exact_60_to_20_cadence() {
 }
 
 void test_selectable_presentation_rates_preserve_raster_pace() {
-    constexpr std::array<std::uint32_t, 6> rates{
-        20U, 30U, 60U, 120U, 240U, 360U};
+    constexpr std::array<std::uint32_t, 7> rates{
+        20U, 30U, 60U, 90U, 120U, 240U, 360U};
     for (const auto rate : rates) {
         starfox::timing::RasterPhaseClock clock;
         std::uint32_t phases = 0U;
@@ -65,8 +65,8 @@ void test_selectable_presentation_rates_preserve_raster_pace() {
 }
 
 void test_fast_forward_exactly_doubles_raster_pace() {
-    constexpr std::array<std::uint32_t, 6> rates{
-        20U, 30U, 60U, 120U, 240U, 360U};
+    constexpr std::array<std::uint32_t, 7> rates{
+        20U, 30U, 60U, 90U, 120U, 240U, 360U};
     for (const auto rate : rates) {
         starfox::timing::RasterPhaseClock clock;
         std::uint32_t phases = 0U;
@@ -134,6 +134,24 @@ void test_coordinate_interpolation_wraps_like_source_words() {
             "16-bit world-coordinate interpolation crossed the long arc");
 }
 
+void test_camera_cuts_are_not_interpolated() {
+    const starfox::timing::TransformSnapshot scramble_camera{
+        0, -24, 10'625, 0, 0, 0};
+    const starfox::timing::TransformSnapshot exit_base_camera{
+        -400, -145, 1'000, 0, 0, 0};
+    require(starfox::timing::camera_transform_is_discontinuous(
+                scramble_camera, exit_base_camera),
+            "scramble-to-ExitBase camera replacement was treated as motion");
+
+    const starfox::timing::TransformSnapshot near_word_wrap{
+        32'700, 0, 0, 0, 0, 0};
+    const starfox::timing::TransformSnapshot after_word_wrap{
+        -32'700, 0, 0, 0, 0, 0};
+    require(!starfox::timing::camera_transform_is_discontinuous(
+                near_word_wrap, after_word_wrap),
+            "short camera motion across the source-word wrap became a cut");
+}
+
 void test_invalid_frequency_is_rejected() {
     bool threw = false;
     try {
@@ -171,6 +189,7 @@ int main() {
     test_negative_time_is_ignored();
     test_interpolation_does_not_modify_snapshots();
     test_coordinate_interpolation_wraps_like_source_words();
+    test_camera_cuts_are_not_interpolated();
     test_invalid_frequency_is_rejected();
     test_input_edges_survive_between_ticks();
     std::cout << "All timing tests passed.\n";
