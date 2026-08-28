@@ -330,6 +330,24 @@ if(STARFOX_BUILD_TESTS)
                         "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;STARFOX_TEST_FRAMES=6"
                     TIMEOUT 10
                 )
+                if(EXISTS "${STARFOX_EX_ROM_FILE}"
+                   AND EXISTS "${STARFOX_EX_SYMBOLS_FILE}")
+                    add_test(
+                        NAME starfox_embedded_asset_lifecycle
+                        COMMAND "${CMAKE_COMMAND}"
+                            "-DRUNTIME=$<TARGET_FILE:starfox_pc>"
+                            "-DVERIFIER=$<TARGET_FILE:starfox_bps_tests>"
+                            "-DRETAIL=${STARFOX_RETAIL_V12_FILE}"
+                            "-DORIGINAL_ROM=${STARFOX_ROM_FILE}"
+                            "-DORIGINAL_SYMBOLS=${STARFOX_SYMBOLS_FILE}"
+                            "-DEX_ROM=${STARFOX_EX_ROM_FILE}"
+                            "-DEX_SYMBOLS=${STARFOX_EX_SYMBOLS_FILE}"
+                            "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/asset-lifecycle"
+                            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/runtime_asset_lifecycle.cmake"
+                    )
+                    set_tests_properties(
+                        starfox_embedded_asset_lifecycle PROPERTIES TIMEOUT 45)
+                endif()
             endif()
         endif()
     endif()
@@ -342,6 +360,9 @@ if(STARFOX_BUILD_TESTS)
                     "${STARFOX_EX_ROM_FILE}"
                     "${STARFOX_EX_SYMBOLS_FILE}"
         )
+        set_tests_properties(starfox_ex_simulation_data PROPERTIES
+            ENVIRONMENT "STARFOX_EX_ROUTE_AUDIT_TICKS=2000"
+            TIMEOUT 240)
         if(STARFOX_BUILD_RUNTIME AND STARFOX_RUNTIME_ASSETS_EMBEDDED)
             file(MAKE_DIRECTORY
                 "${CMAKE_CURRENT_BINARY_DIR}/embedded-ex-runtime-smoke")

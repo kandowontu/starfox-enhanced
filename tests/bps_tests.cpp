@@ -10,6 +10,7 @@
 #include <iterator>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace {
@@ -25,6 +26,17 @@ std::vector<std::uint8_t> load_bytes(const std::filesystem::path& path) {
         std::istreambuf_iterator<char>{stream},
         std::istreambuf_iterator<char>{},
     };
+}
+
+std::uint32_t read_u32(
+    const std::vector<std::uint8_t>& bytes, std::size_t offset) {
+    if (offset > bytes.size() || bytes.size() - offset < 4U) {
+        throw std::runtime_error{"truncated runtime bundle header"};
+    }
+    return static_cast<std::uint32_t>(bytes[offset])
+        | (static_cast<std::uint32_t>(bytes[offset + 1U]) << 8U)
+        | (static_cast<std::uint32_t>(bytes[offset + 2U]) << 16U)
+        | (static_cast<std::uint32_t>(bytes[offset + 3U]) << 24U);
 }
 
 void append_u32(std::vector<std::uint8_t>& bytes, std::uint32_t value) {
@@ -116,7 +128,27 @@ int main(int argc, char** argv) {
         require(rejected_corrupt_bundle,
             "corrupt runtime asset bundle was not rejected");
 
-        if (argc == 6) {
+        if (argc == 7 && std::string_view{argv[1]} == "--verify-bundle") {
+            const auto encoded = load_bytes(argv[2]);
+            const auto decoded = starfox::assets::decode_runtime_bundle(
+                encoded, read_u32(encoded, 8U));
+            const auto original_rom = load_bytes(argv[3]);
+            const auto original_symbols = load_bytes(argv[4]);
+            const auto ex_rom = load_bytes(argv[5]);
+            const auto ex_symbols = load_bytes(argv[6]);
+            require(decoded.original_rom == original_rom,
+                "compiled companion contains the wrong Original ROM");
+            require(decoded.original_symbols == std::string{
+                        reinterpret_cast<const char*>(original_symbols.data()),
+                        original_symbols.size()},
+                "compiled companion contains the wrong Original symbols");
+            require(decoded.starfox_ex_rom == ex_rom,
+                "compiled companion contains the wrong Star Fox EX ROM");
+            require(decoded.starfox_ex_symbols == std::string{
+                        reinterpret_cast<const char*>(ex_symbols.data()),
+                        ex_symbols.size()},
+                "compiled companion contains the wrong Star Fox EX symbols");
+        } else if (argc == 6) {
             const auto retail = starfox::assets::RomImage::load(argv[1]);
             const auto original_patch = load_bytes(argv[2]);
             const auto original_expected =
@@ -133,7 +165,9 @@ int main(int argc, char** argv) {
         } else if (argc != 1) {
             throw std::runtime_error{
                 "usage: starfox_bps_tests [BASE ORIGINAL_BPS ORIGINAL_TARGET "
-                "EX_BPS EX_TARGET]"};
+                "EX_BPS EX_TARGET]\n"
+                "   or: starfox_bps_tests --verify-bundle BUNDLE "
+                "ORIGINAL_ROM ORIGINAL_SYMBOLS EX_ROM EX_SYMBOLS"};
         }
         std::cout << "BPS tests passed\n";
         return 0;

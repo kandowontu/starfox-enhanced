@@ -131,9 +131,11 @@ Interpolated frames between boundaries are validated for endpoint identity and
 monotonic transform motion; they are new presentation frames and cannot have
 an original framebuffer equivalent.
 
-The automated suite currently covers every assembled shape header, all 20
-maps under passive long-run execution, normal/special route transitions,
+The automated suite currently covers every assembled shape header, all 40
+shipped Star Fox EX stage labels from `PLANETS` and `PLANETS2` under 2,000-tick
+passive execution, Original and EX route transitions,
 title/training/planet/game-over/continue/credits flow, source PPU assets,
-SPC700 output, and deterministic timing primitives. Reference-controller
-traces remain the preferred way to investigate any future first-divergence
-report; visual similarity alone is never used as a logic oracle.
+SPC700 output, and deterministic timing primitives. The unused EX `PLANETS3`
+test campaign is deliberately excluded. Reference-controller traces remain
+the preferred way to investigate any future first-divergence report; visual
+similarity alone is never used as a logic oracle.

@@ -232,3 +232,7 @@ strategy.
 Useful diagnostics include `starfox_stage_trace`, `starfox_stage_preview`,
 `starfox_shape_coverage`, and `starfox_planet_probe`. Third-party revisions
 and licenses are recorded in `THIRD_PARTY_NOTICES.md`.
+
+The EX regression runs every one of the 40 stage labels shipped through
+`PLANETS` and `PLANETS2` for 2,000 deterministic logic ticks. The source-only
+`PLANETS3` test campaign is intentionally outside the shipped experience.
