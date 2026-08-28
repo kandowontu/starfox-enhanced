@@ -38,7 +38,7 @@ constexpr std::array<SDL_Scancode, InputBindings::action_count>
     kDefaultKeyboard{
         SDL_SCANCODE_Z,
         SDL_SCANCODE_A,
-        SDL_SCANCODE_BACKSPACE,
+        SDL_SCANCODE_APOSTROPHE,
         SDL_SCANCODE_RETURN,
         SDL_SCANCODE_UP,
         SDL_SCANCODE_DOWN,
@@ -105,6 +105,27 @@ std::filesystem::path settings_path() {
     SDL_free(preference_path);
     return result;
 }
+
+std::filesystem::path documents_settings_path(std::string_view filename) {
+    if (const auto* documents = SDL_GetUserFolder(SDL_FOLDER_DOCUMENTS);
+        documents != nullptr && *documents != '\0') {
+        return std::filesystem::path{documents}
+            / "Star Fox Enhanced" / filename;
+    }
+#if defined(_WIN32)
+    if (const auto* profile = std::getenv("USERPROFILE");
+        profile != nullptr && *profile != '\0') {
+        return std::filesystem::path{profile}
+            / "Documents" / "Star Fox Enhanced" / filename;
+    }
+#endif
+    return {};
+}
+
+constexpr std::array<std::string_view, 4> kHudElementNames{
+    "LIVES", "SHIELD", "BOMBS_BOOST", "COMMS"};
+constexpr std::array<std::string_view, 5> kHudProfileNames{
+    "4_3", "16_9", "16_10", "21_9", "32_9"};
 
 void add_keyboard_button(
     input::ButtonMask& result,
@@ -337,6 +358,8 @@ void InputBindings::load() {
     if (path.empty()) return;
     std::ifstream input{path};
     std::string line;
+    if (!std::getline(input, line)) return;
+    const auto migrate_select_default = line == "SFE_INPUT_V1";
     while (std::getline(input, line)) {
         std::istringstream fields{line};
         char device{};
@@ -360,6 +383,11 @@ void InputBindings::load() {
             }
         }
     }
+    // V1 shipped Backspace as Select. Preserve every user remap while moving
+    // that exact former default to the new apostrophe default.
+    if (migrate_select_default && keyboard_[2U] == SDL_SCANCODE_BACKSPACE) {
+        keyboard_[2U] = SDL_SCANCODE_APOSTROPHE;
+    }
 }
 
 void InputBindings::save() const {
@@ -369,7 +397,7 @@ void InputBindings::save() const {
     std::filesystem::create_directories(path.parent_path(), error);
     std::ofstream output{path, std::ios::trunc};
     if (!output) return;
-    output << "SFE_INPUT_V1\n";
+    output << "SFE_INPUT_V2\n";
     for (std::size_t action = 0; action < action_count; ++action) {
         output << "K " << action << ' '
                << static_cast<int>(keyboard_[action]) << '\n';
@@ -379,6 +407,141 @@ void InputBindings::save() const {
         output << "G " << action << ' ' << kind << ' '
                << binding.control << '\n';
     }
+}
+
+std::filesystem::path pregame_settings_path() {
+    return documents_settings_path("pregame.cfg");
+}
+
+bool load_pregame_settings(
+    const std::filesystem::path& path,
+    PregameSettings& settings) noexcept {
+    if (path.empty()) return false;
+    std::ifstream input{path};
+    std::string version;
+    if (!(input >> version) || version != "SFE_PREGAME_V1") return false;
+    auto loaded = PregameSettings{};
+    std::array<bool, 6> found{};
+    std::string name;
+    int value{};
+    while (input >> name >> value) {
+        if (name == "TIMING_MODE") {
+            loaded.timing_mode = static_cast<std::uint8_t>(value);
+            found[0] = value >= 0 && value <= 1;
+        } else if (name == "PRESENTATION_FPS") {
+            constexpr std::array valid{20, 30, 60, 90, 120, 240, 360};
+            loaded.presentation_fps = static_cast<std::uint16_t>(value);
+            found[1] = std::find(valid.begin(), valid.end(), value) != valid.end();
+        } else if (name == "DISPLAY_MODE") {
+            loaded.display_mode = static_cast<std::uint8_t>(value);
+            found[2] = value >= 0 && value <= 4;
+        } else if (name == "GOD_MODE") {
+            loaded.god_mode = value != 0;
+            found[3] = value == 0 || value == 1;
+        } else if (name == "SHOW_FPS") {
+            loaded.show_fps = value != 0;
+            found[4] = value == 0 || value == 1;
+        } else if (name == "CROSSHAIR_COLOUR") {
+            loaded.crosshair_colour = static_cast<std::uint8_t>(value);
+            found[5] = value >= 0 && value <= 7;
+        }
+    }
+    if (!std::all_of(found.begin(), found.end(),
+            [](bool value) { return value; })) return false;
+    settings = loaded;
+    return true;
+}
+
+bool save_pregame_settings(
+    const std::filesystem::path& path,
+    const PregameSettings& settings) noexcept {
+    if (path.empty() || settings.timing_mode > 1U
+        || settings.display_mode > 4U || settings.crosshair_colour > 7U) {
+        return false;
+    }
+    constexpr std::array<std::uint16_t, 7> valid_fps{
+        20U, 30U, 60U, 90U, 120U, 240U, 360U};
+    if (std::find(valid_fps.begin(), valid_fps.end(),
+            settings.presentation_fps) == valid_fps.end()) return false;
+    std::error_code error;
+    std::filesystem::create_directories(path.parent_path(), error);
+    if (error) return false;
+    std::ofstream output{path, std::ios::trunc};
+    if (!output) return false;
+    output << "SFE_PREGAME_V1\n"
+           << "TIMING_MODE " << static_cast<unsigned>(settings.timing_mode) << '\n'
+           << "PRESENTATION_FPS " << settings.presentation_fps << '\n'
+           << "DISPLAY_MODE " << static_cast<unsigned>(settings.display_mode) << '\n'
+           << "GOD_MODE " << static_cast<unsigned>(settings.god_mode) << '\n'
+           << "SHOW_FPS " << static_cast<unsigned>(settings.show_fps) << '\n'
+           << "CROSSHAIR_COLOUR "
+           << static_cast<unsigned>(settings.crosshair_colour) << '\n';
+    return static_cast<bool>(output);
+}
+
+std::filesystem::path hud_layout_settings_path() {
+    return documents_settings_path("hud-layout.cfg");
+}
+
+bool load_hud_layout(
+    const std::filesystem::path& path,
+    render::HudLayoutProfiles& layouts) noexcept {
+    if (path.empty()) return false;
+    std::ifstream input{path};
+    std::string version;
+    if (!(input >> version) || version != "SFE_HUD_LAYOUT_V2") return false;
+
+    auto loaded = render::HudLayoutProfiles{};
+    std::array<std::array<bool, kHudElementNames.size()>,
+        kHudProfileNames.size()> found{};
+    std::string profile;
+    std::string name;
+    int x{};
+    int y{};
+    while (input >> profile >> name >> x >> y) {
+        const auto profile_item = std::find(kHudProfileNames.begin(),
+            kHudProfileNames.end(), profile);
+        const auto item = std::find(kHudElementNames.begin(),
+            kHudElementNames.end(), name);
+        if (profile_item == kHudProfileNames.end()
+            || item == kHudElementNames.end()) continue;
+        const auto profile_index = static_cast<std::size_t>(
+            std::distance(kHudProfileNames.begin(), profile_item));
+        const auto index = static_cast<std::size_t>(
+            std::distance(kHudElementNames.begin(), item));
+        loaded[profile_index].offsets[index] = {
+            static_cast<std::int16_t>(std::clamp(x, -1'000, 1'000)),
+            static_cast<std::int16_t>(std::clamp(y, -1'000, 1'000)),
+        };
+        found[profile_index][index] = true;
+    }
+    if (!std::all_of(found.begin(), found.end(), [](const auto& profile) {
+            return std::all_of(profile.begin(), profile.end(),
+                [](bool value) { return value; });
+        })) return false;
+    layouts = loaded;
+    return true;
+}
+
+bool save_hud_layout(
+    const std::filesystem::path& path,
+    const render::HudLayoutProfiles& layouts) noexcept {
+    if (path.empty()) return false;
+    std::error_code error;
+    std::filesystem::create_directories(path.parent_path(), error);
+    if (error) return false;
+    std::ofstream output{path, std::ios::trunc};
+    if (!output) return false;
+    output << "SFE_HUD_LAYOUT_V2\n";
+    for (std::size_t profile = 0; profile < kHudProfileNames.size(); ++profile) {
+        for (std::size_t index = 0; index < kHudElementNames.size(); ++index) {
+            output << kHudProfileNames[profile] << ' '
+                   << kHudElementNames[index] << ' '
+                   << layouts[profile].offsets[index].x << ' '
+                   << layouts[profile].offsets[index].y << '\n';
+        }
+    }
+    return static_cast<bool>(output);
 }
 
 } // namespace starfox::app

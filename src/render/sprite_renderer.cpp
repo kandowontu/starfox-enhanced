@@ -48,7 +48,9 @@ void SpriteRenderer::draw_objects(
     std::optional<std::uint8_t> priority,
     std::int32_t horizontal_origin,
     bool extend_horizontal,
-    bool anchor_edge_hud) const noexcept {
+    bool anchor_edge_hud,
+    const HudLayout* hud_layout,
+    bool suppress_configurable_hud) const noexcept {
     if ((ppu.main_screen & 0x10U) == 0U) return;
     const auto size_selection = static_cast<std::size_t>(
         (ppu.object_select >> 5U) & 7U);
@@ -82,6 +84,18 @@ void SpriteRenderer::draw_objects(
             // portraits, which must remain centred as a single composition.
             object_origin = x < 128 ? 0 : horizontal_origin * 2;
         }
+        auto element = std::optional<HudElement>{};
+        if (y_byte < 32U && x < 128) {
+            element = HudElement::lives;
+        } else if (y_byte >= 168U) {
+            element = x < 128
+                ? HudElement::shield : HudElement::bombs_boost;
+        } else if (y_byte >= 128U && x < 128) {
+            element = HudElement::comms;
+        }
+        if (suppress_configurable_hud && element) continue;
+        const auto object_offset = hud_layout != nullptr && element
+            ? (*hud_layout)[*element] : HudOffset{};
         const auto size = static_cast<std::uint32_t>(
             sizes[(high_bits >> 1U) & 1U]);
         const auto tile = static_cast<std::uint16_t>(ppu.oam[low + 2U])
@@ -96,7 +110,8 @@ void SpriteRenderer::draw_objects(
 
         for (std::uint32_t destination_y = 0; destination_y < size; ++destination_y) {
             const auto source_y = flip_y ? size - 1U - destination_y : destination_y;
-            const auto raw_y = static_cast<std::int32_t>(y_byte) +
+            const auto raw_y = static_cast<std::int32_t>(y_byte)
+                + object_offset.y +
                 static_cast<std::int32_t>(destination_y);
             const std::array<std::int32_t, 2> screen_ys{raw_y, raw_y - 256};
             for (const auto screen_y : screen_ys) {
@@ -104,7 +119,7 @@ void SpriteRenderer::draw_objects(
                     continue;
                 }
                 for (std::uint32_t destination_x = 0; destination_x < size; ++destination_x) {
-                    const auto screen_x = x + object_origin
+                    const auto screen_x = x + object_origin + object_offset.x
                         + static_cast<std::int32_t>(destination_x);
                     if (!extend_horizontal
                         && (screen_x < horizontal_origin
@@ -125,7 +140,8 @@ void SpriteRenderer::draw_objects(
 void SpriteRenderer::draw_meters(
     const simulation::MeterState& meters,
     Framebuffer& target,
-    bool anchor_to_edges) const noexcept {
+    bool anchor_to_edges,
+    const HudLayout* hud_layout) const noexcept {
     if (!meters.enabled) return;
     const auto solid = [&target](
         std::int32_t x,
@@ -154,11 +170,17 @@ void SpriteRenderer::draw_meters(
     const auto left_x = anchor_to_edges ? 24 : 8;
     const auto right_x = anchor_to_edges
         ? static_cast<std::int32_t>(target.width()) - 64 : 176;
-    box(left_x, 176, 40, 8, 13U);
-    solid(left_x + 2, 178, std::min<std::uint8_t>(meters.damage, 36U), 4,
+    const auto shield = hud_layout == nullptr
+        ? HudOffset{} : (*hud_layout)[HudElement::shield];
+    const auto boost = hud_layout == nullptr
+        ? HudOffset{} : (*hud_layout)[HudElement::bombs_boost];
+    box(left_x + shield.x, 176 + shield.y, 40, 8, 13U);
+    solid(left_x + shield.x + 2, 178 + shield.y,
+        std::min<std::uint8_t>(meters.damage, 36U), 4,
         meters.shield_up ? 7U : 2U);
-    box(right_x, 176, 40, 8, 13U);
-    solid(right_x + 2, 178, std::min<std::uint8_t>(meters.boost, 36U), 4, 6U);
+    box(right_x + boost.x, 176 + boost.y, 40, 8, 13U);
+    solid(right_x + boost.x + 2, 178 + boost.y,
+        std::min<std::uint8_t>(meters.boost, 36U), 4, 6U);
 
     auto maximum = meters.boss_max_health;
     auto current = meters.boss_health;

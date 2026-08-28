@@ -20,6 +20,16 @@ constexpr std::array<DisplayMode, 5> kDisplayModes{
     DisplayMode::ultrawide_21_9,
     DisplayMode::super_ultrawide_32_9,
 };
+constexpr std::array<CrosshairColour, 8> kCrosshairColours{
+    CrosshairColour::green,
+    CrosshairColour::white,
+    CrosshairColour::blue,
+    CrosshairColour::red,
+    CrosshairColour::yellow,
+    CrosshairColour::cyan,
+    CrosshairColour::magenta,
+    CrosshairColour::orange,
+};
 
 std::int16_t signed_word(std::uint16_t value) noexcept {
     return std::bit_cast<std::int16_t>(value);
@@ -422,6 +432,8 @@ void GameSimulation::enter_pregame_menu() {
     pregame_selection_ = 0U;
     pregame_page_ = PregamePage::main;
     god_mode_ = false;
+    show_fps_ = false;
+    crosshair_colour_ = CrosshairColour::green;
     armed_god_nukes_.clear();
     flow_ticks_ = 0U;
     frontend_frames_ = 0U;
@@ -452,7 +464,7 @@ GameTickResult GameSimulation::tick_pregame_menu(
 
     const auto previous_selection = pregame_selection_;
     const auto selection_count = pregame_page_ == PregamePage::main
-        ? std::uint8_t{6U} : std::uint8_t{2U};
+        ? std::uint8_t{6U} : std::uint8_t{5U};
     if ((input.pressed & starfox::input::up) != 0U) {
         pregame_selection_ = static_cast<std::uint8_t>(
             (pregame_selection_ + selection_count - 1U) % selection_count);
@@ -464,7 +476,7 @@ GameTickResult GameSimulation::tick_pregame_menu(
 
     if (pregame_page_ == PregamePage::options) {
         const auto go_back = (input.pressed & starfox::input::b) != 0U
-            || (pregame_selection_ == 1U
+            || (pregame_selection_ == 4U
                 && (input.pressed & (starfox::input::a
                     | starfox::input::select)) != 0U);
         if (go_back) {
@@ -476,6 +488,31 @@ GameTickResult GameSimulation::tick_pregame_menu(
                        | starfox::input::right | starfox::input::select
                        | starfox::input::a)) != 0U) {
             god_mode_ = !god_mode_;
+            queue_sound_effect(0x11U);
+        } else if (pregame_selection_ == 1U
+                   && (input.pressed & (starfox::input::left
+                       | starfox::input::right | starfox::input::select
+                       | starfox::input::a)) != 0U) {
+            show_fps_ = !show_fps_;
+            queue_sound_effect(0x11U);
+        } else if (pregame_selection_ == 2U
+                   && (input.pressed & (starfox::input::left
+                       | starfox::input::right | starfox::input::select
+                       | starfox::input::a)) != 0U) {
+            const auto found = std::find(
+                kCrosshairColours.begin(), kCrosshairColours.end(),
+                crosshair_colour_);
+            auto index = found == kCrosshairColours.end()
+                ? std::size_t{}
+                : static_cast<std::size_t>(
+                    std::distance(kCrosshairColours.begin(), found));
+            if ((input.pressed & starfox::input::left) != 0U) {
+                index = (index + kCrosshairColours.size() - 1U)
+                    % kCrosshairColours.size();
+            } else {
+                index = (index + 1U) % kCrosshairColours.size();
+            }
+            crosshair_colour_ = kCrosshairColours[index];
             queue_sound_effect(0x11U);
         }
         result.audio_port_writes = map_.take_apu_port_writes();
@@ -1673,10 +1710,25 @@ void GameSimulation::animate_planet_frame(bool advance_rotation) {
     if (advance_rotation) {
         advance_planet_rotation();
     }
+    const auto draw_all_during_route =
+        flow_state_ == GameFlowState::planet_travel
+        && (frontend_phase_ == FrontendPhase::planet_fade_in
+            || frontend_phase_ == FrontendPhase::planet_route);
+    const auto selected_planet = map_.read_native_word(current_planet_);
+    if (draw_all_during_route) {
+        // PLANETS.ASM's .shownext loop stores -1 in CURRENTPLANET before each
+        // redraw, which makes DRAWPLANETSPRITES include all sixteen map cells.
+        // Keep the actual route destination for MOVESHIPALONGPATH below; using
+        // it during the draw omitted that planet and left an empty map box.
+        map_.write_native_word(current_planet_, 0xffffU);
+    }
     registers = {};
     registers.status = 0x24U;
     map_.call_native_near_routine(
         draw_planet_sprites_, registers, 5'000'000, true);
+    if (draw_all_during_route) {
+        map_.write_native_word(current_planet_, selected_planet);
+    }
     registers = {};
     registers.status = 0x24U;
     map_.call_native_near_routine(
@@ -1831,6 +1883,20 @@ void GameSimulation::begin_planet_selection_sequence() {
 void GameSimulation::present_frame() {
     map_.tick_video_phase();
     if (video_phases_since_tick_ != 0xffU) ++video_phases_since_tick_;
+    if (flow_state_ == GameFlowState::intro
+        && frontend_phase_ == FrontendPhase::intro_final_hold) {
+        // INTRO_L presents the transfer in which the Arwing crosses the
+        // camera before its EXITINTRO check arms the quick fade. Starting
+        // the host fade in the strategy tick hid that completed close pass.
+        // Preserve its first 60 Hz raster, then begin the source's 11,-2
+        // brightness sequence on the following presentation.
+        if (++frontend_frames_ >= 2U) {
+            frontend_frames_ = 0U;
+            map_.set_display_brightness(11U);
+            map_.start_display_fade(-2);
+            frontend_phase_ = FrontendPhase::intro_fade_to_title;
+        }
+    }
     if (intro_reveal_frames_ != 0U && flow_state_ == GameFlowState::intro) {
         --intro_reveal_frames_;
         if (intro_reveal_frames_ == 0U) map_.start_display_fade(2);
@@ -2197,6 +2263,7 @@ void GameSimulation::service_level_exit() {
     map_.write_native_word(level_finished_, 0U);
     map_.write_native_word(meters_enabled_, 0U);
     flow_ticks_ = 0U;
+    frontend_phase_ = FrontendPhase::none;
     flow_state_ = GameFlowState::stage_results;
 }
 
@@ -2211,6 +2278,13 @@ GameTickResult GameSimulation::tick_stage_results(const input::TickInput& input)
         service_audio_irq(result.sound_effect_commands);
     }
     ++flow_ticks_;
+    if (frontend_phase_ == FrontendPhase::stage_results_fade_to_map) {
+        if (map_.fade_direction() == 0 && map_.display_brightness() == 0U) {
+            finish_stage_results();
+        }
+        result.audio_port_writes = map_.take_apu_port_writes();
+        return result;
+    }
     if (displayed_stage_percentage_ < stage_percentage_) {
         displayed_stage_percentage_ = static_cast<std::uint8_t>(
             std::min<std::uint16_t>(stage_percentage_,
@@ -2223,7 +2297,11 @@ GameTickResult GameSimulation::tick_stage_results(const input::TickInput& input)
                 && (input.pressed & (starfox::input::a | starfox::input::b
                     | starfox::input::start)) != 0U)
             || flow_ticks_ >= count_ticks + 60U)) {
-        finish_stage_results();
+        // MAIN.ASM runs FADEDOWN after END_LEVEL_SEQ and only then jumps into
+        // PLANETSEQ. Keep the completed tally on screen during that source
+        // fade so the new Mode 3 tile/planet setup begins from true black.
+        map_.start_display_fade(-1);
+        frontend_phase_ = FrontendPhase::stage_results_fade_to_map;
     }
     result.audio_port_writes = map_.take_apu_port_writes();
     return result;
@@ -2858,13 +2936,18 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
             && map_.display_brightness() == 0U) {
             enter_title();
         } else if (frontend_phase_ == FrontendPhase::none && flow_ticks_ >= 30U
-            && (input.pressed != 0U || input.held != 0U
-                || map_.read_native_byte(exit_intro_) != 0U)) {
+            && (input.pressed != 0U || input.held != 0U)) {
             // INTRO_L explicitly starts its quick fade from brightness 11,
             // even when the user skips while the screen is fully bright.
             map_.set_display_brightness(11U);
             map_.start_display_fade(-2);
             frontend_phase_ = FrontendPhase::intro_fade_to_title;
+        } else if (frontend_phase_ == FrontendPhase::none && flow_ticks_ >= 30U
+                   && map_.read_native_byte(exit_intro_) != 0U) {
+            // The automatic ending is checked after the completed transfer;
+            // defer only its fade so the near-camera ship frame is visible.
+            frontend_frames_ = 0U;
+            frontend_phase_ = FrontendPhase::intro_final_hold;
         }
     } else if (flow_state_ == GameFlowState::controls_type) {
         ++flow_ticks_;

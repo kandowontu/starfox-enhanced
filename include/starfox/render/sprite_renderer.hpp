@@ -1,6 +1,7 @@
 #pragma once
 
 #include "starfox/render/framebuffer.hpp"
+#include "starfox/render/hud_layout.hpp"
 #include "starfox/simulation/snes_ppu.hpp"
 
 #include <cstdint>
@@ -20,11 +21,14 @@ public:
         std::optional<std::uint8_t> priority = std::nullopt,
         std::int32_t horizontal_origin = 0,
         bool extend_horizontal = true,
-        bool anchor_edge_hud = false) const noexcept;
+        bool anchor_edge_hud = false,
+        const HudLayout* hud_layout = nullptr,
+        bool suppress_configurable_hud = false) const noexcept;
     void draw_meters(
         const simulation::MeterState& meters,
         Framebuffer& target,
-        bool anchor_to_edges = false) const noexcept;
+        bool anchor_to_edges = false,
+        const HudLayout* hud_layout = nullptr) const noexcept;
 };
 
 } // namespace starfox::render

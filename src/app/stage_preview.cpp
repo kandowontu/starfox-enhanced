@@ -24,7 +24,8 @@
 
 int main(int argc, char** argv) {
     if (argc < 5 || argc > 6) {
-        std::cerr << "Usage: starfox_stage_preview SF.SFC SYMBOLS.TXT MAP OUTPUT.bmp [ticks]\n";
+        std::cerr << "Usage: starfox_stage_preview SF.SFC SYMBOLS.TXT "
+                     "MAP|CONTINUE|POSTLEVELMAP OUTPUT.bmp [ticks]\n";
         return 2;
     }
     try {
@@ -33,8 +34,10 @@ int main(int argc, char** argv) {
         const auto ticks = argc == 6 ? std::strtoul(argv[5], nullptr, 10) : 100UL;
         const std::string requested_scene = argv[3];
         const auto continue_scene = requested_scene == "CONTINUE";
+        const auto post_level_map = requested_scene == "POSTLEVELMAP";
         starfox::simulation::GameSimulation game{
-            rom, symbols, continue_scene ? "LEVEL1_1" : requested_scene};
+            rom, symbols, continue_scene ? "LEVEL1_1"
+                : post_level_map ? "PLANETSELECT" : requested_scene};
         if (continue_scene) {
             const auto finished = symbols.find("LEVELFINISHED").front();
             game.map().write_native_word(finished, 10U);
@@ -43,6 +46,40 @@ int main(int argc, char** argv) {
                 static_cast<void>(game.tick({}));
             }
             static_cast<void>(game.tick({0, starfox::input::start, 0}));
+        } else if (post_level_map) {
+            for (std::size_t frame = 0U; frame < 8U; ++frame) {
+                game.present_frame();
+            }
+            static_cast<void>(game.tick(
+                {0U, starfox::input::start, 0U}));
+            for (std::size_t frame = 0U; frame < 3'000U
+                 && game.flow_state()
+                    != starfox::simulation::GameFlowState::gameplay;
+                 ++frame) {
+                game.present_frame();
+                if ((frame % 3U) == 2U) static_cast<void>(game.tick({}));
+            }
+            if (game.flow_state()
+                != starfox::simulation::GameFlowState::gameplay) {
+                throw std::runtime_error{
+                    "POSTLEVELMAP could not reach first-stage gameplay"};
+            }
+            game.map().write_native_word(
+                symbols.find("LEVELFINISHED").front(), 1U);
+            static_cast<void>(game.tick({}));
+            for (std::size_t tick = 0U; tick < 200U
+                 && game.flow_state()
+                    == starfox::simulation::GameFlowState::stage_results;
+                 ++tick) {
+                game.present_frame();
+                game.present_frame();
+                game.present_frame();
+                static_cast<void>(game.tick({}));
+            }
+            for (std::size_t frame = 0U; frame < 8U; ++frame) {
+                game.present_frame();
+                if ((frame % 3U) == 2U) static_cast<void>(game.tick({}));
+            }
         } else {
             for (unsigned long tick = 0; tick < ticks; ++tick) {
                 static_cast<void>(game.tick({}));
@@ -165,6 +202,19 @@ int main(int argc, char** argv) {
             }
         }
         const auto& ppu = game.map().ppu_state();
+        if (post_level_map) {
+            const auto draw_map = symbols.find("DRAWMAP").front();
+            std::cout << "post-level-map=(planet=$" << std::hex
+                      << game.map().read_native_word(
+                          symbols.find("CURRENTPLANET").front())
+                      << ", drawmap=$"
+                      << game.map().read_native_word(draw_map)
+                      << ", m_scbr=$"
+                      << static_cast<unsigned>(
+                          game.map().read_native_byte(
+                              symbols.find("M_SCBR").front()))
+                      << std::dec << ")\n";
+        }
         const auto overlays_enabled = std::getenv("STARFOX_NO_OVERLAYS") == nullptr;
         const auto oam_enabled = overlays_enabled
             && std::getenv("STARFOX_NO_OAM") == nullptr;

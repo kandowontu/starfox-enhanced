@@ -1081,10 +1081,17 @@ void draw_simple_scaled_sprite(
     const auto top = centre_y - dimension / 2;
     const auto source_width = static_cast<int>(texture.u_mask) + 1;
     const auto source_height = static_cast<int>(texture.v_mask) + 1;
+    auto first_x = 0;
+    auto last_x = dimension;
+    if (pose.effect_clip_right > pose.effect_clip_left) {
+        first_x = std::max(first_x, pose.effect_clip_left - left);
+        last_x = std::min(last_x, pose.effect_clip_right - left);
+    }
+    if (first_x >= last_x) return;
     for (auto y = 0; y < dimension; ++y) {
         const auto source_y = std::min(source_height - 1,
             static_cast<int>(static_cast<std::int64_t>(y) * source_height / dimension));
-        for (auto x = 0; x < dimension; ++x) {
+        for (auto x = first_x; x < last_x; ++x) {
             const auto source_x = std::min(source_width - 1,
                 static_cast<int>(static_cast<std::int64_t>(x) * source_width / dimension));
             const auto texel = texture.texels[
@@ -1150,6 +1157,97 @@ FaceMaterial face_material(
 } // namespace
 
 SoftwareRenderer::SoftwareRenderer(RenderSettings settings) : settings_(settings) {}
+
+void SoftwareRenderer::draw_cockpit_hud(
+    const simulation::TrigTables& trigonometry,
+    std::uint8_t rotation,
+    std::uint8_t colour,
+    std::uint8_t damage_flags,
+    std::int32_t horizontal_origin,
+    Framebuffer& target,
+    std::uint8_t normal_colour_override) const {
+    struct HudPoint {
+        std::int32_t x{};
+        std::int32_t y{};
+    };
+    const auto sine = static_cast<std::int32_t>(trigonometry.sin8(rotation));
+    const auto cosine = static_cast<std::int32_t>(trigonometry.cos8(rotation));
+    const auto rotate = [sine, cosine](std::int32_t x, std::int32_t y) {
+        // MROTPNTY loads a signed eight-bit table entry into the high byte of
+        // a long product and performs one final ASR: (value * trig) / 512.
+        return HudPoint{
+            simulation::arithmetic_shift_right(x * cosine + y * sine, 9U),
+            simulation::arithmetic_shift_right(y * cosine - x * sine, 9U),
+        };
+    };
+    const auto source_left = horizontal_origin;
+    const auto source_right = horizontal_origin + 224;
+    const auto vanish_x = horizontal_origin + 112;
+    constexpr std::int32_t vanish_y = 96;
+    const auto paint_line = [&target, source_left, source_right,
+                             vanish_x, vanish_y](
+                                HudPoint a, HudPoint b,
+                                std::uint8_t pixel) {
+        auto x0 = a.x + vanish_x;
+        auto y0 = a.y + vanish_y;
+        const auto x1 = b.x + vanish_x;
+        const auto y1 = b.y + vanish_y;
+        const auto dx = std::abs(x1 - x0);
+        const auto sx = x0 < x1 ? 1 : -1;
+        const auto dy = std::abs(y1 - y0);
+        const auto sy = y0 < y1 ? 1 : -1;
+        const auto plot = [&] {
+            if (x0 >= source_left && x0 < source_right) {
+                target.set(x0, y0, pixel);
+            }
+        };
+        if (dx >= dy) {
+            auto error = dx >> 1;
+            for (auto count = dx + 1; count != 0; --count) {
+                plot();
+                error -= dy;
+                if (error < 0) {
+                    error += dx;
+                    y0 += sy;
+                }
+                x0 += sx;
+            }
+        } else {
+            auto error = dy >> 1;
+            for (auto count = dy + 1; count != 0; --count) {
+                plot();
+                error -= dx;
+                if (error < 0) {
+                    error += dy;
+                    x0 += sx;
+                }
+                y0 += sy;
+            }
+        }
+    };
+    const auto normal = normal_colour_override != 0U
+        ? normal_colour_override
+        : static_cast<std::uint8_t>(
+            settings_.colour_index_base + (colour & 0x0fU));
+    const auto damaged = static_cast<std::uint8_t>(
+        settings_.colour_index_base + 2U);
+    const auto positive_colour = (damage_flags & 2U) != 0U ? damaged : normal;
+    const auto negative_colour = (damage_flags & 1U) != 0U ? damaged : normal;
+    const auto line = [&](std::int32_t x1, std::int32_t y1,
+                          std::int32_t x2, std::int32_t y2) {
+        const auto a = rotate(x1, y1);
+        const auto b = rotate(x2, y2);
+        paint_line(a, b, positive_colour);
+        paint_line({-a.x, -a.y}, {-b.x, -b.y}, negative_colour);
+    };
+
+    // Exact MHUD.MC source geometry: the vertical pair plus the mirrored
+    // three-line wing indicators.
+    line(0, 200, 0, 265);
+    line(250, 0, 315, -32);
+    line(315, -32, 315, 32);
+    line(250, 0, 315, 32);
+}
 
 void apply_original_depth_tables(
     const assets::RomImage& rom,

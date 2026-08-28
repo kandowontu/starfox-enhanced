@@ -3,6 +3,7 @@
 #include "starfox/assets/shape.hpp"
 #include "starfox/assets/rom.hpp"
 #include "starfox/render/framebuffer.hpp"
+#include "starfox/simulation/math.hpp"
 
 #include <cstdint>
 #include <array>
@@ -38,6 +39,11 @@ struct RenderPose {
     bool simple_scaled_sprite{};
     std::uint8_t simple_sprite_colour{};
     std::int16_t simple_sprite_world_size{};
+    // Optional presentation clip for transient sprite/particle effects. A
+    // non-empty interval keeps those effects inside the source camera while
+    // allowing the surrounding 3D scene to use a wider host framebuffer.
+    std::int32_t effect_clip_left{};
+    std::int32_t effect_clip_right{};
     // Presentation-only fallback for a long tapered solid crossing the near
     // plane. It retains the model's material while drawing its centre axis.
     bool collapse_to_axis_line{};
@@ -71,6 +77,17 @@ public:
         const RenderPose& pose,
         Framebuffer& target,
         bool clear_target = true) const;
+
+    // MHUD.MC's first-person direction indicators are a Super FX line pass,
+    // separate from both the 3D object list and the SNES OAM reticle.
+    void draw_cockpit_hud(
+        const simulation::TrigTables& trigonometry,
+        std::uint8_t rotation,
+        std::uint8_t colour,
+        std::uint8_t damage_flags,
+        std::int32_t horizontal_origin,
+        Framebuffer& target,
+        std::uint8_t normal_colour_override = 0U) const;
 
 private:
     RenderSettings settings_;

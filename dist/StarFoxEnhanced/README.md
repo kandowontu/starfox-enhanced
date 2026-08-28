@@ -2,7 +2,7 @@
 
 A native Windows PC port of the open-source
 [UltraStarFox](https://github.com/Sunlitspace542/ultrastarfox) codebase. It
-presents at a selectable 20, 30, 60, 120, 240, or 360 frames per second while
+presents at a selectable 20, 30, 60, 90, 120, 240, or 360 frames per second while
 preserving the original game's intended NTSC simulation speed and assembled
 model data. The default is 60 FPS.
 
@@ -31,12 +31,27 @@ The cleaned pre-game setup independently selects game pace, render FPS,
 display mode, controller remapping, and a separate Options page. Its first
 option is the Star Fox EX-style God Mode: player collision is disabled,
 regular Nova Bombs remain infinite, and holding R while pressing A fires a
-God Nuke. Standard display uses the complete 256x224 raster; Widescreen 16:9,
+God Nuke. The Options page can also enable a live on-screen FPS counter which
+reports completed presentations in 250 ms samples so lag spots remain visible,
+and select green (the default), white, blue, red, yellow, cyan, magenta, or
+orange crosshair art. The selected hue applies to both the original four-piece
+OBJ reticle and its Super FX cockpit triangles while damaged-wing indicators
+remain red.
+
+`CUSTOMIZE SCREEN` opens a mouse-driven captured native-gameplay HUD preview
+using the game's actual HUD artwork. Lives, Shield,
+Bombs/Boost, and Comms can each be dragged to a new position; `RESET` (or Y)
+restores the current display mode's defaults. Layouts are independent for 4:3,
+16:9, 16:10, 21:9, and 32:9, and save automatically to
+`Documents/Star Fox Enhanced/hud-layout.cfg`.
+Game pace, render FPS, display mode, God Mode, the FPS counter, and crosshair
+colour also persist in `Documents/Star Fox Enhanced/pregame.cfg`. Keyboard and
+controller remaps are saved automatically when the remapping screen closes.
+Standard display uses the complete 256x224 raster; Widescreen 16:9,
 Widescreen 16:10, Ultrawide 21:9, and Super Ultrawide 32:9 expand the intro
 and gameplay scene to 400x224, 360x224, 520x224, and 800x224 respectively
-while keeping
-cartridge-authored HUD, dialogue, title, map, and control-screen artwork
-centred in their original safe area. All modes use nearest-neighbor scaling
+while keeping cartridge-authored HUD, dialogue, title, map, and control-screen
+artwork centred in their original safe area. All modes use nearest-neighbor scaling
 in a resizable window. It is a hybrid source port: a pinned 65C816 core
 executes bounded original routines while timing, asset decoding, simulation
 orchestration, rendering, audio output, and presentation are native C++.
@@ -119,10 +134,17 @@ build/release/starfox_pc.exe path/to/SF.SFC path/to/SYMBOLS.TXT TITLEMAP
 | A | X | East button |
 | X | S | North button |
 | L / R | Q / W | Shoulder buttons |
-| Select | Backspace | Back/View |
+| Select | Apostrophe (`'`) | Back/View |
 | Start | Enter | Start/Menu |
 
 Select+Start exits the PC runtime.
+
+F5 toggles the presentation debugger. While frozen, F6 advances one selected
+render frame and F7 walks backward through the retained final-frame history.
+After stepping backward, F6 first walks forward through those exact captured
+presentations; at the live edge it advances simulation again. F5 resumes from
+the newest live state. Audio is paused while frozen and stepped audio is
+discarded rather than playing as a backlog afterward.
 
 Xbox/XInput controllers, Steam Input virtual controllers, and the Steam Deck's
 built-in controls are detected automatically. Both the D-pad and left stick

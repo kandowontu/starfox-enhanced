@@ -79,6 +79,16 @@ int main(int argc, char** argv) {
     require(wide_meter_frame.get(24, 176) == 7U * 16U + 13U
                 && wide_meter_frame.get(336, 176) == 7U * 16U + 13U,
             "expanded HUD meters did not anchor to the outer screen edges");
+    starfox::render::HudLayout shifted_hud;
+    shifted_hud[starfox::render::HudElement::shield] = {10, -5};
+    shifted_hud[starfox::render::HudElement::bombs_boost] = {-12, 3};
+    wide_meter_frame.clear(0U);
+    sprite_renderer.draw_meters(
+        {36, 36, false, true, 0, 0}, wide_meter_frame, true, &shifted_hud);
+    require(wide_meter_frame.get(34, 171) == 7U * 16U + 13U
+                && wide_meter_frame.get(324, 179) == 7U * 16U + 13U
+                && wide_meter_frame.get(24, 176) == 0U,
+            "custom HUD layout did not move shield and bombs/boost meters");
 
     starfox::simulation::SnesPpuState priority_ppu;
     priority_ppu.main_screen = 0x12U;
@@ -346,6 +356,15 @@ int main(int argc, char** argv) {
     require(centred_sprite_frame.get(184, 80) == 129U
                 && centred_sprite_frame.get(112, 80) == 42U,
             "centre-band cockpit/comms OAM was pulled to a widescreen edge");
+    priority_ppu.oam[0U] = 0U;
+    priority_ppu.oam[1U] = 0U;
+    shifted_hud[starfox::render::HudElement::lives] = {7, 5};
+    centred_sprite_frame.clear(42U);
+    sprite_renderer.draw_objects(priority_ppu, centred_sprite_frame,
+        2U, 72, true, true, &shifted_hud);
+    require(centred_sprite_frame.get(7, 5) == 129U
+                && centred_sprite_frame.get(0, 0) == 42U,
+            "custom HUD layout did not move the lives sprite group");
 
     starfox::simulation::ObjectPool objects;
     const auto first = objects.allocate_after();
@@ -607,6 +626,33 @@ int main(int argc, char** argv) {
         require(trig.sin_q15(0x4000) == 32'767 && trig.cos_q15(0) == 32'767,
                 "ROM Q15 trigonometry is wrong");
 
+        starfox::render::RenderSettings cockpit_settings;
+        cockpit_settings.colour_index_base = 7U * 16U;
+        const starfox::render::SoftwareRenderer cockpit_renderer{
+            cockpit_settings};
+        starfox::render::Framebuffer cockpit_hud_frame{256U, 192U};
+        cockpit_renderer.draw_cockpit_hud(
+            trig, 0U, 15U, 0U, 16, cockpit_hud_frame);
+        require(cockpit_hud_frame.get(128U, 145U) == 7U * 16U + 15U
+                    && cockpit_hud_frame.get(190U, 96U)
+                        == 7U * 16U + 15U
+                    && cockpit_hud_frame.get(66U, 96U)
+                        == 7U * 16U + 15U,
+                "source cockpit direction indicators were not reconstructed");
+        starfox::render::Framebuffer damaged_cockpit_hud{256U, 192U};
+        cockpit_renderer.draw_cockpit_hud(
+            trig, 0U, 15U, 1U, 16, damaged_cockpit_hud);
+        require(damaged_cockpit_hud.get(66U, 96U) == 7U * 16U + 2U
+                    && damaged_cockpit_hud.get(190U, 96U)
+                        == 7U * 16U + 15U,
+                "cockpit HUD did not preserve broken-wing colour sides");
+        starfox::render::Framebuffer coloured_cockpit_hud{256U, 192U};
+        cockpit_renderer.draw_cockpit_hud(
+            trig, 0U, 15U, 1U, 16, coloured_cockpit_hud, 207U);
+        require(coloured_cockpit_hud.get(66U, 96U) == 7U * 16U + 2U
+                    && coloured_cockpit_hud.get(190U, 96U) == 207U,
+                "custom crosshair colour did not recolour intact cockpit triangles");
+
         const auto stp_char_end = upstream_symbols.find("BGSTPCCR");
         const auto stp_screen_end = upstream_symbols.find("BGSTPPCR");
         require(!stp_char_end.empty() && !stp_screen_end.empty(),
@@ -749,31 +795,111 @@ int main(int argc, char** argv) {
                     "Corneria launch skipped its source camera-follow pullback");
         }
         {
-            starfox::simulation::GameSimulation first_person_game{
+            starfox::simulation::GameSimulation scramble_fade_game{
                 upstream_rom, upstream_symbols, "LEVEL1_1"};
-            for (std::size_t tick = 0; tick < 360U; ++tick) {
-                static_cast<void>(first_person_game.tick({}));
+            auto saw_scramble_fade = false;
+            for (std::size_t tick = 0; tick < 260U; ++tick) {
+                static_cast<void>(scramble_fade_game.tick({}));
+                if (scramble_fade_game.map().fade_direction() < 0) {
+                    saw_scramble_fade = true;
+                    require(scramble_fade_game.map().screen_enabled()
+                                && scramble_fade_game.map().display_brightness() == 15U,
+                            "scramble fade started from stale forced-black state");
+                    scramble_fade_game.present_frame();
+                    require(scramble_fade_game.map().display_brightness() == 14U,
+                            "scramble fade did not advance through a visible step");
+                    break;
+                }
             }
+            require(saw_scramble_fade,
+                    "Corneria scramble never reached its source fade-down");
+        }
+        {
+            starfox::simulation::GameSimulation first_person_game{
+                upstream_rom, upstream_symbols, "LEVEL1_3"};
             const auto fly_mode = upstream_symbols.find("SPLAYERFLYMODE");
             const auto crosshair_x = upstream_symbols.find("ARSEBANDX");
+            const auto crosshair_on = upstream_symbols.find("CROSSHAIRON");
             const auto null_player = upstream_symbols.find("NULLPLAYER");
+            const auto arrows = upstream_symbols.find("ARROWS");
+            const auto meters = upstream_symbols.find("M_METERS");
+            const auto hud_rotation = upstream_symbols.find("HUDROT");
             require(!fly_mode.empty() && !crosshair_x.empty()
-                        && !null_player.empty(),
+                        && !crosshair_on.empty() && !null_player.empty()
+                        && !arrows.empty() && !meters.empty()
+                        && !hud_rotation.empty(),
                     "first-person view symbols are missing");
-            first_person_game.map().write_native_byte(fly_mode.front(), 3U);
-            for (std::size_t tick = 0; tick < 8U; ++tick) {
+            auto saw_transition = false;
+            auto saw_inside = false;
+            for (std::size_t tick = 0; tick < 240U; ++tick) {
+                const auto inside = first_person_game.map().read_native_byte(
+                    fly_mode.front()) == 3U;
                 static_cast<void>(first_person_game.tick({starfox::input::right,
-                    tick == 0U ? static_cast<starfox::input::ButtonMask>(
-                                     starfox::input::right)
-                               : starfox::input::ButtonMask{},
+                    static_cast<starfox::input::ButtonMask>(
+                        tick == 0U ? starfox::input::right : 0U),
                     0}));
+                const auto mode = first_person_game.map().read_native_byte(
+                    fly_mode.front());
+                saw_transition = saw_transition || mode == 2U;
+                saw_inside = saw_inside || mode == 3U;
+                if (saw_inside && inside
+                    && first_person_game.objects().at(
+                        first_person_game.player()).world_x >= 600) {
+                    break;
+                }
             }
-            require(first_person_game.objects().at(first_person_game.player()).shape
+            require(saw_transition && saw_inside
+                        && first_person_game.objects().at(
+                            first_person_game.player()).shape
                         == static_cast<std::uint16_t>(null_player.front()),
-                    "first-person view did not replace the player with NULLPLAYER");
+                    "cockpit entry did not complete its native transition");
             require(static_cast<std::int16_t>(first_person_game.map().read_native_word(
-                        crosshair_x.front())) != 0,
+                        crosshair_x.front())) != 0
+                        && first_person_game.map().read_native_byte(
+                            crosshair_on.front()) != 0U
+                        && (first_person_game.map().read_native_word(
+                            hud_rotation.front()) & 0x8000U) != 0U,
                     "first-person aim did not move the native crosshair");
+            require((first_person_game.map().read_native_byte(arrows.front())
+                        & 8U) != 0U,
+                    "cockpit right-bound indicator was not raised at its limit");
+
+            // Meters gate the original OAM reticle. Direct sub-map entry does
+            // not execute the parent route's METERS_ON, so reproduce that
+            // outer-map state before checking all four reticle quadrants.
+            first_person_game.map().write_native_word(meters.front(), 1U);
+            static_cast<void>(first_person_game.tick({}));
+            const auto& cockpit_oam = first_person_game.map().ppu_state().oam;
+            auto reticle_tiles = std::size_t{};
+            for (std::size_t object = 0; object < 128U; ++object) {
+                if (cockpit_oam[object * 4U + 2U] == 0xe1U) {
+                    ++reticle_tiles;
+                }
+            }
+            require(reticle_tiles >= 4U,
+                    "cockpit OAM omitted one or more reticle quadrants");
+
+            static_cast<void>(first_person_game.tick(
+                {starfox::input::select, starfox::input::select, 0U}));
+            static_cast<void>(first_person_game.tick(
+                {0U, 0U, starfox::input::select}));
+            auto saw_exit_transition = false;
+            for (std::size_t tick = 0; tick < 80U; ++tick) {
+                const auto mode = first_person_game.map().read_native_byte(
+                    fly_mode.front());
+                saw_exit_transition = saw_exit_transition || mode == 4U;
+                if (mode == 0U) break;
+                static_cast<void>(first_person_game.tick({}));
+            }
+            require(saw_exit_transition
+                        && first_person_game.map().read_native_byte(
+                            fly_mode.front()) == 0U
+                        && first_person_game.objects().at(
+                            first_person_game.player()).shape
+                            != static_cast<std::uint16_t>(null_player.front())
+                        && (first_person_game.map().read_native_word(
+                            hud_rotation.front()) & 0x8000U) == 0U,
+                    "cockpit exit did not restore the external ship and HUD");
         }
         const auto palette_address = upstream_symbols.find("PALADDR");
         const auto controller_high_address = upstream_symbols.find("CONT0");
@@ -1235,11 +1361,18 @@ int main(int argc, char** argv) {
                     && stage_results.active
                     && game.map().read_native_word(stage_address.front()) == 1U,
                 "completed Corneria did not enter the mission tally");
+        auto saw_results_fade = false;
         for (std::size_t tick = 0;
              tick < 200U
-                 && game.flow_state()
-                    == starfox::simulation::GameFlowState::stage_results;
+                  && game.flow_state()
+                     == starfox::simulation::GameFlowState::stage_results;
              ++tick) {
+            game.present_frame();
+            game.present_frame();
+            game.present_frame();
+            saw_results_fade = saw_results_fade
+                || (game.map().display_brightness() > 0U
+                    && game.map().display_brightness() < 15U);
             static_cast<void>(game.tick({}));
         }
         const auto selected_map = static_cast<std::uint32_t>(
@@ -1254,8 +1387,42 @@ int main(int argc, char** argv) {
                 "completed Corneria did not enter the original route travel screen");
         require(game.map().ppu_state().background_mode == 3U
                     && (game.map().ppu_state().main_screen & 0x03U) == 0x03U
+                    && saw_results_fade
                     && game.map().unknown_superfx_launches().empty(),
-                "route travel screen did not execute its original Mode 3 assets");
+                "results-to-route transition skipped its fade or original Mode 3 assets");
+        const auto planet_palette = upstream_symbols.find("PLANSELPAL").front();
+        auto source_planet_palette_is_exact = true;
+        for (std::size_t colour = 0U;
+             colour < game.map().ppu_state().cgram.size(); ++colour) {
+            source_planet_palette_is_exact = source_planet_palette_is_exact
+                && game.map().ppu_state().cgram[colour]
+                    == upstream_rom.read16(planet_palette
+                        + static_cast<std::uint32_t>(colour * 2U));
+        }
+        require(source_planet_palette_is_exact,
+                "post-level map did not load PLANSELPAL exactly into CGRAM");
+        const auto current_planet_address =
+            upstream_symbols.find("CURRENTPLANET").front();
+        const auto planet_positions = upstream_symbols.find("PLANETPOS").front();
+        const auto selected_planet = game.map().read_native_byte(
+            current_planet_address);
+        const auto selected_record = planet_positions
+            + static_cast<std::uint32_t>(selected_planet) * 4U;
+        const auto selected_x = upstream_rom.read8(selected_record + 2U);
+        const auto selected_y = upstream_rom.read8(selected_record + 3U);
+        starfox::render::Framebuffer route_planets{256U, 224U};
+        background_renderer.draw_bg1(game.map().ppu_state(), route_planets,
+            starfox::render::TilePriorityPass::low);
+        background_renderer.draw_bg1(game.map().ppu_state(), route_planets,
+            starfox::render::TilePriorityPass::high);
+        std::size_t selected_planet_pixels{};
+        for (std::uint32_t y = selected_y; y < selected_y + 32U; ++y) {
+            for (std::uint32_t x = selected_x; x < selected_x + 32U; ++x) {
+                if (route_planets.get(x, y) != 0U) ++selected_planet_pixels;
+            }
+        }
+        require(selected_planet_pixels > 256U,
+                "post-level route redraw omitted the selected destination planet");
         const auto ship_position_address =
             upstream_symbols.find("SHIPXY").front();
         const auto initial_route_ship_position =
@@ -1823,7 +1990,10 @@ int main(int argc, char** argv) {
                     && boot_game.pregame_selection() == 0U
                     && boot_game.pregame_page()
                         == starfox::simulation::PregamePage::main
-                    && !boot_game.god_mode(),
+                    && !boot_game.god_mode()
+                    && !boot_game.show_fps()
+                    && boot_game.crosshair_colour()
+                        == starfox::simulation::CrosshairColour::green,
                 "cold boot did not begin with the default pre-game settings");
         starfox::audio::Spc700Audio boot_audio;
         bool heard_start_sound = false;
@@ -1906,12 +2076,44 @@ int main(int argc, char** argv) {
         require(boot_game.god_mode(),
                 "God Mode could not be enabled from OPTIONS");
         drive_boot({0, starfox::input::down, 0});
+        require(boot_game.pregame_selection() == 1U,
+                "pre-game cursor did not reach ON-SCREEN FPS");
+        drive_boot({0, starfox::input::a, 0});
+        require(boot_game.show_fps(),
+                "live on-screen FPS could not be enabled from OPTIONS");
+        drive_boot({0, starfox::input::down, 0});
+        require(boot_game.pregame_selection() == 2U
+                    && boot_game.crosshair_colour()
+                        == starfox::simulation::CrosshairColour::green,
+                "pre-game cursor did not reach the default green crosshair colour");
+        drive_boot({0, starfox::input::right, 0});
+        require(boot_game.crosshair_colour()
+                    == starfox::simulation::CrosshairColour::white,
+                "crosshair colour selector did not advance to white");
+        drive_boot({0, starfox::input::left, 0});
+        require(boot_game.crosshair_colour()
+                    == starfox::simulation::CrosshairColour::green,
+                "crosshair colour selector did not return to green");
+        drive_boot({0, starfox::input::left, 0});
+        require(boot_game.crosshair_colour()
+                    == starfox::simulation::CrosshairColour::orange,
+                "crosshair colour selector did not wrap backward");
+        drive_boot({0, starfox::input::right, 0});
+        drive_boot({0, starfox::input::down, 0});
+        require(boot_game.pregame_selection() == 3U,
+                "pre-game cursor did not reach CUSTOMIZE SCREEN");
+        drive_boot({0, starfox::input::down, 0});
+        require(boot_game.pregame_selection() == 4U,
+                "pre-game cursor did not reach OPTIONS BACK");
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.pregame_page()
                     == starfox::simulation::PregamePage::main
                     && boot_game.pregame_selection() == 4U
-                    && boot_game.god_mode(),
-                "OPTIONS did not retain God Mode when returning to setup");
+                    && boot_game.god_mode()
+                    && boot_game.show_fps()
+                    && boot_game.crosshair_colour()
+                        == starfox::simulation::CrosshairColour::green,
+                "OPTIONS did not retain its toggles when returning to setup");
         drive_boot({0, starfox::input::down, 0});
         require(boot_game.pregame_selection() == 5U,
                 "pre-game cursor did not reach START GAME");
@@ -1943,6 +2145,33 @@ int main(int argc, char** argv) {
         }
         require(boot_audio.driver_loaded() && heard_intro_music,
                 "cold-boot intro did not produce its original SPC music");
+
+        starfox::simulation::GameSimulation intro_ending_game{
+            upstream_rom, upstream_symbols, "INTROMAP"};
+        for (std::size_t frame = 0; frame < 24U; ++frame) {
+            intro_ending_game.present_frame();
+        }
+        const auto exit_intro = upstream_symbols.find("EXITINTRO").front();
+        auto reached_intro_exit = false;
+        for (std::size_t tick = 0; tick < 500U; ++tick) {
+            static_cast<void>(intro_ending_game.tick({}));
+            if (intro_ending_game.map().read_native_byte(exit_intro) != 0U) {
+                reached_intro_exit = true;
+                break;
+            }
+        }
+        require(reached_intro_exit
+                    && intro_ending_game.map().fade_direction() == 0
+                    && intro_ending_game.map().display_brightness() == 15U,
+                "automatic intro exit hid its completed near-camera frame");
+        intro_ending_game.present_frame();
+        require(intro_ending_game.map().fade_direction() == 0
+                    && intro_ending_game.map().display_brightness() == 15U,
+                "intro fade consumed the source's final full-bright raster");
+        intro_ending_game.present_frame();
+        require(intro_ending_game.map().fade_direction() == -2
+                    && intro_ending_game.map().display_brightness() == 11U,
+                "intro did not begin its source quick fade after the final raster");
 
         starfox::simulation::GameSimulation restart_game{
             upstream_rom, upstream_symbols, "LEVEL1_1"};
@@ -2047,6 +2276,22 @@ int main(int argc, char** argv) {
                     simple_sprite_frame.pixels().end(),
                     [](std::uint8_t pixel) { return pixel != 0U; }),
                 "original simple scaled-sprite material did not render");
+        auto clipped_sprite_pose = simple_sprite_pose;
+        clipped_sprite_pose.effect_clip_left = 112;
+        clipped_sprite_pose.effect_clip_right = 224;
+        starfox::render::Framebuffer clipped_sprite_frame{224, 192};
+        textured_renderer.draw(
+            andross, clipped_sprite_pose, clipped_sprite_frame);
+        require(std::any_of(clipped_sprite_frame.pixels().begin(),
+                    clipped_sprite_frame.pixels().end(),
+                    [](std::uint8_t pixel) { return pixel != 0U; }),
+                "horizontal effect clip suppressed the visible sprite half");
+        for (std::uint32_t y = 0; y < clipped_sprite_frame.height(); ++y) {
+            for (std::uint32_t x = 0; x < 112U; ++x) {
+                require(clipped_sprite_frame.get(x, y) == 0U,
+                    "transient sprite effect escaped its horizontal camera clip");
+            }
+        }
         const auto starfox_message = upstream_symbols.find("MSG_STARFOX");
         require(!starfox_message.empty(), "MSG_STARFOX symbol is missing");
         starfox::render::ScaledTextRenderer text_renderer{

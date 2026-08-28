@@ -1,12 +1,14 @@
 #pragma once
 
 #include "starfox/input/input_latch.hpp"
+#include "starfox/render/hud_layout.hpp"
 
 #include <SDL3/SDL.h>
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <string_view>
 
@@ -68,5 +70,36 @@ private:
     std::array<SDL_Scancode, action_count> keyboard_{};
     std::array<GamepadBinding, action_count> gamepad_{};
 };
+
+struct PregameSettings {
+    std::uint8_t timing_mode{};
+    std::uint16_t presentation_fps{60U};
+    std::uint8_t display_mode{};
+    bool god_mode{};
+    bool show_fps{};
+    std::uint8_t crosshair_colour{};
+
+    [[nodiscard]] bool operator==(const PregameSettings&) const = default;
+};
+
+// Front-end choices live beside HUD layouts in Documents so presentation and
+// accessibility settings survive upgrades and self-contained EXE moves.
+[[nodiscard]] std::filesystem::path pregame_settings_path();
+[[nodiscard]] bool load_pregame_settings(
+    const std::filesystem::path& path,
+    PregameSettings& settings) noexcept;
+[[nodiscard]] bool save_pregame_settings(
+    const std::filesystem::path& path,
+    const PregameSettings& settings) noexcept;
+
+// HUD placement is deliberately human-readable and stored separately from
+// controller bindings so it can be copied, edited, or reset independently.
+[[nodiscard]] std::filesystem::path hud_layout_settings_path();
+[[nodiscard]] bool load_hud_layout(
+    const std::filesystem::path& path,
+    render::HudLayoutProfiles& layouts) noexcept;
+[[nodiscard]] bool save_hud_layout(
+    const std::filesystem::path& path,
+    const render::HudLayoutProfiles& layouts) noexcept;
 
 } // namespace starfox::app

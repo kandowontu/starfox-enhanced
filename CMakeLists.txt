@@ -68,6 +68,7 @@ add_library(starfox_core
     src/render/framebuffer.cpp
     src/render/palette.cpp
     src/render/particle_renderer.cpp
+    src/render/presentation_history.cpp
     src/render/scaled_text_renderer.cpp
     src/render/software_renderer.cpp
     src/render/sprite_renderer.cpp
@@ -147,6 +148,21 @@ if(STARFOX_BUILD_RUNTIME)
             enable_language(RC)
             file(TO_CMAKE_PATH "${STARFOX_ROM_FILE}" STARFOX_EMBEDDED_ROM)
             file(TO_CMAKE_PATH "${STARFOX_SYMBOLS_FILE}" STARFOX_EMBEDDED_SYMBOLS)
+            file(TO_CMAKE_PATH
+                "${CMAKE_CURRENT_SOURCE_DIR}/assets/hud_editor/background.bmp"
+                STARFOX_HUD_EDITOR_BACKGROUND)
+            file(TO_CMAKE_PATH
+                "${CMAKE_CURRENT_SOURCE_DIR}/assets/hud_editor/lives.bmp"
+                STARFOX_HUD_EDITOR_LIVES)
+            file(TO_CMAKE_PATH
+                "${CMAKE_CURRENT_SOURCE_DIR}/assets/hud_editor/shield.bmp"
+                STARFOX_HUD_EDITOR_SHIELD)
+            file(TO_CMAKE_PATH
+                "${CMAKE_CURRENT_SOURCE_DIR}/assets/hud_editor/bombs_boost.bmp"
+                STARFOX_HUD_EDITOR_BOMBS_BOOST)
+            file(TO_CMAKE_PATH
+                "${CMAKE_CURRENT_SOURCE_DIR}/assets/hud_editor/comms.bmp"
+                STARFOX_HUD_EDITOR_COMMS)
             configure_file(
                 src/app/starfox_assets.rc.in
                 "${CMAKE_CURRENT_BINARY_DIR}/starfox_assets.rc"

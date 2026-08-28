@@ -59,6 +59,17 @@ enum class PregamePage {
     options,
 };
 
+enum class CrosshairColour {
+    green,
+    white,
+    blue,
+    red,
+    yellow,
+    cyan,
+    magenta,
+    orange,
+};
+
 struct MeterState {
     std::uint8_t damage{};
     std::uint8_t boost{};
@@ -145,9 +156,14 @@ public:
     [[nodiscard]] std::array<std::uint16_t, 16> palette_words() const noexcept;
     [[nodiscard]] GameFlowState flow_state() const noexcept { return flow_state_; }
     [[nodiscard]] TimingMode timing_mode() const noexcept { return timing_mode_; }
+    void set_timing_mode(TimingMode mode) noexcept { timing_mode_ = mode; }
     [[nodiscard]] DisplayMode display_mode() const noexcept { return display_mode_; }
+    void set_display_mode(DisplayMode mode) noexcept { display_mode_ = mode; }
     [[nodiscard]] std::uint16_t presentation_fps() const noexcept {
         return presentation_fps_;
+    }
+    void set_presentation_fps(std::uint16_t fps) noexcept {
+        presentation_fps_ = fps;
     }
     [[nodiscard]] std::uint8_t pregame_selection() const noexcept {
         return pregame_selection_;
@@ -157,6 +173,14 @@ public:
     }
     [[nodiscard]] bool god_mode() const noexcept { return god_mode_; }
     void set_god_mode(bool enabled) noexcept { god_mode_ = enabled; }
+    [[nodiscard]] bool show_fps() const noexcept { return show_fps_; }
+    void set_show_fps(bool enabled) noexcept { show_fps_ = enabled; }
+    [[nodiscard]] CrosshairColour crosshair_colour() const noexcept {
+        return crosshair_colour_;
+    }
+    void set_crosshair_colour(CrosshairColour colour) noexcept {
+        crosshair_colour_ = colour;
+    }
     [[nodiscard]] bool logic_tick_ready() const noexcept;
     [[nodiscard]] double logic_interpolation_alpha(
         double video_phase_fraction = 0.0) const noexcept;
@@ -177,11 +201,13 @@ private:
         pregame_fade_to_intro,
         title_fade_to_controls,
         title_fade_to_intro,
+        intro_final_hold,
         intro_fade_to_title,
         controls_reveal_hold,
         controls_fade_to_training,
         controls_fade_to_map,
         training_fade_to_controls,
+        stage_results_fade_to_map,
         planet_fade_in,
         planet_route,
         planet_confirm_hold,
@@ -488,6 +514,8 @@ private:
     std::uint8_t pregame_selection_{};
     PregamePage pregame_page_{PregamePage::main};
     bool god_mode_{};
+    bool show_fps_{};
+    CrosshairColour crosshair_colour_{CrosshairColour::green};
     bool planet_travel_complete_{};
     std::uint8_t stage_percentage_{};
     std::uint8_t displayed_stage_percentage_{};

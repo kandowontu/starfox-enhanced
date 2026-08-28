@@ -158,6 +158,14 @@ void MapVm::set_display_brightness(std::uint8_t brightness) {
 void MapVm::start_display_fade(std::int8_t direction) {
     fade_direction_ = direction;
     slow_fade_frame_valid_ = false;
+    // Map streams change FADEDIR independently of INIDISP. FADE can still
+    // contain zero from the preceding forced-black setup even though native
+    // code has since restored a fully bright display. IRQ.ASM starts a
+    // fade-down from the brightness that is actually visible; retaining the
+    // stale counter turns that transition into an immediate black cut.
+    if (direction < 0 && screen_enabled_) {
+        fade_value_ = display_brightness_;
+    }
     if (direction > 0 && !screen_enabled_) {
         fade_value_ = 0U;
         screen_enabled_ = true;
@@ -170,6 +178,12 @@ void MapVm::tick_video_phase() {
         return;
     }
     if (fade_direction_ < 0) {
+        // Native work later in the same transfer can restore the cartridge's
+        // stale FADE byte while leaving INIDISP and FADEDIR intact. Reconcile
+        // that split state at the raster boundary where IRQ.ASM consumes it.
+        if (fade_value_ == 0U && screen_enabled_ && display_brightness_ != 0U) {
+            fade_value_ = display_brightness_;
+        }
         // IRQ.ASM's -3 title fade advances only while GAMEFRAME is odd.
         // GAMEFRAME is a 20 Hz source counter. The three 60 Hz presentations
         // of an odd source frame therefore share one brightness decrement;
@@ -834,9 +848,8 @@ void MapVm::execute_ready_records() {
             continue;
         }
         if (opcode == 66 || opcode == 68 || opcode == 78 || opcode == 80) {
-            fade_direction_ = opcode == 66 ? 1 : opcode == 68 ? -1 : opcode == 78 ? 2 : -2;
-            write_native_byte(kOriginalFadeDirection,
-                std::bit_cast<std::uint8_t>(fade_direction_));
+            start_display_fade(
+                opcode == 66 ? 1 : opcode == 68 ? -1 : opcode == 78 ? 2 : -2);
             cursor_ += 1U;
             continue;
         }

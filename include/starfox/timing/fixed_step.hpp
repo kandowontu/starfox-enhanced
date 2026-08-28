@@ -26,6 +26,7 @@ public:
         std::uint32_t presentation_hz,
         std::uint32_t speed_multiplier = 1U);
     void reset() noexcept;
+    void synchronize(double phase_fraction) noexcept;
 
 private:
     std::uint32_t subphase_units_{};
@@ -55,6 +56,30 @@ private:
     std::uint32_t simulation_hz_{};
     duration maximum_frame_time_{};
     std::uint64_t phase_units_{};
+};
+
+// Measures completed host presentations independently of the requested
+// presentation rate. A short sample window makes missed-frame hot spots
+// visible without allowing single-frame timing noise to make the readout
+// illegible.
+class LiveFpsCounter {
+public:
+    using clock = std::chrono::steady_clock;
+    using duration = clock::duration;
+    using time_point = clock::time_point;
+
+    explicit LiveFpsCounter(
+        duration sample_period = std::chrono::milliseconds{250});
+
+    void reset(time_point now, std::uint32_t initial_fps = 0U) noexcept;
+    void record_frame(time_point now) noexcept;
+    [[nodiscard]] std::uint32_t fps() const noexcept { return fps_; }
+
+private:
+    duration sample_period_{};
+    time_point sample_started_{};
+    std::uint32_t sample_frames_{};
+    std::uint32_t fps_{};
 };
 
 // A presentation-only transform. Fixed-point gameplay state should be copied

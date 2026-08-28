@@ -70,6 +70,13 @@ void RasterPhaseClock::reset() noexcept {
     subphase_units_ = 0U;
 }
 
+void RasterPhaseClock::synchronize(double phase_fraction) noexcept {
+    phase_fraction = std::clamp(phase_fraction, 0.0, 1.0);
+    subphase_units_ = std::min(kSubphasesPerRasterPhase - 1U,
+        static_cast<std::uint32_t>(phase_fraction
+            * static_cast<double>(kSubphasesPerRasterPhase)));
+}
+
 FixedStepClock::FixedStepClock(
     std::uint32_t simulation_hz,
     duration maximum_frame_time)
@@ -116,6 +123,37 @@ std::uint32_t FixedStepClock::simulation_hz() const noexcept {
 
 FixedStepClock::duration FixedStepClock::step_duration() const noexcept {
     return duration{static_cast<duration::rep>(kNanosecondsPerSecond / simulation_hz_)};
+}
+
+LiveFpsCounter::LiveFpsCounter(duration sample_period)
+    : sample_period_(sample_period) {
+    if (sample_period_ <= duration::zero()) {
+        throw std::invalid_argument{"FPS sample period must be positive"};
+    }
+    reset(clock::now());
+}
+
+void LiveFpsCounter::reset(
+    time_point now, std::uint32_t initial_fps) noexcept {
+    sample_started_ = now;
+    sample_frames_ = 0U;
+    fps_ = initial_fps;
+}
+
+void LiveFpsCounter::record_frame(time_point now) noexcept {
+    if (now < sample_started_) {
+        reset(now, fps_);
+        return;
+    }
+    ++sample_frames_;
+    const auto elapsed = now - sample_started_;
+    if (elapsed < sample_period_) return;
+
+    const auto elapsed_seconds = std::chrono::duration<double>{elapsed}.count();
+    fps_ = static_cast<std::uint32_t>(
+        static_cast<double>(sample_frames_) / elapsed_seconds + 0.5);
+    sample_started_ = now;
+    sample_frames_ = 0U;
 }
 
 RenderTransform interpolate(

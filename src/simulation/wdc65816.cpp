@@ -1120,6 +1120,15 @@ struct Wdc65816::Impl {
             static_cast<double>(read_superfx16(m_scale)) / 32768.0, 0.0, 1.0);
 
         for (std::int32_t dy = -radius; dy <= radius; ++dy) {
+            // MPLANET seeds its small $a63d feedback generator from the
+            // scanline position, then adds the low-byte noise (shifted by
+            // three) before selecting one of the 16-colour light ramps.
+            // Keep the same bounded threshold dither here: using a smooth
+            // host-side Lambert ramp makes the map planets much too bright
+            // and gives them the appearance of using the wrong palette.
+            auto shade_random = static_cast<std::uint16_t>(
+                (static_cast<std::uint16_t>((centre_y + dy) * 40) << 8U)
+                + static_cast<std::uint16_t>(centre_x - radius));
             for (std::int32_t dx = -radius; dx <= radius; ++dx) {
                 const auto squared = dx * dx + dy * dy;
                 if (squared > radius * radius) continue;
@@ -1164,15 +1173,28 @@ struct Wdc65816::Impl {
                 const auto texel = static_cast<std::uint8_t>(texture_byte(
                     sprite, source, static_cast<std::uint32_t>(v) * 256U
                         + static_cast<std::uint32_t>(u)) >> 4U);
-                if (texel == 0U) continue;
+
+                const auto random_carry = (shade_random & 0x8000U) != 0U;
+                shade_random = static_cast<std::uint16_t>(shade_random << 1U);
+                if (random_carry) shade_random ^= 0xa63dU;
 
                 const auto diffuse = (nx * light_x + ny * light_y + nz * light_z)
                     * intensity_scale;
-                const auto shade = static_cast<std::uint8_t>(std::clamp(
-                    static_cast<std::int32_t>(std::lround((1.0 - diffuse) * 7.0)),
-                    0, 13));
+                const auto light_fixed = static_cast<std::int16_t>(
+                    static_cast<std::int32_t>(std::lround(diffuse * 32768.0))
+                    + static_cast<std::int32_t>(shade_random & 0x00ffU) * 8);
+                const auto light_high = static_cast<std::int32_t>(
+                    static_cast<std::int8_t>(
+                        static_cast<std::uint16_t>(light_fixed) >> 8U));
+                const auto light_magnitude = static_cast<std::uint8_t>(
+                    std::min(127, std::abs(light_high)));
+                auto shade_offset = static_cast<std::uint8_t>(
+                    ((light_magnitude & 0x78U) ^ 0x78U) << 1U);
+                // The source explicitly keeps palette 15 out of sphere
+                // pixels because that bank is reserved by the map screen.
+                if (shade_offset == 0xf0U) shade_offset = 0xe0U;
                 write_planet_pixel(centre_x + dx, centre_y + dy,
-                    static_cast<std::uint8_t>((shade << 4U) | texel));
+                    static_cast<std::uint8_t>(shade_offset | texel));
             }
         }
     }

@@ -32,7 +32,26 @@ Point project(double x, double y, double z, const Framebuffer& target) {
             && screen_y < static_cast<int>(target.height()) - 1};
 }
 
-void draw_line(Framebuffer& target, Point a, Point b, std::uint8_t colour) {
+bool inside_effect_clip(const RenderPose& pose, int x) noexcept {
+    return pose.effect_clip_right <= pose.effect_clip_left
+        || (x >= pose.effect_clip_left && x < pose.effect_clip_right);
+}
+
+void set_effect_pixel(
+    Framebuffer& target,
+    const RenderPose& pose,
+    int x,
+    int y,
+    std::uint8_t colour) {
+    if (inside_effect_clip(pose, x)) target.set(x, y, colour);
+}
+
+void draw_line(
+    Framebuffer& target,
+    const RenderPose& pose,
+    Point a,
+    Point b,
+    std::uint8_t colour) {
     auto x0 = a.x;
     auto y0 = a.y;
     const auto dx = std::abs(b.x - x0);
@@ -41,7 +60,7 @@ void draw_line(Framebuffer& target, Point a, Point b, std::uint8_t colour) {
     const auto sy = y0 < b.y ? 1 : -1;
     auto error = dx + dy;
     for (;;) {
-        target.set(x0, y0, colour);
+        set_effect_pixel(target, pose, x0, y0, colour);
         if (x0 == b.x && y0 == b.y) break;
         const auto doubled = error * 2;
         if (doubled >= dy) {
@@ -82,14 +101,16 @@ void ParticleRenderer::draw_owner(
             const auto previous = project(owner_pose.x + particle.previous_x,
                 owner_pose.y + particle.previous_y,
                 owner_pose.z + particle.previous_z, target);
-            if (previous.visible) draw_line(target, previous, point, colour);
+            if (previous.visible) {
+                draw_line(target, owner_pose, previous, point, colour);
+            }
             continue;
         }
         // PLOT increments R1; the source's two PLOT pairs form a 2x2 dot.
-        target.set(point.x, point.y, colour);
-        target.set(point.x + 1, point.y, colour);
-        target.set(point.x, point.y + 1, colour);
-        target.set(point.x + 1, point.y + 1, colour);
+        set_effect_pixel(target, owner_pose, point.x, point.y, colour);
+        set_effect_pixel(target, owner_pose, point.x + 1, point.y, colour);
+        set_effect_pixel(target, owner_pose, point.x, point.y + 1, colour);
+        set_effect_pixel(target, owner_pose, point.x + 1, point.y + 1, colour);
     }
 }
 

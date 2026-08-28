@@ -1,7 +1,9 @@
 #include "starfox/timing/fixed_step.hpp"
 #include "starfox/input/input_latch.hpp"
+#include "starfox/render/presentation_history.hpp"
 
 #include <chrono>
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdlib>
@@ -83,6 +85,48 @@ void test_fast_forward_exactly_doubles_raster_pace() {
     }
 }
 
+void test_frame_step_clock_synchronizes_fractional_phase() {
+    starfox::timing::RasterPhaseClock clock;
+    clock.synchronize(0.5);
+    const auto batch = clock.advance(120U);
+    require(batch.video_phases == 1U && batch.phase_fraction == 0.0,
+            "frame-step clock did not continue from the displayed phase");
+
+    clock.synchronize(0.99);
+    const auto near_boundary = clock.advance(120U);
+    require(near_boundary.video_phases == 1U,
+            "frame-step synchronization wrapped a near-complete raster phase");
+}
+
+void test_presentation_history_walks_without_changing_live_edge() {
+    starfox::render::PresentationHistory history{24U};
+    const std::array<std::uint8_t, 8> first{
+        1U, 1U, 1U, 255U, 2U, 2U, 2U, 255U};
+    const std::array<std::uint8_t, 8> second{
+        3U, 3U, 3U, 255U, 4U, 4U, 4U, 255U};
+    const std::array<std::uint8_t, 8> third{
+        5U, 5U, 5U, 255U, 6U, 6U, 6U, 255U};
+    history.record(2U, 1U, first);
+    history.record(2U, 1U, second);
+    history.record(2U, 1U, third);
+    require(history.frame_count() == 3U && history.at_live(),
+            "presentation history did not retain its live frame");
+    require(history.step_back()
+                && std::equal(history.current()->rgba.begin(),
+                    history.current()->rgba.end(), second.begin(), second.end()),
+            "F7 history step did not select the preceding presentation");
+    require(history.step_forward()
+                && std::equal(history.current()->rgba.begin(),
+                    history.current()->rgba.end(), third.begin(), third.end())
+                && history.at_live(),
+            "F6 history step did not return to the live presentation");
+
+    const std::array<std::uint8_t, 12> resized{};
+    history.record(3U, 1U, resized);
+    require(history.frame_count() == 1U && history.current()->width == 3U,
+            "display-size change did not reset incompatible frame history");
+}
+
 void test_missed_render_target_preserves_realtime_raster_pace() {
     using namespace std::chrono_literals;
     starfox::timing::FixedStepClock realtime_raster{
@@ -95,6 +139,26 @@ void test_missed_render_target_preserves_realtime_raster_pace() {
     }
     require(phases == starfox::timing::kPresentationHz,
             "a missed render target slowed the realtime raster/audio clock");
+}
+
+void test_live_fps_counter_reports_actual_output_and_lag() {
+    using namespace std::chrono_literals;
+    using Counter = starfox::timing::LiveFpsCounter;
+    Counter counter{250ms};
+    const Counter::time_point start{};
+    counter.reset(start, 60U);
+
+    for (std::uint32_t frame = 1U; frame <= 15U; ++frame) {
+        counter.record_frame(start + 250ms * frame / 15U);
+    }
+    require(counter.fps() == 60U,
+            "live FPS counter did not report sixty completed presentations");
+
+    for (std::uint32_t frame = 1U; frame <= 10U; ++frame) {
+        counter.record_frame(start + 250ms + 250ms * frame / 10U);
+    }
+    require(counter.fps() == 40U,
+            "live FPS counter hid a forty-FPS lag interval behind the target rate");
 }
 
 void test_stall_is_bounded() {
@@ -184,7 +248,10 @@ int main() {
     test_exact_60_to_20_cadence();
     test_selectable_presentation_rates_preserve_raster_pace();
     test_fast_forward_exactly_doubles_raster_pace();
+    test_frame_step_clock_synchronizes_fractional_phase();
+    test_presentation_history_walks_without_changing_live_edge();
     test_missed_render_target_preserves_realtime_raster_pace();
+    test_live_fps_counter_reports_actual_output_and_lag();
     test_stall_is_bounded();
     test_negative_time_is_ignored();
     test_interpolation_does_not_modify_snapshots();
