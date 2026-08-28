@@ -5,6 +5,7 @@
 #include "starfox/simulation/object_pool.hpp"
 #include "starfox/simulation/prng.hpp"
 
+#include <array>
 #include <cstdint>
 #include <unordered_map>
 #include <vector>
@@ -53,6 +54,30 @@ public:
     void tick(ObjectHandle object);
     void tick_all();
 
+    [[nodiscard]] std::uint8_t read_global_byte(
+        std::uint16_t address) const noexcept {
+        return global_memory_[address];
+    }
+    [[nodiscard]] std::uint16_t read_global_word(
+        std::uint16_t address) const noexcept {
+        return static_cast<std::uint16_t>(global_memory_[address])
+            | (static_cast<std::uint16_t>(global_memory_[
+                   static_cast<std::uint16_t>(address + 1U)]) << 8U);
+    }
+    void write_global_byte(
+        std::uint16_t address, std::uint8_t value) noexcept {
+        global_memory_[address] = value;
+    }
+    void write_global_word(
+        std::uint16_t address, std::uint16_t value) noexcept {
+        global_memory_[address] = static_cast<std::uint8_t>(value);
+        global_memory_[static_cast<std::uint16_t>(address + 1U)] =
+            static_cast<std::uint8_t>(value >> 8U);
+    }
+    [[nodiscard]] std::uint16_t player_score() const noexcept {
+        return player_score_;
+    }
+
     [[nodiscard]] bool is_attached(ObjectHandle object) const noexcept;
     [[nodiscard]] std::uint16_t path_offset(ObjectHandle object) const;
     [[nodiscard]] std::uint32_t path_strategy_address() const noexcept {
@@ -98,6 +123,13 @@ private:
     std::int16_t view_velocity_z_{};
     std::uint8_t current_level_{};
     bool player_dead_{};
+    std::uint16_t player_score_{};
+    std::uint16_t player_score_address_{};
+    std::array<std::uint8_t, 256> opcode_translation_{};
+    // P_IMPORT/P_EXPORT address the shared 64 KiB direct-page namespace in
+    // bank $7e. The native strategy scheduler uses Wdc65816's real WRAM;
+    // this interpreter retains an equivalent bank for tooling and previews.
+    std::array<std::uint8_t, 65'536> global_memory_{};
     std::unordered_map<ObjectHandle, RuntimeState> states_;
     std::vector<PathEvent> events_;
     std::vector<std::uint8_t> unsupported_opcodes_;

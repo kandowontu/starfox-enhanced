@@ -72,6 +72,15 @@ std::int8_t signed_difference8(std::uint8_t left, std::uint8_t right) noexcept {
     return signed_byte(static_cast<std::uint8_t>(left - right));
 }
 
+std::uint32_t add_lorom_offset(
+    std::uint32_t address, std::uint16_t offset) noexcept {
+    const auto linear = static_cast<std::uint32_t>(
+        ((address >> 16U) & 0x7fU) * 0x8000U
+        + (address & 0x7fffU) + offset);
+    return ((linear / 0x8000U) << 16U)
+        | 0x8000U | (linear & 0x7fffU);
+}
+
 } // namespace
 
 PathVm::PathVm(
@@ -90,7 +99,11 @@ PathVm::PathVm(
       null_shape_(null_shape),
       objects_(&objects),
       trig_(std::move(trig)),
-      random_(&random) {}
+      random_(&random) {
+    for (std::size_t opcode = 0; opcode < opcode_translation_.size(); ++opcode) {
+        opcode_translation_[opcode] = static_cast<std::uint8_t>(opcode);
+    }
+}
 
 PathVm::PathVm(
     const assets::RomImage& rom,
@@ -105,7 +118,103 @@ PathVm::PathVm(
           TrigTables::load(rom, symbols),
           random,
           rom_symbol(symbols, "PARTICLEEXPLODE_ISTRAT"),
-          static_cast<std::uint16_t>(rom_symbol(symbols, "NULLSHAPE"))) {}
+          static_cast<std::uint16_t>(rom_symbol(symbols, "NULLSHAPE"))) {
+    const auto player_scores = symbols.find("PLAYERSCORE");
+    if (!player_scores.empty()) {
+        player_score_address_ = static_cast<std::uint16_t>(
+            player_scores.front());
+    }
+    if (symbols.find("PLANETSEQ2_L").empty()) return;
+
+    // Star Fox EX inserts several PATH instructions into the middle of the
+    // retail dispatch table. Translate the cartridge's exported P_* opcode
+    // constants to the interpreter's semantic slots; otherwise every opcode
+    // after the first inserted message command is decoded as the wrong
+    // instruction. Unimplemented EX commands fail explicitly instead of
+    // silently executing a retail command with the same numeric byte.
+    opcode_translation_.fill(0xffU);
+    constexpr std::array mappings{
+        std::pair{"P_RELTOPLAYERON", 0U}, std::pair{"P_RELTOPLAYEROFF", 1U},
+        std::pair{"P_WAIT", 2U}, std::pair{"P_ALWAYSGENVECSON", 3U},
+        std::pair{"P_ALWAYSGENVECSOFF", 4U}, std::pair{"P_SETVEL", 5U},
+        std::pair{"P_LOOP", 6U}, std::pair{"P_ADDB", 7U},
+        std::pair{"P_ADDW", 8U}, std::pair{"P_ACHASEB", 11U},
+        std::pair{"P_ACHASEW", 12U}, std::pair{"P_WAITACHASEB", 13U},
+        std::pair{"P_WAITACHASEW", 14U}, std::pair{"P_END", 15U},
+        std::pair{"P_SETB", 16U}, std::pair{"P_SETW", 17U},
+        std::pair{"P_FINDSHAPE", 18U}, std::pair{"P_FINDNEXTSHAPE", 19U},
+        std::pair{"P_REMOVE", 21U}, std::pair{"P_IMMUNE", 25U},
+        std::pair{"P_SPACESHIPON", 26U}, std::pair{"P_SPACESHIPOFF", 27U},
+        std::pair{"P_ZACOON", 28U}, std::pair{"P_ZACOOFF", 29U},
+        std::pair{"P_DISTLESS", 30U}, std::pair{"P_SHAPEDISTLESS", 31U},
+        std::pair{"P_GOTO", 32U}, std::pair{"P_IGOTO", 33U},
+        std::pair{"P_ACCEL", 34U}, std::pair{"P_INITANIM", 37U},
+        std::pair{"P_ADDANIM", 38U}, std::pair{"P_FRIEND", 40U},
+        std::pair{"P_LINK", 41U}, std::pair{"P_SHAPEDEAD", 42U},
+        std::pair{"P_IFLEVEL", 43U}, std::pair{"P_LEFTOFPLAYER", 44U},
+        std::pair{"P_RIGHTOFPLAYER", 45U}, std::pair{"P_ABOVEPLAYER", 46U},
+        std::pair{"P_BELOWPLAYER", 47U}, std::pair{"P_NOTFRIEND", 48U},
+        std::pair{"P_MSG", 49U}, std::pair{"P_MSG2", 50U},
+        std::pair{"P_DAMAGE", 51U}, std::pair{"P_SMOKEON", 53U},
+        std::pair{"P_SMOKEOFF", 54U}, std::pair{"P_RANDOMGOTO", 55U},
+        std::pair{"P_IFSAMEB", 56U}, std::pair{"P_IFSAMEW", 57U},
+        std::pair{"P_IFBETWEENB", 58U}, std::pair{"P_IFBETWEENW", 59U},
+        std::pair{"P_INVINCIBLEON", 60U}, std::pair{"P_INVINCIBLEOFF", 61U},
+        std::pair{"P_PLAYERDEAD", 62U}, std::pair{"P_SPAWN", 63U},
+        std::pair{"P_SPAWNLINK", 64U}, std::pair{"P_SPAWNCHILD", 65U},
+        std::pair{"P_ZREMOVEON", 66U}, std::pair{"P_ZREMOVEOFF", 67U},
+        std::pair{"P_FIRE", 69U}, std::pair{"P_FIRECANHIT", 70U},
+        std::pair{"P_FIREATPLAYER", 71U},
+        std::pair{"P_FIREATPLAYERCANHIT", 72U},
+        std::pair{"P_FIREATSHAPE", 73U},
+        std::pair{"P_FIREATSHAPECANHIT", 74U},
+        std::pair{"P_WEAPON", 75U}, std::pair{"P_LINKCHILD", 78U},
+        std::pair{"P_IFFLAG", 81U}, std::pair{"P_FLAGMOTHER", 83U},
+        std::pair{"P_GOSUB", 84U}, std::pair{"P_RETURN", 85U},
+        std::pair{"P_DO", 86U}, std::pair{"P_NEXT", 87U},
+        std::pair{"P_INEXT", 88U}, std::pair{"P_BREAK", 89U},
+        std::pair{"P_BREAKC", 90U}, std::pair{"P_INVISIBLEON", 91U},
+        std::pair{"P_INVISIBLEOFF", 92U}, std::pair{"P_ALWAYS", 93U},
+        std::pair{"P_ALWAYSOFF", 94U}, std::pair{"P_FORCE", 95U},
+        std::pair{"P_SETSTRAT", 97U}, std::pair{"P_SETVBB", 98U},
+        std::pair{"P_SETVBW", 99U}, std::pair{"P_SETVWW", 100U},
+        std::pair{"P_SETVWB", 101U}, std::pair{"P_ADDVBB", 102U},
+        std::pair{"P_ADDVBW", 103U}, std::pair{"P_ADDVWW", 104U},
+        std::pair{"P_ADDVWB", 105U}, std::pair{"P_NEGB", 106U},
+        std::pair{"P_NEGW", 107U}, std::pair{"P_SETRANDOMB", 108U},
+        std::pair{"P_SETRANDOMW", 109U}, std::pair{"P_IFHITFLAG", 110U},
+        std::pair{"P_COLLISIONSON", 111U}, std::pair{"P_COLLISIONSOFF", 112U},
+        std::pair{"P_IFNOT", 114U}, std::pair{"P_PARTICLE", 115U},
+        std::pair{"P_SHADOWON", 116U}, std::pair{"P_SHADOWOFF", 117U},
+        std::pair{"P_SOUND", 118U}, std::pair{"P_SOUND2", 119U},
+        std::pair{"P_QSPAWN", 120U}, std::pair{"P_BEHINDPLAYER", 122U},
+        std::pair{"P_IMPORTB", 123U}, std::pair{"P_IMPORTW", 124U},
+        std::pair{"P_EXPORTB", 125U}, std::pair{"P_EXPORTW", 126U},
+        std::pair{"P_DIV2B", 127U}, std::pair{"P_DIV2W", 128U},
+        std::pair{"P_PUSHB", 131U}, std::pair{"P_PUSHW", 132U},
+        std::pair{"P_PULLB", 133U}, std::pair{"P_PULLW", 134U},
+        std::pair{"P_MSGWITHMETER", 137U}, std::pair{"P_DOQ", 138U},
+        std::pair{"P_DOALVARB", 139U}, std::pair{"P_DOALVARW", 140U},
+        std::pair{"P_GOSUBALVAR", 141U}, std::pair{"P_REMOVECHILD", 148U},
+        std::pair{"P_IFZEROB", 149U}, std::pair{"P_IFZEROW", 150U},
+        std::pair{"P_IFNOTZEROB", 151U}, std::pair{"P_IFNOTZEROW", 152U},
+        std::pair{"P_SET0B", 153U}, std::pair{"P_SET0W", 154U},
+        std::pair{"P_INCB", 155U}, std::pair{"P_INCW", 156U},
+        std::pair{"P_DECB", 157U}, std::pair{"P_DECW", 158U},
+        std::pair{"P_ADDROTX", 159U}, std::pair{"P_ADDROTY", 160U},
+        std::pair{"P_ADDROTZ", 161U}, std::pair{"P_ADDWORLDX", 162U},
+        std::pair{"P_ADDWORLDY", 163U}, std::pair{"P_ADDWORLDZ", 164U},
+        std::pair{"P_ADDWS", 165U}, std::pair{"P_WAIT1", 166U},
+        std::pair{"P_SCORE", 167U},
+    };
+    for (const auto& [name, semantic] : mappings) {
+        const auto values = symbols.find(name);
+        if (!values.empty() && values.front() <= 0xffU) {
+            opcode_translation_[values.front()] =
+                static_cast<std::uint8_t>(semantic);
+        }
+    }
+}
 
 void PathVm::set_player(ObjectHandle player) {
     if (!objects_->is_active(player)) {
@@ -144,15 +253,18 @@ void PathVm::set_path_offset(ObjectHandle object, std::uint16_t offset) {
 }
 
 std::uint8_t PathVm::read8(std::uint16_t offset) const {
-    return rom_->read8(paths_address_ + offset);
+    return rom_->read8(add_lorom_offset(paths_address_, offset));
 }
 
 std::uint16_t PathVm::read16(std::uint16_t offset) const {
-    return rom_->read16(paths_address_ + offset);
+    return static_cast<std::uint16_t>(read8(offset))
+        | (static_cast<std::uint16_t>(read8(
+               static_cast<std::uint16_t>(offset + 1U)))
+            << 8U);
 }
 
 std::int16_t PathVm::read_i16(std::uint16_t offset) const {
-    return rom_->read_i16(paths_address_ + offset);
+    return std::bit_cast<std::int16_t>(read16(offset));
 }
 
 std::uint8_t PathVm::chase_byte(std::uint8_t current, std::uint8_t target) const noexcept {
@@ -261,7 +373,8 @@ void PathVm::tick(ObjectHandle handle) {
         }
         auto& object = objects_->at(handle);
         auto pc = path_offset(handle);
-        const auto opcode = read8(pc);
+        const auto raw_opcode = read8(pc);
+        const auto opcode = opcode_translation_[raw_opcode];
         const auto advance = [&](std::uint16_t amount) {
             pc = static_cast<std::uint16_t>(pc + amount);
             set_path_offset(handle, pc);
@@ -713,10 +826,21 @@ void PathVm::tick(ObjectHandle handle) {
             continue;
         }
         case 123: case 124: case 125: case 126: {
-            // Import/export targets are 16-bit direct-page variables in bank 7e.
-            // The native-global memory bridge is added with the 65816 strategy VM;
-            // retain the exact instruction boundary until then.
-            unsupported_opcodes_.push_back(opcode);
+            const auto object_offset = read8(pc + 1U);
+            const auto global_address = read16(pc + 2U);
+            if (opcode == 123) {
+                objects_->write_path_byte(handle, object_offset,
+                    read_global_byte(global_address));
+            } else if (opcode == 124) {
+                objects_->write_path_word(handle, object_offset,
+                    read_global_word(global_address));
+            } else if (opcode == 125) {
+                write_global_byte(global_address,
+                    objects_->read_path_byte(handle, object_offset));
+            } else {
+                write_global_word(global_address,
+                    objects_->read_path_word(handle, object_offset));
+            }
             advance(4);
             continue;
         }
@@ -815,9 +939,18 @@ void PathVm::tick(ObjectHandle handle) {
             advance(1);
             move(handle);
             return;
+        case 167:
+            player_score_ = static_cast<std::uint16_t>(
+                player_score_ + read16(pc + 1U));
+            if (player_score_address_ != 0U) {
+                write_global_word(player_score_address_, player_score_);
+            }
+            advance(3);
+            continue;
         default:
-            unsupported_opcodes_.push_back(opcode);
-            throw std::runtime_error{"unsupported PATH opcode " + std::to_string(opcode)};
+            unsupported_opcodes_.push_back(raw_opcode);
+            throw std::runtime_error{"unsupported PATH opcode "
+                + std::to_string(raw_opcode)};
         }
     }
     throw std::runtime_error{"PATH bytecode exceeded the per-tick operation limit"};

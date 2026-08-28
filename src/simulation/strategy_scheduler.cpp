@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include <sstream>
 #include <string>
+#include <algorithm>
 
 namespace starfox::simulation {
 namespace {
@@ -103,6 +104,41 @@ StrategyTickStats NativeStrategyScheduler::tick_all() {
     }
     if (object != 0) {
         throw std::runtime_error{"native strategy list exceeded the per-tick execution limit"};
+    }
+    return result;
+}
+
+StrategyTickStats NativeStrategyScheduler::tick_all_no_objects(
+    std::span<const ObjectHandle> protected_objects) {
+    StrategyTickStats result;
+    auto object = objects_->first_active();
+    for (std::size_t guard = 0; object != 0 && guard < 4096; ++guard) {
+        const auto prior_next = objects_->next_active(object);
+        if (std::find(protected_objects.begin(), protected_objects.end(), object)
+                == protected_objects.end()) {
+            // Star Fox EX TRANS.ASM's NOOBJMODE branch deliberately skips
+            // DO_STRAT_L and calls REMOVEDEADAL_L immediately. Invoke that
+            // same source routine so the native linked lists, object pool,
+            // attachments and free list all change exactly as they do in ROM.
+            result.instructions += native_state_->call_native_object_routine(
+                remove_dead_, object);
+            ++result.objects_removed;
+        } else {
+            result.instructions += tick_object(object);
+            ++result.objects_run;
+            if (objects_->is_active(object)
+                && native_state_->read_native_byte(alien_dead_) != 0) {
+                result.instructions += native_state_->call_native_object_routine(
+                    remove_dead_, object);
+                ++result.objects_removed;
+            }
+        }
+
+        object = prior_next;
+    }
+    if (object != 0) {
+        throw std::runtime_error{
+            "native no-objects list exceeded the per-tick execution limit"};
     }
     return result;
 }

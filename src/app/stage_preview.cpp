@@ -114,7 +114,8 @@ int main(int argc, char** argv) {
         };
         const auto colour_symbol = [&symbols](const char* name) {
             for (const auto address : symbols.find(name)) {
-                if ((address >> 16U) == 0x03U) {
+                if ((address & 0xffffU) >= 0x8000U
+                    && ((address >> 16U) & 0xffU) < 0x70U) {
                     return static_cast<std::uint16_t>(address);
                 }
             }
@@ -154,6 +155,7 @@ int main(int argc, char** argv) {
             mario_symbol("M_DEPTHSTAB"));
         const auto depth_thresholds = game.map().read_native_word(
             mario_symbol("M_DEPTHTABLE"));
+        const auto depth_table_address = symbols.find("DEPTHTABLES").front();
         const auto special_colour = colour_symbol("ID_1_C");
         const auto red_colour = colour_symbol("RED_C");
         const auto white_colour = colour_symbol("WHITE_C");
@@ -272,7 +274,8 @@ int main(int argc, char** argv) {
                 static_cast<double>(camera_x), static_cast<double>(camera_y),
                 static_cast<double>(camera_z), static_cast<double>(camera_pitch),
                 static_cast<double>(camera_yaw), static_cast<double>(camera_roll)};
-            dust_renderer.draw(game.dust(), camera, view_matrix, framebuffer);
+            dust_renderer.draw(game.dust(), game.dust_point_count(),
+                camera, view_matrix, framebuffer);
         } else if (game.map().dots_mode() > 0) {
             const starfox::timing::RenderTransform camera{
                 static_cast<double>(camera_x), static_cast<double>(camera_y),
@@ -391,8 +394,9 @@ int main(int argc, char** argv) {
                 ? object.count : 0U;
             pose.texture_scroll_x = object.texture_scroll_x;
             pose.texture_scroll_y = object.texture_scroll_y;
-            starfox::render::apply_original_depth_tables(rom,
-                depth_thresholds, depth_colours, object.extended[21], pose);
+            starfox::render::apply_source_depth_tables(rom,
+                depth_table_address, depth_thresholds, depth_colours,
+                object.extended[21], pose);
             return pose;
         };
         if ((game.map().read_native_byte(ram_symbol("PLAYERFLYMODE")) & 0x08U) != 0U) {

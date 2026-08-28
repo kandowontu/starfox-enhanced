@@ -37,8 +37,10 @@ private:
     std::uint32_t null_shape_address_{};
     std::uint32_t texture_address_table_{};
     std::uint32_t texture_coordinate_table_{};
+    std::uint8_t colour_table_bank_{0x03U};
     DiffuseShadeTables diffuse_shade_tables_{};
     bool has_diffuse_shade_tables_{};
+    bool has_lod_pointers_{true};
 };
 
 } // namespace starfox::assets

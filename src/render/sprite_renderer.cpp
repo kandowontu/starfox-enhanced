@@ -174,13 +174,57 @@ void SpriteRenderer::draw_meters(
         ? HudOffset{} : (*hud_layout)[HudElement::shield];
     const auto boost = hud_layout == nullptr
         ? HudOffset{} : (*hud_layout)[HudElement::bombs_boost];
-    box(left_x + shield.x, 176 + shield.y, 40, 8, 13U);
-    solid(left_x + shield.x + 2, 178 + shield.y,
-        std::min<std::uint8_t>(meters.damage, 36U), 4,
-        meters.shield_up ? 7U : 2U);
-    box(right_x + boost.x, 176 + boost.y, 40, 8, 13U);
-    solid(right_x + boost.x + 2, 178 + boost.y,
-        std::min<std::uint8_t>(meters.boost, 36U), 4, 6U);
+    const auto boss = hud_layout == nullptr
+        ? HudOffset{} : (*hud_layout)[HudElement::boss_health];
+    if (meters.extended) {
+        const auto source_left_x = [anchor_to_edges](std::int32_t x) {
+            return x + (anchor_to_edges ? 16 : 0);
+        };
+        const auto source_right_x = [anchor_to_edges, &target](std::int32_t x) {
+            return anchor_to_edges
+                ? x + static_cast<std::int32_t>(target.width()) - 240
+                : x;
+        };
+        if (meters.boost_enabled) {
+            const auto x = (meters.player_two_activated
+                ? source_left_x(0) : source_right_x(176)) + boost.x;
+            box(x, 176 + boost.y, 40, 8, 13U);
+            solid(x + 2, 178 + boost.y,
+                std::min<std::uint8_t>(meters.boost, 36U), 4, 6U);
+        }
+        if (!meters.second_player_view) {
+            if (!meters.player_one_dead) {
+                const auto x = source_left_x(1) + shield.x;
+                const auto y = (meters.player_two_activated ? 7 : 180)
+                    + shield.y;
+                box(x, y, meters.player_health_width, 8, 13U);
+                solid(x + 2, y + 2,
+                    std::min(meters.damage, meters.player_health_max), 4,
+                    meters.shield_up ? 7U : 2U);
+            }
+            if (meters.damage_two != 0U) {
+                const auto x = source_right_x(115) + boost.x;
+                const auto y = 7 + boost.y;
+                box(x, y, meters.player_health_width, 8, 13U);
+                solid(x + 2, y + 2,
+                    std::min(meters.damage_two, meters.player_health_max), 4,
+                    meters.shield_up_two ? 7U : 2U);
+            } else if (meters.player_two_activated) {
+                const auto x = source_right_x(115) + boost.x;
+                const auto y = 7 + boost.y;
+                box(x, y, meters.player_health_width, 8, 11U);
+                solid(x + 2, y + 2, meters.player_health_max, 4, 0U);
+            }
+        }
+    } else {
+        box(left_x + shield.x, 176 + shield.y, 40, 8, 13U);
+        solid(left_x + shield.x + 2, 178 + shield.y,
+            std::min<std::uint8_t>(meters.damage, 36U), 4,
+            meters.shield_up ? 7U : 2U);
+        box(right_x + boost.x, 176 + boost.y, 40, 8, 13U);
+        solid(right_x + boost.x + 2, 178 + boost.y,
+            std::min<std::uint8_t>(meters.boost, 36U), 4, 6U);
+    }
 
     auto maximum = meters.boss_max_health;
     auto current = meters.boss_health;
@@ -191,13 +235,15 @@ void SpriteRenderer::draw_meters(
     const auto half_scale = (maximum & 0x80U) != 0U;
     auto meter_width = half_scale ? maximum >> 1U : maximum;
     meter_width = static_cast<std::uint8_t>(meter_width + 4U);
-    const auto boss_x = anchor_to_edges
+    const auto boss_x = (anchor_to_edges
         ? static_cast<std::int32_t>(target.width()) - 18
             - static_cast<std::int32_t>(meter_width)
-        : 222 - static_cast<std::int32_t>(meter_width);
-    box(boss_x, 2, meter_width, 6, 14U);
+        : 222 - static_cast<std::int32_t>(meter_width)) + boss.x;
+    const auto boss_y = (meters.extended && meters.player_two_activated
+        ? 178 : 2) + boss.y;
+    box(boss_x, boss_y, meter_width, 6, 14U);
     if (half_scale) current >>= 1U;
-    solid(boss_x + 2, 4, current, 2, 2U);
+    solid(boss_x + 2, boss_y + 2, current, 2, 2U);
 }
 
 } // namespace starfox::render

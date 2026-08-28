@@ -23,6 +23,9 @@ constexpr std::uint32_t kOriginalGameFrame = 0x001640U;
 constexpr std::uint32_t kOriginalBackgroundFlags = 0x001a16U;
 constexpr std::uint32_t kOriginalBackgroundDmaList = 0x001764U;
 constexpr std::uint32_t kOriginalCurrentBackground = 0x0017c6U;
+constexpr std::uint32_t kOriginalBackgroundMusicCount = 0x001a49U;
+constexpr std::uint32_t kOriginalBackgroundMusic = 0x001a4aU;
+constexpr std::uint32_t kOriginalPlayerShipFlags2 = 0x001562U;
 constexpr std::uint32_t kOriginalMapCount = 0x001780U;
 constexpr std::uint32_t kOriginalMapPointer = 0x001782U;
 constexpr std::uint32_t kOriginalLastPlayerZ = 0x001784U;
@@ -43,6 +46,16 @@ std::uint32_t rom_symbol(const assets::SymbolMap& symbols, const std::string& na
         }
     }
     throw std::runtime_error{"missing ROM symbol: " + name};
+}
+
+std::uint32_t symbol_or(const assets::SymbolMap* symbols,
+                        const std::string& name,
+                        std::uint32_t fallback) {
+    if (symbols != nullptr) {
+        const auto& addresses = symbols->find(name);
+        if (!addresses.empty()) return addresses.front();
+    }
+    return fallback;
 }
 
 std::int8_t signed_byte(std::uint8_t value) noexcept {
@@ -78,7 +91,70 @@ MapVm::MapVm(
     MapDatabase database,
     ObjectPool& objects,
     const assets::SymbolMap* symbols)
-    : rom_(&rom), database_(database), objects_(&objects), cpu_(rom, symbols) {}
+    : rom_(&rom),
+      database_(database),
+      objects_(&objects),
+      object_base_(static_cast<std::uint16_t>(
+          symbol_or(symbols, "ALBLKS", kOriginalObjectBase))),
+      object_size_(static_cast<std::uint16_t>(
+          symbol_or(symbols, "AL_SIZE", kOriginalObjectSize))),
+      object_count_(static_cast<std::uint16_t>(
+          symbol_or(symbols, "NUMBER_AL", kOriginalMaximumObjects))),
+      extended_object_bytes_(object_size_ == 57U ? 56U : 54U),
+      extended_object_base_(symbol_or(
+          symbols, "XALBLKS", kOriginalExtendedObjectBase)),
+      active_list_(symbol_or(symbols, "ALLST", kOriginalActiveList)),
+      free_list_(symbol_or(symbols, "ALFREELST", kOriginalFreeList)),
+      fade_direction_address_(symbol_or(
+          symbols, "FADEDIR", kOriginalFadeDirection)),
+      fade_address_(symbol_or(symbols, "FADE", kOriginalFade)),
+      display_address_(symbol_or(symbols, "XINIDISP1", kOriginalDisplay)),
+      game_frame_address_(symbol_or(symbols, "GAMEFRAME", kOriginalGameFrame)),
+      background_flags_address_(symbol_or(symbols, "BGFLAGS", kOriginalBackgroundFlags)),
+      background_dma_list_address_(symbol_or(
+          symbols, "BG_DMALIST", kOriginalBackgroundDmaList)),
+      current_background_address_(symbol_or(
+          symbols, "CURRENTBG", kOriginalCurrentBackground)),
+      background_music_count_address_(symbol_or(
+          symbols, "BGMCNT", kOriginalBackgroundMusicCount)),
+      background_music_address_(symbol_or(
+          symbols, "BGM_MUSIC", kOriginalBackgroundMusic)),
+      player_ship_flags_2_address_(symbol_or(
+          symbols, "PSHIPFLAGS2", kOriginalPlayerShipFlags2)),
+      map_count_address_(symbol_or(symbols, "MAPCNT", kOriginalMapCount)),
+      map_pointer_address_(symbol_or(symbols, "MAPPTR", kOriginalMapPointer)),
+      last_player_z_address_(symbol_or(symbols, "LASTPLAYZ", kOriginalLastPlayerZ)),
+      map_jsr_stack_address_(symbol_or(symbols, "MAPJSRSTK", kOriginalMapJsrStack)),
+      map_jsr_pointer_address_(symbol_or(symbols, "MAPJSRPTR", kOriginalMapJsrPointer)),
+      number_map_jsrs_address_(symbol_or(symbols, "NUMMAPJSR", kOriginalNumberMapJsrs)),
+      last_map_object_address_(symbol_or(symbols, "LASTMAPOBJ", kOriginalLastMapObject)),
+      dots_flag_address_(symbol_or(symbols, "DOTSFLAG", kOriginalDotsFlag)),
+      map_loops_address_(symbol_or(symbols, "MAPLOOPS", kOriginalMapLoops)),
+      map_addresses_address_(symbol_or(symbols, "MAPADDRS", kOriginalMapAddresses)),
+      number_map_loops_address_(symbol_or(symbols, "NUMMAPLOOPS", kOriginalNumberMapLoops)),
+      map_bank_address_(symbol_or(symbols, "MAPBANK", kOriginalMapBank)),
+      cpu_(rom, symbols) {
+    if (object_size_ != 56U && object_size_ != 57U) {
+        throw std::runtime_error{"unsupported native object record size"};
+    }
+    if (object_count_ != objects_->capacity()) {
+        throw std::runtime_error{"native object count does not match host object pool"};
+    }
+    if (symbols != nullptr) {
+        constexpr std::array names{
+            "SEND_MESSAGE_L", "SEND_MESSAGE2_L",
+            "SEND_MESSAGEX_L", "SEND_MESSAGEX2_L"};
+        for (std::size_t index = 0; index < names.size(); ++index) {
+            for (const auto address : symbols->find(names[index])) {
+                if ((address & 0xffffU) >= 0x8000U
+                    && ((address >> 16U) & 0xffU) < 0x7eU) {
+                    message_routines_[index] = address;
+                    break;
+                }
+            }
+        }
+    }
+}
 
 void MapVm::start(std::uint32_t address, ObjectHandle player) {
     if (player != 0 && !objects_->is_active(player)) {
@@ -114,7 +190,7 @@ std::int8_t MapVm::dots_mode() const noexcept {
     // a background declares ground, space, or neither. Reading the shared
     // source byte keeps those native transitions visible to the host renderer
     // instead of observing only explicit map-stream override controls.
-    return std::bit_cast<std::int8_t>(read_native_byte(kOriginalDotsFlag));
+    return std::bit_cast<std::int8_t>(read_native_byte(dots_flag_address_));
 }
 
 void MapVm::write_native_byte(std::uint32_t address, std::uint8_t value) {
@@ -128,20 +204,20 @@ void MapVm::write_native_word(std::uint32_t address, std::uint16_t value) {
 }
 
 void MapVm::sync_display_from_cpu() noexcept {
-    fade_direction_ = std::bit_cast<std::int8_t>(cpu_.read8(kOriginalFadeDirection));
-    fade_value_ = static_cast<std::uint8_t>(cpu_.read8(kOriginalFade) & 0x0fU);
-    const auto display = cpu_.read8(kOriginalDisplay);
+    fade_direction_ = std::bit_cast<std::int8_t>(cpu_.read8(fade_direction_address_));
+    fade_value_ = static_cast<std::uint8_t>(cpu_.read8(fade_address_) & 0x0fU);
+    const auto display = cpu_.read8(display_address_);
     screen_enabled_ = (display & 0x80U) == 0U;
     display_brightness_ = screen_enabled_
         ? static_cast<std::uint8_t>(display & 0x0fU) : 0U;
 }
 
 void MapVm::sync_display_to_cpu() {
-    write_native_byte(kOriginalFadeDirection,
+    write_native_byte(fade_direction_address_,
                       std::bit_cast<std::uint8_t>(fade_direction_));
-    write_native_byte(kOriginalFade, fade_value_);
+    write_native_byte(fade_address_, fade_value_);
     display_brightness_ = screen_enabled_ ? fade_value_ : 0U;
-    write_native_byte(kOriginalDisplay,
+    write_native_byte(display_address_,
         screen_enabled_ ? display_brightness_ : 0x80U);
 }
 
@@ -190,7 +266,7 @@ void MapVm::tick_video_phase() {
         // applying it once per presentation makes this fade three times too
         // fast and exposes the next screen's setup animation.
         if (fade_direction_ == -3) {
-            const auto game_frame = cpu_.read8(kOriginalGameFrame);
+            const auto game_frame = cpu_.read8(game_frame_address_);
             if ((game_frame & 1U) == 0U
                 || (slow_fade_frame_valid_ && slow_fade_frame_ == game_frame)) {
                 return;
@@ -229,7 +305,7 @@ void MapVm::complete_background_request() {
     // terminator before WORLD.ASM's waitsetbg can advance. The PC renderer
     // does not DMA SNES character/tile data, so completion is represented by
     // the transfer-side background routine returning.
-    write_native_word(kOriginalBackgroundDmaList, 0);
+    write_native_word(background_dma_list_address_, 0);
     if (!ended_ && rom_->read8(cursor_) == 100U) {
         ++cursor_;
         countdown_ = 0;
@@ -239,85 +315,85 @@ void MapVm::complete_background_request() {
 }
 
 void MapVm::sync_map_state_to_cpu() {
-    write_native_word(kOriginalMapCount, std::bit_cast<std::uint16_t>(countdown_));
-    write_native_word(kOriginalMapPointer,
+    write_native_word(map_count_address_, std::bit_cast<std::uint16_t>(countdown_));
+    write_native_word(map_pointer_address_,
                       static_cast<std::uint16_t>(cursor_ & 0x7fffU));
-    write_native_byte(kOriginalMapBank, static_cast<std::uint8_t>(cursor_ >> 16U));
-    write_native_word(kOriginalLastPlayerZ,
+    write_native_byte(map_bank_address_, static_cast<std::uint8_t>(cursor_ >> 16U));
+    write_native_word(last_player_z_address_,
                       std::bit_cast<std::uint16_t>(last_player_z_));
-    write_native_word(kOriginalLastMapObject,
+    write_native_word(last_map_object_address_,
                       original_object_pointer(last_spawned_));
 
     for (std::uint32_t offset = 0; offset < 15U * 3U; ++offset) {
-        write_native_byte(kOriginalMapJsrStack + offset, 0);
+        write_native_byte(map_jsr_stack_address_ + offset, 0);
     }
     const auto jsr_count = std::min<std::size_t>(call_stack_.size(), 15U);
     for (std::size_t index = 0; index < jsr_count; ++index) {
         const auto return_address = call_stack_[index];
         const auto call_address = return_address - 4U;
         const auto offset = static_cast<std::uint32_t>(index * 3U);
-        write_native_word(kOriginalMapJsrStack + offset,
+        write_native_word(map_jsr_stack_address_ + offset,
                           static_cast<std::uint16_t>(call_address & 0x7fffU));
-        write_native_byte(kOriginalMapJsrStack + offset + 2U,
+        write_native_byte(map_jsr_stack_address_ + offset + 2U,
                           static_cast<std::uint8_t>(call_address >> 16U));
     }
-    write_native_word(kOriginalMapJsrPointer,
+    write_native_word(map_jsr_pointer_address_,
                       static_cast<std::uint16_t>(jsr_count * 3U));
-    write_native_word(kOriginalNumberMapJsrs,
+    write_native_word(number_map_jsrs_address_,
                       static_cast<std::uint16_t>(jsr_count));
 
     for (std::uint32_t offset = 0; offset < 8U; ++offset) {
-        write_native_byte(kOriginalMapAddresses + offset, 0);
-        write_native_byte(kOriginalMapLoops + offset, 0);
+        write_native_byte(map_addresses_address_ + offset, 0);
+        write_native_byte(map_loops_address_ + offset, 0);
     }
     std::size_t loop_index = 0;
     for (const auto& [address, count] : loop_counters_) {
         if (loop_index == 4U) break;
         const auto offset = static_cast<std::uint32_t>(loop_index * 2U);
-        write_native_word(kOriginalMapAddresses + offset,
+        write_native_word(map_addresses_address_ + offset,
                           static_cast<std::uint16_t>(address & 0x7fffU));
-        write_native_word(kOriginalMapLoops + offset, count);
+        write_native_word(map_loops_address_ + offset, count);
         ++loop_index;
     }
-    write_native_word(kOriginalNumberMapLoops,
+    write_native_word(number_map_loops_address_,
                       static_cast<std::uint16_t>(loop_index * 2U));
-    write_native_word(kOriginalCurrentBackground, background_);
+    write_native_word(current_background_address_, background_);
 }
 
 void MapVm::restore_map_state_from_native() {
-    cursor_ = (static_cast<std::uint32_t>(read_native_byte(kOriginalMapBank)) << 16U)
-        | 0x8000U | (read_native_word(kOriginalMapPointer) & 0x7fffU);
-    countdown_ = std::bit_cast<std::int16_t>(read_native_word(kOriginalMapCount));
+    cursor_ = (static_cast<std::uint32_t>(read_native_byte(map_bank_address_)) << 16U)
+        | 0x8000U | (read_native_word(map_pointer_address_) & 0x7fffU);
+    countdown_ = std::bit_cast<std::int16_t>(read_native_word(map_count_address_));
     last_player_z_ = std::bit_cast<std::int16_t>(
-        read_native_word(kOriginalLastPlayerZ));
-    last_spawned_ = object_handle(read_native_word(kOriginalLastMapObject));
+        read_native_word(last_player_z_address_));
+    last_spawned_ = object_handle(read_native_word(last_map_object_address_));
     if (!objects_->is_active(last_spawned_)) last_spawned_ = 0;
-    background_ = read_native_word(kOriginalCurrentBackground);
+    background_ = read_native_word(current_background_address_);
     background_request_pending_ =
-        (read_native_byte(kOriginalBackgroundFlags) & 4U) != 0U;
+        (read_native_byte(background_flags_address_) & 4U) != 0U;
     ended_ = rom_->read8(cursor_) == 2U;
 
     call_stack_.clear();
     const auto jsr_bytes = std::min<std::uint16_t>(
-        read_native_word(kOriginalMapJsrPointer), 15U * 3U);
+        read_native_word(map_jsr_pointer_address_), 15U * 3U);
     for (std::uint16_t offset = 0; offset + 2U < jsr_bytes; offset += 3U) {
         const auto call_address =
             (static_cast<std::uint32_t>(read_native_byte(
-                 kOriginalMapJsrStack + offset + 2U)) << 16U)
+                 map_jsr_stack_address_ + offset + 2U)) << 16U)
             | 0x8000U
-            | (read_native_word(kOriginalMapJsrStack + offset) & 0x7fffU);
+            | (read_native_word(map_jsr_stack_address_ + offset) & 0x7fffU);
         call_stack_.push_back(call_address + 4U);
     }
 
     loop_counters_.clear();
     const auto loop_bytes = std::min<std::uint16_t>(
-        read_native_word(kOriginalNumberMapLoops), 8U);
+        read_native_word(number_map_loops_address_), 8U);
     const auto bank = cursor_ & 0xff0000U;
     for (std::uint16_t offset = 0; offset + 1U < loop_bytes; offset += 2U) {
-        const auto address = read_native_word(kOriginalMapAddresses + offset);
+        const auto address = read_native_word(map_addresses_address_ + offset);
         if (address == 0) continue;
         loop_counters_[bank | 0x8000U | (address & 0x7fffU)] =
-            read_native_word(kOriginalMapLoops + offset);
+            read_native_word(map_loops_address_ + offset);
     }
 }
 
@@ -374,6 +450,50 @@ std::size_t MapVm::call_native_near_routine(
     return instructions;
 }
 
+Wdc65816TaskResult MapVm::begin_native_task(
+    std::uint32_t address,
+    Wdc65816Registers& registers,
+    std::span<const std::uint32_t> stop_addresses,
+    std::size_t instruction_limit,
+    bool service_transfer_flag) {
+    sync_objects_to_cpu();
+    const auto result = cpu_.begin_long_task(address, registers,
+        stop_addresses, instruction_limit, service_transfer_flag);
+    sync_display_from_cpu();
+    return result;
+}
+
+Wdc65816TaskResult MapVm::begin_native_near_task(
+    std::uint32_t address,
+    Wdc65816Registers& registers,
+    std::span<const std::uint32_t> stop_addresses,
+    std::size_t instruction_limit,
+    bool service_transfer_flag) {
+    sync_objects_to_cpu();
+    const auto result = cpu_.begin_near_task(address, registers,
+        stop_addresses, instruction_limit, service_transfer_flag);
+    sync_objects_from_cpu();
+    sync_display_from_cpu();
+    return result;
+}
+
+Wdc65816TaskResult MapVm::resume_native_task(
+    Wdc65816Registers& registers,
+    std::span<const std::uint32_t> stop_addresses,
+    std::size_t instruction_limit,
+    bool service_transfer_flag,
+    bool sync_objects) {
+    const auto result = cpu_.resume_task(registers, stop_addresses,
+        instruction_limit, service_transfer_flag);
+    // Persistent front-end tasks deliberately borrow object-list scratch
+    // fields while stopped inside their frame loop. Only tasks such as the
+    // in-level END_LEVEL_SEQ, whose TRANSFER_L runs live strategies between
+    // yields, expose a settled gameplay object list that must be imported.
+    if (sync_objects) sync_objects_from_cpu();
+    sync_display_from_cpu();
+    return result;
+}
+
 void MapVm::advance_to_player_z(std::int16_t player_z) {
     const auto distance = subtract16(player_z, last_player_z_);
     last_player_z_ = player_z;
@@ -424,7 +544,7 @@ std::uint16_t MapVm::original_object_pointer(ObjectHandle handle) const noexcept
         return handle;
     }
     return static_cast<std::uint16_t>(
-        kOriginalObjectBase + static_cast<std::uint16_t>(handle - 1U) * kOriginalObjectSize);
+        object_base_ + static_cast<std::uint16_t>(handle - 1U) * object_size_);
 }
 
 ObjectHandle MapVm::object_handle(std::uint16_t pointer) const noexcept {
@@ -432,52 +552,91 @@ ObjectHandle MapVm::object_handle(std::uint16_t pointer) const noexcept {
     return objects_->is_active(handle) ? handle : pointer;
 }
 
-ObjectHandle MapVm::native_object_handle(std::uint16_t pointer) noexcept {
-    if (pointer < kOriginalObjectBase) {
+ObjectHandle MapVm::native_object_handle(std::uint16_t pointer) const noexcept {
+    if (pointer < object_base_) {
         return 0;
     }
-    const auto displacement = static_cast<std::uint16_t>(pointer - kOriginalObjectBase);
-    if (displacement % kOriginalObjectSize != 0) {
+    const auto displacement = static_cast<std::uint16_t>(pointer - object_base_);
+    if (displacement % object_size_ != 0) {
         return 0;
     }
-    const auto handle = static_cast<ObjectHandle>(displacement / kOriginalObjectSize + 1U);
-    return handle <= kMaximumObjects ? handle : 0;
+    const auto handle = static_cast<ObjectHandle>(displacement / object_size_ + 1U);
+    return handle <= object_count_ ? handle : 0;
+}
+
+std::uint8_t MapVm::read_native_object_byte(
+    ObjectHandle handle, std::uint16_t offset) const {
+    if (object_size_ == 56U || offset < 44U) {
+        return objects_->read_base_byte(handle, offset);
+    }
+    if (offset == 44U) return objects_->read_base_byte(handle, 45U);
+    if (offset == 45U) return objects_->read_base_byte(handle, 46U);
+    if (offset >= 46U && offset <= 52U) {
+        return objects_->read_base_byte(handle, static_cast<std::uint16_t>(offset + 1U));
+    }
+    if (offset == 53U) return objects_->read_base_byte(handle, 44U);
+    if (offset == 54U) return objects_->at(handle).open_al;
+    if (offset >= 55U && offset <= 56U) {
+        return objects_->read_base_byte(handle, static_cast<std::uint16_t>(offset - 1U));
+    }
+    throw std::out_of_range{"native object byte offset is outside al_size"};
+}
+
+void MapVm::write_native_object_byte(
+    ObjectHandle handle, std::uint16_t offset, std::uint8_t value) {
+    if (object_size_ == 56U || offset < 44U) {
+        objects_->write_base_byte(handle, offset, value);
+    } else if (offset == 44U) {
+        objects_->write_base_byte(handle, 45U, value);
+    } else if (offset == 45U) {
+        objects_->write_base_byte(handle, 46U, value);
+    } else if (offset >= 46U && offset <= 52U) {
+        objects_->write_base_byte(handle, static_cast<std::uint16_t>(offset + 1U), value);
+    } else if (offset == 53U) {
+        objects_->write_base_byte(handle, 44U, value);
+    } else if (offset == 54U) {
+        objects_->at(handle).open_al = value;
+    } else if (offset >= 55U && offset <= 56U) {
+        objects_->write_base_byte(handle, static_cast<std::uint16_t>(offset - 1U), value);
+    } else {
+        throw std::out_of_range{"native object byte offset is outside al_size"};
+    }
 }
 
 void MapVm::sync_objects_to_cpu() {
     const auto active = objects_->active_handles();
     const auto free = objects_->free_handles();
-    cpu_.write16(kOriginalActiveList,
+    cpu_.write16(active_list_,
                  active.empty() ? 0U : original_object_pointer(active.front()));
-    cpu_.write16(kOriginalFreeList,
+    cpu_.write16(free_list_,
                  free.empty() ? 0U : static_cast<std::uint16_t>(
-                     kOriginalObjectBase + (free.front() - 1U) * kOriginalObjectSize));
+                     object_base_ + (free.front() - 1U) * object_size_));
     for (std::size_t index = 0; index < active.size(); ++index) {
         const auto handle = active[index];
         const auto base = static_cast<std::uint32_t>(original_object_pointer(handle));
-        const auto extended_base = kOriginalExtendedObjectBase
-            + static_cast<std::uint32_t>(handle - 1U) * kOriginalObjectSize;
+        const auto extended_base = extended_object_base_
+            + static_cast<std::uint32_t>(handle - 1U) * object_size_;
         cpu_.write16(base, index + 1U < active.size()
             ? original_object_pointer(active[index + 1U]) : 0U);
         cpu_.write16(base + 2U, index != 0
             ? original_object_pointer(active[index - 1U]) : 0U);
-        for (std::uint16_t offset = 4; offset < kOriginalObjectSize; ++offset) {
-            cpu_.write8(base + offset, objects_->read_base_byte(handle, offset));
+        for (std::uint16_t offset = 4; offset < object_size_; ++offset) {
+            cpu_.write8(base + offset, read_native_object_byte(handle, offset));
         }
         const auto& object = objects_->at(handle);
         cpu_.write16(base + 6U, original_object_pointer(object.attached));
         cpu_.write16(base + 25U, original_object_pointer(object.immune_object));
         cpu_.write16(base + 27U, original_object_pointer(object.collision_object));
-        for (std::size_t offset = 0; offset < kExtendedObjectBytes; ++offset) {
+        for (std::size_t offset = 0; offset < extended_object_bytes_; ++offset) {
             cpu_.write8(extended_base + offset, object.extended[offset]);
         }
         cpu_.write16(extended_base + 19U, original_object_pointer(object.fire_object));
     }
     for (std::size_t index = 0; index < free.size(); ++index) {
         const auto base = static_cast<std::uint32_t>(
-            kOriginalObjectBase + (free[index] - 1U) * kOriginalObjectSize);
+            object_base_ + (free[index] - 1U) * object_size_);
         const auto next = index + 1U == free.size() ? 0U : static_cast<std::uint16_t>(
-            kOriginalObjectBase + (free[index + 1U] - 1U) * kOriginalObjectSize);
+            object_base_ + (free[index + 1U] - 1U) * object_size_);
         cpu_.write16(base, next);
     }
 }
@@ -497,24 +656,24 @@ void MapVm::sync_objects_from_cpu() {
         }
         return result;
     };
-    auto active = read_list(cpu_.read16(kOriginalActiveList));
-    auto free = read_list(cpu_.read16(kOriginalFreeList));
-    if (active.size() + free.size() != kMaximumObjects) {
+    auto active = read_list(cpu_.read16(active_list_));
+    auto free = read_list(cpu_.read16(free_list_));
+    if (active.size() + free.size() != object_count_) {
         throw std::runtime_error{"native active/free lists do not cover the object pool"};
     }
     objects_->restore_lists(active, free);
     for (const auto handle : objects_->active_handles()) {
         const auto base = static_cast<std::uint32_t>(original_object_pointer(handle));
-        const auto extended_base = kOriginalExtendedObjectBase
-            + static_cast<std::uint32_t>(handle - 1U) * kOriginalObjectSize;
-        for (std::uint16_t offset = 4; offset < kOriginalObjectSize; ++offset) {
-            objects_->write_base_byte(handle, offset, cpu_.read8(base + offset));
+        const auto extended_base = extended_object_base_
+            + static_cast<std::uint32_t>(handle - 1U) * object_size_;
+        for (std::uint16_t offset = 4; offset < object_size_; ++offset) {
+            write_native_object_byte(handle, offset, cpu_.read8(base + offset));
         }
         auto& object = objects_->at(handle);
         object.attached = object_handle(cpu_.read16(base + 6U));
         object.immune_object = object_handle(cpu_.read16(base + 25U));
         object.collision_object = object_handle(cpu_.read16(base + 27U));
-        for (std::size_t offset = 0; offset < kExtendedObjectBytes; ++offset) {
+        for (std::size_t offset = 0; offset < extended_object_bytes_; ++offset) {
             objects_->write_path_byte(handle, static_cast<std::uint8_t>(0x80U + offset),
                                       cpu_.read8(extended_base + offset));
         }
@@ -681,6 +840,15 @@ void MapVm::execute_ready_records() {
         }
         if (opcode == 20) {
             background_music_ = rom_->read8(cursor_ + 1U);
+            // WORLD.ASM setbgmdo updates the live IRQ music handshake unless
+            // the player has already reached zero HP.  Keeping only the host
+            // diagnostic field made every in-level setbgm silently inert.
+            if ((read_native_byte(player_ship_flags_2_address_) & 0x80U)
+                == 0U) {
+                write_native_byte(background_music_address_,
+                    background_music_);
+                write_native_byte(background_music_count_address_, 0U);
+            }
             cursor_ += 2U;
             continue;
         }
@@ -722,16 +890,16 @@ void MapVm::execute_ready_records() {
         }
         if (opcode == 16) {
             background_ = rom_->read16(cursor_ + 1U);
-            write_native_word(kOriginalCurrentBackground, background_);
-            write_native_byte(kOriginalBackgroundFlags,
-                static_cast<std::uint8_t>(read_native_byte(kOriginalBackgroundFlags) | 4U));
+            write_native_word(current_background_address_, background_);
+            write_native_byte(background_flags_address_,
+                static_cast<std::uint8_t>(read_native_byte(background_flags_address_) | 4U));
             background_request_pending_ = true;
             cursor_ += 3U;
             continue;
         }
         if (opcode == 22 || opcode == 24 || opcode == 26) {
             dots_mode_ = opcode == 22 ? 0 : opcode == 24 ? 1 : -1;
-            write_native_word(kOriginalDotsFlag,
+            write_native_word(dots_flag_address_,
                 static_cast<std::uint16_t>(static_cast<std::int16_t>(dots_mode_)));
             cursor_ += 1U;
             continue;
@@ -930,8 +1098,8 @@ void MapVm::execute_ready_records() {
         }
         if (opcode == 98) {
             background_ = rom_->read16(cursor_ + 2U);
-            write_native_word(kOriginalCurrentBackground, background_);
-            write_native_word(kOriginalBackgroundDmaList, background_);
+            write_native_word(current_background_address_, background_);
+            write_native_word(background_dma_list_address_, background_);
             cursor_ += 4U;
             continue;
         }
@@ -944,8 +1112,8 @@ void MapVm::execute_ready_records() {
             continue;
         }
         if (opcode == 102) {
-            write_native_byte(kOriginalBackgroundFlags,
-                static_cast<std::uint8_t>(read_native_byte(kOriginalBackgroundFlags) | 8U));
+            write_native_byte(background_flags_address_,
+                static_cast<std::uint8_t>(read_native_byte(background_flags_address_) | 8U));
             cursor_ += 1U;
             continue;
         }
@@ -978,8 +1146,20 @@ void MapVm::execute_ready_records() {
             execute_mapcode_jsl();
             continue;
         }
-        if (opcode == 130) {
-            messages_.push_back(rom_->read8(cursor_ + 1U));
+        if (opcode == 130 || opcode == 142
+            || opcode == 144 || opcode == 146) {
+            const auto message = rom_->read8(cursor_ + 1U);
+            messages_.push_back(message);
+            const auto routine_index = opcode == 130 ? 0U
+                : opcode == 142 ? 1U : opcode == 144 ? 2U : 3U;
+            const auto routine = message_routines_[routine_index];
+            if (routine != 0U) {
+                Wdc65816Registers registers;
+                registers.a = message;
+                registers.status = 0x24U;
+                static_cast<void>(call_native_routine(
+                    routine, registers, 5'000'000, true));
+            }
             cursor_ += 2U;
             continue;
         }
@@ -994,7 +1174,7 @@ void MapVm::execute_ready_records() {
         const auto fixed_size = [opcode]() -> std::uint32_t {
             switch (opcode) {
             case 136: return 2;
-            case 28: case 130: return 2;
+            case 28: case 130: case 142: case 144: case 146: return 2;
             default: return 0;
             }
         }();

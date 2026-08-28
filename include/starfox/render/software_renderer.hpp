@@ -24,6 +24,22 @@ struct RenderPose {
     std::uint32_t colour_frame{};
     std::int32_t texture_scroll_x{};
     std::int32_t texture_scroll_y{};
+    // Star Fox EX's M_WIREMODE selects the MDRAWP scanline path: 0 is the
+    // retail fill, 1 is hlines23/mhlines3 wireframe, and 2 retains fills until
+    // an asymmetric edge transition enters the source's missing-poly path.
+    std::uint8_t wireframe_mode{};
+    // EX NAN modes 6-9 select the deliberately broken/wavy/cel variants in
+    // MDRAWP.MC. The wave phase combines M_SINEOFFSET with M_FRAMENUM.
+    std::uint8_t wobble_mode{};
+    bool wave_mode{};
+    bool cel_mode{};
+    std::int16_t wave_offset{};
+    // EX's secret COLOR WARP option bypasses the model colour table in
+    // MDO_COLOUR_NG and feeds its register PRNG word into the ordinary
+    // material decoder.  M_PROJPNTS is the register seed at the start of a
+    // normal face pass; retain it as data because EX moves that work buffer.
+    bool colour_warp{};
+    std::uint16_t projected_points_address{0x0b9fU};
     // afexp/al_count: MOBJ offsets each face along its signed normal as the
     // destroyed model breaks apart.
     std::uint8_t explosion_progress{};
@@ -49,8 +65,9 @@ struct RenderPose {
     bool collapse_to_axis_line{};
 };
 
-void apply_original_depth_tables(
+void apply_source_depth_tables(
     const assets::RomImage& rom,
+    std::uint32_t depth_table_address,
     std::uint16_t threshold_pointer,
     std::uint16_t colour_pointer,
     std::uint8_t object_depth_offset,

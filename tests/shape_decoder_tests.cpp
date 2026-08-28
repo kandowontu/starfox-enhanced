@@ -1,5 +1,6 @@
 #include "starfox/assets/rom.hpp"
 #include "starfox/assets/shape_decoder.hpp"
+#include "starfox/render/dust_renderer.hpp"
 #include "starfox/render/framebuffer.hpp"
 #include "starfox/render/software_renderer.hpp"
 
@@ -206,6 +207,8 @@ int main() {
         "memory-backed symbol parsing diverged from file parsing");
 
     const auto rom = make_rom();
+    require(rom.read8(0x2d0000U) == 0U,
+        "transient banked-null LoROM read did not behave as open bus");
     const starfox::assets::ShapeDecoder decoder{rom};
     const auto shape = decoder.decode(0x008100, "triangle");
     require(shape.vertices.size() == 3, "point stream did not decode three vertices");
@@ -232,6 +235,124 @@ int main() {
         coloured_pixels += pixel != 0;
     }
     require(coloured_pixels > 50, "decoded shape did not render a visible polygon");
+    starfox::render::Framebuffer wireframe{224, 192};
+    starfox::render::RenderPose wireframe_pose;
+    wireframe_pose.wireframe_mode = 1U;
+    renderer.draw(shape, wireframe_pose, wireframe);
+    const auto wireframe_pixels = std::count_if(wireframe.pixels().begin(),
+        wireframe.pixels().end(), [](std::uint8_t pixel) { return pixel != 0U; });
+    require(wireframe_pixels > 0U && wireframe_pixels < coloured_pixels,
+            "EX hlines23 wireframe path did not replace polygon interiors");
+    starfox::render::Framebuffer missing_polys{224, 192};
+    auto missing_polys_pose = wireframe_pose;
+    missing_polys_pose.wireframe_mode = 2U;
+    renderer.draw(shape, missing_polys_pose, missing_polys);
+    require(missing_polys.pixels() == framebuffer.pixels(),
+            "EX M_WIREMODE 2 changed a polygon without an asymmetric edge");
+
+    auto ex_effect_shape = shape;
+    ex_effect_shape.bsp_root_address = 0U;
+    ex_effect_shape.frames.clear();
+    ex_effect_shape.vertices = {
+        {0, -30, 0}, {-30, 0, 0}, {0, 30, 0}, {30, 30, 0},
+    };
+    ex_effect_shape.faces[0].visibility_index = -1;
+    ex_effect_shape.faces[0].vertex_indices = {0, 1, 2, 3};
+    starfox::render::Framebuffer ex_effect_fill{224, 192};
+    renderer.draw(ex_effect_shape, {}, ex_effect_fill);
+    const auto ex_effect_fill_count = std::count_if(
+        ex_effect_fill.pixels().begin(), ex_effect_fill.pixels().end(),
+        [](std::uint8_t pixel) { return pixel != 0U; });
+
+    starfox::render::RenderPose missing_edge_pose;
+    missing_edge_pose.wireframe_mode = 2U;
+    starfox::render::Framebuffer missing_edge_frame{224, 192};
+    renderer.draw(ex_effect_shape, missing_edge_pose, missing_edge_frame);
+    const auto missing_edge_count = std::count_if(
+        missing_edge_frame.pixels().begin(), missing_edge_frame.pixels().end(),
+        [](std::uint8_t pixel) { return pixel != 0U; });
+    require(missing_edge_count > 0U
+                && missing_edge_count < ex_effect_fill_count,
+            "EX M_WIREMODE 2 missed its left-only edge continuation");
+
+    starfox::render::RenderPose cel_pose;
+    cel_pose.cel_mode = true;
+    starfox::render::Framebuffer cel_frame{224, 192};
+    renderer.draw(ex_effect_shape, cel_pose, cel_frame);
+    const auto cel_count = std::count_if(cel_frame.pixels().begin(),
+        cel_frame.pixels().end(), [](std::uint8_t pixel) { return pixel != 0U; });
+    require(cel_count > 0U && cel_count < ex_effect_fill_count,
+            "EX NAN cel mode did not omit the source span endpoints");
+
+    starfox::render::RenderPose wave_pose;
+    wave_pose.wave_mode = true;
+    wave_pose.wave_offset = 3;
+    wave_pose.animation_frame = 5U;
+    starfox::render::Framebuffer wave_frame{224, 192};
+    renderer.draw(ex_effect_shape, wave_pose, wave_frame);
+    require(wave_frame.pixels() != ex_effect_fill.pixels(),
+            "EX NAN wave mode did not displace polygon scanlines");
+
+    starfox::render::RenderPose wobble_one_pose;
+    wobble_one_pose.wobble_mode = 1U;
+    starfox::render::Framebuffer wobble_one_frame{224, 192};
+    renderer.draw(ex_effect_shape, wobble_one_pose, wobble_one_frame);
+    const auto wobble_one_count = std::count_if(
+        wobble_one_frame.pixels().begin(), wobble_one_frame.pixels().end(),
+        [](std::uint8_t pixel) { return pixel != 0U; });
+    require(wobble_one_count > 0U
+                && wobble_one_count < ex_effect_fill_count,
+            "EX NAN wobble mode 1 did not repeat its trapezoid on one row");
+
+    starfox::render::RenderPose wobble_two_pose;
+    wobble_two_pose.wobble_mode = 2U;
+    starfox::render::Framebuffer wobble_two_frame{224, 192};
+    renderer.draw(ex_effect_shape, wobble_two_pose, wobble_two_frame);
+    const auto wobble_two_count = std::count_if(
+        wobble_two_frame.pixels().begin(), wobble_two_frame.pixels().end(),
+        [](std::uint8_t pixel) { return pixel != 0U; });
+    require(wobble_two_count > 0U
+                && wobble_two_count < ex_effect_fill_count,
+            "EX NAN wobble mode 2 did not use its blank-span scan loop");
+
+    starfox::render::RenderPose colour_warp_pose;
+    colour_warp_pose.colour_warp = true;
+    colour_warp_pose.projected_points_address = 0x0b9fU;
+    starfox::render::Framebuffer colour_warp_frame{224, 192};
+    renderer.draw(ex_effect_shape, colour_warp_pose, colour_warp_frame);
+    require(colour_warp_frame.pixels() != ex_effect_fill.pixels(),
+            "EX COLOR WARP did not bypass the model colour table");
+    starfox::render::Framebuffer repeated_colour_warp_frame{224, 192};
+    renderer.draw(ex_effect_shape, colour_warp_pose,
+        repeated_colour_warp_frame);
+    require(repeated_colour_warp_frame.pixels()
+                == colour_warp_frame.pixels(),
+            "EX COLOR WARP changed between presentations of one source state");
+
+    const auto dust_symbols = starfox::assets::SymbolMap::parse(
+        "STAR_COLS $018300\n");
+    const starfox::render::DustRenderer dust_renderer{rom, dust_symbols};
+    const starfox::timing::RenderTransform grid_camera{};
+    const starfox::simulation::MatrixQ15 identity_matrix{
+        32'767, 0, 0,
+        0, 32'767, 0,
+        0, 0, 32'767,
+    };
+    starfox::render::Framebuffer grid_points{224, 192};
+    dust_renderer.draw_grid(grid_camera, identity_matrix, grid_points);
+    starfox::render::Framebuffer grid_lines{224, 192};
+    dust_renderer.draw_grid_lines(
+        grid_camera, identity_matrix, 17U, grid_lines);
+    require(std::count_if(grid_lines.pixels().begin(), grid_lines.pixels().end(),
+                [](std::uint8_t pixel) { return pixel != 0U; })
+            > std::count_if(grid_points.pixels().begin(), grid_points.pixels().end(),
+                [](std::uint8_t pixel) { return pixel != 0U; }),
+            "EX GRID LINES did not connect the source ground points");
+    starfox::render::Framebuffer repeated_grid_lines{224, 192};
+    dust_renderer.draw_grid_lines(
+        grid_camera, identity_matrix, 17U, repeated_grid_lines);
+    require(repeated_grid_lines.pixels() == grid_lines.pixels(),
+            "EX GRID LINES changed during repeated high-FPS presentations");
     starfox::render::Framebuffer alternate_frame{224, 192};
     starfox::render::RenderPose alternate_pose;
     alternate_pose.colour_frame = 1;

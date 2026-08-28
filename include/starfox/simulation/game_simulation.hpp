@@ -12,6 +12,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <array>
+#include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -27,6 +29,7 @@ struct GameTickResult {
 enum class GameFlowState {
     pregame_menu,
     title,
+    ex_pregame_menu,
     intro,
     controls_type,
     controls_choice,
@@ -44,6 +47,11 @@ enum class GameFlowState {
 enum class TimingMode {
     unlocked_20_fps,
     original_speed,
+};
+
+enum class Experience {
+    original,
+    starfox_ex,
 };
 
 enum class DisplayMode {
@@ -77,6 +85,15 @@ struct MeterState {
     bool enabled{};
     std::uint8_t boss_health{};
     std::uint8_t boss_max_health{};
+    bool extended{};
+    bool boost_enabled{true};
+    bool player_two_activated{};
+    bool second_player_view{};
+    bool player_one_dead{};
+    std::uint8_t damage_two{};
+    bool shield_up_two{};
+    std::uint8_t player_health_width{40U};
+    std::uint8_t player_health_max{36U};
 };
 
 struct CircleEffectState {
@@ -90,10 +107,18 @@ struct CircleEffectState {
     std::uint8_t affected_layers{};
 };
 
+struct WindowWipeState {
+    bool active{};
+    std::uint8_t logic{};
+    std::array<std::uint16_t, 192> left{};
+    std::array<std::uint16_t, 192> right{};
+};
+
 struct DialogueState {
     bool active{};
     bool text_visible{};
     bool three_lines{};
+    bool alternate_portraits{};
     std::uint8_t portrait_frame{};
     std::uint32_t text_address{};
 };
@@ -126,6 +151,19 @@ struct PlanetPresentationState {
     std::uint8_t portrait_brightness{};
 };
 
+// One 20 Hz sample of the physical PC mouse. Star Fox EX consumes controller
+// port 2 as either a Super NES Mouse or Super Scope. Relative movement is
+// converted to the SNES Mouse sign/magnitude packet; the accumulated 8-bit
+// position and the same physical button bits feed the Scope's light latch.
+// Buttons are bit 0=left, bit 1=right, bit 2=middle, bit 3=side/turbo.
+struct MouseInputState {
+    std::int16_t delta_x{};
+    std::int16_t delta_y{};
+    std::uint8_t buttons{};
+    std::uint8_t scope_x{0x8aU};
+    std::uint8_t scope_y{0x62U};
+};
+
 // A deterministic 20 Hz game-state shell around the original player/map/
 // strategy data. Presentation deliberately lives outside this class.
 class GameSimulation {
@@ -133,7 +171,8 @@ public:
     GameSimulation(
         const assets::RomImage& rom,
         const assets::SymbolMap& symbols,
-        const std::string& initial_map = "LEVEL1_1");
+        const std::string& initial_map = "LEVEL1_1",
+        std::span<const std::uint8_t> cartridge_ram = {});
 
     [[nodiscard]] GameTickResult tick(const input::TickInput& input);
     void present_frame();
@@ -150,6 +189,7 @@ public:
     [[nodiscard]] MapVm& map() noexcept { return map_; }
     [[nodiscard]] const ParticleSystem& particles() const noexcept { return particles_; }
     [[nodiscard]] const DustSystem& dust() const noexcept { return dust_; }
+    [[nodiscard]] std::size_t dust_point_count() const noexcept;
     [[nodiscard]] const std::vector<ObjectHandle>& draw_order() const noexcept {
         return draw_order_;
     }
@@ -157,6 +197,8 @@ public:
     [[nodiscard]] GameFlowState flow_state() const noexcept { return flow_state_; }
     [[nodiscard]] TimingMode timing_mode() const noexcept { return timing_mode_; }
     void set_timing_mode(TimingMode mode) noexcept { timing_mode_ = mode; }
+    [[nodiscard]] Experience experience() const noexcept { return experience_; }
+    void set_experience(Experience experience) noexcept { experience_ = experience; }
     [[nodiscard]] DisplayMode display_mode() const noexcept { return display_mode_; }
     void set_display_mode(DisplayMode mode) noexcept { display_mode_ = mode; }
     [[nodiscard]] std::uint16_t presentation_fps() const noexcept {
@@ -172,6 +214,9 @@ public:
         return pregame_page_;
     }
     [[nodiscard]] bool god_mode() const noexcept { return god_mode_; }
+    [[nodiscard]] std::uint8_t model_scale_multiplier() const noexcept;
+    [[nodiscard]] std::optional<std::uint16_t>
+        model_colour_table_override() const noexcept;
     void set_god_mode(bool enabled) noexcept { god_mode_ = enabled; }
     [[nodiscard]] bool show_fps() const noexcept { return show_fps_; }
     void set_show_fps(bool enabled) noexcept { show_fps_ = enabled; }
@@ -180,6 +225,20 @@ public:
     }
     void set_crosshair_colour(CrosshairColour colour) noexcept {
         crosshair_colour_ = colour;
+    }
+    void set_secondary_inputs(
+        std::span<const input::TickInput> controllers) noexcept;
+    void set_mouse_input(MouseInputState mouse) noexcept {
+        mouse_input_ = mouse;
+    }
+    [[nodiscard]] bool ex_mouse_control_enabled() const noexcept;
+    [[nodiscard]] bool ex_scope_control_enabled() const noexcept;
+    [[nodiscard]] bool ex_pointing_control_enabled() const noexcept {
+        return ex_mouse_control_enabled() || ex_scope_control_enabled();
+    }
+    void set_ntt_input(std::uint16_t held) noexcept { ntt_input_ = held; }
+    [[nodiscard]] std::span<const std::uint8_t> ex_save_ram() const noexcept {
+        return map_.cartridge_ram();
     }
     [[nodiscard]] bool logic_tick_ready() const noexcept;
     [[nodiscard]] double logic_interpolation_alpha(
@@ -190,6 +249,7 @@ public:
     [[nodiscard]] bool paused() const noexcept { return paused_; }
     [[nodiscard]] MeterState meter_state() const noexcept;
     [[nodiscard]] CircleEffectState circle_effect_state() const noexcept;
+    [[nodiscard]] WindowWipeState window_wipe_state() const noexcept;
     [[nodiscard]] DialogueState dialogue_state() const noexcept;
     [[nodiscard]] StageResultsState stage_results_state() const noexcept;
     [[nodiscard]] BriefingState briefing_state() const noexcept;
@@ -200,6 +260,7 @@ private:
         none,
         pregame_fade_to_intro,
         title_fade_to_controls,
+        title_fade_to_ex_model_test,
         title_fade_to_intro,
         intro_final_hold,
         intro_fade_to_title,
@@ -228,6 +289,7 @@ private:
     void calculate_view();
     [[nodiscard]] std::size_t update_view_flags_and_cull();
     void calculate_meters();
+    void draw_ex_transfer_overlay(GameTickResult& result);
     void service_audio_irq(std::vector<std::uint8_t>& commands);
     void configure_route_for_map(const std::string& symbol);
     [[nodiscard]] std::uint32_t resolve_route_stage(std::uint16_t stage);
@@ -236,11 +298,13 @@ private:
     void enter_pregame_menu();
     void enter_continue_screen();
     void enter_title();
+    void enter_ex_pregame_menu(bool model_test = false);
     void enter_intro();
     void update_continue_sprites();
     void enter_credits();
     void continue_current_stage();
     void start_initial_route();
+    void select_planet_campaign(bool second_map);
     void enter_planet_map(bool selecting_route, std::uint32_t pending_map = 0U);
     void animate_planet_frame(bool advance_rotation = true);
     void advance_planet_rotation();
@@ -251,6 +315,8 @@ private:
     [[nodiscard]] std::uint32_t selected_route_stage(std::uint16_t stage);
     [[nodiscard]] GameTickResult tick_planet_map(const input::TickInput& input);
     [[nodiscard]] GameTickResult tick_pregame_menu(const input::TickInput& input);
+    [[nodiscard]] GameTickResult tick_ex_pregame_menu(
+        const input::TickInput& input);
     [[nodiscard]] GameTickResult tick_continue_screen(const input::TickInput& input);
     [[nodiscard]] GameTickResult tick_stage_results(const input::TickInput& input);
     void finish_stage_results();
@@ -267,6 +333,7 @@ private:
     void enter_training();
     void update_control_screen_sprites();
     void initialize_native_map(std::uint32_t address);
+    void initialize_ex_save_ram(std::span<const std::uint8_t> cartridge_ram);
     void apply_god_mode_state();
     void service_god_nuke(const input::TickInput& input,
         const std::vector<ObjectHandle>& nukes_before_strategies);
@@ -290,7 +357,37 @@ private:
     std::uint32_t last_controller_low_{};
     std::uint32_t trigger_{};
     std::uint32_t hardware_controller_{};
+    std::uint32_t ex_controller_2_high_{};
+    std::uint32_t ex_controller_2_low_{};
+    std::uint32_t ex_previous_controller_2_high_{};
+    std::uint32_t ex_trigger_2_{};
+    std::uint32_t ex_hardware_controller_2_{};
+    std::uint32_t ex_last_controller_2_high_{};
+    std::uint32_t ex_last_controller_2_low_{};
+    std::uint32_t ex_multitap_mode_{};
+    std::uint32_t ex_number_players_{};
+    std::array<std::uint32_t, 5> ex_multitap_controllers_{};
+    std::array<std::uint32_t, 3> ex_last_multitap_controllers_{};
+    std::uint32_t ex_mouse_mode_{};
+    std::uint32_t ex_mouse_connected_{};
+    std::uint32_t ex_mouse_y_{};
+    std::uint32_t ex_mouse_x_{};
+    std::uint32_t ex_mouse_buttons_{};
+    std::uint32_t ex_mouse_trigger_{};
+    std::uint32_t ex_mouse_previous_buttons_{};
+    std::uint32_t ex_scope_mode_{};
+    std::uint32_t ex_scope_no_latch_{};
+    std::uint32_t ex_scope_held_{};
+    std::uint32_t ex_scope_new_{};
+    std::uint32_t ex_scope_previous_{};
+    std::uint32_t ex_scope_horizontal_{};
+    std::uint32_t ex_scope_vertical_{};
+    std::uint32_t ex_ntt_mode_{};
+    std::uint32_t ex_ntt_read_{};
+    std::uint32_t ex_ntt_trigger_{};
+    std::uint32_t ex_ntt_previous_{};
     std::uint32_t game_palette_{};
+    std::uint32_t ppu_palette_{};
     std::uint32_t sound_read_{};
     std::uint32_t sound_write_{};
     std::uint32_t sound_buffer_{};
@@ -304,6 +401,7 @@ private:
     std::uint32_t boss_flags_{};
     std::uint32_t player_strategy_flags_{};
     std::uint32_t doing_wipe_{};
+    std::uint32_t do_a_wipe_{};
     std::uint32_t stay_black_{};
     std::uint32_t background_music_count_{};
     std::uint32_t background_music_command_{};
@@ -323,7 +421,9 @@ private:
     std::uint32_t fade_palette_{};
     std::uint32_t do_sprites_{};
     std::uint32_t do_circle_explosion_{};
+    std::uint32_t do_window_wipe_{};
     std::uint32_t friends_messages_{};
+    std::uint32_t friends_messages_2_{};
     std::uint32_t generate_collision_list_{};
     std::uint32_t resolve_collisions_{};
     std::uint32_t restart_{};
@@ -336,6 +436,7 @@ private:
     std::uint32_t stage_{};
     std::uint32_t routes_{};
     std::uint32_t which_route_{};
+    std::uint32_t actual_route_{};
     std::uint32_t current_planet_{};
     std::uint32_t current_level_{};
     std::uint32_t new_map_{};
@@ -343,6 +444,8 @@ private:
     std::uint32_t stage_paths_{};
     std::uint32_t initialize_game_{};
     std::uint32_t initialize_all_{};
+    std::uint32_t initialize_all_2_{};
+    std::uint32_t first_download_{};
     std::uint32_t controls_map_{};
     std::uint32_t training_map_{};
     std::uint32_t initialize_planets_{};
@@ -360,6 +463,31 @@ private:
     std::uint32_t undraw_planet_lines_{};
     std::uint32_t move_ship_along_path_{};
     std::uint32_t start_planet_positions_{};
+    struct PlanetCampaignAssets {
+        std::uint32_t initialize{};
+        std::uint32_t setup{};
+        std::uint32_t setup_palette{};
+        std::uint32_t copy_light{};
+        std::uint32_t draw_sprites{};
+        std::uint32_t draw_selected{};
+        std::uint32_t draw_centred{};
+        std::uint32_t clear_screen{};
+        std::uint32_t dma_screen{};
+        std::uint32_t switch_buffer{};
+        std::uint32_t draw_route_name{};
+        std::uint32_t draw_lines{};
+        std::uint32_t undraw_lines{};
+        std::uint32_t move_ship{};
+        std::uint32_t start_positions{};
+        std::uint32_t sprites{};
+        std::uint32_t positions{};
+    };
+    PlanetCampaignAssets first_planet_campaign_{};
+    PlanetCampaignAssets second_planet_campaign_{};
+    std::uint32_t map2_flag_{};
+    bool starfox_ex_cartridge_{};
+    bool second_planet_campaign_active_{};
+    std::uint8_t planet_count_{17U};
     std::uint32_t planet_object_characters_{};
     std::uint32_t ship_position_{};
     std::uint32_t new_ship_position_{};
@@ -376,6 +504,12 @@ private:
     std::uint32_t controls_sprites_{};
     std::uint32_t set_control_type_{};
     std::uint32_t reset_sprites_{};
+    std::uint32_t select_next_ship_{};
+    std::uint32_t select_previous_ship_{};
+    std::uint32_t ex_set_ship_{};
+    std::uint32_t current_ship_{};
+    std::uint32_t next_ship_key_down_{};
+    std::uint32_t previous_ship_key_down_{};
     std::uint32_t controls_exit_{};
     std::uint32_t control_type_{};
     std::uint32_t default_training_{};
@@ -394,6 +528,83 @@ private:
     std::uint32_t game_over_background_{};
     std::uint32_t title_map_{};
     std::uint32_t intro_map_{};
+    std::uint32_t ex_foxy_continue_{};
+    std::uint32_t ex_foxy_self_{};
+    std::uint32_t ex_randomize_background_{};
+    std::uint32_t ex_restart_{};
+    std::uint32_t ex_briefing_{};
+    std::uint32_t ex_stop_counting_{};
+    std::uint32_t ex_menu_selected_{};
+    std::uint32_t ex_credits_{};
+    std::uint32_t ex_page_number_{};
+    std::uint32_t ex_foxy_pointer_{};
+    std::uint32_t ex_foxy_shape_{};
+    std::uint32_t ex_model_test_shape_{};
+    std::uint32_t ex_bg2_vertical_offset_override_{};
+    std::uint32_t ex_fade_palette_fx_pink_{};
+    std::uint32_t ex_fade_palette_yamao_{};
+    std::uint32_t ex_model_double_{};
+    std::uint32_t ex_model_quadruple_{};
+    std::uint32_t ex_nan_mode_{};
+    std::uint32_t ex_more_dots_{};
+    std::uint32_t ex_meter_boost_enabled_{};
+    std::uint32_t ex_meter_player_health_width_{};
+    std::uint32_t ex_meter_player_health_max_{};
+    std::uint32_t ex_meter_damage_two_{};
+    std::uint32_t ex_meter_player_one_dead_{};
+    std::uint32_t ex_meter_player_two_activated_{};
+    std::uint32_t ex_meter_player_two_{};
+    std::uint32_t ex_meter_two_extra_bytes_{};
+    std::uint32_t ex_shield_up_two_{};
+    std::array<std::uint32_t, 5> ex_nan_colour_tables_{};
+    std::uint32_t ex_god_mode_{};
+    std::uint32_t ex_scored_{};
+    std::uint32_t ex_ces_timer_{};
+    std::uint32_t ex_no_hud_{};
+    std::uint32_t ex_dots_stars_{};
+    std::uint32_t ex_dots_flag_{};
+    std::uint32_t ex_no_sfx_{};
+    std::uint32_t ex_no_set_port_3_{};
+    std::uint32_t ex_bgm_sfx_{};
+    std::uint32_t ex_set_new_bgm_{};
+    std::uint32_t ex_cursed_bgm_{};
+    std::uint32_t ex_bgm_test_{};
+    std::uint32_t ex_bgm_playlist_{};
+    std::uint32_t ex_bgm_playlist_cursed_{};
+    std::uint32_t ex_text_pointer_{};
+    std::uint32_t ex_fps_counter_enabled_{};
+    std::uint32_t ex_no_objects_{};
+    std::uint32_t ex_no_background_mode_{};
+    std::uint32_t ex_fps_speed_{};
+    std::uint32_t ex_ntsc_pal_swap_{};
+    std::uint32_t ex_dark_mode_{};
+    std::uint32_t ex_palette_slow_counter_{};
+    std::uint32_t ex_palette_slower_counter_{};
+    std::array<std::uint32_t, 5> ex_palette_every_transfer_{};
+    std::array<std::uint32_t, 8> ex_palette_every_fourth_transfer_{};
+    std::array<std::uint32_t, 4> ex_palette_every_eleventh_transfer_{};
+    std::uint32_t ex_fps_text_{};
+    std::uint32_t ex_print_point_{};
+    std::uint32_t ex_open_text_{};
+    std::uint32_t ex_print_text_{};
+    std::uint32_t ex_print_decimal_{};
+    std::uint32_t ex_do_bgm_reset_{};
+    std::uint32_t ex_do_bgm_generic_{};
+    std::uint32_t ex_strat_debug_{};
+    std::uint32_t ex_freeze_strategies_{};
+    std::uint32_t ex_debug_flash_{};
+    std::uint32_t ex_debug_alien_{};
+    std::uint32_t ex_debug_backup_{};
+    std::uint32_t ex_trigger_defaults_{};
+    std::uint32_t ex_load_data_{};
+    std::uint32_t ex_load_index_{};
+    std::uint32_t ex_end_level_sequence_{};
+    std::uint32_t ex_transfer_{};
+    std::uint32_t ex_doing_end_{};
+    std::uint32_t ex_crosshair_on_{};
+    std::uint32_t ex_current_percentage_{};
+    std::uint32_t ex_target_percentage_{};
+    std::uint32_t ex_results_exit_{};
     std::uint32_t initialize_music_{};
     std::uint32_t intro_music_{};
     std::uint32_t controls_music_{};
@@ -461,12 +672,20 @@ private:
     std::uint32_t circle_affected_layers_{};
     std::uint32_t circle_centre_x_{};
     std::uint32_t circle_centre_y_{};
+    std::uint32_t wipe_logic_{};
+    std::uint32_t wipe_left_buffer_{};
+    std::uint32_t wipe_right_buffer_{};
     std::uint32_t friends_message_{};
     std::uint32_t message_count_1_{};
     std::uint32_t message_count_2_{};
     std::uint32_t which_friend_{};
+    std::uint32_t friends_message_2_{};
+    std::uint32_t message_count_1_2_{};
+    std::uint32_t message_count_2_2_{};
+    std::uint32_t which_friend_2_{};
     std::uint32_t face_pointer_{};
     std::uint32_t face_data_{};
+    std::uint32_t face_data_2_{};
     std::uint32_t messages_{};
     std::uint32_t player_score_{};
     std::uint32_t special_object_total_{};
@@ -496,6 +715,8 @@ private:
     std::array<std::uint16_t, 8> god_nuke_protected_shapes_{};
     std::vector<ObjectHandle> draw_order_;
     std::vector<ObjectHandle> armed_god_nukes_;
+    Wdc65816Registers ex_menu_registers_{};
+    Wdc65816Registers ex_results_registers_{};
     std::uint32_t flow_ticks_{};
     std::uint32_t frontend_frames_{};
     std::uint8_t intro_reveal_frames_{};
@@ -513,6 +734,7 @@ private:
     std::uint16_t presentation_fps_{60U};
     std::uint8_t pregame_selection_{};
     PregamePage pregame_page_{PregamePage::main};
+    Experience experience_{Experience::original};
     bool god_mode_{};
     bool show_fps_{};
     CrosshairColour crosshair_colour_{CrosshairColour::green};
@@ -537,11 +759,17 @@ private:
     bool route_display_order_{};
     bool planet_route_lines_visible_{};
     CircleEffectState circle_effect_{};
+    std::uint8_t wipe_logic_snapshot_{};
+    std::array<input::TickInput, 4> secondary_inputs_{};
+    MouseInputState mouse_input_{};
+    std::uint16_t ntt_input_{};
     std::uint8_t background_music_hold_phases_{};
     std::uint8_t background_music_start_delay_phases_{};
     std::uint8_t background_music_upload_delay_override_{};
     bool background_music_start_pending_{};
     std::uint64_t observed_apu_upload_generation_{};
+    bool ex_results_task_active_{};
+    bool ex_results_recorded_{};
     bool paused_{};
 };
 

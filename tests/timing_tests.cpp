@@ -1,6 +1,7 @@
 #include "starfox/timing/fixed_step.hpp"
 #include "starfox/input/input_latch.hpp"
 #include "starfox/render/presentation_history.hpp"
+#include "starfox/simulation/math.hpp"
 
 #include <chrono>
 #include <algorithm>
@@ -35,8 +36,8 @@ void test_exact_60_to_20_cadence() {
 }
 
 void test_selectable_presentation_rates_preserve_raster_pace() {
-    constexpr std::array<std::uint32_t, 7> rates{
-        20U, 30U, 60U, 90U, 120U, 240U, 360U};
+    constexpr std::array<std::uint32_t, 8> rates{
+        20U, 30U, 60U, 90U, 120U, 240U, 360U, 480U};
     for (const auto rate : rates) {
         starfox::timing::RasterPhaseClock clock;
         std::uint32_t phases = 0U;
@@ -64,11 +65,24 @@ void test_selectable_presentation_rates_preserve_raster_pace() {
     require(seventh_360.video_phases == 0U
                 && std::abs(seventh_360.phase_fraction - 1.0 / 6.0) < 0.000001,
             "360 FPS cadence did not repeat after one raster phase");
+
+    starfox::timing::RasterPhaseClock very_high_rate;
+    const auto first_480 = very_high_rate.advance(480U);
+    require(first_480.video_phases == 0U
+                && std::abs(first_480.phase_fraction - 1.0 / 8.0) < 0.000001,
+            "480 FPS did not expose fractional interpolation progress");
+    for (std::uint32_t frame = 1; frame < 8U; ++frame) {
+        static_cast<void>(very_high_rate.advance(480U));
+    }
+    const auto ninth_480 = very_high_rate.advance(480U);
+    require(ninth_480.video_phases == 0U
+                && std::abs(ninth_480.phase_fraction - 1.0 / 8.0) < 0.000001,
+            "480 FPS cadence did not repeat after one raster phase");
 }
 
 void test_fast_forward_exactly_doubles_raster_pace() {
-    constexpr std::array<std::uint32_t, 7> rates{
-        20U, 30U, 60U, 90U, 120U, 240U, 360U};
+    constexpr std::array<std::uint32_t, 8> rates{
+        20U, 30U, 60U, 90U, 120U, 240U, 360U, 480U};
     for (const auto rate : rates) {
         starfox::timing::RasterPhaseClock clock;
         std::uint32_t phases = 0U;
@@ -198,6 +212,37 @@ void test_coordinate_interpolation_wraps_like_source_words() {
             "16-bit world-coordinate interpolation crossed the long arc");
 }
 
+void test_rotation_matrix_interpolation_is_orthonormal() {
+    constexpr starfox::simulation::MatrixQ15 identity{
+        32'767, 0, 0, 0, 32'767, 0, 0, 0, 32'767};
+    constexpr starfox::simulation::MatrixQ15 quarter_turn{
+        0, -32'767, 0, 32'767, 0, 0, 0, 0, 32'767};
+    const auto halfway = starfox::simulation::interpolate_rotation_matrix_q15(
+        identity, quarter_turn, 0.5);
+    const auto dot_columns = [&halfway](std::size_t left, std::size_t right) {
+        std::int64_t result{};
+        for (std::size_t row = 0; row < 3U; ++row) {
+            result += static_cast<std::int64_t>(halfway[row * 3U + left])
+                * halfway[row * 3U + right];
+        }
+        return result;
+    };
+    const auto unit = 32'768LL * 32'768LL;
+    require(std::abs(dot_columns(0U, 0U) - unit) < 100'000LL
+                && std::abs(dot_columns(1U, 1U) - unit) < 100'000LL
+                && std::abs(dot_columns(2U, 2U) - unit) < 100'000LL
+                && std::abs(dot_columns(0U, 1U)) < 100'000LL,
+            "matrix interpolation introduced rotation scale or shear");
+    require(halfway[0] > 23'000 && halfway[1] < -23'000
+                && halfway[3] > 23'000 && halfway[4] > 23'000,
+            "matrix interpolation did not follow the halfway rotation");
+    require(starfox::simulation::interpolate_rotation_matrix_q15(
+                identity, quarter_turn, 0.0) == identity
+                && starfox::simulation::interpolate_rotation_matrix_q15(
+                    identity, quarter_turn, 1.0) == quarter_turn,
+            "matrix interpolation changed exact source-frame endpoints");
+}
+
 void test_camera_cuts_are_not_interpolated() {
     const starfox::timing::TransformSnapshot scramble_camera{
         0, -24, 10'625, 0, 0, 0};
@@ -256,6 +301,7 @@ int main() {
     test_negative_time_is_ignored();
     test_interpolation_does_not_modify_snapshots();
     test_coordinate_interpolation_wraps_like_source_words();
+    test_rotation_matrix_interpolation_is_orthonormal();
     test_camera_cuts_are_not_interpolated();
     test_invalid_frequency_is_rejected();
     test_input_edges_survive_between_ticks();

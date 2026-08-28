@@ -64,6 +64,15 @@ std::size_t RomImage::lorom_offset(std::uint32_t snes_address) const {
 }
 
 std::uint8_t RomImage::read8(std::uint32_t snes_address) const {
+    // Direct host-side readers occasionally observe a source pointer during
+    // the one update in which its bank has been installed but its 16-bit
+    // address is still null (for example $2d:0000 for MARIOMSGS).  The SNES
+    // does not map cartridge ROM into the lower half of a LoROM bank, so that
+    // access behaves as open bus; it must not become a fatal host exception.
+    // Keep lorom_offset() strict for asset/decrunch callers that explicitly
+    // require a valid cartridge address, while byte reads safely model the
+    // transient unmapped access as zero/open bus.
+    if ((snes_address & 0xffffU) < 0x8000U) return 0U;
     return bytes_.at(lorom_offset(snes_address));
 }
 

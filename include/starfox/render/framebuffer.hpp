@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <filesystem>
+#include <limits>
 #include <span>
 #include <vector>
 
@@ -47,6 +48,22 @@ private:
     std::uint32_t height_{};
     std::vector<std::uint8_t> pixels_;
 };
+
+struct LayerCompositeSettings {
+    std::int32_t offset_x{};
+    std::int32_t offset_y{};
+    std::int32_t clip_left{std::numeric_limits<std::int32_t>::min()};
+    std::int32_t clip_top{std::numeric_limits<std::int32_t>::min()};
+    std::int32_t clip_right{std::numeric_limits<std::int32_t>::max()};
+    std::int32_t clip_bottom{std::numeric_limits<std::int32_t>::max()};
+    std::uint8_t mosaic{};
+    std::uint8_t mosaic_layer_mask{};
+    std::int32_t mosaic_origin_x{};
+    std::int32_t mosaic_origin_y{};
+};
+
+void composite_transparent_layer(const Framebuffer& source,
+    Framebuffer& destination, const LayerCompositeSettings& settings) noexcept;
 
 void write_bmp(const Framebuffer& framebuffer, const std::filesystem::path& path);
 void write_bmp(

@@ -25,6 +25,9 @@ int main(int argc, char** argv) {
         const auto press_tick = argc == 7
             ? std::strtoul(argv[6], nullptr, 10) : ~0UL;
         starfox::simulation::GameSimulation game{rom, symbols, argv[3]};
+        if (std::getenv("STARFOX_GOD_MODE") != nullptr) {
+            game.set_god_mode(true);
+        }
         const auto trace_transitions = std::getenv("STARFOX_TRACE_TRANSITIONS") != nullptr;
         const auto force_exit = std::getenv("STARFOX_FORCE_EXIT") != nullptr;
         std::uint32_t previous_strategy = 0xffffffffU;
@@ -79,6 +82,14 @@ int main(int argc, char** argv) {
                 game.present_frame();
                 game.present_frame();
             }
+        }
+        if (!game.objects().is_active(game.player())) {
+            std::cout << argv[3] << ": ticks=" << ticks
+                      << ", flow=" << static_cast<unsigned>(game.flow_state())
+                      << ", map=" << (game.map().ended() ? "ended" : "active")
+                      << ", player=inactive, objects="
+                      << game.objects().active_count() << '\n';
+            return 0;
         }
         const auto& player = game.objects().at(game.player());
         const auto body_pointer = game.map().read_native_word(0x0015f2U);

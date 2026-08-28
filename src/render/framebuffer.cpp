@@ -8,6 +8,13 @@
 namespace starfox::render {
 namespace {
 
+std::int32_t mosaic_coordinate(
+    std::int32_t coordinate, std::int32_t size) noexcept {
+    auto remainder = coordinate % size;
+    if (remainder < 0) remainder += size;
+    return coordinate - remainder;
+}
+
 void write_u16(std::ofstream& output, std::uint16_t value) {
     output.put(static_cast<char>(value & 0xffU));
     output.put(static_cast<char>((value >> 8U) & 0xffU));
@@ -19,6 +26,52 @@ void write_u32(std::ofstream& output, std::uint32_t value) {
 }
 
 } // namespace
+
+void composite_transparent_layer(const Framebuffer& source,
+    Framebuffer& destination, const LayerCompositeSettings& settings) noexcept {
+    const auto mosaic_enabled = settings.mosaic_layer_mask != 0U
+        && (settings.mosaic & settings.mosaic_layer_mask) != 0U;
+    const auto mosaic_size = static_cast<std::int32_t>(
+        (settings.mosaic >> 4U) + 1U);
+    for (std::uint32_t y = 0; y < source.height(); ++y) {
+        for (std::uint32_t x = 0; x < source.width(); ++x) {
+            const auto destination_x = static_cast<std::int32_t>(x)
+                + settings.offset_x;
+            const auto destination_y = static_cast<std::int32_t>(y)
+                + settings.offset_y;
+            if (destination_x < settings.clip_left
+                || destination_x >= settings.clip_right
+                || destination_y < settings.clip_top
+                || destination_y >= settings.clip_bottom) {
+                continue;
+            }
+
+            auto source_x = static_cast<std::int32_t>(x);
+            auto source_y = static_cast<std::int32_t>(y);
+            if (mosaic_enabled) {
+                const auto logical_x = destination_x
+                    - settings.mosaic_origin_x;
+                const auto logical_y = destination_y
+                    - settings.mosaic_origin_y;
+                source_x = mosaic_coordinate(logical_x, mosaic_size)
+                    + settings.mosaic_origin_x - settings.offset_x;
+                source_y = mosaic_coordinate(logical_y, mosaic_size)
+                    + settings.mosaic_origin_y - settings.offset_y;
+                if (source_x < 0 || source_y < 0
+                    || source_x >= static_cast<std::int32_t>(source.width())
+                    || source_y >= static_cast<std::int32_t>(source.height())) {
+                    continue;
+                }
+            }
+            const auto colour = source.get(
+                static_cast<std::uint32_t>(source_x),
+                static_cast<std::uint32_t>(source_y));
+            if (colour != 0U) {
+                destination.set(destination_x, destination_y, colour);
+            }
+        }
+    }
+}
 
 void write_bmp(const Framebuffer& framebuffer, const std::filesystem::path& path) {
     write_bmp(framebuffer, path, preview_palette());

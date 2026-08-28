@@ -40,6 +40,13 @@ using MatrixQ15 = std::array<std::int16_t, 9>;
 [[nodiscard]] MatrixQ15 transpose_q15(const MatrixQ15& matrix) noexcept;
 [[nodiscard]] MatrixQ15 multiply_matrix_q15(
     const MatrixQ15& left, const MatrixQ15& right) noexcept;
+// Presentation-only normalized matrix interpolation. This is deliberately
+// separate from source state: it smooths rotations between 20 Hz updates
+// without feeding fractional transforms back into cartridge simulation.
+[[nodiscard]] MatrixQ15 interpolate_rotation_matrix_q15(
+    const MatrixQ15& previous,
+    const MatrixQ15& current,
+    double alpha) noexcept;
 [[nodiscard]] std::array<std::int16_t, 3> transform_q15(
     const MatrixQ15& matrix,
     const std::array<std::int16_t, 3>& value) noexcept;

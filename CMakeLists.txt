@@ -5,13 +5,28 @@ project(starfox_enhanced VERSION 0.1.0 LANGUAGES CXX)
 option(STARFOX_BUILD_TESTS "Build deterministic timing tests" ON)
 option(STARFOX_BUILD_RUNTIME "Build the SDL3 native PC runtime" ON)
 option(STARFOX_EMBED_RUNTIME_ASSETS
-    "Embed SF.SFC and SYMBOLS.TXT into the Windows runtime" ON)
+    "Embed source-built BPS deltas and symbol tables into the Windows runtime" ON)
 set(STARFOX_ROM_FILE
     "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
     CACHE FILEPATH "Assembled UltraStarFox ROM used by the native runtime")
 set(STARFOX_SYMBOLS_FILE
     "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT"
     CACHE FILEPATH "UltraStarFox symbol table used by the native runtime")
+set(STARFOX_EX_ROM_FILE
+    "${CMAKE_CURRENT_SOURCE_DIR}/upstream-star-fox-ex/SFES/SFES.SFC"
+    CACHE FILEPATH "Assembled Star Fox EX ROM used by the native runtime")
+set(STARFOX_EX_SYMBOLS_FILE
+    "${CMAKE_CURRENT_SOURCE_DIR}/upstream-star-fox-ex/SYMBOLS.TXT"
+    CACHE FILEPATH "Star Fox EX symbol table used by the native runtime")
+set(STARFOX_ORIGINAL_PATCH_FILE
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/patches/ultrastarfox-v12.bps"
+    CACHE FILEPATH "UltraStarFox BPS delta for a clean Star Fox USA v1.2 ROM")
+set(STARFOX_EX_PATCH_FILE
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/patches/starfox-ex-v12.bps"
+    CACHE FILEPATH "Star Fox EX BPS delta for a clean Star Fox USA v1.2 ROM")
+set(STARFOX_RETAIL_V12_FILE
+    "C:/NTSC-US Super Nintendo System Roms/Star Fox (USA) (Rev 2).sfc"
+    CACHE FILEPATH "Clean Star Fox USA v1.2 ROM used only for local validation")
 
 include(FetchContent)
 FetchContent_Declare(
@@ -60,8 +75,10 @@ endif()
 
 add_library(starfox_core
     src/audio/spc700_audio.cpp
+    src/assets/bps.cpp
     src/assets/decrunch.cpp
     src/assets/rom.cpp
+    src/assets/runtime_bundle.cpp
     src/assets/shape_decoder.cpp
     src/render/background_renderer.cpp
     src/render/dust_renderer.cpp
@@ -144,39 +161,36 @@ if(STARFOX_BUILD_RUNTIME)
     endif()
     target_link_libraries(starfox_pc PRIVATE starfox_core SDL3::SDL3)
     if(WIN32 AND STARFOX_EMBED_RUNTIME_ASSETS)
-        if(EXISTS "${STARFOX_ROM_FILE}" AND EXISTS "${STARFOX_SYMBOLS_FILE}")
+        if(EXISTS "${STARFOX_ORIGINAL_PATCH_FILE}"
+           AND EXISTS "${STARFOX_SYMBOLS_FILE}"
+           AND EXISTS "${STARFOX_EX_PATCH_FILE}"
+           AND EXISTS "${STARFOX_EX_SYMBOLS_FILE}")
             enable_language(RC)
-            file(TO_CMAKE_PATH "${STARFOX_ROM_FILE}" STARFOX_EMBEDDED_ROM)
+            file(TO_CMAKE_PATH
+                "${STARFOX_ORIGINAL_PATCH_FILE}" STARFOX_EMBEDDED_PATCH)
             file(TO_CMAKE_PATH "${STARFOX_SYMBOLS_FILE}" STARFOX_EMBEDDED_SYMBOLS)
             file(TO_CMAKE_PATH
-                "${CMAKE_CURRENT_SOURCE_DIR}/assets/hud_editor/background.bmp"
-                STARFOX_HUD_EDITOR_BACKGROUND)
-            file(TO_CMAKE_PATH
-                "${CMAKE_CURRENT_SOURCE_DIR}/assets/hud_editor/lives.bmp"
-                STARFOX_HUD_EDITOR_LIVES)
-            file(TO_CMAKE_PATH
-                "${CMAKE_CURRENT_SOURCE_DIR}/assets/hud_editor/shield.bmp"
-                STARFOX_HUD_EDITOR_SHIELD)
-            file(TO_CMAKE_PATH
-                "${CMAKE_CURRENT_SOURCE_DIR}/assets/hud_editor/bombs_boost.bmp"
-                STARFOX_HUD_EDITOR_BOMBS_BOOST)
-            file(TO_CMAKE_PATH
-                "${CMAKE_CURRENT_SOURCE_DIR}/assets/hud_editor/comms.bmp"
-                STARFOX_HUD_EDITOR_COMMS)
+                "${STARFOX_EX_PATCH_FILE}" STARFOX_EX_EMBEDDED_PATCH)
+            file(TO_CMAKE_PATH "${STARFOX_EX_SYMBOLS_FILE}" STARFOX_EX_EMBEDDED_SYMBOLS)
             configure_file(
                 src/app/starfox_assets.rc.in
                 "${CMAKE_CURRENT_BINARY_DIR}/starfox_assets.rc"
                 @ONLY
             )
-            target_sources(starfox_pc PRIVATE
+            # Keep the resource compiler isolated from the C++ target's
+            # include path. GNU windres forwards quoted -I paths through its
+            # preprocessor incorrectly when the workspace contains spaces.
+            add_library(starfox_runtime_resources OBJECT
                 "${CMAKE_CURRENT_BINARY_DIR}/starfox_assets.rc")
+            target_sources(starfox_pc PRIVATE
+                $<TARGET_OBJECTS:starfox_runtime_resources>)
             target_compile_definitions(starfox_pc PRIVATE
                 STARFOX_HAS_EMBEDDED_ASSETS=1)
             set(STARFOX_RUNTIME_ASSETS_EMBEDDED TRUE)
         else()
             message(WARNING
-                "Embedded runtime assets requested, but SF.SFC or SYMBOLS.TXT "
-                "is missing. starfox_pc will require external asset files.")
+                "Embedded runtime assets requested, but an Original or Star Fox EX "
+                "BPS/symbol pair is missing. starfox_pc will require external assets.")
         endif()
     endif()
     if(MINGW)
@@ -190,6 +204,23 @@ endif()
 
 if(STARFOX_BUILD_TESTS)
     enable_testing()
+    add_executable(starfox_bps_tests tests/bps_tests.cpp)
+    target_link_libraries(starfox_bps_tests PRIVATE starfox_core)
+    add_test(NAME starfox_bps_tests COMMAND starfox_bps_tests)
+    if(EXISTS "${STARFOX_RETAIL_V12_FILE}"
+       AND EXISTS "${STARFOX_ORIGINAL_PATCH_FILE}"
+       AND EXISTS "${STARFOX_ROM_FILE}"
+       AND EXISTS "${STARFOX_EX_PATCH_FILE}"
+       AND EXISTS "${STARFOX_EX_ROM_FILE}")
+        add_test(
+            NAME starfox_retail_v12_reconstruction
+            COMMAND starfox_bps_tests
+                "${STARFOX_RETAIL_V12_FILE}"
+                "${STARFOX_ORIGINAL_PATCH_FILE}"
+                "${STARFOX_ROM_FILE}"
+                "${STARFOX_EX_PATCH_FILE}"
+                "${STARFOX_EX_ROM_FILE}")
+    endif()
     add_executable(starfox_core_tests tests/timing_tests.cpp)
     target_link_libraries(starfox_core_tests PRIVATE starfox_core)
     add_test(NAME starfox_core_tests COMMAND starfox_core_tests)
@@ -300,6 +331,31 @@ if(STARFOX_BUILD_TESTS)
                     TIMEOUT 10
                 )
             endif()
+        endif()
+    endif()
+
+    if(EXISTS "${STARFOX_EX_ROM_FILE}"
+       AND EXISTS "${STARFOX_EX_SYMBOLS_FILE}")
+        add_test(
+            NAME starfox_ex_simulation_data
+            COMMAND starfox_simulation_tests
+                    "${STARFOX_EX_ROM_FILE}"
+                    "${STARFOX_EX_SYMBOLS_FILE}"
+        )
+        if(STARFOX_BUILD_RUNTIME AND STARFOX_RUNTIME_ASSETS_EMBEDDED)
+            file(MAKE_DIRECTORY
+                "${CMAKE_CURRENT_BINARY_DIR}/embedded-ex-runtime-smoke")
+            add_test(
+                NAME starfox_ex_intro_runtime_smoke
+                COMMAND "$<TARGET_FILE:starfox_pc>"
+            )
+            set_tests_properties(starfox_ex_intro_runtime_smoke PROPERTIES
+                WORKING_DIRECTORY
+                    "${CMAKE_CURRENT_BINARY_DIR}/embedded-ex-runtime-smoke"
+                ENVIRONMENT
+                    "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;STARFOX_TEST_EXPERIENCE=EX;STARFOX_TEST_FRAMES=900;STARFOX_TEST_PRESSES=6:0x1000;STARFOX_TEST_UNPACED=1"
+                TIMEOUT 20
+            )
         endif()
     endif()
 

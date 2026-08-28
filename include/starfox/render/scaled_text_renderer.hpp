@@ -46,7 +46,8 @@ public:
         std::int32_t x,
         std::int32_t y,
         Framebuffer& target,
-        std::uint8_t colour_index_base = 7U * 16U) const;
+        std::uint8_t colour_index_base = 7U * 16U,
+        bool alternate_portraits = false) const;
 
     void draw_ascii(
         std::string_view text,
@@ -56,6 +57,8 @@ public:
         std::uint8_t colour = 14U,
         std::uint8_t colour_index_base = 7U * 16U) const;
 
+    [[nodiscard]] std::int32_t measure_ascii(std::string_view text) const;
+
 private:
     const assets::RomImage* rom_{};
     std::uint32_t font_{};
@@ -64,6 +67,7 @@ private:
     std::uint32_t game_font_glyphs_{};
     std::uint32_t game_font_translation_{};
     std::uint32_t face_data_{};
+    std::uint32_t face_data_2_{};
 };
 
 } // namespace starfox::render

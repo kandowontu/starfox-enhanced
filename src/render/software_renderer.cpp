@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <functional>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -633,7 +634,8 @@ void fill_source_polygon(
     Framebuffer& target,
     const std::vector<RasterVertex>& polygon,
     FaceColour colour,
-    std::uint8_t colour_index_base) {
+    std::uint8_t colour_index_base,
+    const RenderPose& pose) {
     if (polygon.size() < 3U) return;
     struct Point {
         std::int32_t x{};
@@ -736,22 +738,91 @@ void fill_source_polygon(
         return false;
     };
 
+    constexpr std::array<std::int8_t, 32> wave_sine{
+        0, 1, 2, 3, 3, 3, 2, 1,
+        0, -1, -2, -3, -3, -3, -2, -1,
+        0, 1, 2, 3, 3, 3, 2, 1,
+        0, -1, -2, -3, -3, -3, -2, -1,
+    };
+    const auto wave_y = [&pose, &wave_sine](
+                            std::int32_t x, std::int32_t scanline) {
+        auto phase = starfox::simulation::wrap16(
+            static_cast<std::int32_t>(pose.wave_offset) + x);
+        phase = starfox::simulation::wrap16(
+            starfox::simulation::arithmetic_shift_right(phase, 1)
+            + static_cast<std::int32_t>(pose.animation_frame & 15U) - 1);
+        auto index = static_cast<std::int32_t>(phase);
+        index %= static_cast<std::int32_t>(wave_sine.size());
+        if (index < 0) index += static_cast<std::int32_t>(wave_sine.size());
+        return scanline + wave_sine[static_cast<std::size_t>(index)];
+    };
+    auto mode2_edge_continuation = false;
+    auto previous_wobble_left = std::int32_t{};
+    auto has_previous_wobble_left = false;
+
     while (y < maximum_y) {
-        if (left.remaining == 0 && !begin_segment(left)) return;
-        if (right.remaining == 0 && !begin_segment(right)) return;
+        const auto left_starts_segment = left.remaining == 0;
+        const auto right_starts_segment = right.remaining == 0;
+        if (left_starts_segment && !begin_segment(left)) return;
+        if (right_starts_segment && !begin_segment(right)) return;
         const auto x1 = integer_x(left.x);
         const auto x2 = integer_x(right.x);
         if (x2 >= x1) {
-            for (auto x = x1; x <= x2; ++x) {
-                target.set(x, y, static_cast<std::uint8_t>(colour_index_base
-                    + (colour.dither && ((x ^ y) & 1) != 0
+            const auto plot = [&](std::int32_t x, std::int32_t plot_y) {
+                target.set(x, plot_y, static_cast<std::uint8_t>(colour_index_base
+                    + (colour.dither && ((x ^ plot_y) & 1) != 0
                         ? colour.odd : colour.even)));
+            };
+            // Wobble mode 2 selects hlines22: its span loop deliberately has
+            // PLOT commented out. On continuing right-edge segments the
+            // mhlines2 entry emits exactly one pixel at the previous left X.
+            if ((pose.wobble_mode & 2U) != 0U) {
+                if (!right_starts_segment && has_previous_wobble_left) {
+                    plot(previous_wobble_left, y);
+                }
+            // EX hlines23 draws a complete chord whenever either polygon
+            // tracer begins a new edge. Its mhlinesA continuation plots only
+            // the two edge pixels on all other scanlines. Mode 2 normally
+            // fills, but a left-only edge change enters that same mhlinesA
+            // continuation until the right tracer begins its next segment.
+            } else if ((pose.wireframe_mode == 1U
+                    && !left_starts_segment && !right_starts_segment)
+                || (pose.wireframe_mode == 2U
+                    && mode2_edge_continuation
+                    && !left_starts_segment && !right_starts_segment)) {
+                plot(x1, y);
+                if (x2 != x1) plot(x2, y);
+            } else if (pose.cel_mode && pose.wireframe_mode == 0U) {
+                // hlines2rr cancels PLOT's automatic X increment and skips
+                // the two span endpoints, leaving the source cel outline.
+                for (auto x = x1 + 1; x < x2; ++x) plot(x, y);
+            } else if (pose.wave_mode && pose.wireframe_mode == 0U) {
+                for (auto x = x1; x <= x2; ++x) plot(x, wave_y(x, y));
+            } else {
+                for (auto x = x1; x <= x2; ++x) plot(x, y);
+            }
+        }
+        if ((pose.wobble_mode & 2U) != 0U) {
+            previous_wobble_left = x1;
+            has_previous_wobble_left = true;
+        }
+        if (pose.wireframe_mode == 2U) {
+            if (right_starts_segment) mode2_edge_continuation = false;
+            if (left_starts_segment && !right_starts_segment) {
+                mode2_edge_continuation = true;
             }
         }
         left.x = advance_x(left.x, left.increment);
         right.x = advance_x(right.x, right.increment);
         --left.remaining;
         --right.remaining;
+        if ((pose.wobble_mode & 1U) != 0U) {
+            // The source repeats every step of a trapezoid on the same row;
+            // when either tracer expires it advances Y once here and once in
+            // the shared normal tail, producing NAN mode 6's two-row jump.
+            if (left.remaining != 0 && right.remaining != 0) continue;
+            ++y;
+        }
         ++y;
     }
 }
@@ -1111,18 +1182,19 @@ FaceMaterial face_material(
     std::uint32_t colour_frame,
     std::size_t depth_band,
     const std::array<std::int8_t, 3>& light,
-    const RenderPose& pose) {
+    const RenderPose& pose,
+    std::optional<std::uint16_t> descriptor_override = std::nullopt) {
     if (pose.force_colour) {
         const auto even = static_cast<std::uint8_t>(pose.forced_colour & 0x0fU);
         const auto odd = static_cast<std::uint8_t>(pose.forced_colour >> 4U);
         return {{even, odd, even != odd}, nullptr};
     }
-    if (face.colour_id >= shape.colour_words.size()) {
+    if (!descriptor_override && face.colour_id >= shape.colour_words.size()) {
         const auto fallback = static_cast<std::uint8_t>(face.colour_id & 0x0fU);
         return {{fallback, fallback, false}, nullptr};
     }
-    auto word = shape.colour_words[face.colour_id];
-    if (face.colour_id < shape.colour_materials.size()) {
+    auto word = descriptor_override.value_or(shape.colour_words[face.colour_id]);
+    if (!descriptor_override && face.colour_id < shape.colour_materials.size()) {
         const auto& material = shape.colour_materials[face.colour_id];
         if (!material.animation_frames.empty()) {
             word = material.animation_frames[
@@ -1249,13 +1321,16 @@ void SoftwareRenderer::draw_cockpit_hud(
     line(250, 0, 315, 32);
 }
 
-void apply_original_depth_tables(
+void apply_source_depth_tables(
     const assets::RomImage& rom,
+    std::uint32_t depth_table_address,
     std::uint16_t threshold_pointer,
     std::uint16_t colour_pointer,
     std::uint8_t object_depth_offset,
     RenderPose& pose) {
-    if (threshold_pointer < 0x8000U || colour_pointer < 0x8000U) {
+    const auto data_bank = depth_table_address & 0xff0000U;
+    if (data_bank >= 0x7e0000U
+        || threshold_pointer < 0x8000U || colour_pointer < 0x8000U) {
         pose.has_depth_colour_tables = false;
         return;
     }
@@ -1263,7 +1338,6 @@ void apply_original_depth_tables(
         threshold_pointer = static_cast<std::uint16_t>(threshold_pointer
             + static_cast<std::uint16_t>(object_depth_offset - 1U) * 4U);
     }
-    constexpr std::uint32_t data_bank = 0x030000U;
     for (std::size_t index = 0; index < pose.depth_thresholds.size(); ++index) {
         const auto encoded = std::bit_cast<std::int8_t>(
             rom.read8(data_bank | static_cast<std::uint16_t>(
@@ -1333,6 +1407,42 @@ void SoftwareRenderer::draw(
             pose.use_rotation_matrix, pose.vanish_x, pose.vanish_y));
     }
 
+    // MOBJ.MC enters the face pass with r8 holding the end of M_PROJPNTS,
+    // then COLOR WARP's mrand macro uses that register directly instead of
+    // reading the colour table.  Its 16-bit SWAP/ROR/ADD/ADC/INC sequence is
+    // the same one used by MGDOTS.MC.  Animated descriptors loop back through
+    // .getwordagain; with warp enabled that consumes another random word.
+    auto colour_warp_state = static_cast<std::uint16_t>(
+        pose.projected_points_address
+        + static_cast<std::uint16_t>(vertices.size() * 6U));
+    auto colour_warp_carry = false;
+    const auto next_colour_warp_word = [&]()
+            -> std::optional<std::uint16_t> {
+        if (!pose.colour_warp || pose.force_colour) return std::nullopt;
+        auto word = std::uint16_t{};
+        for (auto animation_hops = 0; animation_hops < 32; ++animation_hops) {
+            const auto swapped = static_cast<std::uint16_t>(
+                (colour_warp_state << 8U) | (colour_warp_state >> 8U));
+            const auto rotated = static_cast<std::uint16_t>(
+                (colour_warp_carry ? 0x8000U : 0U) | (swapped >> 1U));
+            colour_warp_carry = (swapped & 1U) != 0U;
+            const auto first = static_cast<std::uint32_t>(rotated)
+                + colour_warp_state;
+            colour_warp_carry = first > 0xffffU;
+            const auto second = static_cast<std::uint32_t>(
+                static_cast<std::uint16_t>(first)) + colour_warp_state
+                + (colour_warp_carry ? 1U : 0U);
+            colour_warp_carry = second > 0xffffU;
+            colour_warp_state = static_cast<std::uint16_t>(second + 1U);
+            word = colour_warp_state;
+            if ((word & 0xc000U) != 0x8000U) return word;
+        }
+        // Corrupt/random data can theoretically select animated material
+        // words forever. The hardware has no guard, but bounding a malformed
+        // host frame keeps the option from hanging the process.
+        return static_cast<std::uint16_t>(word & ~0x8000U);
+    };
+
     if (pose.collapse_to_axis_line && !vertices.empty() && !shape.faces.empty()) {
         const auto [minimum, maximum] = std::minmax_element(
             vertices.begin(), vertices.end(), [](const auto& left, const auto& right) {
@@ -1371,7 +1481,8 @@ void SoftwareRenderer::draw(
                 if (clip_screen_line(near_screen, far_screen, target,
                         pose.use_rotation_matrix)) {
                     const auto material = face_material(shape, shape.faces.front(),
-                        pose.colour_frame, depth_band, light, pose);
+                        pose.colour_frame, depth_band, light, pose,
+                        next_colour_warp_word());
                     draw_line(target, near_screen, far_screen, material.colour,
                         settings_.colour_index_base);
                 }
@@ -1466,7 +1577,8 @@ void SoftwareRenderer::draw(
         }
 
         const auto material = face_material(
-            shape, face, pose.colour_frame, depth_band, light, pose);
+            shape, face, pose.colour_frame, depth_band, light, pose,
+            next_colour_warp_word());
         const auto face_offset = explosion_offset(face, pose);
         if (face.sprite) {
             if (material.texture != nullptr && face.vertex_indices.size() == 1U
@@ -1563,7 +1675,7 @@ void SoftwareRenderer::draw(
         if (raster_polygon.size() < 3U) continue;
         if (material.texture == nullptr) {
             fill_source_polygon(target, raster_polygon, material.colour,
-                settings_.colour_index_base);
+                settings_.colour_index_base, pose);
         } else {
             fill_source_textured_polygon(target, raster_polygon,
                 *material.texture, pose.texture_scroll_x, pose.texture_scroll_y,

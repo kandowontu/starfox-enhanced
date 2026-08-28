@@ -122,10 +122,14 @@ std::filesystem::path documents_settings_path(std::string_view filename) {
     return {};
 }
 
-constexpr std::array<std::string_view, 4> kHudElementNames{
-    "LIVES", "SHIELD", "BOMBS_BOOST", "COMMS"};
-constexpr std::array<std::string_view, 5> kHudProfileNames{
+constexpr std::array<std::string_view, 5> kHudElementNames{
+    "LIVES", "SHIELD", "BOMBS_BOOST", "COMMS", "BOSS_HEALTH"};
+constexpr std::array<std::string_view, 5> kLegacyHudProfileNames{
     "4_3", "16_9", "16_10", "21_9", "32_9"};
+constexpr std::array<std::string_view, 10> kHudProfileNames{
+    "ORIGINAL_4_3", "ORIGINAL_16_9", "ORIGINAL_16_10", "ORIGINAL_21_9",
+    "ORIGINAL_32_9", "EX_4_3", "EX_16_9", "EX_16_10", "EX_21_9",
+    "EX_32_9"};
 
 void add_keyboard_button(
     input::ButtonMask& result,
@@ -187,24 +191,39 @@ void configure_native_gamepad_support() noexcept {
 }
 
 SDL_Gamepad* open_preferred_gamepad() noexcept {
+    auto opened = open_player_gamepads(1U);
+    return opened.empty() ? nullptr : opened.front();
+}
+
+std::vector<SDL_Gamepad*> open_player_gamepads(std::size_t maximum) noexcept {
+    std::vector<SDL_Gamepad*> result;
+    if (maximum == 0U) return result;
     int count = 0;
     SDL_JoystickID* identifiers = SDL_GetGamepads(&count);
     if (identifiers == nullptr || count <= 0) {
         SDL_free(identifiers);
-        return nullptr;
+        return result;
     }
     std::vector<SDL_JoystickID> ordered{
         identifiers, identifiers + static_cast<std::size_t>(count)};
     SDL_free(identifiers);
     std::stable_sort(ordered.begin(), ordered.end(), [](auto left, auto right) {
+        const auto left_player = SDL_GetGamepadPlayerIndexForID(left);
+        const auto right_player = SDL_GetGamepadPlayerIndexForID(right);
+        if (left_player >= 0 || right_player >= 0) {
+            if (left_player < 0) return false;
+            if (right_player < 0) return true;
+            if (left_player != right_player) return left_player < right_player;
+        }
         return gamepad_preference(left) > gamepad_preference(right);
     });
     for (const auto identifier : ordered) {
         if (auto* gamepad = SDL_OpenGamepad(identifier); gamepad != nullptr) {
-            return gamepad;
+            result.push_back(gamepad);
+            if (result.size() >= maximum) break;
         }
     }
-    return nullptr;
+    return result;
 }
 
 std::string gamepad_device_label(SDL_Gamepad* gamepad) {
@@ -238,7 +257,16 @@ input::ButtonMask InputBindings::sample(SDL_Gamepad* gamepad) const noexcept {
     for (std::size_t action = 0; action < action_count; ++action) {
         add_keyboard_button(
             result, keys, keyboard_[action], kActionButtons[action]);
-        if (gamepad == nullptr) continue;
+    }
+    return static_cast<input::ButtonMask>(
+        result | sample_gamepad_only(gamepad));
+}
+
+input::ButtonMask InputBindings::sample_gamepad_only(
+    SDL_Gamepad* gamepad) const noexcept {
+    input::ButtonMask result{};
+    if (gamepad == nullptr) return result;
+    for (std::size_t action = 0; action < action_count; ++action) {
         const auto binding = gamepad_[action];
         if (binding.kind == GamepadBindingKind::button) {
             add_gamepad_button(result, gamepad,
@@ -419,9 +447,13 @@ bool load_pregame_settings(
     if (path.empty()) return false;
     std::ifstream input{path};
     std::string version;
-    if (!(input >> version) || version != "SFE_PREGAME_V1") return false;
+    if (!(input >> version)
+        || (version != "SFE_PREGAME_V1" && version != "SFE_PREGAME_V2")) {
+        return false;
+    }
     auto loaded = PregameSettings{};
-    std::array<bool, 6> found{};
+    std::array<bool, 7> found{};
+    found[6] = version == "SFE_PREGAME_V1";
     std::string name;
     int value{};
     while (input >> name >> value) {
@@ -429,7 +461,7 @@ bool load_pregame_settings(
             loaded.timing_mode = static_cast<std::uint8_t>(value);
             found[0] = value >= 0 && value <= 1;
         } else if (name == "PRESENTATION_FPS") {
-            constexpr std::array valid{20, 30, 60, 90, 120, 240, 360};
+            constexpr std::array valid{20, 30, 60, 90, 120, 240, 360, 480};
             loaded.presentation_fps = static_cast<std::uint16_t>(value);
             found[1] = std::find(valid.begin(), valid.end(), value) != valid.end();
         } else if (name == "DISPLAY_MODE") {
@@ -444,6 +476,9 @@ bool load_pregame_settings(
         } else if (name == "CROSSHAIR_COLOUR") {
             loaded.crosshair_colour = static_cast<std::uint8_t>(value);
             found[5] = value >= 0 && value <= 7;
+        } else if (name == "EXPERIENCE") {
+            loaded.experience = static_cast<std::uint8_t>(value);
+            found[6] = value >= 0 && value <= 1;
         }
     }
     if (!std::all_of(found.begin(), found.end(),
@@ -456,11 +491,12 @@ bool save_pregame_settings(
     const std::filesystem::path& path,
     const PregameSettings& settings) noexcept {
     if (path.empty() || settings.timing_mode > 1U
-        || settings.display_mode > 4U || settings.crosshair_colour > 7U) {
+        || settings.display_mode > 4U || settings.crosshair_colour > 7U
+        || settings.experience > 1U) {
         return false;
     }
-    constexpr std::array<std::uint16_t, 7> valid_fps{
-        20U, 30U, 60U, 90U, 120U, 240U, 360U};
+    constexpr std::array<std::uint16_t, 8> valid_fps{
+        20U, 30U, 60U, 90U, 120U, 240U, 360U, 480U};
     if (std::find(valid_fps.begin(), valid_fps.end(),
             settings.presentation_fps) == valid_fps.end()) return false;
     std::error_code error;
@@ -468,7 +504,8 @@ bool save_pregame_settings(
     if (error) return false;
     std::ofstream output{path, std::ios::trunc};
     if (!output) return false;
-    output << "SFE_PREGAME_V1\n"
+    output << "SFE_PREGAME_V2\n"
+           << "EXPERIENCE " << static_cast<unsigned>(settings.experience) << '\n'
            << "TIMING_MODE " << static_cast<unsigned>(settings.timing_mode) << '\n'
            << "PRESENTATION_FPS " << settings.presentation_fps << '\n'
            << "DISPLAY_MODE " << static_cast<unsigned>(settings.display_mode) << '\n'
@@ -477,6 +514,50 @@ bool save_pregame_settings(
            << "CROSSHAIR_COLOUR "
            << static_cast<unsigned>(settings.crosshair_colour) << '\n';
     return static_cast<bool>(output);
+}
+
+std::filesystem::path starfox_ex_save_ram_path() {
+    return documents_settings_path("starfox-ex.srm");
+}
+
+bool load_starfox_ex_save_ram(
+    const std::filesystem::path& path,
+    std::vector<std::uint8_t>& bytes) noexcept {
+    try {
+        if (path.empty()) return false;
+        std::ifstream input{path, std::ios::binary | std::ios::ate};
+        if (!input || input.tellg() != static_cast<std::streamoff>(
+                starfox_ex_save_ram_size)) return false;
+        input.seekg(0, std::ios::beg);
+        auto loaded = std::vector<std::uint8_t>(starfox_ex_save_ram_size);
+        input.read(reinterpret_cast<char*>(loaded.data()),
+            static_cast<std::streamsize>(loaded.size()));
+        if (!input) return false;
+        bytes = std::move(loaded);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+bool save_starfox_ex_save_ram(
+    const std::filesystem::path& path,
+    std::span<const std::uint8_t> bytes) noexcept {
+    try {
+        if (path.empty() || bytes.size() != starfox_ex_save_ram_size) {
+            return false;
+        }
+        std::error_code error;
+        std::filesystem::create_directories(path.parent_path(), error);
+        if (error) return false;
+        std::ofstream output{path, std::ios::binary | std::ios::trunc};
+        if (!output) return false;
+        output.write(reinterpret_cast<const char*>(bytes.data()),
+            static_cast<std::streamsize>(bytes.size()));
+        return static_cast<bool>(output);
+    } catch (...) {
+        return false;
+    }
 }
 
 std::filesystem::path hud_layout_settings_path() {
@@ -489,31 +570,56 @@ bool load_hud_layout(
     if (path.empty()) return false;
     std::ifstream input{path};
     std::string version;
-    if (!(input >> version) || version != "SFE_HUD_LAYOUT_V2") return false;
+    if (!(input >> version)
+        || (version != "SFE_HUD_LAYOUT_V2"
+            && version != "SFE_HUD_LAYOUT_V3"
+            && version != "SFE_HUD_LAYOUT_V4")) return false;
+    const auto legacy = version == "SFE_HUD_LAYOUT_V2";
+    const auto missing_boss_health = version != "SFE_HUD_LAYOUT_V4";
 
     auto loaded = render::HudLayoutProfiles{};
     std::array<std::array<bool, kHudElementNames.size()>,
         kHudProfileNames.size()> found{};
+    if (missing_boss_health) {
+        for (auto& profile : found) {
+            profile[static_cast<std::size_t>(
+                render::HudElement::boss_health)] = true;
+        }
+    }
     std::string profile;
     std::string name;
     int x{};
     int y{};
     while (input >> profile >> name >> x >> y) {
-        const auto profile_item = std::find(kHudProfileNames.begin(),
-            kHudProfileNames.end(), profile);
         const auto item = std::find(kHudElementNames.begin(),
             kHudElementNames.end(), name);
-        if (profile_item == kHudProfileNames.end()
-            || item == kHudElementNames.end()) continue;
-        const auto profile_index = static_cast<std::size_t>(
-            std::distance(kHudProfileNames.begin(), profile_item));
+        if (item == kHudElementNames.end()) continue;
         const auto index = static_cast<std::size_t>(
             std::distance(kHudElementNames.begin(), item));
-        loaded[profile_index].offsets[index] = {
+        const auto offset = render::HudOffset{
             static_cast<std::int16_t>(std::clamp(x, -1'000, 1'000)),
             static_cast<std::int16_t>(std::clamp(y, -1'000, 1'000)),
         };
-        found[profile_index][index] = true;
+        if (legacy) {
+            const auto profile_item = std::find(kLegacyHudProfileNames.begin(),
+                kLegacyHudProfileNames.end(), profile);
+            if (profile_item == kLegacyHudProfileNames.end()) continue;
+            const auto profile_index = static_cast<std::size_t>(
+                std::distance(kLegacyHudProfileNames.begin(), profile_item));
+            loaded[profile_index].offsets[index] = offset;
+            loaded[profile_index + render::hud_display_profile_count]
+                .offsets[index] = offset;
+            found[profile_index][index] = true;
+            found[profile_index + render::hud_display_profile_count][index] = true;
+        } else {
+            const auto profile_item = std::find(kHudProfileNames.begin(),
+                kHudProfileNames.end(), profile);
+            if (profile_item == kHudProfileNames.end()) continue;
+            const auto profile_index = static_cast<std::size_t>(
+                std::distance(kHudProfileNames.begin(), profile_item));
+            loaded[profile_index].offsets[index] = offset;
+            found[profile_index][index] = true;
+        }
     }
     if (!std::all_of(found.begin(), found.end(), [](const auto& profile) {
             return std::all_of(profile.begin(), profile.end(),
@@ -532,7 +638,7 @@ bool save_hud_layout(
     if (error) return false;
     std::ofstream output{path, std::ios::trunc};
     if (!output) return false;
-    output << "SFE_HUD_LAYOUT_V2\n";
+    output << "SFE_HUD_LAYOUT_V4\n";
     for (std::size_t profile = 0; profile < kHudProfileNames.size(); ++profile) {
         for (std::size_t index = 0; index < kHudElementNames.size(); ++index) {
             output << kHudProfileNames[profile] << ' '

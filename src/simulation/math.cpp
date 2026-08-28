@@ -1,5 +1,7 @@
 #include "starfox/simulation/math.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <bit>
 #include <limits>
 #include <stdexcept>
@@ -135,6 +137,70 @@ MatrixQ15 multiply_matrix_q15(
                 left[row * 3U + 1U], right[3U + column]));
             result[row * 3U + column] = add16(value, multiply_q15(
                 left[row * 3U + 2U], right[6U + column]));
+        }
+    }
+    return result;
+}
+
+MatrixQ15 interpolate_rotation_matrix_q15(
+    const MatrixQ15& previous,
+    const MatrixQ15& current,
+    double alpha) noexcept {
+    if (alpha <= 0.0) return previous;
+    if (alpha >= 1.0) return current;
+    alpha = std::clamp(alpha, 0.0, 1.0);
+
+    using Vector = std::array<double, 3>;
+    constexpr double q15 = 32'768.0;
+    const auto blended_column = [&](std::size_t column) {
+        Vector result{};
+        for (std::size_t row = 0; row < 3U; ++row) {
+            const auto index = row * 3U + column;
+            result[row] = (static_cast<double>(previous[index])
+                    + (static_cast<double>(current[index])
+                        - static_cast<double>(previous[index])) * alpha)
+                / q15;
+        }
+        return result;
+    };
+    const auto dot = [](const Vector& left, const Vector& right) {
+        return left[0] * right[0] + left[1] * right[1]
+            + left[2] * right[2];
+    };
+    const auto normalized = [&dot](Vector value, Vector fallback) {
+        const auto magnitude = std::sqrt(dot(value, value));
+        if (magnitude < 1.0e-9) return fallback;
+        for (auto& component : value) component /= magnitude;
+        return value;
+    };
+    auto first = normalized(blended_column(0U), {1.0, 0.0, 0.0});
+    auto second = blended_column(1U);
+    const auto projection = dot(first, second);
+    for (std::size_t axis = 0; axis < 3U; ++axis) {
+        second[axis] -= first[axis] * projection;
+    }
+    second = normalized(second, {0.0, 1.0, 0.0});
+    Vector third{
+        first[1] * second[2] - first[2] * second[1],
+        first[2] * second[0] - first[0] * second[2],
+        first[0] * second[1] - first[1] * second[0],
+    };
+    third = normalized(third, {0.0, 0.0, 1.0});
+    // A near-180-degree step can make the first two blended columns
+    // ambiguous. Match the source destination's third axis so the result
+    // remains a proper rotation instead of reflecting the model.
+    if (dot(third, blended_column(2U)) < 0.0) {
+        for (auto& component : second) component = -component;
+        for (auto& component : third) component = -component;
+    }
+
+    MatrixQ15 result{};
+    const std::array<Vector, 3> columns{first, second, third};
+    for (std::size_t column = 0; column < 3U; ++column) {
+        for (std::size_t row = 0; row < 3U; ++row) {
+            const auto value = std::lround(columns[column][row] * q15);
+            result[row * 3U + column] = static_cast<std::int16_t>(
+                std::clamp<long>(value, -32'768L, 32'767L));
         }
     }
     return result;

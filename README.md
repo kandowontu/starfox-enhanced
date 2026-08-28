@@ -2,15 +2,18 @@
 
 A native Windows PC port of the open-source
 [UltraStarFox](https://github.com/Sunlitspace542/ultrastarfox) codebase. It
-presents at a selectable 20, 30, 60, 90, 120, 240, or 360 frames per second while
-preserving the original game's intended NTSC simulation speed and assembled
-model data. The default is 60 FPS.
+presents at a selectable 20, 30, 60, 90, 120, 240, 360, or 480 frames per
+second while preserving the original game's intended NTSC simulation speed
+and assembled model data. The default is 60 FPS.
 
-This repository is an early playable fidelity pass. The prebuilt Windows
-executable in `dist/StarFoxEnhanced` is a single-file build: its pinned,
-assembled UltraStarFox ROM and symbol data are embedded as Windows resources,
-so recipients can run `starfox_pc.exe` without installing dependencies or
-supplying adjacent data files. No GitHub release has been published yet.
+This repository is an early playable fidelity pass. It does not track a game
+executable, retail ROM, reconstructed ROM, or generated asset companion. The
+Windows executable embeds source-built BPS deltas and symbol data only. On its
+first launch it validates the user's own unmodified Star Fox USA v1.2 (Rev 2)
+ROM, reconstructs the Original and Star Fox EX runtime data locally, and writes
+one version-bound `Starfox-Assets.BIN` companion beside the executable. Later
+launches use that validated companion without requiring the retail ROM to stay
+present. No GitHub release has been published yet.
 
 ## What is preserved
 
@@ -27,9 +30,18 @@ supplying adjacent data files. No GitHub release has been published yet.
   three routes, game over, continue, credits, pause, and stage transitions are
   connected in the native flow.
 
-The cleaned pre-game setup independently selects game pace, render FPS,
-display mode, controller remapping, and a separate Options page. Its first
-option is the Star Fox EX-style God Mode: player collision is disabled,
+The cleaned pre-game setup starts with an `EXPERIENCE` selector. `ORIGINAL` is
+the default; `STARFOX EX` selects the embedded 1.11.03 source build, including
+its native title/intro, three-page configuration menu, shipped `PLANETS` and
+`PLANETS2` campaigns, custom stages, ships, models, palettes, music, and source
+mechanics. EX's real 64 KiB cartridge SRAM is persisted byte-for-byte at
+`Documents/Star Fox Enhanced/starfox-ex.srm`; its source `SFEX` validation,
+defaults, loading, START GAME commit, and L+R+DOWN+B intro reset paths all run
+unchanged.
+
+The setup also independently selects game pace, render FPS, display mode,
+controller remapping, and a separate Options page. Its first option is the
+Star Fox EX-style God Mode: player collision is disabled,
 regular Nova Bombs remain infinite, and holding R while pressing A fires a
 God Nuke. The Options page can also enable a live on-screen FPS counter which
 reports completed presentations in 250 ms samples so lag spots remain visible,
@@ -39,10 +51,11 @@ OBJ reticle and its Super FX cockpit triangles while damaged-wing indicators
 remain red.
 
 `CUSTOMIZE SCREEN` opens a mouse-driven captured native-gameplay HUD preview
-using the game's actual HUD artwork. Lives, Shield,
-Bombs/Boost, and Comms can each be dragged to a new position; `RESET` (or Y)
-restores the current display mode's defaults. Layouts are independent for 4:3,
-16:9, 16:10, 21:9, and 32:9, and save automatically to
+using the game's actual HUD artwork. Lives, Shield, Bombs/Boost, Comms, and the
+Boss Health bar can each be dragged independently; `RESET` (or Y) restores the
+current display mode's defaults. Layouts are independent for 4:3,
+16:9, 16:10, 21:9, and 32:9, with separate Original and Star Fox EX layouts
+for every size. They save automatically to
 `Documents/Star Fox Enhanced/hud-layout.cfg`.
 Game pace, render FPS, display mode, God Mode, the FPS counter, and crosshair
 colour also persist in `Documents/Star Fox Enhanced/pregame.cfg`. Keyboard and
@@ -58,18 +71,14 @@ orchestration, rendering, audio output, and presentation are native C++.
 
 ## Quick start (Windows)
 
-The tracked prebuilt executable can be launched directly:
-
-```powershell
-.\dist\StarFoxEnhanced\starfox_pc.exe
-```
-
-To rebuild the executable from source, first build the pinned UltraStarFox
-source so these local inputs exist:
+Build the pinned UltraStarFox and Star Fox EX sources first so their local ROM
+and symbol outputs exist. These generated files stay ignored and untracked:
 
 ```text
 upstream-ultrastarfox/SF.SFC
 upstream-ultrastarfox/SYMBOLS.TXT
+upstream-star-fox-ex/SFES/SFES.SFC
+upstream-star-fox-ex/SYMBOLS.TXT
 ```
 
 Then run:
@@ -79,19 +88,32 @@ Then run:
 ```
 
 The launcher configures an optimized build on first use and starts at the
-title screen. A development map can be selected explicitly:
+pre-game setup. On the executable's first run, supply an unmodified 1 MiB Star
+Fox USA v1.2 (Rev 2) ROM as one of:
+
+```text
+C:\NTSC-US Super Nintendo System Roms\Star Fox (USA) (Rev 2).sfc
+Star Fox (USA) (Rev 2).sfc beside starfox_pc.exe
+the path named by STARFOX_RETAIL_ROM
+```
+
+A 512-byte copier header is accepted and removed before validation. Any other
+revision or modified dump is rejected. After `Starfox-Assets.BIN` is created,
+the retail file is no longer read unless the executable's embedded patch or
+symbol manifest changes and the companion must be rebuilt.
+
+A development map can be selected explicitly:
 
 ```powershell
 .\play-starfox.ps1 LEVEL1_1
 ```
 
-The Windows build embeds those inputs by default. Explicit external files can
-still be passed to the executable for development and source-to-port
-comparisons.
+Explicit external ROM/symbol pairs can still be passed to a development build
+for source-to-port comparisons.
 
 ## UltraStarFox source setup
 
-The required revision is pinned in `config/upstream.json`:
+The required Original revision is pinned in `config/upstream.json`:
 
 ```powershell
 git clone https://github.com/Sunlitspace542/ultrastarfox.git upstream-ultrastarfox
@@ -101,6 +123,19 @@ powershell -ExecutionPolicy Bypass -File tools/build_upstream.ps1
 
 The UltraStarFox DOSBox assembler toolchain must be present in that checkout,
 as described by its own build instructions.
+
+The Star Fox EX 1.11.03 source revision is pinned separately in
+`config/upstream-ex.json`:
+
+```powershell
+git clone https://github.com/sunlitspace542/star-fox-ex.git upstream-star-fox-ex
+git -C upstream-star-fox-ex checkout b5e2d837a15a72a532cd019bfe332b7a4b660924
+powershell -ExecutionPolicy Bypass -File tools/build_starfox_ex.ps1
+```
+
+That checkout also supplies its DOSBox assembler toolchain. Both build helpers
+reject a different source revision so the embedded symbol tables remain bound
+to the checked-in BPS deltas.
 
 ## Build and test
 
@@ -151,6 +186,21 @@ built-in controls are detected automatically. Both the D-pad and left stick
 move by default; Deck back paddles and all other exposed controls can be
 assigned from CONTROLLER REMAP.
 
+Star Fox EX can consume up to five connected gamepads for its native two-player
+and multitap modes. Devices with an SDL/Steam player index are assigned first
+in player-number order, followed by the remaining detected controllers;
+keyboard input belongs to player one only. EX's own `MULTITAP SUPPORT` and
+`NUMBER OF PLAYERS` settings remain authoritative, including its one-player
+mode that deliberately mirrors player-one input to all five ships.
+
+EX's `SUPER SCOPE MODE` uses the PC mouse as the native light gun: move to aim,
+left-click for Fire, right-click for Cursor/calibration, middle-click for Pause,
+and use either side button for Turbo. Scope mode owns the mouse only while that
+EX option is enabled; otherwise right-drag remains the free presentation camera.
+`NTT DATA PAD SUPPORT` maps 0-9 to the matching main-row or keypad digits,
+asterisk to Shift+8 or keypad Multiply, hash to Shift+3 or keypad Divide,
+period to either Period key, C to C, and Hang Up to H.
+
 Hold Tab at any time to fast-forward the complete cartridge clock at 2x speed,
 including gameplay, frontend transitions, music, and sound effects. Releasing
 Tab immediately restores the selected game pace; render FPS is unchanged.
@@ -168,7 +218,9 @@ according to the measured 10.7 MHz workload schedule, reproducing the
 characteristic cartridge slowdown. The independently selected render FPS
 changes only how often frames are presented: an exact rational scheduler
 services the same raster phases, logic ticks, frontend timing, and audio pace
-at 20, 30, 60, 90, 120, 240, and 360 FPS.
+at 20, 30, 60, 90, 120, 240, 360, and 480 FPS. Object and camera
+rotations use normalized matrix interpolation between source updates, while
+gameplay state remains fixed-point and unchanged.
 
 The port consumes the exact assembled models and fixed-point state, but it is
 not a cycle-accurate SNES emulator. Its software renderer reproduces the

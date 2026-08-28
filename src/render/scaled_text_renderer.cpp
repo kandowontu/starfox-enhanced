@@ -33,7 +33,15 @@ ScaledTextRenderer::ScaledTextRenderer(
       game_font_widths_(rom_symbol(symbols, "FONT0WID")),
       game_font_glyphs_(rom_symbol(symbols, "FONT0FON")),
       game_font_translation_(rom_symbol(symbols, "FONT0TRN")),
-      face_data_(rom_symbol(symbols, "FACEDATA")) {}
+      face_data_(rom_symbol(symbols, "FACEDATA")) {
+    for (const auto address : symbols.find("FACEDATA2")) {
+        if ((address & 0xffffU) >= 0x8000U
+            && ((address >> 16U) & 0xffU) < 0x70U) {
+            face_data_2_ = address;
+            break;
+        }
+    }
+}
 
 void ScaledTextRenderer::draw(
     std::uint16_t message_pointer,
@@ -42,7 +50,12 @@ void ScaledTextRenderer::draw(
     const RenderPose& pose,
     Framebuffer& target,
     std::uint8_t colour_index_base) const {
-    if (pose.z < 128.0) return;
+    // A text object may remain in the object list for one update before its
+    // message pointer is assigned (Star Fox EX does this during its intro).
+    // The Super FX sees the lower half of a LoROM bank as non-ROM/open bus;
+    // it is not a valid projected-message string.  Treat that transient state
+    // as invisible instead of asking RomImage to translate e.g. $2d:0000.
+    if (pose.z < 128.0 || message_pointer < 0x8000U) return;
     const auto message_address = (messages_ & 0xff0000U) | message_pointer;
     std::vector<std::uint8_t> characters;
     characters.reserve(32U);
@@ -95,6 +108,12 @@ void ScaledTextRenderer::draw_game_text(
     std::optional<std::uint8_t> forced_colour,
     std::int32_t right_clip,
     std::size_t max_characters) const {
+    // EX can open the portrait/message window one source update before it
+    // assigns FRIENDS_MESSAGE. dialogue_state() retains MARIOMSGS' bank, so
+    // that transient null pointer arrives here as e.g. $2d:0000 instead of
+    // integer zero. The SNES sees open bus in the lower half of a LoROM bank;
+    // it does not try to read a string there.
+    if ((text_address & 0xffffU) < 0x8000U) return;
     const auto colour = rom_->read8(text_address++);
     const auto output_colour = static_cast<std::uint8_t>(
         colour_index_base + (forced_colour.value_or(colour) & 0x0fU));
@@ -172,8 +191,11 @@ void ScaledTextRenderer::draw_face(
     std::int32_t x,
     std::int32_t y,
     Framebuffer& target,
-    std::uint8_t colour_index_base) const {
-    const auto frame_address = face_data_ + static_cast<std::uint32_t>(frame) * 640U;
+    std::uint8_t colour_index_base,
+    bool alternate_portraits) const {
+    const auto data = alternate_portraits && face_data_2_ != 0U
+        ? face_data_2_ : face_data_;
+    const auto frame_address = data + static_cast<std::uint32_t>(frame) * 640U;
     for (std::int32_t tile_x = 0; tile_x < 4; ++tile_x) {
         for (std::int32_t tile_y = 0; tile_y < 5; ++tile_y) {
             const auto tile = frame_address
@@ -236,6 +258,26 @@ void ScaledTextRenderer::draw_ascii(
         }
         x += width;
     }
+}
+
+std::int32_t ScaledTextRenderer::measure_ascii(std::string_view text) const {
+    std::int32_t line_width{};
+    std::int32_t maximum_width{};
+    for (const auto character : text) {
+        const auto ascii = static_cast<std::uint8_t>(character);
+        if (ascii == '\n') {
+            maximum_width = std::max(maximum_width, line_width);
+            line_width = 0;
+            continue;
+        }
+        if (ascii < 32U) continue;
+        const auto translated = rom_->read8(
+            game_font_translation_ + static_cast<std::uint32_t>(ascii - 32U));
+        line_width += ascii == 32U ? 5
+            : static_cast<std::int32_t>(
+                rom_->read8(game_font_widths_ + translated));
+    }
+    return std::max(maximum_width, line_width);
 }
 
 } // namespace starfox::render

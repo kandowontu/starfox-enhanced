@@ -8,7 +8,11 @@
 
 namespace starfox::simulation {
 
-ObjectPool::ObjectPool() noexcept {
+ObjectPool::ObjectPool(std::size_t capacity, ObjectMemoryLayout layout)
+    : capacity_(capacity), layout_(layout) {
+    if (capacity_ == 0 || capacity_ > kMaximumObjects) {
+        throw std::invalid_argument{"object pool capacity is outside the supported range"};
+    }
     reset();
 }
 
@@ -18,8 +22,8 @@ void ObjectPool::reset() noexcept {
     first_active_ = 0;
     first_free_ = 1;
     active_count_ = 0;
-    for (ObjectHandle handle = 1; handle <= kMaximumObjects; ++handle) {
-        free_next_[handle] = handle == kMaximumObjects
+    for (ObjectHandle handle = 1; handle <= capacity_; ++handle) {
+        free_next_[handle] = handle == capacity_
             ? ObjectHandle{0}
             : static_cast<ObjectHandle>(handle + 1U);
     }
@@ -83,7 +87,7 @@ bool ObjectPool::remove(ObjectHandle handle) noexcept {
 }
 
 bool ObjectPool::valid_handle(ObjectHandle handle) const noexcept {
-    return handle > 0 && handle <= kMaximumObjects;
+    return handle > 0 && handle <= capacity_;
 }
 
 bool ObjectPool::is_active(ObjectHandle handle) const noexcept {
@@ -119,7 +123,7 @@ std::vector<ObjectHandle> ObjectPool::active_handles() const {
 
 std::vector<ObjectHandle> ObjectPool::free_handles() const {
     std::vector<ObjectHandle> result;
-    result.reserve(kMaximumObjects - active_count_);
+    result.reserve(capacity_ - active_count_);
     for (auto handle = first_free_; handle != 0; handle = free_next_[handle]) {
         result.push_back(handle);
     }
@@ -129,13 +133,13 @@ std::vector<ObjectHandle> ObjectPool::free_handles() const {
 void ObjectPool::restore_lists(
     const std::vector<ObjectHandle>& active,
     const std::vector<ObjectHandle>& free) {
-    if (active.size() + free.size() != kMaximumObjects) {
+    if (active.size() + free.size() != capacity_) {
         throw std::invalid_argument{"restored object lists do not cover every slot"};
     }
     std::array<bool, kMaximumObjects + 1> seen{};
-    const auto validate = [&seen](const std::vector<ObjectHandle>& list) {
+    const auto validate = [this, &seen](const std::vector<ObjectHandle>& list) {
         for (const auto handle : list) {
-            if (handle == 0 || handle > kMaximumObjects || seen[handle]) {
+            if (handle == 0 || handle > capacity_ || seen[handle]) {
                 throw std::invalid_argument{"restored object list contains an invalid slot"};
             }
             seen[handle] = true;
@@ -144,7 +148,7 @@ void ObjectPool::restore_lists(
     validate(active);
     validate(free);
 
-    for (ObjectHandle handle = 1; handle <= kMaximumObjects; ++handle) {
+    for (ObjectHandle handle = 1; handle <= capacity_; ++handle) {
         const auto was_active = slots_[handle].active;
         const auto will_be_active = std::find(active.begin(), active.end(), handle) != active.end();
         if (was_active && !will_be_active) {
@@ -207,15 +211,29 @@ std::uint8_t ObjectPool::read_base_byte(
     if (offset >= 40 && offset <= 41) return read_i16_byte(object.scratch_words[1], 40);
     if (offset == 42) return object.health;
     if (offset == 43) return object.attack_power;
-    if (offset == 44) return object.weapon_type;
-    if (offset == 45) return object.collision_count;
-    if (offset == 46) return object.collision_flags;
-    if (offset >= 47 && offset <= 48) return read_i16_byte(object.velocity_x, 47);
-    if (offset >= 49 && offset <= 50) return read_i16_byte(object.velocity_y, 49);
-    if (offset >= 51 && offset <= 52) return read_i16_byte(object.velocity_z, 51);
-    if (offset == 53) return object.hit_flags;
-    if (offset >= 54 && offset <= 55) {
-        return std::bit_cast<std::uint8_t>(object.scratch_bytes[offset - 50U]);
+    if (layout_ == ObjectMemoryLayout::starfox_ex) {
+        if (offset == 44) return object.collision_count;
+        if (offset == 45) return object.collision_flags;
+        if (offset >= 46 && offset <= 47) return read_i16_byte(object.velocity_x, 46);
+        if (offset >= 48 && offset <= 49) return read_i16_byte(object.velocity_y, 48);
+        if (offset >= 50 && offset <= 51) return read_i16_byte(object.velocity_z, 50);
+        if (offset == 52) return object.hit_flags;
+        if (offset == 53) return object.weapon_type; // EX's al_weaponnum
+        if (offset == 54) return object.open_al;
+        if (offset >= 55 && offset <= 56) {
+            return std::bit_cast<std::uint8_t>(object.scratch_bytes[offset - 51U]);
+        }
+    } else {
+        if (offset == 44) return object.weapon_type;
+        if (offset == 45) return object.collision_count;
+        if (offset == 46) return object.collision_flags;
+        if (offset >= 47 && offset <= 48) return read_i16_byte(object.velocity_x, 47);
+        if (offset >= 49 && offset <= 50) return read_i16_byte(object.velocity_y, 49);
+        if (offset >= 51 && offset <= 52) return read_i16_byte(object.velocity_z, 51);
+        if (offset == 53) return object.hit_flags;
+        if (offset >= 54 && offset <= 55) {
+            return std::bit_cast<std::uint8_t>(object.scratch_bytes[offset - 50U]);
+        }
     }
     throw std::out_of_range{"alien-block byte offset is outside al_size"};
 }
@@ -271,14 +289,47 @@ void ObjectPool::write_base_byte(
     else if (offset >= 40 && offset <= 41) write_i16_byte(object.scratch_words[1], 40);
     else if (offset == 42) object.health = value;
     else if (offset == 43) object.attack_power = value;
-    else if (offset == 44) object.weapon_type = value;
-    else if (offset == 45) object.collision_count = value;
-    else if (offset == 46) object.collision_flags = value;
-    else if (offset >= 47 && offset <= 48) write_i16_byte(object.velocity_x, 47);
-    else if (offset >= 49 && offset <= 50) write_i16_byte(object.velocity_y, 49);
-    else if (offset >= 51 && offset <= 52) write_i16_byte(object.velocity_z, 51);
-    else if (offset == 53) object.hit_flags = value;
-    else if (offset >= 54 && offset <= 55) {
+    else if (layout_ == ObjectMemoryLayout::starfox_ex && offset == 44) {
+        object.collision_count = value;
+    } else if (layout_ == ObjectMemoryLayout::starfox_ex && offset == 45) {
+        object.collision_flags = value;
+    } else if (layout_ == ObjectMemoryLayout::starfox_ex
+               && offset >= 46 && offset <= 47) {
+        write_i16_byte(object.velocity_x, 46);
+    } else if (layout_ == ObjectMemoryLayout::starfox_ex
+               && offset >= 48 && offset <= 49) {
+        write_i16_byte(object.velocity_y, 48);
+    } else if (layout_ == ObjectMemoryLayout::starfox_ex
+               && offset >= 50 && offset <= 51) {
+        write_i16_byte(object.velocity_z, 50);
+    } else if (layout_ == ObjectMemoryLayout::starfox_ex && offset == 52) {
+        object.hit_flags = value;
+    } else if (layout_ == ObjectMemoryLayout::starfox_ex && offset == 53) {
+        object.weapon_type = value; // EX's al_weaponnum
+    } else if (layout_ == ObjectMemoryLayout::starfox_ex && offset == 54) {
+        object.open_al = value;
+    } else if (layout_ == ObjectMemoryLayout::starfox_ex
+               && offset >= 55 && offset <= 56) {
+        object.scratch_bytes[offset - 51U] = std::bit_cast<std::int8_t>(value);
+    } else if (layout_ == ObjectMemoryLayout::original && offset == 44) {
+        object.weapon_type = value;
+    } else if (layout_ == ObjectMemoryLayout::original && offset == 45) {
+        object.collision_count = value;
+    } else if (layout_ == ObjectMemoryLayout::original && offset == 46) {
+        object.collision_flags = value;
+    } else if (layout_ == ObjectMemoryLayout::original
+               && offset >= 47 && offset <= 48) {
+        write_i16_byte(object.velocity_x, 47);
+    } else if (layout_ == ObjectMemoryLayout::original
+               && offset >= 49 && offset <= 50) {
+        write_i16_byte(object.velocity_y, 49);
+    } else if (layout_ == ObjectMemoryLayout::original
+               && offset >= 51 && offset <= 52) {
+        write_i16_byte(object.velocity_z, 51);
+    } else if (layout_ == ObjectMemoryLayout::original && offset == 53) {
+        object.hit_flags = value;
+    } else if (layout_ == ObjectMemoryLayout::original
+               && offset >= 54 && offset <= 55) {
         object.scratch_bytes[offset - 50U] = std::bit_cast<std::int8_t>(value);
     } else {
         throw std::out_of_range{"alien-block byte offset is outside al_size"};
@@ -339,18 +390,20 @@ void ObjectPool::write_path_byte(
         object.fire_object = static_cast<ObjectHandle>(
             (bits & ~(std::uint16_t{0xff} << shift)) | (std::uint16_t{value} << shift));
     }
-    if (index == 28) object.colour_frame = value;
-    if (index == 29) object.animation_frame = value;
-    if (index == 30) object.sound1 = value;
-    if (index == 31) object.sound2 = value;
-    if (index >= 32 && index <= 33) {
-        const auto shift = static_cast<unsigned>((index - 32U) * 8U);
+    const auto ex_shift = layout_ == ObjectMemoryLayout::starfox_ex
+        ? std::size_t{2U} : std::size_t{};
+    if (index == 28U + ex_shift) object.colour_frame = value;
+    if (index == 29U + ex_shift) object.animation_frame = value;
+    if (index == 30U + ex_shift) object.sound1 = value;
+    if (index == 31U + ex_shift) object.sound2 = value;
+    if (index >= 32U + ex_shift && index <= 33U + ex_shift) {
+        const auto shift = static_cast<unsigned>((index - (32U + ex_shift)) * 8U);
         object.colour_table = static_cast<std::uint16_t>(
             (object.colour_table & ~(std::uint16_t{0xff} << shift))
             | (std::uint16_t{value} << shift));
     }
-    if (index == 42) object.texture_scroll_x = value;
-    if (index == 43) object.texture_scroll_y = value;
+    if (index == 42U + ex_shift) object.texture_scroll_x = value;
+    if (index == 43U + ex_shift) object.texture_scroll_y = value;
 }
 
 void ObjectPool::write_path_word(

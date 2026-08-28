@@ -7,8 +7,14 @@
 namespace starfox::simulation {
 
 using ObjectHandle = std::uint16_t;
-inline constexpr std::size_t kMaximumObjects = 70;
-inline constexpr std::size_t kExtendedObjectBytes = 54;
+inline constexpr std::size_t kOriginalMaximumObjects = 70;
+inline constexpr std::size_t kMaximumObjects = 80;
+inline constexpr std::size_t kExtendedObjectBytes = 56;
+
+enum class ObjectMemoryLayout : std::uint8_t {
+    original,
+    starfox_ex,
+};
 
 // Semantic form of the original al_/alx_ blocks. Narrow fields intentionally
 // retain the 65816 wrapping behavior expected by strategy code.
@@ -36,6 +42,7 @@ struct GameObject {
     std::uint8_t health{};
     std::uint8_t attack_power{};
     std::uint8_t weapon_type{};
+    std::uint8_t open_al{};
     std::uint8_t collision_count{};
     std::uint8_t collision_flags{};
     std::int16_t velocity_x{};
@@ -59,7 +66,9 @@ struct GameObject {
 
 class ObjectPool {
 public:
-    ObjectPool() noexcept;
+    explicit ObjectPool(
+        std::size_t capacity = kOriginalMaximumObjects,
+        ObjectMemoryLayout layout = ObjectMemoryLayout::original);
 
     void reset() noexcept;
     [[nodiscard]] ObjectHandle allocate_after(ObjectHandle previous = 0) noexcept;
@@ -75,6 +84,7 @@ public:
     [[nodiscard]] ObjectHandle first_active() const noexcept { return first_active_; }
     [[nodiscard]] ObjectHandle next_active(ObjectHandle handle) const noexcept;
     [[nodiscard]] std::size_t active_count() const noexcept { return active_count_; }
+    [[nodiscard]] std::size_t capacity() const noexcept { return capacity_; }
     [[nodiscard]] std::uint8_t read_base_byte(ObjectHandle handle, std::uint16_t offset) const;
     [[nodiscard]] std::uint16_t read_base_word(ObjectHandle handle, std::uint16_t offset) const;
     void write_base_byte(ObjectHandle handle, std::uint16_t offset, std::uint8_t value);
@@ -100,6 +110,8 @@ private:
     ObjectHandle first_active_{};
     ObjectHandle first_free_{};
     std::size_t active_count_{};
+    std::size_t capacity_{kOriginalMaximumObjects};
+    ObjectMemoryLayout layout_{ObjectMemoryLayout::original};
 };
 
 } // namespace starfox::simulation

@@ -9,6 +9,7 @@
 #include <bit>
 #include <cmath>
 #include <cstring>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
@@ -23,23 +24,17 @@ constexpr std::uint32_t kPageSize = 1U << kPageBits;
 constexpr std::uint32_t kPageCount = kAddressSpaceSize / kPageSize;
 constexpr std::uint32_t kBootstrap = 0x7e0100U;
 constexpr std::uint32_t kReturnSentinel = 0x7e01f0U;
-constexpr std::uint32_t kDmaTargetScanline = 0x1760U;
 constexpr std::uint32_t kSuperFxRamBase = 0x700000U;
 constexpr std::uint32_t kSuperFxRamSize = 0x10000U;
-constexpr std::uint32_t kMEndData = 0x700062U;
-constexpr std::uint32_t kMEndDataBank = 0x700064U;
-constexpr std::uint32_t kMDecrunchAddress = 0x70002cU;
-constexpr std::uint32_t kMDecrunchEnd = 0x70005aU;
-constexpr std::uint32_t kMDecrunchOffset = 0x700090U;
-constexpr std::uint16_t kDecrunchBuffer = 0x7800U;
-constexpr std::uint16_t kScreenDecrunchBuffer = kDecrunchBuffer + 6144U;
-constexpr std::uint16_t kVram1Address = 0x190fU;
-constexpr std::uint16_t kVram1Length = 0x1911U;
-constexpr std::uint16_t kVram2Address = 0x1913U;
-constexpr std::uint16_t kVram2Length = 0x1915U;
-constexpr std::uint16_t kVram3Address = 0x1917U;
-constexpr std::uint16_t kVram3Length = 0x191aU;
-constexpr std::uint32_t kGamePalette = 0x7e81efU;
+constexpr std::uint32_t kCartridgeRamBase = 0x710000U;
+constexpr std::uint16_t kRetailDecrunchBuffer = 0x7800U;
+constexpr std::uint16_t kRetailVram1Address = 0x190fU;
+constexpr std::uint16_t kRetailVram1Length = 0x1911U;
+constexpr std::uint16_t kRetailVram2Address = 0x1913U;
+constexpr std::uint16_t kRetailVram2Length = 0x1915U;
+constexpr std::uint16_t kRetailVram3Address = 0x1917U;
+constexpr std::uint16_t kRetailVram3Length = 0x191aU;
+constexpr std::uint32_t kRetailGamePalette = 0x7e81efU;
 
 std::uint32_t find_rom_symbol(
     const assets::SymbolMap* symbols, const char* name) noexcept {
@@ -60,6 +55,14 @@ std::uint32_t find_symbol(
     return addresses.empty() ? 0U : addresses.front();
 }
 
+std::uint32_t find_symbol_or(
+    const assets::SymbolMap* symbols,
+    const char* name,
+    std::uint32_t fallback) noexcept {
+    const auto found = find_symbol(symbols, name);
+    return found == 0U ? fallback : found;
+}
+
 } // namespace
 
 struct Wdc65816::Impl {
@@ -67,7 +70,7 @@ struct Wdc65816::Impl {
     SystemBus bus{};
     std::vector<Page> pages{static_cast<std::size_t>(kPageCount)};
     std::vector<std::uint8_t> wram = std::vector<std::uint8_t>(0x20000U);
-    std::array<std::uint8_t, 2> controller{};
+    std::array<std::uint8_t, 8> controller{};
     std::array<std::uint8_t, 4> apu_ports{0xaaU, 0xbbU, 0U, 0U};
     bool apu_output_connected{};
     bool apu_upload_active{};
@@ -75,6 +78,7 @@ struct Wdc65816::Impl {
     std::array<std::uint8_t, 0x300> superfx_registers{};
     std::vector<std::uint8_t> superfx_ram =
         std::vector<std::uint8_t>(kSuperFxRamSize);
+    std::array<std::uint8_t, Wdc65816::cartridge_ram_size> cartridge_ram{};
     std::array<std::uint8_t, 0x40> ppu_registers{};
     std::array<std::uint8_t, 0x80> dma_registers{};
     SnesPpuState ppu{};
@@ -86,6 +90,21 @@ struct Wdc65816::Impl {
     std::uint16_t oam_address{};
     bool oam_high_byte{};
     std::uint32_t mdecrunch{};
+    std::uint32_t mdecclear{};
+    std::uint32_t m_enddata{};
+    std::uint32_t m_enddatabnk{};
+    std::uint32_t m_decaddr{};
+    std::uint32_t m_decend{};
+    std::uint32_t m_decoffset{};
+    std::uint16_t decrunch_buffer{};
+    std::uint16_t screen_decrunch_buffer{};
+    std::uint16_t vram1_address{};
+    std::uint16_t vram1_length{};
+    std::uint16_t vram2_address{};
+    std::uint16_t vram2_length{};
+    std::uint16_t vram3_address{};
+    std::uint16_t vram3_length{};
+    std::uint32_t game_palette{};
     std::uint32_t mcallarctan16{};
     std::uint32_t arctantab{};
     std::uint32_t m_cnt{};
@@ -100,14 +119,34 @@ struct Wdc65816::Impl {
     std::uint32_t m_rotz{};
     std::uint32_t m_wmat11{};
     std::uint32_t mclrmapscreen{};
+    std::uint32_t mclrpepperscreen{};
+    std::uint32_t mclrbitmaps2{};
+    std::uint32_t mclrbitmaps3{};
+    std::uint32_t m_clrbitmaps{};
     std::uint32_t mdrawsprite32{};
     std::uint32_t musprite{};
     std::uint32_t mdrawsphere{};
     std::uint32_t mcalc_circle{};
     std::uint32_t mcopyface{};
+    std::uint32_t mcopyface2{};
+    std::uint32_t mgprintstr{};
+    std::uint32_t mkrisdivu3115{};
+    std::uint32_t mcalcperc{};
+    std::uint32_t mprtperc{};
+    std::uint32_t mprt2zeros{};
+    std::uint32_t mshowpercgraph{};
+    std::uint32_t mallrotzsort{};
+    std::uint32_t mbumwipe{};
+    std::uint32_t mprtdecstop{};
+    std::uint32_t mprintstr{};
+    std::uint32_t mprintclippedstr{};
     std::uint32_t mfprintstr{};
     std::uint32_t msprintstr{};
+    std::uint32_t mshowteammate{};
     std::uint32_t mshowteammate2{};
+    std::uint32_t mshowobj3{};
+    std::uint32_t mdo_3d_display{};
+    std::uint32_t mshowgrid{};
     std::uint32_t textureaddrtab{};
     std::uint32_t bitmap1{};
     std::uint32_t msprite{};
@@ -120,12 +159,21 @@ struct Wdc65816::Impl {
     std::uint32_t m_bigx{};
     std::uint32_t m_bigy{};
     std::uint32_t m_bigz{};
+    std::uint32_t m_shapeptr{};
+    std::uint32_t m_vanishx{};
+    std::uint32_t m_vanishy{};
+    std::uint32_t m_framenum{};
+    std::uint32_t m_colframe{};
     std::uint32_t m_lxpos{};
     std::uint32_t m_lypos{};
     std::uint32_t m_lzpos{};
     std::uint32_t m_scale{};
+    std::uint32_t dmatemp{};
     std::uint32_t planetdma{};
+    std::uint32_t transbmp1{};
+    std::uint32_t vmap1{};
     std::uint32_t vmap2{};
+    std::uint32_t spriteblk{};
     bool vertical_counter_high_byte{};
     bool horizontal_counter_high_byte{};
     std::uint32_t wram_port_address{};
@@ -137,12 +185,28 @@ struct Wdc65816::Impl {
     std::uint32_t mnograd{};
     std::uint32_t mtunnelgrad{};
     std::uint32_t mwibbletunnel{};
+    std::uint32_t mwater{};
     std::uint32_t mbhole{};
+    std::uint32_t mnoise{};
+    std::uint32_t mosc{};
+    std::uint32_t mlaced{};
+    std::uint32_t mzigzag{};
     std::uint32_t bg_scrollbuffer{};
     std::uint32_t m_x1{};
     std::uint32_t m_viewposx{};
     std::uint32_t m_y1{};
     std::uint32_t m_z1{};
+    std::uint32_t m_xp2{};
+    std::uint32_t m_txtdata{};
+    std::uint32_t m_textrightclip{};
+    std::uint32_t m_textcolour{};
+    std::uint32_t m_totalchars{};
+    std::uint32_t m_lastchar{};
+    std::uint32_t mwinbase{};
+    std::uint32_t m_winwbglog{};
+    std::uint32_t m_wintabptr{};
+    std::uint32_t m_winbuf{};
+    std::uint32_t m_winbuf2{};
     std::uint32_t m_scrollxoff{};
     std::uint32_t m_sineoffset{};
     std::uint32_t testk{};
@@ -154,15 +218,30 @@ struct Wdc65816::Impl {
     std::uint32_t wsctab{};
     std::uint32_t bholetab{};
     std::uint32_t bholetabend{};
+    std::uint32_t noisetab{};
+    std::uint32_t noisetabend{};
+    std::uint32_t lacedtab{};
+    std::uint32_t lacedtabend{};
+    std::uint32_t zigzagtab{};
+    std::uint32_t zigzagtabend{};
+    std::uint32_t fontdata{};
+    std::uint32_t font0wid{};
+    std::uint32_t font0fon{};
+    std::uint32_t font0trn{};
     std::vector<ApuPortWrite> apu_writes;
     std::uint64_t apu_upload_generation{};
     std::vector<std::uint32_t> unknown_superfx_launches;
+    NativeModelDrawState native_model_draw;
     std::uint32_t apu_clock_offset{};
+    bool task_active{};
+    std::uint32_t task_entry{};
+    std::uint32_t task_return_sentinel{};
     WDC65C816 cpu{&bus};
 
     static bool is_io_device_address(void*, cpuaddr_t address) {
         const auto low = address & 0xffffU;
-        return (low & 0xfffeU) == 0x4218U || (low & 0xfffcU) == 0x2140U
+        return (low >= 0x4218U && low <= 0x421fU)
+            || (low & 0xfffcU) == 0x2140U
             || (low >= 0x2100U && low < 0x2140U)
             || (low >= 0x4202U && low <= 0x4206U)
             || (low >= 0x4214U && low <= 0x4217U)
@@ -175,8 +254,8 @@ struct Wdc65816::Impl {
     static void read_io(void* context, cpuaddr_t address, std::uint8_t* data, std::uint32_t) {
         auto& self = *static_cast<Impl*>(context);
         const auto low = address & 0xffffU;
-        if ((low & 0xfffeU) == 0x4218U) {
-            *data = self.controller[address & 1U];
+        if (low >= 0x4218U && low <= 0x421fU) {
+            *data = self.controller[low - 0x4218U];
         } else if ((low & 0xfffcU) == 0x2140U) {
             // Model the SPC boot-ROM acknowledgement protocol: it initially
             // exposes $BBAA and then echoes CPU port writes after each byte.
@@ -193,7 +272,8 @@ struct Wdc65816::Impl {
             self.horizontal_counter_high_byte = !self.horizontal_counter_high_byte;
         } else if (low == 0x213dU) {
             *data = self.vertical_counter_high_byte
-                ? 0U : self.wram[kDmaTargetScanline];
+                ? 0U
+                : self.wram[static_cast<std::uint16_t>(self.dmatemp)];
             self.vertical_counter_high_byte = !self.vertical_counter_high_byte;
         } else if (low == 0x2180U) {
             *data = self.wram[self.wram_port_address & 0x1ffffU];
@@ -223,8 +303,8 @@ struct Wdc65816::Impl {
         void* context, cpuaddr_t address, const std::uint8_t* data, std::uint32_t) {
         auto& self = *static_cast<Impl*>(context);
         const auto low = address & 0xffffU;
-        if ((low & 0xfffeU) == 0x4218U) {
-            self.controller[address & 1U] = *data;
+        if (low >= 0x4218U && low <= 0x421fU) {
+            self.controller[low - 0x4218U] = *data;
         } else if ((low & 0xfffcU) == 0x2140U) {
             const auto port = static_cast<std::uint8_t>(address & 3U);
             if (port == 0U && *data == 0xffU && !self.apu_upload_active) {
@@ -312,6 +392,30 @@ struct Wdc65816::Impl {
     explicit Impl(const assets::RomImage& rom_image, const assets::SymbolMap* symbols)
         : rom(&rom_image),
           mdecrunch(find_rom_symbol(symbols, "MDECRUNCH")),
+          mdecclear(find_rom_symbol(symbols, "MDECCLEAR")),
+          m_enddata(find_symbol(symbols, "M_ENDDATA")),
+          m_enddatabnk(find_symbol(symbols, "M_ENDDATABNK")),
+          m_decaddr(find_symbol(symbols, "M_DECADDR")),
+          m_decend(find_symbol(symbols, "M_DECEND")),
+          m_decoffset(find_symbol(symbols, "M_DECOFFSET")),
+          decrunch_buffer(static_cast<std::uint16_t>(find_symbol_or(
+              symbols, "DEC_BASE", kRetailDecrunchBuffer))),
+          screen_decrunch_buffer(static_cast<std::uint16_t>(
+              decrunch_buffer + 6144U)),
+          vram1_address(static_cast<std::uint16_t>(find_symbol_or(
+              symbols, "VRAM1ADDR", kRetailVram1Address))),
+          vram1_length(static_cast<std::uint16_t>(find_symbol_or(
+              symbols, "VRAM1LEN", kRetailVram1Length))),
+          vram2_address(static_cast<std::uint16_t>(find_symbol_or(
+              symbols, "VRAM2ADDR", kRetailVram2Address))),
+          vram2_length(static_cast<std::uint16_t>(find_symbol_or(
+              symbols, "VRAM2LEN", kRetailVram2Length))),
+          vram3_address(static_cast<std::uint16_t>(find_symbol_or(
+              symbols, "VRAM3ADDR", kRetailVram3Address))),
+          vram3_length(static_cast<std::uint16_t>(find_symbol_or(
+              symbols, "VRAM3LEN", kRetailVram3Length))),
+          game_palette(find_symbol_or(
+              symbols, "GAMEPALBUFF", kRetailGamePalette)),
           mcallarctan16(find_rom_symbol(symbols, "MCALLARCTAN16")),
           arctantab(find_rom_symbol(symbols, "ARCTANTAB")),
           m_cnt(find_symbol(symbols, "M_CNT")),
@@ -326,14 +430,34 @@ struct Wdc65816::Impl {
           m_rotz(find_symbol(symbols, "M_ROTZ")),
           m_wmat11(find_symbol(symbols, "M_WMAT11")),
           mclrmapscreen(find_rom_symbol(symbols, "MCLRMAPSCREEN")),
+          mclrpepperscreen(find_rom_symbol(symbols, "MCLRPEPPERSCREEN")),
+          mclrbitmaps2(find_rom_symbol(symbols, "MCLRBITMAPS2")),
+          mclrbitmaps3(find_rom_symbol(symbols, "MCLRBITMAPS3")),
+          m_clrbitmaps(find_symbol(symbols, "M_CLRBITMAPS")),
           mdrawsprite32(find_rom_symbol(symbols, "MDRAWSPRITE32")),
           musprite(find_rom_symbol(symbols, "MUSPRITE")),
           mdrawsphere(find_rom_symbol(symbols, "MDRAWSPHERE")),
           mcalc_circle(find_rom_symbol(symbols, "MCALC_CIRCLE")),
           mcopyface(find_rom_symbol(symbols, "MCOPYFACE")),
+          mcopyface2(find_rom_symbol(symbols, "MCOPYFACE2")),
+          mgprintstr(find_rom_symbol(symbols, "MGPRINTSTR")),
+          mkrisdivu3115(find_rom_symbol(symbols, "MKRISDIVU3115")),
+          mcalcperc(find_rom_symbol(symbols, "MCALCPERC")),
+          mprtperc(find_rom_symbol(symbols, "MPRTPERC")),
+          mprt2zeros(find_rom_symbol(symbols, "MPRT2ZEROS")),
+          mshowpercgraph(find_rom_symbol(symbols, "MSHOWPERCGRAPH")),
+          mallrotzsort(find_rom_symbol(symbols, "MALLROTZSORT")),
+          mbumwipe(find_rom_symbol(symbols, "MBUMWIPE")),
+          mprtdecstop(find_rom_symbol(symbols, "MPRTDECSTOP")),
+          mprintstr(find_rom_symbol(symbols, "MPRINTSTR")),
+          mprintclippedstr(find_rom_symbol(symbols, "MPRINTCLIPPEDSTR")),
           mfprintstr(find_rom_symbol(symbols, "MFPRINTSTR")),
           msprintstr(find_rom_symbol(symbols, "MSPRINTSTR")),
+          mshowteammate(find_rom_symbol(symbols, "MSHOWTEAMMATE")),
           mshowteammate2(find_rom_symbol(symbols, "MSHOWTEAMMATE2")),
+          mshowobj3(find_rom_symbol(symbols, "MSHOWOBJ3")),
+          mdo_3d_display(find_rom_symbol(symbols, "MDO_3D_DISPLAY")),
+          mshowgrid(find_rom_symbol(symbols, "MSHOWGRID")),
           textureaddrtab(find_rom_symbol(symbols, "TEXTUREADDRTAB")),
           bitmap1(find_symbol(symbols, "BITMAP1")),
           msprite(find_symbol(symbols, "MSPRITE")),
@@ -346,22 +470,48 @@ struct Wdc65816::Impl {
           m_bigx(find_symbol(symbols, "M_BIGX")),
           m_bigy(find_symbol(symbols, "M_BIGY")),
           m_bigz(find_symbol(symbols, "M_BIGZ")),
+          m_shapeptr(find_symbol(symbols, "M_SHAPEPTR")),
+          m_vanishx(find_symbol(symbols, "M_VANISHX")),
+          m_vanishy(find_symbol(symbols, "M_VANISHY")),
+          m_framenum(find_symbol(symbols, "M_FRAMENUM")),
+          m_colframe(find_symbol(symbols, "M_COLFRAME")),
           m_lxpos(find_symbol(symbols, "M_LXPOS")),
           m_lypos(find_symbol(symbols, "M_LYPOS")),
           m_lzpos(find_symbol(symbols, "M_LZPOS")),
           m_scale(find_symbol(symbols, "M_SCALE")),
+          dmatemp(find_symbol(symbols, "DMATEMP")),
           planetdma(find_symbol(symbols, "PLANETDMA")),
+          transbmp1(find_symbol(symbols, "TRANSBMP1")),
+          vmap1(find_symbol(symbols, "VMAP1")),
           vmap2(find_symbol(symbols, "VMAP2")),
+          spriteblk(find_symbol(symbols, "SPRITEBLK")),
           mrotplanet(find_rom_symbol(symbols, "MROTPLANET")),
           mnograd(find_rom_symbol(symbols, "MNOGRAD")),
           mtunnelgrad(find_rom_symbol(symbols, "MTUNNELGRAD")),
           mwibbletunnel(find_rom_symbol(symbols, "MWIBBLETUNNEL")),
+          mwater(find_rom_symbol(symbols, "MWATER")),
           mbhole(find_rom_symbol(symbols, "MBHOLE")),
+          mnoise(find_rom_symbol(symbols, "MNOISE")),
+          mosc(find_rom_symbol(symbols, "MOSC")),
+          mlaced(find_rom_symbol(symbols, "MLACED")),
+          mzigzag(find_rom_symbol(symbols, "MZIGZAG")),
           bg_scrollbuffer(find_symbol(symbols, "BG_SCROLLBUFFER")),
           m_x1(find_symbol(symbols, "M_X1")),
           m_viewposx(find_symbol(symbols, "M_VIEWPOSX")),
           m_y1(find_symbol(symbols, "M_Y1")),
           m_z1(find_symbol(symbols, "M_Z1")),
+          m_xp2(find_symbol(symbols, "M_XP2")),
+          m_txtdata(find_symbol(symbols, "M_TXTDATA")),
+          m_textrightclip(find_symbol_or(
+              symbols, "M_TEXTRIGHTCLIP", find_symbol(symbols, "M_SPRX"))),
+          m_textcolour(find_symbol(symbols, "M_TEXTCOLOUR")),
+          m_totalchars(find_symbol(symbols, "M_TOTALCHARS")),
+          m_lastchar(find_symbol(symbols, "M_LASTCHAR")),
+          mwinbase(find_rom_symbol(symbols, "MWINBASE")),
+          m_winwbglog(find_symbol(symbols, "M_WINWBGLOG")),
+          m_wintabptr(find_symbol(symbols, "M_WINTABPTR")),
+          m_winbuf(find_symbol(symbols, "M_WINBUF")),
+          m_winbuf2(find_symbol(symbols, "M_WINBUF2")),
           m_scrollxoff(find_symbol(symbols, "M_SCROLLXOFF")),
           m_sineoffset(find_symbol(symbols, "M_SINEOFFSET")),
           testk(find_symbol(symbols, "TESTK")),
@@ -372,7 +522,17 @@ struct Wdc65816::Impl {
           watersinetabend(find_rom_symbol(symbols, "WATERSINETABEND")),
           wsctab(find_rom_symbol(symbols, "WSCTAB")),
           bholetab(find_rom_symbol(symbols, "BHOLETAB")),
-          bholetabend(find_rom_symbol(symbols, "BHOLETABEND")) {
+          bholetabend(find_rom_symbol(symbols, "BHOLETABEND")),
+          noisetab(find_rom_symbol(symbols, "NOISETAB")),
+          noisetabend(find_rom_symbol(symbols, "NOISETABEND")),
+          lacedtab(find_rom_symbol(symbols, "LACEDTAB")),
+          lacedtabend(find_rom_symbol(symbols, "LACEDTABEND")),
+          zigzagtab(find_rom_symbol(symbols, "ZIGZAGTAB")),
+          zigzagtabend(find_rom_symbol(symbols, "ZIGZAGTABEND")),
+          fontdata(find_rom_symbol(symbols, "FONTDATA")),
+          font0wid(find_rom_symbol(symbols, "FONT0WID")),
+          font0fon(find_rom_symbol(symbols, "FONT0FON")),
+          font0trn(find_rom_symbol(symbols, "FONT0TRN")) {
         for (auto& page : pages) {
             page.ptr = nullptr;
             page.flags = 0;
@@ -425,6 +585,13 @@ struct Wdc65816::Impl {
         // Star Fox's GSU work RAM is CPU-visible in bank $70. This must be
         // mapped after LoROM so $70:8000-$ffff is RAM rather than cartridge.
         bus.Map(kSuperFxRamBase, superfx_ram.data(), kSuperFxRamSize);
+
+        // Star Fox EX declares a full 64 KiB of battery-backed cartridge RAM
+        // in bank $71 and stores its options at $71:f000. Map it after LoROM
+        // for the same reason as GSU RAM: the cartridge RAM owns both halves
+        // of this bank, including addresses that would otherwise mirror ROM.
+        bus.Map(kCartridgeRamBase, cartridge_ram.data(),
+            static_cast<std::uint32_t>(cartridge_ram.size()));
 
         // Enter native mode through the architectural XCE instruction so the
         // third-party core's private emulation flag changes normally.
@@ -502,6 +669,9 @@ struct Wdc65816::Impl {
         case 0x2105U:
             ppu.background_mode = static_cast<std::uint8_t>(value & 7U);
             ppu.bg3_high_priority = (value & 0x08U) != 0U;
+            break;
+        case 0x2106U:
+            ppu.mosaic = value;
             break;
         case 0x2107U:
             ppu.bg1_screen_base = static_cast<std::uint16_t>(value & 0xfcU) << 8U;
@@ -644,6 +814,19 @@ struct Wdc65816::Impl {
             static_cast<std::uint8_t>(value >> 8U);
     }
 
+    void write_oscillation_offset(
+        std::size_t line, std::uint16_t value) noexcept {
+        const auto address = static_cast<std::uint16_t>(
+            bg_scrollbuffer + static_cast<std::uint32_t>(line * 3U));
+        // MOSC uses FROM r6 for the first store rather than the usual
+        // constant-one register. Preserve that source quirk exactly.
+        superfx_ram[address] = static_cast<std::uint8_t>(value);
+        superfx_ram[static_cast<std::uint16_t>(address + 1U)] =
+            static_cast<std::uint8_t>(value);
+        superfx_ram[static_cast<std::uint16_t>(address + 2U)] =
+            static_cast<std::uint8_t>(value >> 8U);
+    }
+
     void generate_constant_horizontal_offsets() noexcept {
         auto value = arithmetic_shift_right(
             signed16(read_superfx16(m_viewposx)), 3U);
@@ -754,7 +937,37 @@ struct Wdc65816::Impl {
             });
     }
 
-    void generate_black_hole_horizontal_offsets() {
+    void generate_flat_water_horizontal_offsets() {
+        auto sine_offset = static_cast<std::int16_t>(
+            read_superfx16(m_sineoffset) - 1U);
+        const auto sine_length = static_cast<std::uint16_t>(
+            watersinetabend - watersinetab);
+        if (sine_offset < 0) {
+            sine_offset = static_cast<std::int16_t>(sine_offset + sine_length);
+        }
+        write_superfx16(m_sineoffset, static_cast<std::uint16_t>(sine_offset));
+
+        auto sine_address = watersinetab + static_cast<std::uint16_t>(sine_offset);
+        auto sine = static_cast<std::int8_t>(rom->read8(sine_address));
+        auto until_next_sine = std::int16_t{};
+        generate_symmetric_gradient_offsets(
+            0U, 128U,
+            [&](std::size_t index, std::uint16_t value) {
+                --until_next_sine;
+                if (until_next_sine < 0) {
+                    ++sine_address;
+                    sine = static_cast<std::int8_t>(rom->read8(sine_address));
+                    until_next_sine = static_cast<std::int16_t>(index >> 3U);
+                }
+                // MWATER deliberately leaves its WSCTAB/divide loop
+                // commented out, so the lower half uses the full sine.
+                return static_cast<std::uint16_t>(
+                    value + static_cast<std::int16_t>(sine));
+            });
+    }
+
+    void generate_animated_table_horizontal_offsets(
+        std::uint32_t table, std::uint32_t table_end) {
         auto countdown = static_cast<std::uint16_t>(read_superfx16(testk3) - 1U);
         write_superfx16(testk3, countdown);
         if (countdown == 0U) {
@@ -767,13 +980,13 @@ struct Wdc65816::Impl {
             read_superfx16(testk2) + phase_step);
         write_superfx16(testk2, gradient_source);
 
-        const auto table_length = static_cast<std::uint16_t>(bholetabend - bholetab);
+        const auto table_length = static_cast<std::uint16_t>(table_end - table);
         auto table_phase = static_cast<std::uint16_t>(read_superfx16(testk) + 3U);
         if (table_phase >= table_length) {
             table_phase = static_cast<std::uint16_t>(table_phase - table_length);
         }
         write_superfx16(testk, table_phase);
-        auto table_address = bholetab + table_phase;
+        auto table_address = table + table_phase;
         const auto scroll = read_superfx16(m_scrollxoff);
         generate_symmetric_gradient_offsets(
             tunnel_gradient(gradient_source), 512U,
@@ -793,6 +1006,27 @@ struct Wdc65816::Impl {
                 | (static_cast<std::uint16_t>(superfx_ram[
                        static_cast<std::uint16_t>(lower + 2U)]) << 8U);
             write_horizontal_offset(111U - index, value);
+        }
+    }
+
+    void generate_oscillation_horizontal_offsets() {
+        auto table_phase = static_cast<std::int16_t>(
+            read_superfx16(m_sineoffset) - 1U);
+        const auto table_length = static_cast<std::uint16_t>(
+            bholetabend - bholetab);
+        if (table_phase < 0) {
+            table_phase = static_cast<std::int16_t>(table_phase + table_length);
+        }
+        write_superfx16(m_sineoffset, static_cast<std::uint16_t>(table_phase));
+
+        auto table_address = bholetab + static_cast<std::uint16_t>(table_phase);
+        for (std::size_t index = 0; index < 127U; ++index) {
+            const auto wobble = static_cast<std::int8_t>(
+                rom->read8(table_address++));
+            const auto value = static_cast<std::uint16_t>(
+                128 + static_cast<std::int16_t>(wobble));
+            write_oscillation_offset(127U + index, value);
+            write_oscillation_offset(126U - index, value);
         }
     }
 
@@ -995,9 +1229,327 @@ struct Wdc65816::Impl {
         }
     }
 
+    void write_game_bitmap_pixel(
+        std::int32_t x, std::int32_t y, std::uint8_t colour) noexcept {
+        if (x < 0 || y < 0 || x >= 224 || y >= 192 || colour == 0U) return;
+        // SETCHARMAPGAME_L orders the 28x24 tile bitmap by column. Each
+        // 8x8 tile is the SNES' ordinary 32-byte 4-bpp planar layout.
+        const auto tile = static_cast<std::uint32_t>(x >> 3) * 24U
+            + static_cast<std::uint32_t>(y >> 3);
+        const auto row = static_cast<std::uint32_t>(y & 7);
+        const auto mask = static_cast<std::uint8_t>(0x80U >> (x & 7));
+        const auto base = static_cast<std::uint16_t>(bitmap1
+            + tile * 32U + row * 2U);
+        for (std::uint32_t plane = 0; plane < 4U; ++plane) {
+            const auto address = static_cast<std::uint16_t>(base
+                + (plane >> 1U) * 16U + (plane & 1U));
+            auto& output = superfx_ram[address];
+            if ((colour & (1U << plane)) != 0U) output |= mask;
+            else output &= static_cast<std::uint8_t>(~mask);
+        }
+    }
+
+    std::uint8_t game_font_width(std::uint8_t ascii) const {
+        if (ascii == 32U) return 5U;
+        if (ascii < 32U || font0trn == 0U || font0wid == 0U) return 0U;
+        const auto translated = rom->read8(
+            font0trn + static_cast<std::uint32_t>(ascii - 32U));
+        return rom->read8(font0wid + translated);
+    }
+
+    void draw_game_font_character(
+        std::uint8_t ascii,
+        std::int32_t x,
+        std::int32_t y,
+        std::uint8_t colour) {
+        const auto width = game_font_width(ascii);
+        if (ascii <= 32U || width == 0U || font0fon == 0U) return;
+        const auto translated = rom->read8(
+            font0trn + static_cast<std::uint32_t>(ascii - 32U));
+        const auto glyph = font0fon
+            + static_cast<std::uint32_t>(translated) * 24U;
+        for (std::int32_t row = 0; row < 12; ++row) {
+            const auto bits = rom->read16(
+                glyph + static_cast<std::uint32_t>(row * 2));
+            for (std::int32_t column = 0; column < width; ++column) {
+                if ((bits & (0x8000U >> column)) != 0U) {
+                    write_game_bitmap_pixel(x + column, y + row, colour);
+                }
+            }
+        }
+    }
+
+    void draw_game_text(
+        std::uint8_t forced_colour = 0U,
+        std::optional<std::int32_t> forced_line_width = std::nullopt,
+        std::optional<std::size_t> maximum_characters = std::nullopt,
+        bool always_force_colour = false) {
+        if (m_txtdata == 0U || fontdata == 0U) return;
+        auto text = (fontdata & 0xff0000U)
+            | read_superfx16(m_txtdata);
+        if ((text & 0xffffU) < 0x8000U) return;
+        auto colour = rom->read8(text++);
+        if (always_force_colour || forced_colour != 0U) {
+            colour = forced_colour;
+        }
+        colour &= 0x0fU;
+
+        std::vector<std::uint8_t> characters;
+        characters.reserve(256U);
+        for (std::size_t index = 0; index < 256U; ++index) {
+            const auto character = rom->read8(text + index);
+            if (character == 0U) break;
+            characters.push_back(character);
+        }
+        if (maximum_characters.has_value()) {
+            const auto limit = std::min(*maximum_characters, characters.size());
+            if (m_lastchar != 0U) {
+                auto next = std::uint8_t{};
+                if (limit < characters.size() && characters[limit] >= 32U) {
+                    next = rom->read8(font0trn
+                        + static_cast<std::uint32_t>(characters[limit] - 32U));
+                }
+                write_superfx16(m_lastchar, next);
+            }
+            characters.resize(limit);
+        }
+
+        const auto start_x = static_cast<std::int32_t>(
+            signed16(read_superfx16(m_x1)));
+        auto y = static_cast<std::int32_t>(signed16(read_superfx16(m_y1)));
+        auto line_width_limit = forced_line_width.value_or(
+            m_textrightclip == 0U
+                ? 224
+                : static_cast<std::int32_t>(read_superfx16(m_textrightclip)));
+        line_width_limit = std::max(0, line_width_limit);
+
+        std::size_t line_start{};
+        while (line_start < characters.size() && y < 192) {
+            auto line_end = characters.size();
+            auto next_line = characters.size();
+            auto last_space = characters.size();
+            std::int32_t width{};
+            for (auto index = line_start; index < characters.size(); ++index) {
+                const auto character_width = static_cast<std::int32_t>(
+                    game_font_width(characters[index]));
+                if (characters[index] == 32U) last_space = index;
+                if (width + character_width > line_width_limit) {
+                    if (last_space != characters.size()
+                        && last_space >= line_start) {
+                        line_end = last_space;
+                        next_line = last_space + 1U;
+                    } else {
+                        line_end = index;
+                        next_line = index;
+                    }
+                    break;
+                }
+                width += character_width;
+            }
+
+            auto x = start_x;
+            for (auto index = line_start; index < line_end; ++index) {
+                draw_game_font_character(characters[index], x, y, colour);
+                x += game_font_width(characters[index]);
+            }
+            if (next_line == characters.size()) break;
+            if (next_line <= line_start) ++next_line;
+            line_start = next_line;
+            y += 13;
+        }
+    }
+
+    void draw_game_decimal_digit(std::uint8_t digit) {
+        auto x = static_cast<std::int32_t>(signed16(read_superfx16(m_x1)));
+        const auto y = static_cast<std::int32_t>(
+            signed16(read_superfx16(m_y1)));
+        draw_game_font_character(
+            static_cast<std::uint8_t>('0' + (digit % 10U)), x, y, 14U);
+        write_superfx16(m_x1, static_cast<std::uint16_t>(x + 8));
+    }
+
+    void draw_game_decimal() {
+        if (m_x1 == 0U || m_y1 == 0U || m_z1 == 0U) return;
+        auto value = read_superfx16(m_z1);
+        const auto original = value;
+        const auto hundreds = static_cast<std::uint8_t>(value / 100U);
+        value %= 100U;
+        const auto tens = static_cast<std::uint8_t>(value / 10U);
+        const auto ones = static_cast<std::uint8_t>(value % 10U);
+        if (hundreds != 0U) draw_game_decimal_digit(hundreds);
+        if (hundreds != 0U || tens != 0U) draw_game_decimal_digit(tens);
+        draw_game_decimal_digit(ones);
+        // MPRTDEC stores the post-hundreds/tens remainder in M_Z1 and advances
+        // M_X1 by eight pixels for every emitted digit.
+        write_superfx16(m_z1, static_cast<std::uint16_t>(original % 10U));
+    }
+
+    void draw_game_progressive_text() {
+        if (m_x1 == 0U || m_textrightclip == 0U || m_textcolour == 0U
+            || m_totalchars == 0U) return;
+        const auto x = static_cast<std::int32_t>(
+            signed16(read_superfx16(m_x1)));
+        const auto line_width = std::max<std::int32_t>(0,
+            static_cast<std::int32_t>(read_superfx16(m_textrightclip)) - x);
+        write_superfx16(m_textrightclip,
+            static_cast<std::uint16_t>(line_width));
+        if (m_lastchar != 0U) write_superfx16(m_lastchar, 0U);
+        const auto count = read_superfx16(m_totalchars);
+        draw_game_text(
+            static_cast<std::uint8_t>(read_superfx16(m_textcolour)),
+            line_width,
+            count == 0xffffU
+                ? std::optional<std::size_t>{}
+                : std::optional<std::size_t>{count},
+            true);
+    }
+
+    void divide_game_value() noexcept {
+        if (m_x1 == 0U || m_y1 == 0U) return;
+        const auto dividend = read_superfx16(m_x1);
+        const auto divisor = read_superfx16(m_y1);
+        write_superfx16(m_x1,
+            divisor == 0U ? 0xffffU
+                          : static_cast<std::uint16_t>(dividend / divisor));
+    }
+
+    void calculate_game_percentage() noexcept {
+        if (m_x1 == 0U || m_y1 == 0U) return;
+        const auto dividend = static_cast<std::uint32_t>(
+            read_superfx16(m_x1)) * 100U;
+        const auto divisor = read_superfx16(m_y1);
+        write_superfx16(m_x1,
+            divisor == 0U ? 0xffffU
+                          : static_cast<std::uint16_t>(dividend / divisor));
+    }
+
+    void draw_game_percentage() {
+        if (m_x1 == 0U || m_z1 == 0U) return;
+        const auto value = read_superfx16(m_z1);
+        auto x = signed16(read_superfx16(m_x1));
+        if (value >= 100U) x = static_cast<std::int16_t>(x - 8);
+        else if (value <= 9U) x = static_cast<std::int16_t>(x + 8);
+        write_superfx16(m_x1, static_cast<std::uint16_t>(x));
+        draw_game_decimal();
+    }
+
+    void draw_percentage_graph() noexcept {
+        if (m_x1 == 0U || m_y1 == 0U || m_xp2 == 0U) return;
+        const auto x = static_cast<std::int32_t>(
+            signed16(read_superfx16(m_x1)));
+        const auto y = static_cast<std::int32_t>(
+            signed16(read_superfx16(m_y1)));
+        draw_game_box(x, y, 104, 12, 14U, false);
+        draw_game_box(x + 2, y + 2,
+            static_cast<std::int32_t>(read_superfx16(m_xp2)), 8, 7U, true);
+    }
+
+    void draw_window_wipe() {
+        if (mwinbase == 0U || m_wintabptr == 0U || m_winwbglog == 0U
+            || m_winbuf == 0U || m_winbuf2 == 0U) return;
+        const auto offset = read_superfx16(m_wintabptr);
+        if (offset == 1U || offset < 0x8000U) return;
+        auto cursor = (mwinbase & 0xff0000U) | offset;
+        write_superfx16(m_winwbglog, rom->read8(cursor++));
+
+        const auto draw_line = [this](std::int32_t x0, std::int32_t y0,
+                                      std::int32_t x1, std::int32_t y1,
+                                      std::uint32_t buffer) {
+            const auto dx = std::abs(x1 - x0);
+            const auto sx = x0 < x1 ? 1 : -1;
+            const auto dy = -std::abs(y1 - y0);
+            const auto sy = y0 < y1 ? 1 : -1;
+            auto error = dx + dy;
+            for (;;) {
+                if (y0 >= 0 && y0 < 224) {
+                    write_superfx16(buffer
+                            + static_cast<std::uint32_t>(y0 * 2),
+                        static_cast<std::uint16_t>(x0));
+                }
+                if (x0 == x1 && y0 == y1) break;
+                const auto doubled = error * 2;
+                if (doubled >= dy) {
+                    error += dy;
+                    x0 += sx;
+                }
+                if (doubled <= dx) {
+                    error += dx;
+                    y0 += sy;
+                }
+            }
+        };
+
+        for (std::size_t record = 0; record < 1024U; ++record) {
+            const auto raw_x1 = rom->read8(cursor++);
+            if (raw_x1 == 0xffU) break;
+            const auto y1 = rom->read8(cursor++);
+            const auto raw_x2 = rom->read8(cursor++);
+            const auto y2 = rom->read8(cursor++);
+            const auto second_buffer = rom->read8(cursor++) != 0U;
+            draw_line(static_cast<std::int32_t>(raw_x1) + 16, y1,
+                static_cast<std::int32_t>(raw_x2) + 16, y2,
+                second_buffer ? m_winbuf2 : m_winbuf);
+            if (record == 1023U) {
+                throw std::runtime_error{"unterminated Super FX wipe frame"};
+            }
+        }
+
+        write_superfx16(m_wintabptr,
+            rom->read16(cursor) == 0xffffU
+                ? 1U : static_cast<std::uint16_t>(cursor));
+        for (std::size_t line = 0; line < 224U; ++line) {
+            const auto displacement = static_cast<std::uint32_t>(line * 2U);
+            auto left = read_superfx16(m_winbuf + displacement);
+            auto right = read_superfx16(m_winbuf2 + displacement);
+            if (left == right) {
+                left = static_cast<std::uint16_t>(left - 1U);
+            } else if (right < left) {
+                std::swap(left, right);
+            }
+            write_superfx16(m_winbuf + displacement, left);
+            write_superfx16(m_winbuf2 + displacement, right);
+        }
+    }
+
+    void draw_game_box(
+        std::int32_t x,
+        std::int32_t y,
+        std::int32_t width,
+        std::int32_t height,
+        std::uint8_t colour,
+        bool solid) noexcept {
+        if (width <= 0 || height <= 0) return;
+        for (std::int32_t row = 0; row < height; ++row) {
+            for (std::int32_t column = 0; column < width; ++column) {
+                if (solid || row == 0 || row == height - 1
+                    || column == 0 || column == width - 1) {
+                    write_game_bitmap_pixel(x + column, y + row, colour);
+                }
+            }
+        }
+    }
+
+    void draw_teammate_meter(bool draw_when_dead) noexcept {
+        const auto health = static_cast<std::uint8_t>(
+            read_superfx16(m_z1));
+        if (health == 0U && !draw_when_dead) return;
+        const auto x = static_cast<std::int32_t>(signed16(read_superfx16(m_x1)));
+        const auto y = static_cast<std::int32_t>(signed16(read_superfx16(m_y1)));
+        draw_game_box(x, y, 44, 12, 14U, false);
+        if (health != 0U) {
+            draw_game_box(x + 2, y + 2, health, 8, 2U, true);
+        }
+    }
+
     void clear_planet_bitmap() noexcept {
         const auto begin = superfx_ram.begin() + static_cast<std::uint16_t>(bitmap1);
         std::fill_n(begin, 16U * 16U * 64U, std::uint8_t{});
+    }
+
+    void clear_pepper_bitmap() noexcept {
+        const auto begin = superfx_ram.begin()
+            + static_cast<std::uint16_t>(bitmap1);
+        std::fill_n(begin, 16U * 24U * 32U, std::uint8_t{});
     }
 
     void draw_planet_sprite32() {
@@ -1220,8 +1772,28 @@ struct Wdc65816::Impl {
             generate_water_horizontal_offsets();
             return;
         }
+        if (mwater != 0U && address == mwater) {
+            generate_flat_water_horizontal_offsets();
+            return;
+        }
         if (mbhole != 0U && address == mbhole) {
-            generate_black_hole_horizontal_offsets();
+            generate_animated_table_horizontal_offsets(bholetab, bholetabend);
+            return;
+        }
+        if (mnoise != 0U && address == mnoise) {
+            generate_animated_table_horizontal_offsets(noisetab, noisetabend);
+            return;
+        }
+        if (mosc != 0U && address == mosc) {
+            generate_oscillation_horizontal_offsets();
+            return;
+        }
+        if (mlaced != 0U && address == mlaced) {
+            generate_animated_table_horizontal_offsets(lacedtab, lacedtabend);
+            return;
+        }
+        if (mzigzag != 0U && address == mzigzag) {
+            generate_animated_table_horizontal_offsets(zigzagtab, zigzagtabend);
             return;
         }
         if (mcallarctan16 != 0U && address == mcallarctan16) {
@@ -1244,6 +1816,31 @@ struct Wdc65816::Impl {
             clear_planet_bitmap();
             return;
         }
+        if (mclrpepperscreen != 0U && address == mclrpepperscreen) {
+            clear_pepper_bitmap();
+            return;
+        }
+        if (mdecclear != 0U && address == mdecclear) {
+            // MDECCLEAR zeros the decompression/work region from $0200 up to
+            // the first bitmap at $8000. Its R12 word loop is exclusive of
+            // that upper boundary.
+            std::fill(superfx_ram.begin() + 0x0200U,
+                superfx_ram.begin() + 0x8000U, 0U);
+            return;
+        }
+        if ((mclrbitmaps2 != 0U && address == mclrbitmaps2)
+            || (mclrbitmaps3 != 0U && address == mclrbitmaps3)) {
+            if (m_clrbitmaps != 0U
+                && (read_superfx16(m_clrbitmaps) & 0x00ffU) != 0U) {
+                const auto begin = static_cast<std::size_t>(bitmap1)
+                    + (address == mclrbitmaps3 ? 10'752U : 0U);
+                const auto end = std::min(
+                    begin + 10'752U, superfx_ram.size());
+                std::fill(superfx_ram.begin() + begin,
+                    superfx_ram.begin() + end, 0U);
+            }
+            return;
+        }
         if (mdrawsprite32 != 0U && address == mdrawsprite32) {
             draw_planet_sprite32();
             return;
@@ -1256,15 +1853,134 @@ struct Wdc65816::Impl {
             draw_planet_sphere();
             return;
         }
+        if (mprintstr != 0U && address == mprintstr) {
+            if (m_textrightclip != 0U) write_superfx16(m_textrightclip, 224U);
+            draw_game_text(0U, 224);
+            return;
+        }
+        if (mgprintstr != 0U && address == mgprintstr) {
+            draw_game_progressive_text();
+            return;
+        }
+        if (mkrisdivu3115 != 0U && address == mkrisdivu3115) {
+            divide_game_value();
+            return;
+        }
+        if (mcalcperc != 0U && address == mcalcperc) {
+            calculate_game_percentage();
+            return;
+        }
+        if (mprtperc != 0U && address == mprtperc) {
+            draw_game_percentage();
+            return;
+        }
+        if (mprt2zeros != 0U && address == mprt2zeros) {
+            draw_game_decimal_digit(0U);
+            draw_game_decimal_digit(0U);
+            return;
+        }
+        if (mshowpercgraph != 0U && address == mshowpercgraph) {
+            draw_percentage_graph();
+            return;
+        }
+        if (mbumwipe != 0U && address == mbumwipe) {
+            draw_window_wipe();
+            return;
+        }
+        if (mprtdecstop != 0U && address == mprtdecstop) {
+            draw_game_decimal();
+            return;
+        }
+        if (mprintclippedstr != 0U && address == mprintclippedstr) {
+            draw_game_text();
+            return;
+        }
+        if (mfprintstr != 0U && address == mfprintstr) {
+            const auto width = std::max<std::int32_t>(0,
+                174 - signed16(read_superfx16(m_x1)));
+            if (m_textrightclip != 0U) {
+                write_superfx16(m_textrightclip,
+                    static_cast<std::uint16_t>(width));
+            }
+            draw_game_text(0U, width);
+            return;
+        }
+        if (msprintstr != 0U && address == msprintstr) {
+            const auto width = std::max<std::int32_t>(0,
+                175 - signed16(read_superfx16(m_x1)));
+            if (m_textrightclip != 0U) {
+                write_superfx16(m_textrightclip,
+                    static_cast<std::uint16_t>(width));
+            }
+            draw_game_text(9U, width);
+            return;
+        }
+        if (mshowteammate != 0U && address == mshowteammate) {
+            draw_teammate_meter(false);
+            return;
+        }
+        if (mshowteammate2 != 0U && address == mshowteammate2) {
+            draw_teammate_meter(true);
+            return;
+        }
         // These routines update only the source bitmap/window. Their visible
         // output is composed by the PC renderer from the state that the
         // surrounding 65C816 routines maintain, so completion is immediate
         // just as it is for the other translated Super FX entry points.
         if ((mcalc_circle != 0U && address == mcalc_circle)
             || (mcopyface != 0U && address == mcopyface)
-            || (mfprintstr != 0U && address == mfprintstr)
-            || (msprintstr != 0U && address == msprintstr)
-            || (mshowteammate2 != 0U && address == mshowteammate2)) {
+            || (mcopyface2 != 0U && address == mcopyface2)
+            // SHOWVIEW_L's draw-list transform/sort is represented by the
+            // host's fixed-point view/cull pass and draw_order_ construction.
+            || (mallrotzsort != 0U && address == mallrotzsort)
+            // TRANSFER_L launches these after the source strategies and
+            // bitmap text have run. Geometry and the dust/grid field are
+            // composed by the host from that exact post-strategy state.
+            || (mdo_3d_display != 0U && address == mdo_3d_display)
+            || (mshowgrid != 0U && address == mshowgrid)) {
+            return;
+        }
+        if (mshowobj3 != 0U && address == mshowobj3) {
+            // MSHOWOBJ3 is CONTINUE.ASM's model-viewer draw. Capture the
+            // exact launch registers before the 65C816 advances its rotation;
+            // the PC compositor consumes this otherwise-objectless model.
+            native_model_draw = {};
+            if (m_shapeptr != 0U) {
+                native_model_draw.shape = read_superfx16(m_shapeptr);
+                native_model_draw.active = native_model_draw.shape != 0U;
+            }
+            if (m_bigx != 0U) {
+                native_model_draw.x = signed16(read_superfx16(m_bigx));
+            }
+            if (m_bigy != 0U) {
+                native_model_draw.y = signed16(read_superfx16(m_bigy));
+            }
+            if (m_bigz != 0U) {
+                native_model_draw.z = signed16(read_superfx16(m_bigz));
+            }
+            if (m_rotx != 0U) {
+                native_model_draw.rotation_x = read_superfx16(m_rotx);
+            }
+            if (m_roty != 0U) {
+                native_model_draw.rotation_y = read_superfx16(m_roty);
+            }
+            if (m_rotz != 0U) {
+                native_model_draw.rotation_z = read_superfx16(m_rotz);
+            }
+            if (m_vanishx != 0U) {
+                native_model_draw.vanish_x = signed16(
+                    read_superfx16(m_vanishx));
+            }
+            if (m_vanishy != 0U) {
+                native_model_draw.vanish_y = signed16(
+                    read_superfx16(m_vanishy));
+            }
+            if (m_framenum != 0U) {
+                native_model_draw.animation_frame = read_superfx16(m_framenum);
+            }
+            if (m_colframe != 0U) {
+                native_model_draw.colour_frame = read_superfx16(m_colframe);
+            }
             return;
         }
         if (mdecrunch == 0U || address != mdecrunch) {
@@ -1277,14 +1993,27 @@ struct Wdc65816::Impl {
         }
 
         const auto end_address =
-            (static_cast<std::uint32_t>(read_superfx16(kMEndDataBank) & 0xffU) << 16U)
-            | read_superfx16(kMEndData);
-        auto decoded = assets::decrunch_reverse(*rom, end_address);
-        const auto destination = read_superfx16(kMDecrunchAddress);
-        if (destination + decoded.bytes.size() > superfx_ram.size()) {
-            throw std::runtime_error{"Super FX decrunch output exceeds RAM"};
+            (static_cast<std::uint32_t>(read_superfx16(m_enddatabnk) & 0xffU) << 16U)
+            | read_superfx16(m_enddata);
+        // A handful of EX front-end transitions can launch the GSU on the
+        // update where M_ENDDATABNK has been installed but M_ENDDATA is still
+        // zero.  On hardware that transient lower-half LoROM read is open bus;
+        // it is not a process-fatal condition.  Preserve the previous work
+        // buffer for that frame and let the following, complete launch replace
+        // it.  Malformed archive state is handled the same way so a bad visual
+        // asset cannot close the whole game.
+        if ((end_address & 0xffffU) < 0x8000U) return;
+        assets::DecrunchResult decoded;
+        try {
+            decoded = assets::decrunch_reverse(*rom, end_address);
+        } catch (const std::exception&) {
+            return;
         }
-        const auto word_offset = read_superfx16(kMDecrunchOffset);
+        const auto destination = read_superfx16(m_decaddr);
+        if (destination + decoded.bytes.size() > superfx_ram.size()) {
+            return;
+        }
+        const auto word_offset = read_superfx16(m_decoffset);
         if (word_offset != 0U) {
             for (std::size_t index = 0; index + 1U < decoded.bytes.size(); index += 2U) {
                 const auto word = static_cast<std::uint16_t>(decoded.bytes[index])
@@ -1296,9 +2025,9 @@ struct Wdc65816::Impl {
         }
         std::copy(decoded.bytes.begin(), decoded.bytes.end(),
             superfx_ram.begin() + destination);
-        write_superfx16(kMDecrunchEnd,
+        write_superfx16(m_decend,
             static_cast<std::uint16_t>(destination + decoded.bytes.size()));
-        write_superfx16(kMEndData,
+        write_superfx16(m_enddata,
             static_cast<std::uint16_t>(decoded.compressed_begin));
     }
 
@@ -1322,31 +2051,136 @@ struct Wdc65816::Impl {
     void service_transfer() {
         const auto flag = wram[0];
         switch (flag) {
+        case 2U: {
+            // TRANSFER_L requests the ordinary three-IRQ FOX bitmap path with
+            // TRANS_FLAG=2, then waits for TRANSBMP1 to progress through both
+            // halves. A bounded native task has no asynchronous NMI between
+            // instructions, so complete those same DMA stages atomically and
+            // publish the final value expected by .twait/.twait2.
+            if (bitmap1 != 0U && vmap1 != 0U) {
+                copy_superfx_to_vram(static_cast<std::uint16_t>(bitmap1),
+                    read_wram16(static_cast<std::uint16_t>(vmap1)), 21'504U);
+            }
+            if (spriteblk != 0U) {
+                for (std::size_t index = 0; index < 300U; ++index) {
+                    ppu.oam[index] = wram[static_cast<std::uint16_t>(
+                        spriteblk + static_cast<std::uint32_t>(index))];
+                }
+            }
+            if (vmap1 != 0U && vmap2 != 0U) {
+                const auto first = read_wram16(static_cast<std::uint16_t>(vmap1));
+                const auto second = read_wram16(static_cast<std::uint16_t>(vmap2));
+                const auto bg12nba = static_cast<std::uint8_t>(
+                    ((first >> 12U) & 0x0fU)
+                    | (((ppu.bg2_character_base >> 12U) & 0x0fU) << 4U));
+                write_ppu(0x210bU, bg12nba);
+                const auto write_word = [this](std::uint32_t address,
+                                                 std::uint16_t value) {
+                    const auto offset = static_cast<std::uint16_t>(address);
+                    wram[offset] = static_cast<std::uint8_t>(value);
+                    wram[static_cast<std::uint16_t>(offset + 1U)] =
+                        static_cast<std::uint8_t>(value >> 8U);
+                };
+                write_word(vmap1, second);
+                write_word(vmap2, first);
+            }
+            if (transbmp1 != 0U) {
+                wram[static_cast<std::uint16_t>(transbmp1)] = 2U;
+            }
+            wram[0] = 0U;
+            break;
+        }
+        case 10U:
+            // FOXYTRANS's first IRQ copies the upper half of the Super FX
+            // bitmap and publishes TRANSBMP1=1 before advancing to TM_FOX2.
+            if (bitmap1 != 0U && vmap1 != 0U) {
+                copy_superfx_to_vram(static_cast<std::uint16_t>(bitmap1),
+                    read_wram16(static_cast<std::uint16_t>(vmap1)), 10'752U);
+            }
+            if (transbmp1 != 0U) {
+                wram[static_cast<std::uint16_t>(transbmp1)] = 1U;
+            }
+            wram[0] = 12U;
+            break;
+        case 12U:
+            // The second IRQ completes the 224x192 4bpp bitmap. VRAM
+            // destinations are word-addressed, hence the 5,376-word offset.
+            if (bitmap1 != 0U && vmap1 != 0U) {
+                copy_superfx_to_vram(static_cast<std::uint16_t>(
+                        bitmap1 + 10'752U),
+                    static_cast<std::uint16_t>(
+                        read_wram16(static_cast<std::uint16_t>(vmap1))
+                        + 5'376U),
+                    10'752U);
+            }
+            if (transbmp1 != 0U) {
+                wram[static_cast<std::uint16_t>(transbmp1)] = 2U;
+            }
+            wram[0] = 14U;
+            break;
+        case 14U: {
+            // FOXIRQ3 submits OAM and swaps the two bitmap screens before
+            // releasing FOXYTRANS. Input edges are already written directly
+            // by GameSimulation at the same source-frame boundary.
+            if (spriteblk != 0U) {
+                for (std::size_t index = 0; index < 300U; ++index) {
+                    ppu.oam[index] = wram[static_cast<std::uint16_t>(
+                        spriteblk + static_cast<std::uint32_t>(index))];
+                }
+            }
+            if (vmap1 != 0U && vmap2 != 0U) {
+                const auto first = read_wram16(static_cast<std::uint16_t>(vmap1));
+                const auto second = read_wram16(static_cast<std::uint16_t>(vmap2));
+                // FOXIRQ3 selects the bitmap that has just been uploaded
+                // before exchanging VMAP1 and VMAP2.  Omitting BG12NBA here
+                // leaves BG1 looking at the preceding title/control tile
+                // bank even though the EX menu's pixels reached VRAM.
+                const auto bg12nba = static_cast<std::uint8_t>(
+                    ((first >> 12U) & 0x0fU)
+                    | (((ppu.bg2_character_base >> 12U) & 0x0fU) << 4U));
+                write_ppu(0x210bU, bg12nba);
+                const auto write_word = [this](std::uint32_t address,
+                                                std::uint16_t value) {
+                    const auto offset = static_cast<std::uint16_t>(address);
+                    wram[offset] = static_cast<std::uint8_t>(value);
+                    wram[static_cast<std::uint16_t>(offset + 1U)] =
+                        static_cast<std::uint8_t>(value >> 8U);
+                };
+                write_word(vmap1, second);
+                write_word(vmap2, first);
+            }
+            wram[0] = 0U;
+            break;
+        }
         case 16U: {
-            const auto palette_source = static_cast<std::uint32_t>(read_wram16(kVram3Address))
-                | (static_cast<std::uint32_t>(wram[kVram3Address + 2U]) << 16U);
-            copy_bus_to_cgram(palette_source, 0U, read_wram16(kVram3Length));
-            copy_superfx_to_vram(kDecrunchBuffer,
-                read_wram16(kVram1Address), read_wram16(kVram1Length));
+            const auto palette_source = static_cast<std::uint32_t>(
+                    read_wram16(vram3_address))
+                | (static_cast<std::uint32_t>(wram[
+                       static_cast<std::uint16_t>(vram3_address + 2U)])
+                    << 16U);
+            copy_bus_to_cgram(
+                palette_source, 0U, read_wram16(vram3_length));
+            copy_superfx_to_vram(decrunch_buffer,
+                read_wram16(vram1_address), read_wram16(vram1_length));
             wram[0] = 18U;
             break;
         }
         case 18U:
-            copy_superfx_to_vram(kScreenDecrunchBuffer,
-                read_wram16(kVram2Address), read_wram16(kVram2Length));
-            copy_bus_to_cgram(kGamePalette, 7U * 16U * 2U, 32U);
+            copy_superfx_to_vram(screen_decrunch_buffer,
+                read_wram16(vram2_address), read_wram16(vram2_length));
+            copy_bus_to_cgram(game_palette, 7U * 16U * 2U, 32U);
             wram[0] = 0U;
             break;
         case 20U:
-            copy_superfx_to_vram(kDecrunchBuffer,
-                read_wram16(kVram1Address), read_wram16(kVram1Length));
+            copy_superfx_to_vram(decrunch_buffer,
+                read_wram16(vram1_address), read_wram16(vram1_length));
             wram[0] = 0U;
             break;
         case 22U:
-            copy_superfx_to_vram(kDecrunchBuffer,
-                read_wram16(kVram1Address), read_wram16(kVram1Length));
-            copy_superfx_to_vram(kScreenDecrunchBuffer,
-                read_wram16(kVram2Address), read_wram16(kVram2Length));
+            copy_superfx_to_vram(decrunch_buffer,
+                read_wram16(vram1_address), read_wram16(vram1_length));
+            copy_superfx_to_vram(screen_decrunch_buffer,
+                read_wram16(vram2_address), read_wram16(vram2_length));
             wram[0] = 0U;
             break;
         case 36U:
@@ -1403,6 +2237,17 @@ void Wdc65816::write16(std::uint32_t address, std::uint16_t value) {
     write8(address + 1U, static_cast<std::uint8_t>(value >> 8U));
 }
 
+bool Wdc65816::load_cartridge_ram(
+    std::span<const std::uint8_t> bytes) noexcept {
+    if (bytes.size() != impl_->cartridge_ram.size()) return false;
+    std::copy(bytes.begin(), bytes.end(), impl_->cartridge_ram.begin());
+    return true;
+}
+
+std::span<const std::uint8_t> Wdc65816::cartridge_ram() const noexcept {
+    return impl_->cartridge_ram;
+}
+
 std::vector<ApuPortWrite> Wdc65816::take_apu_port_writes() {
     auto result = std::move(impl_->apu_writes);
     impl_->apu_writes.clear();
@@ -1421,6 +2266,10 @@ void Wdc65816::set_apu_output_ports(
 
 const SnesPpuState& Wdc65816::ppu_state() const noexcept {
     return impl_->ppu;
+}
+
+const NativeModelDrawState& Wdc65816::native_model_draw() const noexcept {
+    return impl_->native_model_draw;
 }
 
 const std::vector<std::uint32_t>& Wdc65816::unknown_superfx_launches()
@@ -1457,6 +2306,31 @@ void Wdc65816::upload_oam(std::uint32_t source, std::size_t length) {
     for (std::size_t index = 0; index < length; ++index) {
         impl_->ppu.oam[index] = impl_->read8(source + static_cast<std::uint32_t>(index));
     }
+}
+
+void Wdc65816::begin_superfx_bitmap_frame() {
+    if (impl_->bitmap1 == 0U) return;
+    if (impl_->m_clrbitmaps != 0U
+        && (impl_->read_superfx16(impl_->m_clrbitmaps) & 0x00ffU) == 0U) {
+        return;
+    }
+    constexpr std::size_t bitmap_bytes = 28U * 24U * 32U;
+    const auto begin = std::min<std::size_t>(
+        static_cast<std::uint16_t>(impl_->bitmap1), impl_->superfx_ram.size());
+    const auto length = std::min(
+        bitmap_bytes, impl_->superfx_ram.size() - begin);
+    std::fill_n(impl_->superfx_ram.begin() + begin, length, std::uint8_t{});
+}
+
+void Wdc65816::submit_superfx_bitmap() {
+    // TRANSFER_L's FOXIRQ1/2/3 sequence. The 65C816 may draw front-end text
+    // directly into BITMAP1 while translated Super FX model calls are drawn
+    // by the host. Submitting that source bitmap preserves those native text
+    // pixels without duplicating any model geometry.
+    impl_->wram[0] = 10U;
+    impl_->service_transfer();
+    impl_->service_transfer();
+    impl_->service_transfer();
 }
 
 void Wdc65816::set_bg1_scroll(std::int16_t x, std::int16_t y) noexcept {
@@ -1512,6 +2386,7 @@ std::size_t Wdc65816::call(
     std::size_t instruction_limit,
     bool service_transfer_flag,
     bool long_return) {
+    impl_->task_active = false;
     auto& cpu = impl_->cpu;
     cpu.SetRegister("p", registers.status);
     cpu.SetRegister("a", registers.a);
@@ -1589,6 +2464,129 @@ std::size_t Wdc65816::call(
     registers.data_bank = static_cast<std::uint8_t>(cpu.cpu_state.data_segment_base >> 16U);
     registers.status = cpu.GetStatusRegister();
     return instructions;
+}
+
+Wdc65816TaskResult Wdc65816::begin_long_task(
+    std::uint32_t address,
+    Wdc65816Registers& registers,
+    std::span<const std::uint32_t> stop_addresses,
+    std::size_t instruction_limit,
+    bool service_transfer_flag) {
+    auto& cpu = impl_->cpu;
+    impl_->task_active = true;
+    impl_->task_entry = address;
+    impl_->task_return_sentinel = kReturnSentinel;
+    cpu.SetRegister("p", registers.status);
+    cpu.SetRegister("a", registers.a);
+    cpu.SetRegister("x", registers.x);
+    cpu.SetRegister("y", registers.y);
+    cpu.SetRegister("d", registers.direct);
+    cpu.SetRegister("sp", registers.stack);
+    cpu.SetRegister("db", registers.data_bank);
+    cpu.Push(static_cast<std::uint8_t>(kReturnSentinel >> 16U));
+    cpu.Push(static_cast<std::uint16_t>((kReturnSentinel & 0xffffU) - 1U));
+    cpu.SetRegister("pb", address >> 16U);
+    cpu.SetRegister("pc", address);
+    return run_task(registers, stop_addresses, instruction_limit,
+        service_transfer_flag);
+}
+
+Wdc65816TaskResult Wdc65816::begin_near_task(
+    std::uint32_t address,
+    Wdc65816Registers& registers,
+    std::span<const std::uint32_t> stop_addresses,
+    std::size_t instruction_limit,
+    bool service_transfer_flag) {
+    auto& cpu = impl_->cpu;
+    impl_->task_active = true;
+    impl_->task_entry = address;
+    impl_->task_return_sentinel =
+        (address & 0xff0000U) | (kReturnSentinel & 0xffffU);
+    cpu.SetRegister("p", registers.status);
+    cpu.SetRegister("a", registers.a);
+    cpu.SetRegister("x", registers.x);
+    cpu.SetRegister("y", registers.y);
+    cpu.SetRegister("d", registers.direct);
+    cpu.SetRegister("sp", registers.stack);
+    cpu.SetRegister("db", registers.data_bank);
+    cpu.Push(static_cast<std::uint16_t>(
+        (impl_->task_return_sentinel & 0xffffU) - 1U));
+    cpu.SetRegister("pb", address >> 16U);
+    cpu.SetRegister("pc", address);
+    return run_task(registers, stop_addresses, instruction_limit,
+        service_transfer_flag);
+}
+
+Wdc65816TaskResult Wdc65816::resume_task(
+    Wdc65816Registers& registers,
+    std::span<const std::uint32_t> stop_addresses,
+    std::size_t instruction_limit,
+    bool service_transfer_flag) {
+    if (!impl_->task_active) {
+        throw std::logic_error{"no active 65C816 task to resume"};
+    }
+    return run_task(registers, stop_addresses, instruction_limit,
+        service_transfer_flag);
+}
+
+Wdc65816TaskResult Wdc65816::run_task(
+    Wdc65816Registers& registers,
+    std::span<const std::uint32_t> stop_addresses,
+    std::size_t instruction_limit,
+    bool service_transfer_flag) {
+    auto& cpu = impl_->cpu;
+    Wdc65816TaskResult result;
+    std::array<std::uint32_t, 32> recent_program_counters{};
+    bool executed_instruction = false;
+    while (true) {
+        const auto pc = cpu.program_address();
+        if (pc == impl_->task_return_sentinel) {
+            impl_->task_active = false;
+            result.returned = true;
+            break;
+        }
+        if (executed_instruction
+            && std::find(stop_addresses.begin(), stop_addresses.end(), pc)
+                != stop_addresses.end()) {
+            result.stop_address = pc;
+            break;
+        }
+        if (service_transfer_flag && impl_->wram[0] != 0U) {
+            impl_->service_transfer();
+        }
+        if (service_transfer_flag) impl_->service_planet_transfer();
+        if (result.instructions == instruction_limit) {
+            std::ostringstream message;
+            message << "65C816 task at $" << std::hex << impl_->task_entry
+                    << " exceeded the instruction limit at $" << pc
+                    << " (recent";
+            const auto available = std::min(
+                result.instructions, recent_program_counters.size());
+            for (std::size_t age = available; age != 0; --age) {
+                const auto index = (result.instructions - age)
+                    % recent_program_counters.size();
+                message << " $" << recent_program_counters[index];
+            }
+            message << ')';
+            impl_->task_active = false;
+            throw std::runtime_error{message.str()};
+        }
+        recent_program_counters[
+            result.instructions % recent_program_counters.size()] = pc;
+        cpu.SingleStep();
+        ++result.instructions;
+        executed_instruction = true;
+    }
+
+    registers.a = cpu.a();
+    registers.x = cpu.x();
+    registers.y = cpu.y();
+    registers.direct = cpu.cpu_state.regs.d.u16;
+    registers.stack = cpu.cpu_state.regs.sp.u16;
+    registers.data_bank = static_cast<std::uint8_t>(
+        cpu.cpu_state.data_segment_base >> 16U);
+    registers.status = cpu.GetStatusRegister();
+    return result;
 }
 
 } // namespace starfox::simulation

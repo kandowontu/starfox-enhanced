@@ -8,7 +8,8 @@
 
 namespace starfox::simulation {
 
-inline constexpr std::size_t kMaximumDustPoints = 120U;
+inline constexpr std::size_t kNormalDustPoints = 120U;
+inline constexpr std::size_t kMaximumDustPoints = 511U;
 
 struct DustPoint {
     std::int16_t x{};
@@ -27,7 +28,8 @@ public:
     void tick(
         const std::array<std::int16_t, 3>& camera,
         const MatrixQ15& world_matrix,
-        bool enabled) noexcept;
+        bool enabled,
+        std::size_t active_count = kNormalDustPoints) noexcept;
 
     [[nodiscard]] const std::array<DustPoint, kMaximumDustPoints>& points()
         const noexcept { return points_; }

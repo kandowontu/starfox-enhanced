@@ -4,6 +4,7 @@
 #include "starfox/simulation/object_pool.hpp"
 #include "starfox/simulation/wdc65816.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -84,6 +85,13 @@ public:
     [[nodiscard]] std::uint8_t read_native_byte(std::uint32_t address) const noexcept;
     [[nodiscard]] std::uint16_t read_native_word(std::uint32_t address) const noexcept;
     void write_native_word(std::uint32_t address, std::uint16_t value);
+    [[nodiscard]] bool load_cartridge_ram(
+        std::span<const std::uint8_t> bytes) noexcept {
+        return cpu_.load_cartridge_ram(bytes);
+    }
+    [[nodiscard]] std::span<const std::uint8_t> cartridge_ram() const noexcept {
+        return cpu_.cartridge_ram();
+    }
     [[nodiscard]] std::vector<ApuPortWrite> take_apu_port_writes() {
         return cpu_.take_apu_port_writes();
     }
@@ -96,6 +104,9 @@ public:
     }
     [[nodiscard]] const SnesPpuState& ppu_state() const noexcept {
         return cpu_.ppu_state();
+    }
+    [[nodiscard]] const NativeModelDrawState& native_model_draw() const noexcept {
+        return cpu_.native_model_draw();
     }
     [[nodiscard]] const std::vector<std::uint32_t>& unknown_superfx_launches()
         const noexcept {
@@ -123,6 +134,8 @@ public:
     void upload_oam(std::uint32_t source, std::size_t length) {
         cpu_.upload_oam(source, length);
     }
+    void begin_superfx_bitmap_frame() { cpu_.begin_superfx_bitmap_frame(); }
+    void submit_superfx_bitmap() { cpu_.submit_superfx_bitmap(); }
     void set_bg2_vertical_offsets_enabled(bool enabled) noexcept {
         cpu_.set_bg2_vertical_offsets_enabled(enabled);
     }
@@ -155,6 +168,24 @@ public:
         Wdc65816Registers& registers,
         std::size_t instruction_limit = 1'000'000,
         bool service_transfer_flag = false);
+    Wdc65816TaskResult begin_native_task(
+        std::uint32_t address,
+        Wdc65816Registers& registers,
+        std::span<const std::uint32_t> stop_addresses,
+        std::size_t instruction_limit = 1'000'000,
+        bool service_transfer_flag = false);
+    Wdc65816TaskResult begin_native_near_task(
+        std::uint32_t address,
+        Wdc65816Registers& registers,
+        std::span<const std::uint32_t> stop_addresses,
+        std::size_t instruction_limit = 1'000'000,
+        bool service_transfer_flag = false);
+    Wdc65816TaskResult resume_native_task(
+        Wdc65816Registers& registers,
+        std::span<const std::uint32_t> stop_addresses,
+        std::size_t instruction_limit = 1'000'000,
+        bool service_transfer_flag = false,
+        bool sync_objects = false);
 
 private:
     void execute_ready_records();
@@ -166,8 +197,12 @@ private:
     [[nodiscard]] std::int16_t player_world_z() const noexcept;
     [[nodiscard]] std::uint32_t skip_inline_65816(std::uint32_t address) const;
     [[nodiscard]] std::uint16_t original_object_pointer(ObjectHandle handle) const noexcept;
-    [[nodiscard]] static ObjectHandle native_object_handle(std::uint16_t pointer) noexcept;
+    [[nodiscard]] ObjectHandle native_object_handle(std::uint16_t pointer) const noexcept;
     [[nodiscard]] ObjectHandle object_handle(std::uint16_t pointer) const noexcept;
+    [[nodiscard]] std::uint8_t read_native_object_byte(
+        ObjectHandle handle, std::uint16_t offset) const;
+    void write_native_object_byte(
+        ObjectHandle handle, std::uint16_t offset, std::uint8_t value);
     void sync_objects_to_cpu();
     void sync_objects_from_cpu();
     void execute_inline_65816();
@@ -202,12 +237,46 @@ private:
     bool screen_enabled_{true};
     bool background_request_pending_{};
     std::vector<std::uint8_t> messages_;
+    // WORLD.ASM dispatches four two-byte message controls.  EX extends the
+    // retail queue with a second message table and a second presentation
+    // channel; retain their original routines so map bytecode mutates the
+    // same WRAM fields as the cartridge.
+    std::array<std::uint32_t, 4> message_routines_{};
     std::vector<std::uint32_t> call_stack_;
     std::unordered_map<std::uint32_t, std::uint16_t> loop_counters_;
     std::unordered_map<std::uint32_t, std::uint8_t> native_memory_;
     std::unordered_map<std::uint32_t, ConditionHandler> conditions_;
     std::optional<bool> unknown_condition_result_;
     std::vector<std::uint8_t> unsupported_controls_;
+    std::uint16_t object_base_{0x0338U};
+    std::uint16_t object_size_{56U};
+    std::uint16_t object_count_{70U};
+    std::uint16_t extended_object_bytes_{54U};
+    std::uint32_t extended_object_base_{0x7e2000U};
+    std::uint32_t active_list_{0x0012adU};
+    std::uint32_t free_list_{0x0012afU};
+    std::uint32_t fade_direction_address_{0x001930U};
+    std::uint32_t fade_address_{0x001931U};
+    std::uint32_t display_address_{0x7e4655U};
+    std::uint32_t game_frame_address_{0x001640U};
+    std::uint32_t background_flags_address_{0x001a16U};
+    std::uint32_t background_dma_list_address_{0x001764U};
+    std::uint32_t current_background_address_{0x0017c6U};
+    std::uint32_t background_music_count_address_{0x001a49U};
+    std::uint32_t background_music_address_{0x001a4aU};
+    std::uint32_t player_ship_flags_2_address_{0x001562U};
+    std::uint32_t map_count_address_{0x001780U};
+    std::uint32_t map_pointer_address_{0x001782U};
+    std::uint32_t last_player_z_address_{0x001784U};
+    std::uint32_t map_jsr_stack_address_{0x001788U};
+    std::uint32_t map_jsr_pointer_address_{0x0017b5U};
+    std::uint32_t number_map_jsrs_address_{0x0017b7U};
+    std::uint32_t last_map_object_address_{0x00177cU};
+    std::uint32_t dots_flag_address_{0x00177eU};
+    std::uint32_t map_loops_address_{0x0017c8U};
+    std::uint32_t map_addresses_address_{0x0017d0U};
+    std::uint32_t number_map_loops_address_{0x0017d8U};
+    std::uint32_t map_bank_address_{0x001af7U};
     Wdc65816 cpu_;
 };
 

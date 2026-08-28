@@ -11,6 +11,7 @@ struct SnesPpuState {
     std::array<std::uint8_t, 544> oam{};
     std::uint8_t background_mode{2U};
     bool bg3_high_priority{};
+    std::uint8_t mosaic{};
     std::uint8_t object_select{3U};
     std::uint16_t bg1_character_base{};
     std::uint16_t bg1_screen_base{};

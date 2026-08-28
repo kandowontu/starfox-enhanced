@@ -9,8 +9,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace starfox::app {
 
@@ -21,6 +23,8 @@ void configure_native_gamepad_support() noexcept;
 // Opens the most useful player controller when more than one mapped device is
 // present (Steam virtual/Deck first, then XInput/Xbox, then generic gamepads).
 [[nodiscard]] SDL_Gamepad* open_preferred_gamepad() noexcept;
+[[nodiscard]] std::vector<SDL_Gamepad*> open_player_gamepads(
+    std::size_t maximum = 5U) noexcept;
 
 [[nodiscard]] std::string gamepad_device_label(SDL_Gamepad* gamepad);
 
@@ -47,6 +51,8 @@ public:
     InputBindings();
 
     [[nodiscard]] input::ButtonMask sample(
+        SDL_Gamepad* gamepad) const noexcept;
+    [[nodiscard]] input::ButtonMask sample_gamepad_only(
         SDL_Gamepad* gamepad) const noexcept;
     [[nodiscard]] input::ButtonMask sample_fixed_menu_navigation(
         SDL_Gamepad* gamepad) const noexcept;
@@ -78,6 +84,7 @@ struct PregameSettings {
     bool god_mode{};
     bool show_fps{};
     std::uint8_t crosshair_colour{};
+    std::uint8_t experience{};
 
     [[nodiscard]] bool operator==(const PregameSettings&) const = default;
 };
@@ -91,6 +98,15 @@ struct PregameSettings {
 [[nodiscard]] bool save_pregame_settings(
     const std::filesystem::path& path,
     const PregameSettings& settings) noexcept;
+
+inline constexpr std::size_t starfox_ex_save_ram_size = 0x10000U;
+[[nodiscard]] std::filesystem::path starfox_ex_save_ram_path();
+[[nodiscard]] bool load_starfox_ex_save_ram(
+    const std::filesystem::path& path,
+    std::vector<std::uint8_t>& bytes) noexcept;
+[[nodiscard]] bool save_starfox_ex_save_ram(
+    const std::filesystem::path& path,
+    std::span<const std::uint8_t> bytes) noexcept;
 
 // HUD placement is deliberately human-readable and stored separately from
 // controller bindings so it can be copied, edited, or reset independently.

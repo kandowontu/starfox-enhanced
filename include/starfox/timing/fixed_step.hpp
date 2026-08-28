@@ -19,7 +19,7 @@ struct RasterPhaseBatch {
 
 // Converts an independently selected presentation rate into the cartridge's
 // fixed 60 Hz raster clock. The supported presentation rates all divide a
-// common 720 Hz timebase, so this remains exact without wall-clock drift.
+// common 1440 Hz timebase, so this remains exact without wall-clock drift.
 class RasterPhaseClock {
 public:
     [[nodiscard]] RasterPhaseBatch advance(

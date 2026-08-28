@@ -9,7 +9,9 @@ namespace {
 
 constexpr std::uint64_t kNanosecondsPerSecond = 1'000'000'000ULL;
 constexpr double kAnglePeriod = 65'536.0;
-constexpr std::uint32_t kPresentationTimebaseHz = 720U;
+// Least common multiple of every selectable presentation rate, including
+// 360 and 480 Hz. Integer subphases make the deterministic/test clock exact.
+constexpr std::uint32_t kPresentationTimebaseHz = 1'440U;
 constexpr std::uint32_t kSubphasesPerRasterPhase =
     kPresentationTimebaseHz / kPresentationHz;
 

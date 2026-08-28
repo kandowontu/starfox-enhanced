@@ -23,7 +23,7 @@ fixed 20 Hz simulation ----> previous/current fixed-point snapshots
                                                |
                                                v
                                  present at 20/30/60/90/
-                                    120/240/360 FPS
+                                  120/240/360/480 FPS
 ```
 
 Input edges are latched until a simulation tick consumes them. Holding a key
@@ -31,11 +31,12 @@ is represented in every tick; a press and release between two ticks is not
 lost. Pausing stops the simulation accumulator while UI presentation can keep
 running.
 
-The timing code converts each selectable output rate through an exact 720 Hz
+The timing code converts each selectable output rate through an exact 1440 Hz
 integer timebase into the fixed 60 Hz cartridge raster. That raster continues
 to drive the deterministic 20 Hz simulation, frontend sequencing, and audio.
-Floating-point values exist only in the rendered transform and fractional
-interpolation alpha; the simulation remains fixed-point and deterministic.
+Floating-point values exist only in the rendered transform, normalized matrix
+interpolation, and fractional interpolation alpha; the simulation remains
+fixed-point and deterministic.
 
 ## Model pipeline
 

@@ -29,7 +29,6 @@ constexpr std::uint8_t kSprite = 80;
 constexpr std::uint8_t kSpriteVisibility = 84;
 constexpr std::uint8_t kFaceEndQuit = 0xff;
 constexpr std::uint8_t kFaceEndContinue = 0xfe;
-constexpr std::uint8_t kColourTableBank = 0x03;
 
 std::int8_t signed8(std::uint8_t value) {
     return static_cast<std::int8_t>(value);
@@ -66,6 +65,15 @@ ShapeDecoder::ShapeDecoder(const RomImage& rom, const SymbolMap& symbols)
     };
     texture_address_table_ = find_rom("TEXTUREADDRTAB");
     texture_coordinate_table_ = find_rom("TEXTUREXYTAB");
+    // Star Fox EX's SHMACS.INC removes the three retail simple-LOD words
+    // from ShapeHdr entirely and writes optional debug-name bytes directly
+    // after the shadow pointer. Reading those bytes as addresses produces
+    // values such as the ASCII pair "sh" and selects invalid models once an
+    // object crosses a retail LOD threshold.
+    has_lod_pointers_ = symbols.find("PLANETSEQ2_L").empty();
+    if (const auto colour_table = find_rom("ID_0_C"); colour_table != 0U) {
+        colour_table_bank_ = static_cast<std::uint8_t>(colour_table >> 16U);
+    }
     has_diffuse_shade_tables_ = true;
     for (std::size_t depth = 0; depth < diffuse_shade_tables_.size(); ++depth) {
         const auto name = std::string{"SHADESTAB2_"} + std::to_string(depth);
@@ -114,15 +122,32 @@ ShapeHeader ShapeDecoder::decode_header(std::uint32_t address) const {
     header.size = rom_.read_i16(address + 16U);
     header.colour_pointer = rom_.read16(address + 18U);
     header.shadow_pointer = rom_.read16(address + 20U);
-    header.lod1_pointer = rom_.read16(address + 22U);
-    header.lod2_pointer = rom_.read16(address + 24U);
-    header.lod3_pointer = rom_.read16(address + 26U);
+    if (has_lod_pointers_) {
+        header.lod1_pointer = rom_.read16(address + 22U);
+        header.lod2_pointer = rom_.read16(address + 24U);
+        header.lod3_pointer = rom_.read16(address + 26U);
+    } else {
+        const auto self = static_cast<std::uint16_t>(address);
+        header.lod1_pointer = self;
+        header.lod2_pointer = self;
+        header.lod3_pointer = self;
+    }
 
     // Several source objects (MOTHER1, NULLPLAYER and invisible composite
     // components) deliberately use ShapeHdr 0,0,... as a strategy-only
     // controller. MOBJ treats the missing point/face streams as no geometry;
     // it is not a corrupt or unsupported model.
     if (points_pointer == 0U && faces_pointer == 0U) return header;
+
+    // RomImage::read8 models transient lower-half LoROM reads as open bus for
+    // the CPU runtime.  Shape pointers are not transient CPU state, however:
+    // a points/faces stream below $8000 is never cartridge data.  Reject it
+    // here so the symbol coverage scan cannot mistake arbitrary code/data for
+    // a model merely because an invalid pointer reads back as opcode zero.
+    if ((header.points_address & 0xffffU) < 0x8000U
+        || (header.faces_address & 0xffffU) < 0x8000U) {
+        throw std::runtime_error{"shape stream is outside the cartridge window"};
+    }
 
     if (!is_point_opcode(rom_.read8(header.points_address))
         || !is_face_opcode(rom_.read8(header.faces_address))) {
@@ -522,7 +547,7 @@ void ShapeDecoder::decode_colours(Shape& shape) const {
         return a.colour_id < b.colour_id;
     })->colour_id;
     shape.colour_words.reserve(static_cast<std::size_t>(maximum) + 1U);
-    const auto base = (static_cast<std::uint32_t>(kColourTableBank) << 16U)
+    const auto base = (static_cast<std::uint32_t>(colour_table_bank_) << 16U)
         | shape.header.colour_pointer;
     for (std::uint16_t index = 0; index <= maximum; ++index) {
         const auto word = rom_.read16(base + index * 2U);
@@ -530,7 +555,7 @@ void ShapeDecoder::decode_colours(Shape& shape) const {
         ColourMaterial material;
         material.raw = word;
         if ((word & 0xc000U) == 0x8000U) {
-            const auto animation = (static_cast<std::uint32_t>(kColourTableBank) << 16U)
+            const auto animation = (static_cast<std::uint32_t>(colour_table_bank_) << 16U)
                 | 0x8000U | (word & 0x3fffU);
             const auto frame_count = rom_.read8(animation);
             if (frame_count == 0U || frame_count > 128U) {

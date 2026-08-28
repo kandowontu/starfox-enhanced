@@ -15,15 +15,16 @@ std::uint16_t vram_word(
         | (static_cast<std::uint16_t>(ppu.vram[offset + 1U]) << 8U);
 }
 
-std::uint8_t tile_pixel(
+std::uint8_t tile_pixel_4bpp(
     const simulation::SnesPpuState& ppu,
+    std::uint16_t character_base,
     std::uint16_t tile,
     std::uint32_t x,
     std::uint32_t y) noexcept {
     if ((tile & 0x4000U) != 0U) x = 7U - x;
     if ((tile & 0x8000U) != 0U) y = 7U - y;
     const auto tile_number = static_cast<std::uint32_t>(tile & 0x03ffU);
-    const auto base = (static_cast<std::uint32_t>(ppu.bg2_character_base) * 2U
+    const auto base = (static_cast<std::uint32_t>(character_base) * 2U
         + tile_number * 32U + y * 2U) & 0xffffU;
     const auto plane01 = static_cast<std::uint16_t>(ppu.vram[base])
         | (static_cast<std::uint16_t>(ppu.vram[(base + 1U) & 0xffffU]) << 8U);
@@ -87,6 +88,17 @@ bool selected_priority(std::uint16_t tile, TilePriorityPass pass) noexcept {
     return high == (pass == TilePriorityPass::high);
 }
 
+std::int32_t mosaic_coordinate(
+    std::int32_t coordinate,
+    std::uint8_t mosaic,
+    std::uint8_t layer_mask) noexcept {
+    if ((mosaic & layer_mask) == 0U) return coordinate;
+    const auto size = static_cast<std::int32_t>((mosaic >> 4U) + 1U);
+    auto remainder = coordinate % size;
+    if (remainder < 0) remainder += size;
+    return coordinate - remainder;
+}
+
 } // namespace
 
 void BackgroundRenderer::draw_bg1(
@@ -95,7 +107,9 @@ void BackgroundRenderer::draw_bg1(
     TilePriorityPass priority,
     std::int32_t horizontal_origin,
     bool extend_horizontal) const noexcept {
-    if ((ppu.main_screen & 0x01U) == 0U || ppu.background_mode != 3U) return;
+    if ((ppu.main_screen & 0x01U) == 0U
+        || (ppu.background_mode != 1U && ppu.background_mode != 2U
+            && ppu.background_mode != 3U)) return;
     const auto width_tiles = (ppu.bg1_screen_size & 1U) != 0U ? 64U : 32U;
     const auto height_tiles = (ppu.bg1_screen_size & 2U) != 0U ? 64U : 32U;
     const auto pages_wide = width_tiles / 32U;
@@ -106,7 +120,9 @@ void BackgroundRenderer::draw_bg1(
         return value < 0 ? value + modulus : value;
     };
     for (std::uint32_t screen_y = 0; screen_y < target.height(); ++screen_y) {
-        const auto source_y = wrap(static_cast<std::int32_t>(screen_y)
+        const auto sample_y = mosaic_coordinate(
+            static_cast<std::int32_t>(screen_y), ppu.mosaic, 0x01U);
+        const auto source_y = wrap(sample_y
             + ppu.bg1_scroll_y, height_pixels);
         const auto tile_y = static_cast<std::uint32_t>(source_y) >> 3U;
         const auto first_x = extend_horizontal ? 0U
@@ -117,7 +133,9 @@ void BackgroundRenderer::draw_bg1(
         for (auto screen_x = first_x; screen_x < final_x; ++screen_x) {
             const auto logical_x = static_cast<std::int32_t>(screen_x)
                 - horizontal_origin;
-            const auto source_x = wrap(logical_x
+            const auto sample_x = mosaic_coordinate(
+                logical_x, ppu.mosaic, 0x01U);
+            const auto source_x = wrap(sample_x
                 + ppu.bg1_scroll_x, width_pixels);
             const auto tile_x = static_cast<std::uint32_t>(source_x) >> 3U;
             const auto page = (tile_x >> 5U) + (tile_y >> 5U) * pages_wide;
@@ -126,12 +144,19 @@ void BackgroundRenderer::draw_bg1(
             const auto tile = vram_word(ppu,
                 static_cast<std::uint32_t>(ppu.bg1_screen_base) + entry);
             if (!selected_priority(tile, priority)) continue;
-            const auto colour = tile_pixel_8bpp(ppu, ppu.bg1_character_base, tile,
-                static_cast<std::uint32_t>(source_x) & 7U,
-                static_cast<std::uint32_t>(source_y) & 7U);
+            const auto pixel_x = static_cast<std::uint32_t>(source_x) & 7U;
+            const auto pixel_y = static_cast<std::uint32_t>(source_y) & 7U;
+            const auto colour = ppu.background_mode == 3U
+                ? tile_pixel_8bpp(ppu, ppu.bg1_character_base, tile,
+                    pixel_x, pixel_y)
+                : tile_pixel_4bpp(ppu, ppu.bg1_character_base, tile,
+                    pixel_x, pixel_y);
             if (colour != 0U) {
                 target.set(static_cast<std::int32_t>(screen_x),
-                    static_cast<std::int32_t>(screen_y), colour);
+                    static_cast<std::int32_t>(screen_y),
+                    ppu.background_mode == 3U ? colour
+                        : static_cast<std::uint8_t>(
+                            ((tile >> 10U) & 7U) * 16U + colour));
             }
         }
     }
@@ -263,21 +288,33 @@ void BackgroundRenderer::draw_bg2(
     }
 
     for (std::uint32_t screen_y = 0; screen_y < target.height(); ++screen_y) {
+        const auto sample_y = mosaic_coordinate(
+            static_cast<std::int32_t>(screen_y), ppu.mosaic, 0x02U);
         const auto row_scroll_x = ppu.bg2_horizontal_offsets_enabled
-            && screen_y < ppu.bg2_horizontal_offsets.size()
-            ? static_cast<std::int32_t>(ppu.bg2_horizontal_offsets[screen_y])
+            && sample_y >= 0
+            && static_cast<std::size_t>(sample_y)
+                < ppu.bg2_horizontal_offsets.size()
+            ? static_cast<std::int32_t>(ppu.bg2_horizontal_offsets[
+                static_cast<std::size_t>(sample_y)])
             : scroll_x;
         for (auto screen_x = first_x; screen_x < final_x; ++screen_x) {
             const auto logical_x = static_cast<std::int32_t>(screen_x)
                 - horizontal_origin;
+            const auto sample_x = mosaic_coordinate(
+                logical_x, ppu.mosaic, 0x02U);
+            const auto sampled_screen_x = std::clamp(
+                sample_x + horizontal_origin,
+                static_cast<std::int32_t>(first_x),
+                static_cast<std::int32_t>(final_x - 1U));
             const auto current_scroll_y = column_scroll_y.empty() ? scroll_y
-                : column_scroll_y[screen_x - first_x];
+                : column_scroll_y[static_cast<std::size_t>(sampled_screen_x)
+                    - first_x];
             const auto source_y = wrap(
-                static_cast<std::int32_t>(screen_y) + current_scroll_y,
+                sample_y + current_scroll_y,
                 height_pixels);
             const auto tile_y = static_cast<std::uint32_t>(source_y) >> 3U;
             const auto source_x = wrap(
-                logical_x + row_scroll_x, width_pixels);
+                sample_x + row_scroll_x, width_pixels);
             const auto tile_x = static_cast<std::uint32_t>(source_x) >> 3U;
             const auto page = (tile_x >> 5U) + (tile_y >> 5U) * pages_wide;
             const auto entry = page * 0x400U
@@ -294,7 +331,7 @@ void BackgroundRenderer::draw_bg2(
                 }
                 continue;
             }
-            auto colour = tile_pixel(ppu, tile,
+            auto colour = tile_pixel_4bpp(ppu, ppu.bg2_character_base, tile,
                 static_cast<std::uint32_t>(source_x) & 7U,
                 static_cast<std::uint32_t>(source_y) & 7U);
             auto palette = static_cast<std::uint8_t>((tile >> 10U) & 7U);
@@ -338,7 +375,9 @@ void BackgroundRenderer::draw_bg3(
     };
 
     for (std::uint32_t screen_y = 0; screen_y < target.height(); ++screen_y) {
-        const auto source_y = wrap(static_cast<std::int32_t>(screen_y)
+        const auto sample_y = mosaic_coordinate(
+            static_cast<std::int32_t>(screen_y), ppu.mosaic, 0x04U);
+        const auto source_y = wrap(sample_y
             + ppu.bg3_scroll_y, height_pixels);
         const auto tile_y = static_cast<std::uint32_t>(source_y) >> 3U;
         const auto first_x = extend_horizontal ? 0U
@@ -349,7 +388,9 @@ void BackgroundRenderer::draw_bg3(
         for (auto screen_x = first_x; screen_x < final_x; ++screen_x) {
             const auto logical_x = static_cast<std::int32_t>(screen_x)
                 - horizontal_origin;
-            const auto source_x = wrap(logical_x
+            const auto sample_x = mosaic_coordinate(
+                logical_x, ppu.mosaic, 0x04U);
+            const auto source_x = wrap(sample_x
                 + ppu.bg3_scroll_x, width_pixels);
             const auto tile_x = static_cast<std::uint32_t>(source_x) >> 3U;
             const auto page = (tile_x >> 5U) + (tile_y >> 5U) * pages_wide;

@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 
 namespace starfox::simulation {
 
@@ -27,6 +28,8 @@ public:
         MapVm& native_state);
 
     [[nodiscard]] StrategyTickStats tick_all();
+    [[nodiscard]] StrategyTickStats tick_all_no_objects(
+        std::span<const ObjectHandle> protected_objects);
     [[nodiscard]] std::size_t tick_object(ObjectHandle object);
     [[nodiscard]] std::size_t begin_tick();
 

@@ -1,6 +1,7 @@
 #include "starfox/simulation/dust_system.hpp"
 
 #include <bit>
+#include <span>
 
 namespace starfox::simulation {
 
@@ -53,9 +54,11 @@ void DustSystem::recycle(
 void DustSystem::tick(
     const std::array<std::int16_t, 3>& camera,
     const MatrixQ15& world_matrix,
-    bool enabled) noexcept {
+    bool enabled,
+    std::size_t active_count) noexcept {
     if (!enabled) return;
-    for (auto& point : points_) {
+    active_count = std::min(active_count, points_.size());
+    for (auto& point : std::span{points_}.first(active_count)) {
         const auto x = subtract16(point.x, camera[0]);
         const auto y = subtract16(point.y, camera[1]);
         const auto z = subtract16(point.z, camera[2]);

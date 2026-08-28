@@ -31,10 +31,36 @@ struct ApuPortWrite {
     friend bool operator==(const ApuPortWrite&, const ApuPortWrite&) = default;
 };
 
+struct Wdc65816TaskResult {
+    std::size_t instructions{};
+    std::uint32_t stop_address{};
+    bool returned{};
+};
+
+// Snapshot of CONTINUE.ASM's dedicated MSHOWOBJ3 launch. Unlike ordinary
+// gameplay objects this model is drawn directly into FOXY_CONTINUE's 224x192
+// bitmap and therefore has no entry in the host ObjectPool.
+struct NativeModelDrawState {
+    bool active{};
+    std::uint16_t shape{};
+    std::int16_t x{};
+    std::int16_t y{};
+    std::int16_t z{};
+    std::uint16_t rotation_x{};
+    std::uint16_t rotation_y{};
+    std::uint16_t rotation_z{};
+    std::int16_t vanish_x{112};
+    std::int16_t vanish_y{96};
+    std::uint16_t animation_frame{};
+    std::uint16_t colour_frame{};
+};
+
 // Project-owned adapter around the pinned MIT RetroCPU core. It supplies the
 // SNES LoROM/WRAM address map and bounded native-mode subroutine execution.
 class Wdc65816 {
 public:
+    static constexpr std::size_t cartridge_ram_size = 0x10000U;
+
     explicit Wdc65816(
         const assets::RomImage& rom,
         const assets::SymbolMap* symbols = nullptr);
@@ -48,11 +74,15 @@ public:
     [[nodiscard]] std::uint16_t read16(std::uint32_t address) const;
     void write8(std::uint32_t address, std::uint8_t value);
     void write16(std::uint32_t address, std::uint16_t value);
+    [[nodiscard]] bool load_cartridge_ram(
+        std::span<const std::uint8_t> bytes) noexcept;
+    [[nodiscard]] std::span<const std::uint8_t> cartridge_ram() const noexcept;
     [[nodiscard]] std::vector<ApuPortWrite> take_apu_port_writes();
     void set_apu_clock_offset(std::uint32_t clocks) noexcept;
     void set_apu_output_ports(
         const std::array<std::uint8_t, 4>& ports) noexcept;
     [[nodiscard]] const SnesPpuState& ppu_state() const noexcept;
+    [[nodiscard]] const NativeModelDrawState& native_model_draw() const noexcept;
     [[nodiscard]] const std::vector<std::uint32_t>& unknown_superfx_launches()
         const noexcept;
     [[nodiscard]] std::uint64_t apu_upload_generation() const noexcept;
@@ -63,6 +93,11 @@ public:
         std::uint16_t byte_offset,
         std::span<const std::uint8_t> bytes) noexcept;
     void upload_oam(std::uint32_t source, std::size_t length);
+    void begin_superfx_bitmap_frame();
+    // Submit the source 224x192 Super FX bitmap through FOXIRQ's exact two
+    // VRAM transfers and buffer swap. Native front-end text is CPU-drawn
+    // into this bitmap even when model geometry is host-rendered.
+    void submit_superfx_bitmap();
     void set_bg1_scroll(std::int16_t x, std::int16_t y) noexcept;
     void draw_planet_sphere(std::uint16_t sprite);
     void set_bg2_vertical_offsets_enabled(bool enabled) noexcept;
@@ -86,6 +121,35 @@ public:
         std::size_t instruction_limit = 1'000'000,
         bool service_transfer_flag = false);
 
+    // Starts a long-call routine whose source control flow spans multiple
+    // presentation frames. Execution pauses before any stop address and can
+    // later continue with resume_task(), preserving the complete CPU state.
+    Wdc65816TaskResult begin_long_task(
+        std::uint32_t address,
+        Wdc65816Registers& registers,
+        std::span<const std::uint32_t> stop_addresses,
+        std::size_t instruction_limit = 1'000'000,
+        bool service_transfer_flag = false);
+
+    // Starts a same-bank RTS routine as a resumable task. This is the task
+    // counterpart of call_near() and is used by source screen sequences such
+    // as END_LEVEL_SEQ that yield once per TRANSFER_L call.
+    Wdc65816TaskResult begin_near_task(
+        std::uint32_t address,
+        Wdc65816Registers& registers,
+        std::span<const std::uint32_t> stop_addresses,
+        std::size_t instruction_limit = 1'000'000,
+        bool service_transfer_flag = false);
+
+    // Continues the active task. The instruction at the address where the
+    // previous call paused is executed before stop addresses are considered
+    // again, allowing frame loops to use one stable source label as a yield.
+    Wdc65816TaskResult resume_task(
+        Wdc65816Registers& registers,
+        std::span<const std::uint32_t> stop_addresses,
+        std::size_t instruction_limit = 1'000'000,
+        bool service_transfer_flag = false);
+
 private:
     std::size_t call(
         std::uint32_t address,
@@ -93,6 +157,11 @@ private:
         std::size_t instruction_limit,
         bool service_transfer_flag,
         bool long_return);
+    Wdc65816TaskResult run_task(
+        Wdc65816Registers& registers,
+        std::span<const std::uint32_t> stop_addresses,
+        std::size_t instruction_limit,
+        bool service_transfer_flag);
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
