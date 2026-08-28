@@ -100,7 +100,7 @@ int main(int argc, char** argv) {
     starfox::render::Framebuffer wide_meter_frame{400, 192};
     sprite_renderer.draw_meters(
         {36, 36, false, true, 0, 0}, wide_meter_frame, true);
-    require(wide_meter_frame.get(24, 176) == 7U * 16U + 13U
+    require(wide_meter_frame.get(24, 178) == 7U * 16U + 13U
                 && wide_meter_frame.get(336, 176) == 7U * 16U + 13U,
             "expanded HUD meters did not anchor to the outer screen edges");
     starfox::render::HudLayout shifted_hud;
@@ -110,7 +110,7 @@ int main(int argc, char** argv) {
     wide_meter_frame.clear(0U);
     sprite_renderer.draw_meters(
         {36, 36, false, true, 0, 0}, wide_meter_frame, true, &shifted_hud);
-    require(wide_meter_frame.get(34, 171) == 7U * 16U + 13U
+    require(wide_meter_frame.get(34, 173) == 7U * 16U + 13U
                 && wide_meter_frame.get(324, 179) == 7U * 16U + 13U
                 && wide_meter_frame.get(24, 176) == 0U,
             "custom HUD layout did not move shield and bombs/boost meters");
@@ -393,6 +393,23 @@ int main(int argc, char** argv) {
     background_renderer.draw_bg1(mode2_bg1_ppu, mode2_bg1_frame);
     require(mode2_bg1_frame.get(0, 0) == 0x6bU,
             "Mode 2 BG1 did not decode its 4-bpp Super FX bitmap");
+    const auto set_mode2_bg1_entry = [&mode2_bg1_ppu, mode3_map_byte](
+                                         std::uint32_t tile_x) {
+        const auto byte = mode3_map_byte + tile_x * 2U;
+        mode2_bg1_ppu.vram[byte] = 1U;
+        mode2_bg1_ppu.vram[byte + 1U] = 0x18U;
+    };
+    set_mode2_bg1_entry(2U);
+    set_mode2_bg1_entry(29U);
+    starfox::render::Framebuffer inset_bg1_frame{256U, 8U};
+    inset_bg1_frame.clear(42U);
+    background_renderer.draw_bg1(mode2_bg1_ppu, inset_bg1_frame,
+        starfox::render::TilePriorityPass::all, 0, false, 16U);
+    require(inset_bg1_frame.get(0, 0) == 42U
+                && inset_bg1_frame.get(16, 0) == 0x6bU
+                && inset_bg1_frame.get(232, 0) == 0x6bU
+                && inset_bg1_frame.get(240, 0) == 42U,
+            "centred BG1 inset did not clip both 16-pixel guard columns");
     auto mosaic_bg1_ppu = mode2_bg1_ppu;
     mosaic_bg1_ppu.mosaic = 0x11U; // 2x2, BG1 enabled.
     starfox::render::Framebuffer mosaic_bg1_frame{8, 8};
@@ -459,6 +476,20 @@ int main(int argc, char** argv) {
     require(centred_sprite_frame.get(7, 5) == 129U
                 && centred_sprite_frame.get(0, 0) == 42U,
             "custom HUD layout did not move the lives sprite group");
+    // EX places its life counter in the same lower-left band as Shield. The
+    // source life tiles must still follow the independent Lives offset.
+    priority_ppu.oam[0U] = 27U;
+    priority_ppu.oam[1U] = 175U;
+    priority_ppu.oam[2U] = 189U;
+    priority_ppu.vram[0xc000U + 189U * 32U] = 0x80U;
+    shifted_hud[starfox::render::HudElement::shield] = {40, 20};
+    centred_sprite_frame.resize(400, 224);
+    centred_sprite_frame.clear(42U);
+    sprite_renderer.draw_objects(priority_ppu, centred_sprite_frame,
+        2U, 72, true, true, &shifted_hud);
+    require(centred_sprite_frame.get(34, 180) == 129U
+                && centred_sprite_frame.get(67, 195) == 42U,
+            "EX lower-left lives were tied to the Shield layout");
 
     starfox::simulation::ObjectPool objects;
     const auto first = objects.allocate_after();
@@ -2881,6 +2912,9 @@ int main(int argc, char** argv) {
                     && game.map().unknown_superfx_launches().empty(),
                 "original teammate communication state was not presented");
         if (starfox_ex_cartridge) {
+            require(game.map().read_native_byte(
+                        upstream_symbols.find("MACHINETYPE").front()) == 10U,
+                "EX native runtime did not enable its intro machine message");
             starfox::simulation::Wdc65816Registers alternate_registers;
             alternate_registers.a = 1U;
             alternate_registers.status = 0x24U;
@@ -2895,10 +2929,24 @@ int main(int argc, char** argv) {
                     animate_registers, 5'000'000, true);
             }
             const auto alternate_dialogue = game.dialogue_state();
+            const auto alternate_messages =
+                upstream_symbols.find("MESSAGES2").front();
+            const auto alternate_face_data =
+                upstream_symbols.find("FACEDATA2").front();
+            const auto alternate_face_pointer = game.map().read_native_word(
+                upstream_symbols.find("M_FACEPTR").front());
+            const auto alternate_face_base =
+                static_cast<std::uint16_t>(alternate_face_data);
+            const auto expected_alternate_frame = static_cast<std::uint8_t>(
+                (alternate_face_pointer - alternate_face_base) / 640U);
             require(alternate_dialogue.active
                         && alternate_dialogue.text_visible
                         && alternate_dialogue.alternate_portraits
-                        && alternate_dialogue.text_address != 0U,
+                        && alternate_dialogue.text_address != 0U
+                        && (alternate_dialogue.text_address & 0xff0000U)
+                            == (alternate_messages & 0xff0000U)
+                        && alternate_dialogue.portrait_frame
+                            == expected_alternate_frame,
                 "EX secondary dialogue channel was not presented");
 
             const starfox::render::ScaledTextRenderer ex_text_renderer{
@@ -4087,6 +4135,38 @@ int main(int argc, char** argv) {
                 static_cast<std::int16_t>(title_game.map().read_native_word(
                     bg2scroll)),
                 menu_background, starfox::render::TilePriorityPass::high);
+            // The deterministic EX menu background is one of CONTINUE.ASM's
+            // Mode 1 variants. Exercise the same wide BG2 sampling used by
+            // the runtime so the added bands cannot silently fall back to
+            // colour zero/black while the source canvas remains correct.
+            starfox::render::Framebuffer expanded_menu_background{400U, 224U};
+            background_renderer.draw_bg2(title_game.map().ppu_state(),
+                static_cast<std::int16_t>(title_game.map().read_native_word(
+                    bg2xscroll)),
+                static_cast<std::int16_t>(title_game.map().read_native_word(
+                    bg2scroll)),
+                expanded_menu_background,
+                starfox::render::TilePriorityPass::low, 72, true);
+            background_renderer.draw_bg2(title_game.map().ppu_state(),
+                static_cast<std::int16_t>(title_game.map().read_native_word(
+                    bg2xscroll)),
+                static_cast<std::int16_t>(title_game.map().read_native_word(
+                    bg2scroll)),
+                expanded_menu_background,
+                starfox::render::TilePriorityPass::high, 72, true);
+            auto expanded_side_pixels = std::size_t{};
+            for (std::uint32_t y = 0U;
+                 y < expanded_menu_background.height(); ++y) {
+                for (std::uint32_t x = 0U;
+                     x < expanded_menu_background.width(); ++x) {
+                    if (x >= 72U && x < 328U) continue;
+                    if (expanded_menu_background.get(
+                            static_cast<std::int32_t>(x),
+                            static_cast<std::int32_t>(y)) != 0U) {
+                        ++expanded_side_pixels;
+                    }
+                }
+            }
             starfox::render::Framebuffer menu_text{256U, 224U};
             background_renderer.draw_bg1(title_game.map().ppu_state(), menu_text,
                 starfox::render::TilePriorityPass::low);
@@ -4098,6 +4178,9 @@ int main(int argc, char** argv) {
                         && title_game.map().read_native_byte(menu_selected) == 15U
                         && title_game.map().read_native_byte(page_number) == 1U
                         && title_game.map().read_native_byte(pgbg) <= 36U
+                        && title_game.map().ppu_state().background_mode == 1U
+                        && (title_game.map().ppu_state().main_screen & 0x01U)
+                            != 0U
                         && title_game.map().ppu_state().bg1_character_base
                             == displayed_bitmap_base
                         && std::count_if(menu_background.pixels().begin(),
@@ -4108,10 +4191,17 @@ int main(int argc, char** argv) {
                             menu_text.pixels().end(),
                             [](std::uint8_t pixel) { return pixel != 0U; })
                             > 1'000
+                        && expanded_side_pixels > 1'000U
                         && std::any_of(title_game.map().ppu_state().vram.begin(),
                             title_game.map().ppu_state().vram.end(),
                             [](std::uint8_t byte) { return byte != 0U; }),
                     "EX title START did not open source pre-game menu page one");
+            const auto menu_scroll_before =
+                title_game.map().ppu_state().bg2_scroll_x;
+            static_cast<void>(title_game.tick({}));
+            require(title_game.map().ppu_state().bg2_scroll_x
+                            != menu_scroll_before,
+                    "EX source menu did not advance its BG2 scroll register");
             const auto fps_speed = upstream_symbols.find("FPSSPEED").front();
             const auto ntsc_pal_swap =
                 upstream_symbols.find("NTSCPALSWAP").front();
@@ -4197,6 +4287,24 @@ int main(int argc, char** argv) {
                         && title_game.map().unknown_superfx_launches().size()
                             == unknown_before_model,
                     "EX MODEL VIEWER did not submit its source MSHOWOBJ3 model");
+            const auto model_z_before =
+                title_game.map().read_native_word(
+                    upstream_symbols.find("M_BIGZ").front());
+            static_cast<void>(title_game.tick(
+                {starfox::input::left_shoulder,
+                    starfox::input::left_shoulder, 0}));
+            const auto zoomed_in_model_z =
+                title_game.map().read_native_word(
+                    upstream_symbols.find("M_BIGZ").front());
+            require(zoomed_in_model_z < model_z_before,
+                    "EX MODEL VIEWER L did not zoom the source model in");
+            static_cast<void>(title_game.tick(
+                {starfox::input::right_shoulder,
+                    starfox::input::right_shoulder, 0}));
+            require(title_game.map().read_native_word(
+                        upstream_symbols.find("M_BIGZ").front())
+                            > zoomed_in_model_z,
+                    "EX MODEL VIEWER R did not zoom the source model out");
             static_cast<void>(title_game.tick({}));
             static_cast<void>(title_game.tick(
                 {starfox::input::start, starfox::input::start, 0}));
@@ -4272,6 +4380,24 @@ int main(int argc, char** argv) {
                         && reset_ex_game.ex_save_ram()[0xfffcU] == 'S'
                         && heard_reset_sound,
                     "EX intro did not execute its source SRAM-reset chord");
+            auto saw_ex_intro_dialogue = false;
+            auto saw_ex_intro_secondary_portrait = false;
+            for (std::size_t tick = 0; tick < 400U; ++tick) {
+                static_cast<void>(reset_ex_game.tick({}));
+                const auto intro_dialogue = reset_ex_game.dialogue_state();
+                saw_ex_intro_dialogue = saw_ex_intro_dialogue
+                    || (intro_dialogue.active
+                        && intro_dialogue.text_visible
+                        && intro_dialogue.text_address != 0U);
+                saw_ex_intro_secondary_portrait =
+                    saw_ex_intro_secondary_portrait
+                    || (intro_dialogue.active
+                        && intro_dialogue.text_visible
+                        && intro_dialogue.alternate_portraits);
+            }
+            require(saw_ex_intro_dialogue
+                        && saw_ex_intro_secondary_portrait,
+                "EX intro did not present its source communication channel");
         }
         require(title_game.flow_state()
                         == starfox::simulation::GameFlowState::controls_type

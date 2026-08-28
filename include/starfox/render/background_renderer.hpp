@@ -20,7 +20,8 @@ public:
         Framebuffer& target,
         TilePriorityPass priority = TilePriorityPass::all,
         std::int32_t horizontal_origin = 0,
-        bool extend_horizontal = true) const noexcept;
+        bool extend_horizontal = true,
+        std::uint32_t horizontal_inset = 0) const noexcept;
     void draw_bg2(
         const simulation::SnesPpuState& ppu,
         std::int32_t scroll_x,

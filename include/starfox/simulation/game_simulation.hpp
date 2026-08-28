@@ -605,6 +605,7 @@ private:
     std::uint32_t ex_current_percentage_{};
     std::uint32_t ex_target_percentage_{};
     std::uint32_t ex_results_exit_{};
+    std::uint32_t ex_machine_type_{};
     std::uint32_t initialize_music_{};
     std::uint32_t intro_music_{};
     std::uint32_t controls_music_{};
@@ -687,6 +688,7 @@ private:
     std::uint32_t face_data_{};
     std::uint32_t face_data_2_{};
     std::uint32_t messages_{};
+    std::uint32_t messages_2_{};
     std::uint32_t player_score_{};
     std::uint32_t special_object_total_{};
     std::uint32_t specials_dead_{};

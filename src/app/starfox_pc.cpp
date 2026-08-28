@@ -227,6 +227,26 @@ void apply_crosshair_tint(
     palette[first + 15U] = *tint;
 }
 
+std::uint8_t nearest_palette_index(
+    std::span<const starfox::render::Rgba8> palette,
+    starfox::render::Rgba8 target) noexcept {
+    std::uint8_t best{};
+    auto best_distance = std::numeric_limits<std::uint32_t>::max();
+    for (std::size_t index = 0U;
+         index < std::min<std::size_t>(palette.size(), 256U); ++index) {
+        const auto colour = palette[index];
+        const auto red = static_cast<std::int32_t>(colour.r) - target.r;
+        const auto green = static_cast<std::int32_t>(colour.g) - target.g;
+        const auto blue = static_cast<std::int32_t>(colour.b) - target.b;
+        const auto distance = static_cast<std::uint32_t>(
+            red * red + green * green + blue * blue);
+        if (distance >= best_distance) continue;
+        best = static_cast<std::uint8_t>(index);
+        best_distance = distance;
+    }
+    return best;
+}
+
 struct HudRect {
     std::int32_t x{};
     std::int32_t y{};
@@ -243,10 +263,15 @@ struct HudRect {
 
 HudRect default_hud_rect(
     starfox::render::HudElement element,
-    std::uint32_t width) noexcept {
+    std::uint32_t width,
+    starfox::simulation::Experience experience) noexcept {
     switch (element) {
     case starfox::render::HudElement::lives:
-        return {12, 13, 32, 16};
+        // EX locates lives immediately above its lower-left shield label;
+        // retail keeps the same three source sprites at the upper left.
+        return experience == starfox::simulation::Experience::starfox_ex
+            ? HudRect{26, 174, 26, 10}
+            : HudRect{15, 16, 26, 10};
     case starfox::render::HudElement::shield:
         return {20, 179, 48, 25};
     case starfox::render::HudElement::bombs_boost:
@@ -254,10 +279,9 @@ HudRect default_hud_rect(
     case starfox::render::HudElement::comms:
         return {static_cast<std::int32_t>(width) / 2 - 68, 164, 136, 48};
     case starfox::render::HudElement::boss_health:
-        // Boss maximum health is source-controlled, so reserve its complete
-        // legal 8-bit meter span while keeping the default right edge at the
-        // cartridge's native/widescreen anchor.
-        return {static_cast<std::int32_t>(width) - 150, 1, 136, 9};
+        // Reserve ENEMY plus the complete legal 8-bit meter span. Meter
+        // layers are composited into the 224-line screen at y=16.
+        return {static_cast<std::int32_t>(width) - 195, 17, 181, 10};
     case starfox::render::HudElement::count:
     default:
         return {};
@@ -267,8 +291,9 @@ HudRect default_hud_rect(
 HudRect placed_hud_rect(
     starfox::render::HudElement element,
     std::uint32_t width,
-    const starfox::render::HudLayout& layout) noexcept {
-    auto result = default_hud_rect(element, width);
+    const starfox::render::HudLayout& layout,
+    starfox::simulation::Experience experience) noexcept {
+    auto result = default_hud_rect(element, width, experience);
     const auto offset = layout[element];
     result.x += offset.x;
     result.y += offset.y;
@@ -278,8 +303,9 @@ HudRect placed_hud_rect(
 void clamp_hud_element(
     starfox::render::HudLayout& layout,
     starfox::render::HudElement element,
-    std::uint32_t width) noexcept {
-    const auto base = default_hud_rect(element, width);
+    std::uint32_t width,
+    starfox::simulation::Experience experience) noexcept {
+    const auto base = default_hud_rect(element, width, experience);
     auto& offset = layout[element];
     offset.x = static_cast<std::int16_t>(std::clamp<std::int32_t>(offset.x,
         -base.x,
@@ -290,12 +316,14 @@ void clamp_hud_element(
 
 void clamp_hud_layout(
     starfox::render::HudLayout& layout,
-    std::uint32_t width) noexcept {
+    std::uint32_t width,
+    starfox::simulation::Experience experience) noexcept {
     for (std::uint8_t value = 0U;
          value < static_cast<std::uint8_t>(starfox::render::HudElement::count);
          ++value) {
         clamp_hud_element(layout,
-            static_cast<starfox::render::HudElement>(value), width);
+            static_cast<starfox::render::HudElement>(value), width,
+            experience);
     }
 }
 
@@ -379,59 +407,108 @@ std::vector<std::uint8_t> read_binary_file(
     };
 }
 
-std::vector<std::uint8_t> load_retail_v12(
+struct RetailVariant {
+    std::string_view name;
+    std::uint32_t crc32;
+    int canonicalization_resource;
+};
+
+constexpr auto retail_size = std::size_t{1U << 20U};
+constexpr auto retail_v12_crc32 = std::uint32_t{0x8fc4e6d0U};
+constexpr std::array retail_variants{
+    RetailVariant{"Star Fox (USA) (Rev 2)", retail_v12_crc32, 0},
+    RetailVariant{"Star Fox (Japan)", 0x41a60b3fU, 120},
+    RetailVariant{"Star Fox (Japan) (Rev 1)", 0xad668a41U, 121},
+    RetailVariant{"Star Fox (USA)", 0x0bae0941U, 122},
+    RetailVariant{"Star Fox (USA) (Rev 1)", 0xb18676b2U, 123},
+    RetailVariant{"Starwing (Europe)", 0x865f1a71U, 124},
+    RetailVariant{"Starwing (Europe) (Rev 1)", 0xba64da2bU, 125},
+    RetailVariant{"Starwing (Germany)", 0xb48ca238U, 126},
+};
+
+std::vector<std::uint8_t> canonicalize_retail_rom(
     const std::filesystem::path& path) {
-    constexpr auto expected_size = std::size_t{1U << 20U};
-    constexpr auto expected_crc32 = std::uint32_t{0x8fc4e6d0U};
     auto bytes = read_binary_file(path);
-    if (bytes.size() == expected_size + 512U) {
+    if (bytes.size() == retail_size + 512U) {
         bytes.erase(bytes.begin(), bytes.begin() + 512U);
     }
-    constexpr auto expected_title = std::string_view{"STAR FOX"};
-    const auto title_matches = bytes.size() == expected_size
-        && std::equal(bytes.begin() + 0x7fc0U,
-            bytes.begin() + 0x7fc0U + expected_title.size(),
-            expected_title.begin(), expected_title.end());
-    const auto revision_matches = bytes.size() == expected_size
-        && bytes[0x7fdbU] == 2U;
-    if (!title_matches || !revision_matches
-        || starfox::assets::crc32(bytes) != expected_crc32) {
+    const auto checksum = bytes.size() == retail_size
+        ? starfox::assets::crc32(bytes)
+        : std::uint32_t{};
+    const auto variant = std::find_if(retail_variants.begin(),
+        retail_variants.end(), [checksum](const RetailVariant& candidate) {
+            return candidate.crc32 == checksum;
+        });
+    if (variant == retail_variants.end()) {
         throw std::runtime_error{
-            "the selected file is not an unmodified Star Fox USA v1.2 "
-            "(Rev 2) ROM: " + path.string()};
+            "the selected file is not a supported unmodified retail Star "
+            "Fox/Starwing ROM: " + path.string()};
     }
-    return bytes;
+    if (variant->canonicalization_resource == 0) return bytes;
+
+    auto canonical = starfox::assets::apply_bps_patch(bytes,
+        embedded_resource(variant->canonicalization_resource));
+    if (canonical.size() != retail_size
+        || starfox::assets::crc32(canonical) != retail_v12_crc32) {
+        throw std::runtime_error{
+            "the embedded canonicalization data for "
+            + std::string{variant->name} + " is invalid"};
+    }
+    return canonical;
 }
 
 std::pair<std::filesystem::path, std::vector<std::uint8_t>>
-load_required_retail_v12(const std::filesystem::path& executable_directory) {
+load_required_retail(const std::filesystem::path& executable_directory) {
     std::vector<std::filesystem::path> candidates;
     if (const auto* override_path = std::getenv("STARFOX_RETAIL_ROM");
         override_path != nullptr && *override_path != '\0') {
         // An explicit override is authoritative: report a bad selection
         // rather than silently finding a different ROM elsewhere.
         const auto path = std::filesystem::path{override_path};
-        return {path, load_retail_v12(path)};
+        return {path, canonicalize_retail_rom(path)};
     }
-    candidates.emplace_back(
-        R"(C:\NTSC-US Super Nintendo System Roms\Star Fox (USA) (Rev 2).sfc)");
-    candidates.emplace_back(
-        executable_directory / "Star Fox (USA) (Rev 2).sfc");
-    candidates.emplace_back(executable_directory / "Star Fox v1.2.sfc");
+    constexpr std::array filenames{
+        "Star Fox (USA) (Rev 2).sfc",
+        "Star Fox (USA) (Rev 1).sfc",
+        "Star Fox (USA).sfc",
+        "Star Fox (Japan) (Rev 1).sfc",
+        "Star Fox (Japan).sfc",
+        "Starwing (Europe) (Rev 1).sfc",
+        "Starwing (Europe).sfc",
+        "Starwing (Germany).sfc",
+        "Star Fox v1.2.sfc",
+    };
+    const std::array directories{
+        std::filesystem::path{
+            R"(C:\NTSC-US Super Nintendo System Roms)"},
+        executable_directory,
+    };
+    for (const auto& directory : directories) {
+        for (const auto* filename : filenames) {
+            candidates.emplace_back(directory / filename);
+        }
+    }
     for (const auto& path : candidates) {
         if (!std::filesystem::is_regular_file(path)) continue;
-        return {path, load_retail_v12(path)};
+        try {
+            return {path, canonicalize_retail_rom(path)};
+        } catch (const std::runtime_error&) {
+            // Automatic discovery may encounter a corrupt or modified dump.
+            // Continue looking for another supported retail revision; an
+            // explicit STARFOX_RETAIL_ROM selection remains authoritative.
+        }
     }
     throw std::runtime_error{
-        "Star Fox Enhanced requires an unmodified Star Fox USA v1.2 "
-        "(Rev 2) ROM. Place 'Star Fox (USA) (Rev 2).sfc' beside the game, "
-        "in C:\\NTSC-US Super Nintendo System Roms, or set "
-        "STARFOX_RETAIL_ROM to its full path."};
+        "Star Fox Enhanced requires an unmodified retail Star Fox/Starwing "
+        "ROM: Japan 1.0/1.1, USA 1.0/1.1/1.2, Europe 1.0/1.1, or Germany "
+        "1.0. Place it beside the game, in C:\\NTSC-US Super Nintendo "
+        "System Roms, or set STARFOX_RETAIL_ROM to its full path."};
 }
 
 std::uint32_t embedded_asset_manifest() {
     std::vector<std::uint8_t> manifest_bytes;
-    for (const auto identifier : {101, 102, 108, 109}) {
+    for (const auto identifier : {
+             101, 102, 108, 109, 120, 121, 122, 123, 124, 125, 126}) {
         const auto resource = embedded_resource(identifier);
         const auto size = static_cast<std::uint32_t>(resource.size());
         for (std::uint32_t shift = 0; shift < 32U; shift += 8U) {
@@ -506,7 +583,7 @@ RuntimeAssetSet load_or_compile_runtime_assets(
     }
 
     const auto [retail_path, retail_rom] =
-        load_required_retail_v12(executable_directory);
+        load_required_retail(executable_directory);
     static_cast<void>(retail_path);
     starfox::assets::RuntimeBundlePayload payload;
     payload.original_rom = starfox::assets::apply_bps_patch(
@@ -846,6 +923,20 @@ public:
         }
     }
 
+    void toggle_fullscreen() {
+        const auto enter_fullscreen =
+            (SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN) == 0U;
+        if (!SDL_SetWindowFullscreen(window_, enter_fullscreen)) {
+            throw std::runtime_error{
+                std::string{"SDL_SetWindowFullscreen: "} + SDL_GetError()};
+        }
+        static_cast<void>(SDL_SyncWindow(window_));
+        if (!enter_fullscreen) {
+            set_windowed_size(texture_width_, texture_height_);
+            static_cast<void>(SDL_SyncWindow(window_));
+        }
+    }
+
     [[nodiscard]] bool window_to_logical(
         float window_x, float window_y,
         float& logical_x, float& logical_y) const noexcept {
@@ -868,6 +959,14 @@ public:
     }
 
 private:
+    void set_windowed_size(std::uint32_t width, std::uint32_t height) noexcept {
+        const auto integer_scale = width <= snes_width
+            ? 4U : (width <= widescreen_16_9_width ? 3U : 2U);
+        SDL_SetWindowSize(window_,
+            static_cast<int>(width * integer_scale),
+            static_cast<int>(height * integer_scale));
+    }
+
     void present_rgba_pixels(std::uint32_t width, std::uint32_t height,
         std::span<const std::uint8_t> rgba) {
         if (!SDL_UpdateTexture(texture_, nullptr, rgba.data(),
@@ -897,11 +996,9 @@ private:
                 std::string{"SDL_SetRenderLogicalPresentation: "}
                 + SDL_GetError()};
         }
-        const auto integer_scale = width <= snes_width
-            ? 4U : (width <= widescreen_16_9_width ? 3U : 2U);
-        SDL_SetWindowSize(window_,
-            static_cast<int>(width * integer_scale),
-            static_cast<int>(height * integer_scale));
+        if ((SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN) == 0U) {
+            set_windowed_size(width, height);
+        }
         texture_width_ = width;
         texture_height_ = height;
     }
@@ -1065,8 +1162,9 @@ void draw_hud_editor_chrome(
     const HudEditorState& editor,
     const starfox::render::HudLayout& layout,
     starfox::simulation::Experience experience,
-    starfox::simulation::DisplayMode display_mode) {
-    constexpr auto palette_base = static_cast<std::uint8_t>(7U * 16U);
+    starfox::simulation::DisplayMode display_mode,
+    std::uint8_t background_colour,
+    std::uint8_t foreground_colour) {
     const auto width = framebuffer.width();
     const auto solid = [&framebuffer](
                            std::int32_t x, std::int32_t y,
@@ -1084,6 +1182,34 @@ void draw_hud_editor_chrome(
         solid(rect.x, rect.y, 1, rect.height, colour);
         solid(rect.x + rect.width - 1, rect.y, 1, rect.height, colour);
     };
+    solid(0, 0, static_cast<std::int32_t>(width), 11,
+        background_colour);
+    const auto title = (experience
+            == starfox::simulation::Experience::starfox_ex
+            ? std::string{"EX HUD  "}
+            : (width == snes_width ? std::string{"HUD  "}
+                                   : std::string{"HUD LAYOUT  "}))
+        + std::string{display_profile_name(display_mode)};
+    const auto title_width = text_renderer.measure_ascii(title);
+    text_renderer.draw_ascii(title,
+        std::max<std::int32_t>(0,
+            (static_cast<std::int32_t>(width) - title_width) / 2),
+        2, framebuffer, 0U, foreground_colour);
+    solid(0, 210, static_cast<std::int32_t>(width), 14,
+        background_colour);
+    const auto reset = hud_reset_button_rect(width);
+    const auto done = hud_done_button_rect(width);
+    if (reset.contains(editor.pointer_x, editor.pointer_y)) {
+        box(reset, foreground_colour);
+    }
+    if (done.contains(editor.pointer_x, editor.pointer_y)) {
+        box(done, foreground_colour);
+    }
+    text_renderer.draw_ascii("Y RESET", reset.x + 6,
+        reset.y + 3, framebuffer, 0U, foreground_colour);
+    text_renderer.draw_ascii("B DONE", done.x + 2,
+        done.y + 3, framebuffer, 0U, foreground_colour);
+
     std::optional<starfox::render::HudElement> hovered;
     auto hovered_area = std::numeric_limits<std::int32_t>::max();
     for (std::uint8_t value = 0U;
@@ -1091,7 +1217,8 @@ void draw_hud_editor_chrome(
          ++value) {
         const auto element =
             static_cast<starfox::render::HudElement>(value);
-        const auto rect = placed_hud_rect(element, width, layout);
+        const auto rect = placed_hud_rect(
+            element, width, layout, experience);
         const auto area = rect.width * rect.height;
         if (rect.contains(editor.pointer_x, editor.pointer_y)
             && area < hovered_area) {
@@ -1101,49 +1228,29 @@ void draw_hud_editor_chrome(
     }
     const auto selected = editor.dragging ? editor.dragging : hovered;
     if (selected) {
-        auto rect = placed_hud_rect(*selected, width, layout);
+        auto rect = placed_hud_rect(
+            *selected, width, layout, experience);
         constexpr std::int32_t length = 5;
         --rect.x;
         --rect.y;
         rect.width += 2;
         rect.height += 2;
-        const auto colour = static_cast<std::uint8_t>(palette_base + 14U);
-        solid(rect.x, rect.y, length, 1, colour);
-        solid(rect.x, rect.y, 1, length, colour);
-        solid(rect.x + rect.width - length, rect.y, length, 1, colour);
-        solid(rect.x + rect.width - 1, rect.y, 1, length, colour);
-        solid(rect.x, rect.y + rect.height - 1, length, 1, colour);
-        solid(rect.x, rect.y + rect.height - length, 1, length, colour);
+        solid(rect.x, rect.y, length, 1, foreground_colour);
+        solid(rect.x, rect.y, 1, length, foreground_colour);
+        solid(rect.x + rect.width - length, rect.y,
+            length, 1, foreground_colour);
+        solid(rect.x + rect.width - 1, rect.y,
+            1, length, foreground_colour);
+        solid(rect.x, rect.y + rect.height - 1,
+            length, 1, foreground_colour);
+        solid(rect.x, rect.y + rect.height - length,
+            1, length, foreground_colour);
         solid(rect.x + rect.width - length,
-            rect.y + rect.height - 1, length, 1, colour);
+            rect.y + rect.height - 1, length, 1, foreground_colour);
         solid(rect.x + rect.width - 1,
-            rect.y + rect.height - length, 1, length, colour);
+            rect.y + rect.height - length, 1, length,
+            foreground_colour);
     }
-
-    solid(0, 0, static_cast<std::int32_t>(width), 11,
-        static_cast<std::uint8_t>(palette_base + 1U));
-    const auto title = std::string{"HUD LAYOUT  "}
-        + (experience == starfox::simulation::Experience::starfox_ex
-                ? "STARFOX EX  " : "ORIGINAL  ")
-        + std::string{display_profile_name(display_mode)};
-    text_renderer.draw_ascii(title,
-        static_cast<std::int32_t>(width / 2U)
-            - text_renderer.measure_ascii(title) / 2,
-        2, framebuffer, 14U);
-    solid(0, 210, static_cast<std::int32_t>(width), 14,
-        static_cast<std::uint8_t>(palette_base + 1U));
-    const auto reset = hud_reset_button_rect(width);
-    const auto done = hud_done_button_rect(width);
-    if (reset.contains(editor.pointer_x, editor.pointer_y)) {
-        box(reset, static_cast<std::uint8_t>(palette_base + 14U));
-    }
-    if (done.contains(editor.pointer_x, editor.pointer_y)) {
-        box(done, static_cast<std::uint8_t>(palette_base + 14U));
-    }
-    text_renderer.draw_ascii("Y RESET", reset.x + 6,
-        reset.y + 3, framebuffer, 15U);
-    text_renderer.draw_ascii("B DONE", done.x + 2,
-        done.y + 3, framebuffer, 15U);
 }
 
 struct CameraPoint {
@@ -1473,7 +1580,7 @@ int main(int argc, char** argv) {
             // switches experiences again within this process.
             persisted_ex_save.assign(current_save.begin(), current_save.end());
         };
-        synchronize_ex_save();
+        if (!hud_editor_preview) synchronize_ex_save();
         const auto capture_pregame_settings = [&game] {
             return starfox::app::PregameSettings{
                 static_cast<std::uint8_t>(game.timing_mode()),
@@ -1498,10 +1605,47 @@ int main(int argc, char** argv) {
                     saved_pregame.crosshair_colour));
             game.set_experience(active_experience);
             if (hud_editor_preview) {
-                // The editor is a live cartridge-rendered stage preview.
-                // Protect the unattended player without changing the saved
-                // setup value; the next BOOT reconstruction restores it.
+                // Build the editor's static reference image from a genuine
+                // cartridge-rendered Corneria frame. This hidden preroll stops
+                // at the first stable gameplay chatter frame, so opening the
+                // editor never exposes or continues the scramble sequence.
                 game.set_god_mode(true);
+                std::optional<std::uint32_t> first_meter_tick;
+                std::uint32_t previous_dialogue_address{};
+                std::uint8_t dialogue_count{};
+                constexpr std::uint32_t maximum_preview_ticks = 2'400U;
+                constexpr std::uint32_t meter_fallback_ticks = 720U;
+                for (std::uint32_t tick = 0U;
+                     tick < maximum_preview_ticks; ++tick) {
+                    static_cast<void>(game.tick({}));
+                    const auto meters = game.meter_state();
+                    if (meters.enabled && !first_meter_tick) {
+                        first_meter_tick = tick;
+                    }
+                    const auto dialogue = game.dialogue_state();
+                    if (meters.enabled && dialogue.active
+                        && dialogue.text_visible
+                        && dialogue.text_address
+                            != previous_dialogue_address) {
+                        previous_dialogue_address = dialogue.text_address;
+                        if (++dialogue_count >= 4U) {
+                            // Let the formation finish crossing the viewport
+                            // while retaining the same fourth chatter card.
+                            // This is the clean, unobstructed static frame used
+                            // by the original editor artwork.
+                            constexpr std::uint8_t settle_ticks = 12U;
+                            for (std::uint8_t settle = 0U;
+                                 settle < settle_ticks; ++settle) {
+                                static_cast<void>(game.tick({}));
+                            }
+                            break;
+                        }
+                    }
+                    if (first_meter_tick
+                        && tick - *first_meter_tick >= meter_fallback_ticks) {
+                        break;
+                    }
+                }
             }
         }
         const auto persist_pregame_changes =
@@ -1574,6 +1718,9 @@ int main(int argc, char** argv) {
         const auto stay_black_address = ram_symbol("STAYBLACK");
         const auto vanish_x_address = mario_symbol("M_VANISHX");
         const auto vanish_y_address = mario_symbol("M_VANISHY");
+        const auto native_model_z_address = active_experience
+                == starfox::simulation::Experience::starfox_ex
+            ? mario_symbol("M_BIGZ") : 0U;
         const auto depth_colours_address = mario_symbol("M_DEPTHSTAB");
         const auto depth_thresholds_address = mario_symbol("M_DEPTHTABLE");
         const auto depth_table_addresses = symbols.find("DEPTHTABLES");
@@ -1789,6 +1936,8 @@ int main(int argc, char** argv) {
         struct RasterMotionSnapshot {
             std::int16_t background_x{};
             std::int16_t background_y{};
+            std::int16_t bg2_scroll_x{};
+            std::int16_t bg2_scroll_y{};
             std::int16_t bg1_scroll_x{};
             std::int16_t bg1_scroll_y{};
             std::int16_t bg3_scroll_x{};
@@ -1803,6 +1952,8 @@ int main(int argc, char** argv) {
                     game.map().read_native_word(background_x_address)),
                 static_cast<std::int16_t>(
                     game.map().read_native_word(background_y_address)),
+                ppu.bg2_scroll_x,
+                ppu.bg2_scroll_y,
                 ppu.bg1_scroll_x,
                 ppu.bg1_scroll_y,
                 ppu.bg3_scroll_x,
@@ -1847,6 +1998,7 @@ int main(int argc, char** argv) {
         ExMouseInputLatch ex_mouse_input;
         bool window_focused = true;
         bool frame_frozen{};
+        bool suppress_fullscreen_start{};
         double last_phase_fraction{};
 
         // Open and synchronize the native window before the cartridge flow
@@ -1868,7 +2020,9 @@ int main(int argc, char** argv) {
             }
             first_runtime = false;
         }
-        if (running) audio.start();
+        // The HUD editor is a frozen visual workspace. Its hidden cartridge
+        // preroll must not leak stage music or effects into the options menu.
+        if (running && !hud_editor_preview) audio.start();
         auto raster_timestamp = std::chrono::steady_clock::now();
         starfox::timing::LiveFpsCounter live_fps{
             std::chrono::milliseconds{250}};
@@ -1879,6 +2033,21 @@ int main(int argc, char** argv) {
             bool step_frame_backward{};
             SDL_Event event;
             while (SDL_PollEvent(&event)) {
+                const auto fullscreen_key =
+                    event.type == SDL_EVENT_KEY_DOWN
+                    && !event.key.repeat
+                    && (event.key.scancode == SDL_SCANCODE_RETURN
+                        || event.key.scancode == SDL_SCANCODE_KP_ENTER)
+                    && (event.key.mod & SDL_KMOD_ALT) != 0U;
+                if (fullscreen_key) {
+                    window.toggle_fullscreen();
+                    suppress_fullscreen_start = true;
+                } else if (event.type == SDL_EVENT_KEY_UP
+                           && (event.key.scancode == SDL_SCANCODE_RETURN
+                               || event.key.scancode
+                                   == SDL_SCANCODE_KP_ENTER)) {
+                    suppress_fullscreen_start = false;
+                }
                 const auto frame_debug_key = event.type == SDL_EVENT_KEY_DOWN
                     && !event.key.repeat
                     && (event.key.scancode == SDL_SCANCODE_F5
@@ -1935,7 +2104,7 @@ int main(int argc, char** argv) {
                         if (hud_editor.dragging) {
                             const auto element = *hud_editor.dragging;
                             const auto base = default_hud_rect(
-                                element, editor_width);
+                                element, editor_width, game.experience());
                             auto& offset = editor_layout[element];
                             offset.x = static_cast<std::int16_t>(std::lround(
                                 hud_editor.pointer_x - hud_editor.grab_x
@@ -1944,7 +2113,8 @@ int main(int argc, char** argv) {
                                 hud_editor.pointer_y - hud_editor.grab_y
                                 - static_cast<float>(base.y)));
                             clamp_hud_element(
-                                editor_layout, element, editor_width);
+                                editor_layout, element, editor_width,
+                                game.experience());
                         }
                     } else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN
                                && event.button.button == SDL_BUTTON_LEFT) {
@@ -1968,7 +2138,8 @@ int main(int argc, char** argv) {
                                 const auto element = static_cast<
                                     starfox::render::HudElement>(value);
                                 const auto rect = placed_hud_rect(
-                                    element, editor_width, editor_layout);
+                                    element, editor_width, editor_layout,
+                                    game.experience());
                                 if (!rect.contains(hud_editor.pointer_x,
                                         hud_editor.pointer_y)) continue;
                                 const auto area = rect.width * rect.height;
@@ -1979,7 +2150,8 @@ int main(int argc, char** argv) {
                             }
                             if (picked) {
                                 const auto rect = placed_hud_rect(
-                                    *picked, editor_width, editor_layout);
+                                    *picked, editor_width, editor_layout,
+                                    game.experience());
                                 hud_editor.dragging = *picked;
                                 hud_editor.grab_x = hud_editor.pointer_x
                                     - static_cast<float>(rect.x);
@@ -2070,7 +2242,7 @@ int main(int argc, char** argv) {
                             event.wheel.y) * zoom_units_per_wheel_step,
                         -1'600.0, 12'000.0);
                 }
-                if (frame_debug_key || !remap_menu.active
+                if (frame_debug_key || fullscreen_key || !remap_menu.active
                     || event.type != SDL_EVENT_KEY_DOWN || event.key.repeat) {
                     // Keyboard capture is handled below only while the
                     // remapping screen owns input.
@@ -2207,6 +2379,12 @@ int main(int argc, char** argv) {
             if (!test_unpaced && !advance_frozen_frame) {
                 pacer.wait_for_next_frame(game.presentation_fps());
             }
+            const auto* keyboard_state = SDL_GetKeyboardState(nullptr);
+            if (suppress_fullscreen_start
+                && !keyboard_state[SDL_SCANCODE_RETURN]
+                && !keyboard_state[SDL_SCANCODE_KP_ENTER]) {
+                suppress_fullscreen_start = false;
+            }
             auto sampled_buttons = bindings.sample(gamepad);
             for (const auto& press : scripted_presses) {
                 if (presented_frames >= press.presentation_frame
@@ -2214,6 +2392,10 @@ int main(int argc, char** argv) {
                     sampled_buttons = static_cast<ButtonMask>(
                         sampled_buttons | press.buttons);
                 }
+            }
+            if (suppress_fullscreen_start) {
+                sampled_buttons = static_cast<ButtonMask>(
+                    sampled_buttons & ~starfox::input::start);
             }
             input.sample(sampled_buttons);
             for (std::size_t player = 0;
@@ -2225,7 +2407,6 @@ int main(int argc, char** argv) {
             }
             remap_input.sample(
                 bindings.sample_fixed_menu_navigation(gamepad));
-            const auto* keyboard_state = SDL_GetKeyboardState(nullptr);
             const auto fast_forward = !advance_frozen_frame
                 && (test_fast_forward || (keyboard_state[SDL_SCANCODE_TAB]
                     && !(remap_menu.active && remap_menu.waiting_for_input)));
@@ -2256,6 +2437,24 @@ int main(int argc, char** argv) {
             last_phase_fraction = raster_batch.phase_fraction;
             for (std::uint32_t phase = 0;
                  phase < raster_batch.video_phases; ++phase) {
+                if (hud_editor.active) {
+                    const auto editor_controls = remap_input.consume();
+                    if ((editor_controls.pressed
+                         & starfox::input::y) != 0U) {
+                        hud_layouts[hud_profile_index(
+                            game.display_mode(), game.experience())] = {};
+                        save_hud_layout();
+                    }
+                    if ((editor_controls.pressed
+                         & (starfox::input::b | starfox::input::start)) != 0U) {
+                        close_hud_editor();
+                    }
+                    // Do not advance video phases, strategies, interpolation,
+                    // particles, dialogue, or audio while editing. Mouse and
+                    // controller editor input remains live around this frozen
+                    // cartridge snapshot.
+                    continue;
+                }
                 game.present_frame();
                 if (game.logic_tick_ready()) {
                     auto controls = input.consume();
@@ -2271,21 +2470,7 @@ int main(int argc, char** argv) {
                         && (controls.held & starfox::input::select) != 0) {
                         running = false;
                     }
-                    if (hud_editor.active) {
-                        if ((remap_controls.pressed
-                             & starfox::input::y) != 0U) {
-                            hud_layouts[hud_profile_index(
-                                game.display_mode(), game.experience())] = {};
-                            save_hud_layout();
-                        }
-                        if ((remap_controls.pressed
-                             & (starfox::input::b
-                                | starfox::input::start)) != 0U) {
-                            close_hud_editor();
-                        }
-                        controls = {};
-                        secondary_controls = {};
-                    } else if (remap_menu.active) {
+                    if (remap_menu.active) {
                         if (!remap_menu.waiting_for_input) {
                             if ((remap_controls.pressed
                                  & starfox::input::up) != 0U) {
@@ -2349,7 +2534,8 @@ int main(int argc, char** argv) {
                             hud_profile_index(
                                 game.display_mode(), game.experience())];
                         clamp_hud_layout(editor_layout,
-                            display_width_for(game.display_mode()));
+                            display_width_for(game.display_mode()),
+                            game.experience());
                         launch_hud_editor_preview = true;
                         initial_map = "LEVEL1_1";
                         restart_runtime = true;
@@ -2424,13 +2610,16 @@ int main(int argc, char** argv) {
             const auto display_width = display_width_for(game.display_mode());
             auto active_hud_layout = hud_layouts[
                 hud_profile_index(game.display_mode(), game.experience())];
-            clamp_hud_layout(active_hud_layout, display_width);
+            clamp_hud_layout(
+                active_hud_layout, display_width, game.experience());
             const auto viewport_origin = static_cast<std::int32_t>(
                 (display_width - snes_width) / 2U);
             const auto superfx_ui_offset_x = static_cast<std::int32_t>(
                 (display_width - superfx_ui_width) / 2U);
             const auto extend_cartridge_scene = game.flow_state()
                     == starfox::simulation::GameFlowState::intro
+                || game.flow_state()
+                    == starfox::simulation::GameFlowState::ex_pregame_menu
                 || game.flow_state()
                     == starfox::simulation::GameFlowState::gameplay
                 || game.flow_state()
@@ -2474,12 +2663,18 @@ int main(int argc, char** argv) {
                 return interpolate_source_word(
                     previous_value, current_value, interpolation_alpha);
             };
+            const auto ex_native_menu = game.flow_state()
+                == starfox::simulation::GameFlowState::ex_pregame_menu;
             const auto background_x = interpolate_raster_word(
-                previous_raster_motion.background_x,
-                current_raster_motion.background_x);
+                ex_native_menu ? previous_raster_motion.bg2_scroll_x
+                               : previous_raster_motion.background_x,
+                ex_native_menu ? current_raster_motion.bg2_scroll_x
+                               : current_raster_motion.background_x);
             const auto background_y = interpolate_raster_word(
-                previous_raster_motion.background_y,
-                current_raster_motion.background_y);
+                ex_native_menu ? previous_raster_motion.bg2_scroll_y
+                               : previous_raster_motion.background_y,
+                ex_native_menu ? current_raster_motion.bg2_scroll_y
+                               : current_raster_motion.background_y);
             auto ppu = game.map().ppu_state();
             const auto ex_title_logo_screen = game.experience()
                     == starfox::simulation::Experience::starfox_ex
@@ -2517,12 +2712,19 @@ int main(int argc, char** argv) {
             controls_player_layer.clear(0U);
             planet_overlay.clear(0U);
             planet_text_overlay.clear(0U);
+            // EX's 224-pixel Super FX bitmap is centred inside a 256-pixel
+            // BG1 surface with 16-pixel black guard columns. Retain those at
+            // source 4:3, but omit them when the surrounding BG2 is expanded.
+            const auto native_menu_guard_inset =
+                ex_native_menu && display_width > snes_width ? 16U : 0U;
             auto planet_presentation = game.planet_presentation_state();
             planet_presentation.isolate_left = static_cast<std::int16_t>(
                 planet_presentation.isolate_left + viewport_origin);
             planet_presentation.isolate_right = static_cast<std::int16_t>(
                 planet_presentation.isolate_right + viewport_origin);
             if (ppu.background_mode == 1U) {
+                const auto native_menu_bg1 = game.flow_state()
+                    == starfox::simulation::GameFlowState::ex_pregame_menu;
                 background_renderer.draw_bg3(
                     ppu, framebuffer, starfox::render::TilePriorityPass::low,
                     viewport_origin, extend_cartridge_scene);
@@ -2540,12 +2742,27 @@ int main(int argc, char** argv) {
                 background_renderer.draw_bg2(ppu, background_x, background_y,
                     framebuffer, starfox::render::TilePriorityPass::low,
                     viewport_origin, extend_cartridge_scene);
+                if (native_menu_bg1) {
+                    // CONTINUE.ASM uses Mode 1 for its first seven random
+                    // backdrops and keeps the source menu text in BG1. The
+                    // host normally replaces BG1 with 3D geometry, so expose
+                    // this cartridge bitmap only for EX's native menu and
+                    // keep it confined to the original 256-pixel canvas.
+                    background_renderer.draw_bg1(ppu, framebuffer,
+                        starfox::render::TilePriorityPass::low,
+                        viewport_origin, false, native_menu_guard_inset);
+                }
                 sprite_renderer.draw_objects(ppu, framebuffer, 2U, viewport_origin,
                     extend_cartridge_scene, anchor_edge_hud, gameplay_layout,
                     suppress_configurable_hud && gameplay_hud);
                 background_renderer.draw_bg2(ppu, background_x, background_y,
                     framebuffer, starfox::render::TilePriorityPass::high,
                     viewport_origin, extend_cartridge_scene);
+                if (native_menu_bg1) {
+                    background_renderer.draw_bg1(ppu, framebuffer,
+                        starfox::render::TilePriorityPass::high,
+                        viewport_origin, false, native_menu_guard_inset);
+                }
             } else if (ppu.background_mode == 2U) {
                 const auto native_mode2_bg1 = game.flow_state()
                     == starfox::simulation::GameFlowState::ex_pregame_menu;
@@ -2558,7 +2775,7 @@ int main(int argc, char** argv) {
                 if (native_mode2_bg1) {
                     background_renderer.draw_bg1(ppu, framebuffer,
                         starfox::render::TilePriorityPass::low,
-                        viewport_origin, false);
+                        viewport_origin, false, native_menu_guard_inset);
                 }
                 sprite_renderer.draw_objects(ppu, framebuffer, 1U, viewport_origin,
                     extend_cartridge_scene, anchor_edge_hud, gameplay_layout,
@@ -2572,7 +2789,7 @@ int main(int argc, char** argv) {
                 if (native_mode2_bg1) {
                     background_renderer.draw_bg1(ppu, framebuffer,
                         starfox::render::TilePriorityPass::high,
-                        viewport_origin, false);
+                        viewport_origin, false, native_menu_guard_inset);
                 }
             } else if (ppu.background_mode == 3U) {
                 auto& bg2_target = planet_presentation.briefing_layers
@@ -3021,7 +3238,15 @@ int main(int argc, char** argv) {
                             starfox::render::RenderPose pose;
                             pose.x = native_model.x;
                             pose.y = native_model.y;
-                            pose.z = native_model.z;
+                            // Model-viewer shoulder zoom updates M_BIGZ in
+                            // CONTINUE.ASM after the Super FX draw snapshot is
+                            // launched. Read that live source word so every
+                            // visible presentation reflects the new distance.
+                            pose.z = native_model_z_address != 0U
+                                ? static_cast<std::int16_t>(
+                                    game.map().read_native_word(
+                                        native_model_z_address))
+                                : native_model.z;
                             pose.pitch = static_cast<std::uint16_t>(
                                 (native_model.rotation_x & 0x00ffU) << 8U);
                             pose.yaw = static_cast<std::uint16_t>(
@@ -3183,17 +3408,37 @@ int main(int argc, char** argv) {
             // pixel-identical to the former centred 224-pixel path at 4:3.
             if (!suppress_configurable_hud) {
                 auto preview_meters = game.meter_state();
-                if (hud_editor.active && preview_meters.boss_max_health == 0U) {
-                    // LEVEL1_1 supplies a real moving gameplay preview but has
-                    // no boss meter yet. Expose a representative live meter so
-                    // the fifth independent HUD element is visible and can be
-                    // grabbed before the player reaches a boss.
-                    preview_meters.boss_max_health = 100U;
-                    preview_meters.boss_health = 72U;
+                if (hud_editor.active) {
+                    // The editor must expose complete, independent shield,
+                    // boost/bomb, and boss groups regardless of the exact
+                    // cartridge tick selected for the frozen background.
+                    preview_meters.enabled = true;
+                    preview_meters.extended = false;
+                    preview_meters.damage = 30U;
+                    preview_meters.boost = 26U;
+                    preview_meters.shield_up = false;
+                    preview_meters.boost_enabled = true;
+                    preview_meters.player_two_activated = false;
+                    preview_meters.second_player_view = false;
+                    preview_meters.player_one_dead = false;
+                    preview_meters.boss_max_health = 0xffU;
+                    preview_meters.boss_health = 180U;
                 }
                 sprite_renderer.draw_meters(
                     preview_meters, superfx_hud, true,
                     gameplay_hud ? &active_hud_layout : nullptr);
+                if (hud_editor.active) {
+                    constexpr std::int32_t preview_boss_meter_width = 131;
+                    const auto boss_offset = active_hud_layout[
+                        starfox::render::HudElement::boss_health];
+                    const auto boss_x = static_cast<std::int32_t>(
+                        superfx_hud.width()) - 18
+                        - preview_boss_meter_width + boss_offset.x;
+                    constexpr std::string_view enemy_label{"ENEMY"};
+                    text_renderer.draw_ascii(enemy_label,
+                        boss_x - text_renderer.measure_ascii(enemy_label) - 4,
+                        1 + boss_offset.y, superfx_hud, 14U);
+                }
             }
 
             // Colour zero is transparent in every host Super FX layer.
@@ -3417,7 +3662,8 @@ int main(int argc, char** argv) {
                         const auto element = static_cast<starfox::render::HudElement>(
                             value);
                         const auto rect = placed_hud_rect(
-                            element, display_width, editor_layout);
+                            element, display_width, editor_layout,
+                            game.experience());
                         const auto area = rect.width * rect.height;
                         if (rect.contains(hud_editor.pointer_x,
                                 hud_editor.pointer_y) && area < hovered_area) {
@@ -3452,7 +3698,7 @@ int main(int argc, char** argv) {
                     };
                     if (selected) {
                         corner_brackets(placed_hud_rect(*selected,
-                            display_width, editor_layout),
+                            display_width, editor_layout, game.experience()),
                             static_cast<std::uint8_t>(palette_base + 14U));
                     }
 
@@ -3658,11 +3904,6 @@ int main(int argc, char** argv) {
                 planet_overlay.clear(0U);
                 planet_text_overlay.clear(0U);
             }
-            if (hud_editor.active) {
-                draw_hud_editor_chrome(framebuffer, text_renderer,
-                    hud_editor, active_hud_layout,
-                    game.experience(), game.display_mode());
-            }
             live_fps_overlay.clear();
             if (game.show_fps()) {
                 const auto fps_text = std::string{"FPS "}
@@ -3676,6 +3917,20 @@ int main(int argc, char** argv) {
             auto palette = starfox::render::apply_snes_brightness(
                 base_palette, game.map().display_brightness());
             if (forced_black) palette.fill({0U, 0U, 0U, 255U});
+            if (hud_editor.active) {
+                // Pick neutral editor colours already present in the active
+                // cartridge palette. This keeps the static scene's genuine
+                // model, portrait, meter, and level hues intact instead of
+                // replacing their shared Super FX palette bank.
+                const auto editor_background = nearest_palette_index(
+                    palette, {48U, 48U, 60U, 255U});
+                const auto editor_foreground = nearest_palette_index(
+                    palette, {238U, 238U, 242U, 255U});
+                draw_hud_editor_chrome(framebuffer, text_renderer,
+                    hud_editor, active_hud_layout,
+                    game.experience(), game.display_mode(),
+                    editor_background, editor_foreground);
+            }
             PresentationEffects presentation_effects;
             if (planet_presentation.briefing_layers) {
                 presentation_effects.overlay = &planet_overlay;
@@ -3701,14 +3956,6 @@ int main(int argc, char** argv) {
             presentation_effects.circle_right = static_cast<std::int16_t>(
                 136 + viewport_origin);
             presentation_effects.circle_bottom = 112;
-            if (game.flow_state()
-                    == starfox::simulation::GameFlowState::ex_pregame_menu
-                && viewport_origin > 0) {
-                presentation_effects.black_side_bars = true;
-                presentation_effects.side_bar_left = viewport_origin;
-                presentation_effects.side_bar_right = viewport_origin
-                    + static_cast<std::int32_t>(snes_width);
-            }
             if (game.show_fps()) {
                 presentation_effects.host_overlay = &live_fps_overlay;
                 presentation_effects.host_overlay_x =
@@ -3740,7 +3987,7 @@ int main(int argc, char** argv) {
             }
         }
 
-        synchronize_ex_save();
+        if (!hud_editor_preview) synchronize_ex_save();
         if (hud_editor.active || hud_editor.dragging) save_hud_layout();
         close_gamepads();
         if (restart_runtime) continue;

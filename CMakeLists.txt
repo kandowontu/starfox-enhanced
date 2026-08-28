@@ -27,6 +27,34 @@ set(STARFOX_EX_PATCH_FILE
 set(STARFOX_RETAIL_V12_FILE
     "C:/NTSC-US Super Nintendo System Roms/Star Fox (USA) (Rev 2).sfc"
     CACHE FILEPATH "Clean Star Fox USA v1.2 ROM used only for local validation")
+set(STARFOX_RETAIL_JAPAN_V10_FILE
+    "C:/NTSC-US Super Nintendo System Roms/Star Fox (Japan).sfc")
+set(STARFOX_RETAIL_JAPAN_V11_FILE
+    "C:/NTSC-US Super Nintendo System Roms/Star Fox (Japan) (Rev 1).sfc")
+set(STARFOX_RETAIL_USA_V10_FILE
+    "C:/NTSC-US Super Nintendo System Roms/Star Fox (USA).sfc")
+set(STARFOX_RETAIL_USA_V11_FILE
+    "C:/NTSC-US Super Nintendo System Roms/Star Fox (USA) (Rev 1).sfc")
+set(STARFOX_RETAIL_EUROPE_V10_FILE
+    "C:/NTSC-US Super Nintendo System Roms/Starwing (Europe).sfc")
+set(STARFOX_RETAIL_EUROPE_V11_FILE
+    "C:/NTSC-US Super Nintendo System Roms/Starwing (Europe) (Rev 1).sfc")
+set(STARFOX_RETAIL_GERMANY_V10_FILE
+    "C:/NTSC-US Super Nintendo System Roms/Starwing (Germany).sfc")
+set(STARFOX_RETAIL_JAPAN_V10_PATCH_FILE
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/patches/retail-japan-v10-to-usa-v12.bps")
+set(STARFOX_RETAIL_JAPAN_V11_PATCH_FILE
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/patches/retail-japan-v11-to-usa-v12.bps")
+set(STARFOX_RETAIL_USA_V10_PATCH_FILE
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/patches/retail-usa-v10-to-v12.bps")
+set(STARFOX_RETAIL_USA_V11_PATCH_FILE
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/patches/retail-usa-v11-to-v12.bps")
+set(STARFOX_RETAIL_EUROPE_V10_PATCH_FILE
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/patches/retail-europe-v10-to-usa-v12.bps")
+set(STARFOX_RETAIL_EUROPE_V11_PATCH_FILE
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/patches/retail-europe-v11-to-usa-v12.bps")
+set(STARFOX_RETAIL_GERMANY_V10_PATCH_FILE
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/patches/retail-germany-v10-to-usa-v12.bps")
 
 include(FetchContent)
 FetchContent_Declare(
@@ -164,7 +192,14 @@ if(STARFOX_BUILD_RUNTIME)
         if(EXISTS "${STARFOX_ORIGINAL_PATCH_FILE}"
            AND EXISTS "${STARFOX_SYMBOLS_FILE}"
            AND EXISTS "${STARFOX_EX_PATCH_FILE}"
-           AND EXISTS "${STARFOX_EX_SYMBOLS_FILE}")
+           AND EXISTS "${STARFOX_EX_SYMBOLS_FILE}"
+           AND EXISTS "${STARFOX_RETAIL_JAPAN_V10_PATCH_FILE}"
+           AND EXISTS "${STARFOX_RETAIL_JAPAN_V11_PATCH_FILE}"
+           AND EXISTS "${STARFOX_RETAIL_USA_V10_PATCH_FILE}"
+           AND EXISTS "${STARFOX_RETAIL_USA_V11_PATCH_FILE}"
+           AND EXISTS "${STARFOX_RETAIL_EUROPE_V10_PATCH_FILE}"
+           AND EXISTS "${STARFOX_RETAIL_EUROPE_V11_PATCH_FILE}"
+           AND EXISTS "${STARFOX_RETAIL_GERMANY_V10_PATCH_FILE}")
             enable_language(RC)
             file(TO_CMAKE_PATH
                 "${STARFOX_ORIGINAL_PATCH_FILE}" STARFOX_EMBEDDED_PATCH)
@@ -172,6 +207,20 @@ if(STARFOX_BUILD_RUNTIME)
             file(TO_CMAKE_PATH
                 "${STARFOX_EX_PATCH_FILE}" STARFOX_EX_EMBEDDED_PATCH)
             file(TO_CMAKE_PATH "${STARFOX_EX_SYMBOLS_FILE}" STARFOX_EX_EMBEDDED_SYMBOLS)
+            file(TO_CMAKE_PATH "${STARFOX_RETAIL_JAPAN_V10_PATCH_FILE}"
+                STARFOX_RETAIL_JAPAN_V10_PATCH)
+            file(TO_CMAKE_PATH "${STARFOX_RETAIL_JAPAN_V11_PATCH_FILE}"
+                STARFOX_RETAIL_JAPAN_V11_PATCH)
+            file(TO_CMAKE_PATH "${STARFOX_RETAIL_USA_V10_PATCH_FILE}"
+                STARFOX_RETAIL_USA_V10_PATCH)
+            file(TO_CMAKE_PATH "${STARFOX_RETAIL_USA_V11_PATCH_FILE}"
+                STARFOX_RETAIL_USA_V11_PATCH)
+            file(TO_CMAKE_PATH "${STARFOX_RETAIL_EUROPE_V10_PATCH_FILE}"
+                STARFOX_RETAIL_EUROPE_V10_PATCH)
+            file(TO_CMAKE_PATH "${STARFOX_RETAIL_EUROPE_V11_PATCH_FILE}"
+                STARFOX_RETAIL_EUROPE_V11_PATCH)
+            file(TO_CMAKE_PATH "${STARFOX_RETAIL_GERMANY_V10_PATCH_FILE}"
+                STARFOX_RETAIL_GERMANY_V10_PATCH)
             configure_file(
                 src/app/starfox_assets.rc.in
                 "${CMAKE_CURRENT_BINARY_DIR}/starfox_assets.rc"
@@ -220,6 +269,40 @@ if(STARFOX_BUILD_TESTS)
                 "${STARFOX_ROM_FILE}"
                 "${STARFOX_EX_PATCH_FILE}"
                 "${STARFOX_EX_ROM_FILE}")
+    endif()
+    if(EXISTS "${STARFOX_RETAIL_V12_FILE}"
+       AND EXISTS "${STARFOX_RETAIL_JAPAN_V10_FILE}"
+       AND EXISTS "${STARFOX_RETAIL_JAPAN_V11_FILE}"
+       AND EXISTS "${STARFOX_RETAIL_USA_V10_FILE}"
+       AND EXISTS "${STARFOX_RETAIL_USA_V11_FILE}"
+       AND EXISTS "${STARFOX_RETAIL_EUROPE_V10_FILE}"
+       AND EXISTS "${STARFOX_RETAIL_EUROPE_V11_FILE}"
+       AND EXISTS "${STARFOX_RETAIL_GERMANY_V10_FILE}"
+       AND EXISTS "${STARFOX_RETAIL_JAPAN_V10_PATCH_FILE}"
+       AND EXISTS "${STARFOX_RETAIL_JAPAN_V11_PATCH_FILE}"
+       AND EXISTS "${STARFOX_RETAIL_USA_V10_PATCH_FILE}"
+       AND EXISTS "${STARFOX_RETAIL_USA_V11_PATCH_FILE}"
+       AND EXISTS "${STARFOX_RETAIL_EUROPE_V10_PATCH_FILE}"
+       AND EXISTS "${STARFOX_RETAIL_EUROPE_V11_PATCH_FILE}"
+       AND EXISTS "${STARFOX_RETAIL_GERMANY_V10_PATCH_FILE}")
+        add_test(
+            NAME starfox_retail_variant_canonicalization
+            COMMAND starfox_bps_tests --verify-canonicalizations
+                "${STARFOX_RETAIL_V12_FILE}"
+                "${STARFOX_RETAIL_JAPAN_V10_FILE}"
+                "${STARFOX_RETAIL_JAPAN_V10_PATCH_FILE}"
+                "${STARFOX_RETAIL_JAPAN_V11_FILE}"
+                "${STARFOX_RETAIL_JAPAN_V11_PATCH_FILE}"
+                "${STARFOX_RETAIL_USA_V10_FILE}"
+                "${STARFOX_RETAIL_USA_V10_PATCH_FILE}"
+                "${STARFOX_RETAIL_USA_V11_FILE}"
+                "${STARFOX_RETAIL_USA_V11_PATCH_FILE}"
+                "${STARFOX_RETAIL_EUROPE_V10_FILE}"
+                "${STARFOX_RETAIL_EUROPE_V10_PATCH_FILE}"
+                "${STARFOX_RETAIL_EUROPE_V11_FILE}"
+                "${STARFOX_RETAIL_EUROPE_V11_PATCH_FILE}"
+                "${STARFOX_RETAIL_GERMANY_V10_FILE}"
+                "${STARFOX_RETAIL_GERMANY_V10_PATCH_FILE}")
     endif()
     add_executable(starfox_core_tests tests/timing_tests.cpp)
     target_link_libraries(starfox_core_tests PRIVATE starfox_core)
@@ -338,6 +421,13 @@ if(STARFOX_BUILD_TESTS)
                             "-DRUNTIME=$<TARGET_FILE:starfox_pc>"
                             "-DVERIFIER=$<TARGET_FILE:starfox_bps_tests>"
                             "-DRETAIL=${STARFOX_RETAIL_V12_FILE}"
+                            "-DRETAIL_JAPAN_V10=${STARFOX_RETAIL_JAPAN_V10_FILE}"
+                            "-DRETAIL_JAPAN_V11=${STARFOX_RETAIL_JAPAN_V11_FILE}"
+                            "-DRETAIL_USA_V10=${STARFOX_RETAIL_USA_V10_FILE}"
+                            "-DRETAIL_USA_V11=${STARFOX_RETAIL_USA_V11_FILE}"
+                            "-DRETAIL_EUROPE_V10=${STARFOX_RETAIL_EUROPE_V10_FILE}"
+                            "-DRETAIL_EUROPE_V11=${STARFOX_RETAIL_EUROPE_V11_FILE}"
+                            "-DRETAIL_GERMANY_V10=${STARFOX_RETAIL_GERMANY_V10_FILE}"
                             "-DORIGINAL_ROM=${STARFOX_ROM_FILE}"
                             "-DORIGINAL_SYMBOLS=${STARFOX_SYMBOLS_FILE}"
                             "-DEX_ROM=${STARFOX_EX_ROM_FILE}"
@@ -346,7 +436,7 @@ if(STARFOX_BUILD_TESTS)
                             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/runtime_asset_lifecycle.cmake"
                     )
                     set_tests_properties(
-                        starfox_embedded_asset_lifecycle PROPERTIES TIMEOUT 45)
+                        starfox_embedded_asset_lifecycle PROPERTIES TIMEOUT 90)
                 endif()
             endif()
         endif()

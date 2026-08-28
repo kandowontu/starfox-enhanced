@@ -485,12 +485,14 @@ GameSimulation::GameSimulation(
         ex_current_percentage_ = find_optional_ram("CLA1");
         ex_target_percentage_ = find_optional_ram("CLA2");
         ex_results_exit_ = find_optional_ram("CLB2");
+        ex_machine_type_ = find_optional_ram("MACHINETYPE");
         friends_messages_2_ = find_optional_rom("FRIENDS_MESSAGES2_L");
         friends_message_2_ = find_optional_ram("FRIENDS_MSG2");
         message_count_1_2_ = find_optional_ram("MSG_COUNT12");
         message_count_2_2_ = find_optional_ram("MSG_COUNT22");
         which_friend_2_ = find_optional_ram("WHICHFRIEND2");
         face_data_2_ = find_optional_rom("FACEDATA2");
+        messages_2_ = find_optional_rom("MESSAGES2");
         select_next_ship_ = find_optional_rom("SELECTNEXTSHIP_L");
         select_previous_ship_ = find_optional_rom("SELECTPREVSHIP_L");
         ex_set_ship_ = find_optional_rom("SETSHIP");
@@ -620,9 +622,11 @@ GameSimulation::GameSimulation(
             || ex_doing_end_ == 0U || ex_crosshair_on_ == 0U
             || ex_current_percentage_ == 0U
             || ex_target_percentage_ == 0U || ex_results_exit_ == 0U
+            || ex_machine_type_ == 0U
             || friends_messages_2_ == 0U || friends_message_2_ == 0U
             || message_count_1_2_ == 0U || message_count_2_2_ == 0U
             || which_friend_2_ == 0U || face_data_2_ == 0U
+            || messages_2_ == 0U
             || select_next_ship_ == 0U || select_previous_ship_ == 0U
             || ex_set_ship_ == 0U || current_ship_ == 0U
             || next_ship_key_down_ == 0U
@@ -651,6 +655,13 @@ GameSimulation::GameSimulation(
         // Leaving RAND at zero locks xorshift permanently: title showcase
         // models remain edge-on and every native random strategy receives 0.
         map_.write_native_word(ram_symbol("RAND"), 0xe528U);
+        // The native runtime enters below EX's cold-boot emulator probe, so
+        // MACHINETYPE would otherwise remain zero and INTRO.ASM would skip
+        // its opening communication entirely. The cartridge's hardware
+        // branch is the closest source-defined identity for a native port:
+        // CPU/Super FX routines execute directly rather than through one of
+        // the named SNES emulators.
+        map_.write_native_byte(ex_machine_type_, 10U);
         map_.write_native_byte(ram_symbol("PLAYERB_HP"), 100U);
         map_.write_native_byte(ram_symbol("PLAYERW_HP"), 100U);
     } else if (!cartridge_ram.empty()) {
@@ -1301,7 +1312,8 @@ DialogueState GameSimulation::dialogue_state() const noexcept {
     const auto active = open_count != 0U || animation_count != 0U;
     auto portrait_frame = std::uint8_t{};
     const auto pointer = map_.read_native_word(face_pointer_);
-    const auto face_base = static_cast<std::uint16_t>(face_data_);
+    const auto face_base = static_cast<std::uint16_t>(
+        alternate ? face_data_2_ : face_data_);
     if (pointer >= face_base) {
         portrait_frame = static_cast<std::uint8_t>((pointer - face_base) / 640U);
     }
@@ -1313,7 +1325,8 @@ DialogueState GameSimulation::dialogue_state() const noexcept {
         (friend_id & 0x80U) != 0U || (friend_id & 0x7fU) == 5U,
         alternate,
         portrait_frame,
-        (messages_ & 0xff0000U) | map_.read_native_word(
+        ((alternate ? messages_2_ : messages_) & 0xff0000U)
+            | map_.read_native_word(
             alternate ? friends_message_2_ : friends_message_),
     };
 }
@@ -2027,7 +2040,6 @@ void GameSimulation::enter_ex_pregame_menu(bool model_test) {
         throw std::runtime_error{
             "Star Fox EX pre-game menu did not draw its first source frame"};
     }
-
     god_mode_ = map_.read_native_byte(ex_god_mode_) != 0U;
     flow_ticks_ = 0U;
     frontend_frames_ = 0U;
@@ -2059,6 +2071,25 @@ GameTickResult GameSimulation::tick_ex_pregame_menu(
     map_.write_native_byte(ex_fps_speed_, 0U);
     map_.write_native_byte(ex_ntsc_pal_swap_, 0U);
     write_input(native_input);
+    if (map_.read_native_byte(ex_stop_counting_) == 10U
+        || map_.read_native_byte(ex_stop_counting_) == 12U) {
+        // CONTINUE.ASM's model viewer accidentally tests both shoulder bits
+        // against CONT0L (the previous high controller byte) instead of
+        // CONTL0 (the current low byte). That makes its documented zoom
+        // controls inert on the cartridge as written. Mirror only L/R into
+        // those two otherwise unrelated bit positions while this viewer owns
+        // the frame, preserving every other source-menu input verbatim.
+        constexpr auto shoulders = static_cast<starfox::input::ButtonMask>(
+            starfox::input::left_shoulder
+            | starfox::input::right_shoulder);
+        auto model_controller_byte = map_.read_native_byte(
+            previous_controller_high_);
+        model_controller_byte = static_cast<std::uint8_t>(
+            (model_controller_byte & ~static_cast<std::uint8_t>(shoulders))
+            | static_cast<std::uint8_t>(native_input.held & shoulders));
+        map_.write_native_byte(
+            previous_controller_high_, model_controller_byte);
+    }
 
     GameTickResult result;
     const std::array frame_stops{ex_foxy_self_, ex_restart_};
@@ -4068,10 +4099,13 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
         wipe_logic_snapshot_ = map_.read_native_byte(wipe_logic_);
     }
     if (!ex_pause_transfer && (flow_state_ == GameFlowState::gameplay
-            || flow_state_ == GameFlowState::training)) {
-        // MAIN.ASM calls this immediately after TRANS_L. Its Super FX work is
-        // host-rendered, but the original 65C816 routine still controls the
-        // portrait animation, text lifetime and voice/effect commands.
+            || flow_state_ == GameFlowState::training
+            || flow_state_ == GameFlowState::intro)) {
+        // MAIN.ASM calls this immediately after TRANS_L in gameplay, while
+        // ENDSEQ.ASM's INTRO_L makes the same two calls during EX's intro.
+        // Their Super FX output is host-rendered, but the original 65C816
+        // routines still control portrait animation, text lifetime and
+        // voice/effect commands in both flows.
         registers = {};
         registers.status = 0x24U;
         result.prelude_instructions += map_.call_native_routine(

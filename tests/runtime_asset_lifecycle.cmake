@@ -4,6 +4,13 @@ endif()
 if(NOT DEFINED RETAIL OR NOT EXISTS "${RETAIL}")
     message(FATAL_ERROR "RETAIL must name the clean Star Fox USA v1.2 ROM")
 endif()
+foreach(variant RETAIL_JAPAN_V10 RETAIL_JAPAN_V11 RETAIL_USA_V10
+        RETAIL_USA_V11 RETAIL_EUROPE_V10 RETAIL_EUROPE_V11
+        RETAIL_GERMANY_V10)
+    if(NOT DEFINED ${variant} OR NOT EXISTS "${${variant}}")
+        message(FATAL_ERROR "${variant} must name its clean retail ROM")
+    endif()
+endforeach()
 foreach(required VERIFIER ORIGINAL_ROM ORIGINAL_SYMBOLS EX_ROM EX_SYMBOLS)
     if(NOT DEFINED ${required} OR NOT EXISTS "${${required}}")
         message(FATAL_ERROR "${required} must name its pinned build output")
@@ -45,7 +52,7 @@ endfunction()
 
 run_runtime(bad_result "${bad_rom}" ORIGINAL 1)
 if(bad_result EQUAL 0
-   OR NOT runtime_output MATCHES "not an unmodified Star Fox USA v1.2")
+   OR NOT runtime_output MATCHES "not a supported unmodified retail")
     message(FATAL_ERROR
         "runtime accepted a non-v1.2 first-run cartridge:\n${runtime_output}")
 endif()
@@ -98,6 +105,24 @@ file(SHA256 "${companion}" rebuilt_companion_hash)
 if(NOT rebuilt_companion_hash STREQUAL first_companion_hash)
     message(FATAL_ERROR "companion reconstruction was not deterministic")
 endif()
+
+# Each supported regional/revision ROM must travel through its embedded BPS
+# canonicalizer and create the exact same pinned Original/EX payload bundle.
+foreach(variant RETAIL_JAPAN_V10 RETAIL_JAPAN_V11 RETAIL_USA_V10
+        RETAIL_USA_V11 RETAIL_EUROPE_V10 RETAIL_EUROPE_V11
+        RETAIL_GERMANY_V10)
+    file(REMOVE "${companion}" "${companion_temporary}")
+    run_runtime(variant_result "${${variant}}" ORIGINAL 1)
+    if(NOT variant_result EQUAL 0)
+        message(FATAL_ERROR
+            "runtime rejected supported ${variant}:\n${runtime_output}")
+    endif()
+    file(SHA256 "${companion}" variant_companion_hash)
+    if(NOT variant_companion_hash STREQUAL first_companion_hash)
+        message(FATAL_ERROR
+            "${variant} did not produce the canonical asset companion")
+    endif()
+endforeach()
 
 # The explicit path is intentionally absent. A successful EX boot proves the
 # second launch used the compiled companion and never tried to reopen retail.

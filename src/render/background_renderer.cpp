@@ -106,7 +106,8 @@ void BackgroundRenderer::draw_bg1(
     Framebuffer& target,
     TilePriorityPass priority,
     std::int32_t horizontal_origin,
-    bool extend_horizontal) const noexcept {
+    bool extend_horizontal,
+    std::uint32_t horizontal_inset) const noexcept {
     if ((ppu.main_screen & 0x01U) == 0U
         || (ppu.background_mode != 1U && ppu.background_mode != 2U
             && ppu.background_mode != 3U)) return;
@@ -125,11 +126,14 @@ void BackgroundRenderer::draw_bg1(
         const auto source_y = wrap(sample_y
             + ppu.bg1_scroll_y, height_pixels);
         const auto tile_y = static_cast<std::uint32_t>(source_y) >> 3U;
+        const auto inset = static_cast<std::int32_t>(
+            std::min(horizontal_inset, 128U));
         const auto first_x = extend_horizontal ? 0U
-            : static_cast<std::uint32_t>(std::max(horizontal_origin, 0));
+            : static_cast<std::uint32_t>(std::max(
+                horizontal_origin + inset, 0));
         const auto final_x = extend_horizontal ? target.width()
             : std::min(target.width(), static_cast<std::uint32_t>(
-                std::max(horizontal_origin + 256, 0)));
+                std::max(horizontal_origin + 256 - inset, 0)));
         for (auto screen_x = first_x; screen_x < final_x; ++screen_x) {
             const auto logical_x = static_cast<std::int32_t>(screen_x)
                 - horizontal_origin;

@@ -84,8 +84,17 @@ void SpriteRenderer::draw_objects(
             // portraits, which must remain centred as a single composition.
             object_origin = x < 128 ? 0 : horizontal_origin * 2;
         }
+        const auto tile = static_cast<std::uint16_t>(ppu.oam[low + 2U])
+            | (static_cast<std::uint16_t>(ppu.oam[low + 3U] & 1U) << 8U);
+        // EX deliberately relocates the life icon/count beside the lower-left
+        // shield readout. Position-only classification therefore tied both
+        // groups to the Shield layout. These are the source HUD life tiles in
+        // retail and EX (EX substitutes tile 230 for the final digit glyph),
+        // so identify the independent group before applying band heuristics.
+        const auto lives_tile = tile == 189U || tile == 226U
+            || tile == 229U || tile == 230U;
         auto element = std::optional<HudElement>{};
-        if (y_byte < 32U && x < 128) {
+        if (lives_tile || (y_byte < 32U && x < 128)) {
             element = HudElement::lives;
         } else if (y_byte >= 168U) {
             element = x < 128
@@ -98,8 +107,6 @@ void SpriteRenderer::draw_objects(
             ? (*hud_layout)[*element] : HudOffset{};
         const auto size = static_cast<std::uint32_t>(
             sizes[(high_bits >> 1U) & 1U]);
-        const auto tile = static_cast<std::uint16_t>(ppu.oam[low + 2U])
-            | (static_cast<std::uint16_t>(ppu.oam[low + 3U] & 1U) << 8U);
         const auto palette = static_cast<std::uint8_t>(
             (ppu.oam[low + 3U] >> 1U) & 7U);
         const auto object_priority = static_cast<std::uint8_t>(
@@ -195,7 +202,10 @@ void SpriteRenderer::draw_meters(
         if (!meters.second_player_view) {
             if (!meters.player_one_dead) {
                 const auto x = source_left_x(1) + shield.x;
-                const auto y = (meters.player_two_activated ? 7 : 180)
+                // Leave two source pixels between the lower-left SHIELD
+                // label and its host-rendered meter. Top-row multiplayer
+                // meters retain their cartridge coordinates.
+                const auto y = (meters.player_two_activated ? 7 : 182)
                     + shield.y;
                 box(x, y, meters.player_health_width, 8, 13U);
                 solid(x + 2, y + 2,
@@ -217,8 +227,8 @@ void SpriteRenderer::draw_meters(
             }
         }
     } else {
-        box(left_x + shield.x, 176 + shield.y, 40, 8, 13U);
-        solid(left_x + shield.x + 2, 178 + shield.y,
+        box(left_x + shield.x, 178 + shield.y, 40, 8, 13U);
+        solid(left_x + shield.x + 2, 180 + shield.y,
             std::min<std::uint8_t>(meters.damage, 36U), 4,
             meters.shield_up ? 7U : 2U);
         box(right_x + boost.x, 176 + boost.y, 40, 8, 13U);

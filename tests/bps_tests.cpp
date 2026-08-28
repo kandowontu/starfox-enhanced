@@ -148,6 +148,18 @@ int main(int argc, char** argv) {
                         reinterpret_cast<const char*>(ex_symbols.data()),
                         ex_symbols.size()},
                 "compiled companion contains the wrong Star Fox EX symbols");
+        } else if (argc >= 5
+            && std::string_view{argv[1]} == "--verify-canonicalizations"
+            && (argc - 3) % 2 == 0) {
+            const auto canonical = load_bytes(argv[2]);
+            for (auto argument = 3; argument < argc; argument += 2) {
+                const auto source = load_bytes(argv[argument]);
+                const auto canonicalization_patch =
+                    load_bytes(argv[argument + 1]);
+                require(starfox::assets::apply_bps_patch(
+                            source, canonicalization_patch) == canonical,
+                    "retail variant did not canonicalize to USA v1.2");
+            }
         } else if (argc == 6) {
             const auto retail = starfox::assets::RomImage::load(argv[1]);
             const auto original_patch = load_bytes(argv[2]);
@@ -166,6 +178,8 @@ int main(int argc, char** argv) {
             throw std::runtime_error{
                 "usage: starfox_bps_tests [BASE ORIGINAL_BPS ORIGINAL_TARGET "
                 "EX_BPS EX_TARGET]\n"
+                "   or: starfox_bps_tests --verify-canonicalizations "
+                "CANONICAL SOURCE PATCH [SOURCE PATCH ...]\n"
                 "   or: starfox_bps_tests --verify-bundle BUNDLE "
                 "ORIGINAL_ROM ORIGINAL_SYMBOLS EX_ROM EX_SYMBOLS"};
         }

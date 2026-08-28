@@ -21,6 +21,8 @@ struct SnesPpuState {
     std::uint16_t bg2_character_base{0x5000U};
     std::uint16_t bg2_screen_base{0x7000U};
     std::uint8_t bg2_screen_size{3U};
+    std::int16_t bg2_scroll_x{};
+    std::int16_t bg2_scroll_y{};
     std::uint16_t bg3_screen_base{0x2c00U};
     std::uint8_t bg3_screen_size{3U};
     std::uint16_t bg3_character_base{0x7000U};

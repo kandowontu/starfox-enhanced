@@ -694,6 +694,8 @@ struct Wdc65816::Impl {
             break;
         case 0x210dU:
         case 0x210eU:
+        case 0x210fU:
+        case 0x2110U:
         case 0x2111U:
         case 0x2112U:
             if (!background_scroll_high_byte) {
@@ -704,6 +706,8 @@ struct Wdc65816::Impl {
                     | (static_cast<std::uint16_t>(value) << 8U));
                 if (address == 0x210dU) ppu.bg1_scroll_x = scroll;
                 else if (address == 0x210eU) ppu.bg1_scroll_y = scroll;
+                else if (address == 0x210fU) ppu.bg2_scroll_x = scroll;
+                else if (address == 0x2110U) ppu.bg2_scroll_y = scroll;
                 else if (address == 0x2111U) ppu.bg3_scroll_x = scroll;
                 else ppu.bg3_scroll_y = scroll;
             }

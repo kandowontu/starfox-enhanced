@@ -88,19 +88,25 @@ Then run:
 ```
 
 The launcher configures an optimized build on first use and starts at the
-pre-game setup. On the executable's first run, supply an unmodified 1 MiB Star
-Fox USA v1.2 (Rev 2) ROM as one of:
+pre-game setup. On the executable's first run, supply any supported unmodified
+1 MiB retail Star Fox/Starwing ROM:
 
 ```text
-C:\NTSC-US Super Nintendo System Roms\Star Fox (USA) (Rev 2).sfc
-Star Fox (USA) (Rev 2).sfc beside starfox_pc.exe
+Star Fox (Japan), revisions 1.0 or 1.1
+Star Fox (USA), revisions 1.0, 1.1, or 1.2
+Starwing (Europe), revisions 1.0 or 1.1
+Starwing (Germany), revision 1.0
+the ROM beside starfox_pc.exe or in C:\NTSC-US Super Nintendo System Roms
 the path named by STARFOX_RETAIL_ROM
 ```
 
-A 512-byte copier header is accepted and removed before validation. Any other
-revision or modified dump is rejected. After `Starfox-Assets.BIN` is created,
-the retail file is no longer read unless the executable's embedded patch or
-symbol manifest changes and the companion must be rebuilt.
+A 512-byte copier header is accepted and removed before validation. Each known
+regional revision is checksum-verified and losslessly canonicalized to USA
+v1.2 before the source-build patches are applied. Competition cartridges,
+betas, hacks, Star Fox 2, modified dumps, and unknown revisions are rejected.
+After `Starfox-Assets.BIN` is created, the retail file is no longer read unless
+the executable's embedded patch or symbol manifest changes and the companion
+must be rebuilt.
 
 A development map can be selected explicitly:
 
