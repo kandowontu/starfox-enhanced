@@ -306,6 +306,30 @@ std::vector<RasterVertex> clip_screen_edge(
     return output;
 }
 
+// Scan conversion is the only stage that follows the render scale. Projection,
+// visibility and clipping all stay on the source raster, so a scaled frame
+// resolves exactly the same geometry with finer scan lines.
+class StoredRasterScope {
+public:
+    StoredRasterScope(Framebuffer& target, std::uint32_t scale) noexcept
+        : target_(target), previous_(target.draw_scale()) {
+        if (scale > 1U) target_.set_draw_scale(1U);
+    }
+    ~StoredRasterScope() { target_.set_draw_scale(previous_); }
+    StoredRasterScope(const StoredRasterScope&) = delete;
+    StoredRasterScope& operator=(const StoredRasterScope&) = delete;
+
+private:
+    Framebuffer& target_;
+    std::uint32_t previous_;
+};
+
+void scale_to_stored(ScreenPoint& point, std::uint32_t scale) noexcept {
+    if (scale <= 1U) return;
+    point.x *= static_cast<double>(scale);
+    point.y *= static_cast<double>(scale);
+}
+
 std::vector<RasterVertex> clip_screen_polygon(
     std::vector<RasterVertex> polygon,
     const Framebuffer& target,
@@ -1498,6 +1522,10 @@ void SoftwareRenderer::draw(
                     const auto material = face_material(shape, shape.faces.front(),
                         pose.colour_frame, depth_band, light, pose,
                         next_colour_warp_word());
+                    const StoredRasterScope raster{
+                        target, settings_.render_scale};
+                    scale_to_stored(near_screen, settings_.render_scale);
+                    scale_to_stored(far_screen, settings_.render_scale);
                     draw_line(target, near_screen, far_screen, material.colour,
                         settings_.colour_index_base);
                 }
@@ -1685,6 +1713,9 @@ void SoftwareRenderer::draw(
                     polygon[0], polygon[1], target, pose.use_rotation_matrix)) {
                 continue;
             }
+            const StoredRasterScope raster{target, settings_.render_scale};
+            scale_to_stored(polygon[0], settings_.render_scale);
+            scale_to_stored(polygon[1], settings_.render_scale);
             draw_line(target, polygon[0], polygon[1], material.colour,
                 settings_.colour_index_base);
             continue;
@@ -1714,6 +1745,10 @@ void SoftwareRenderer::draw(
         raster_polygon = clip_screen_polygon(
             std::move(raster_polygon), target, pose.use_rotation_matrix);
         if (raster_polygon.size() < 3U) continue;
+        const StoredRasterScope raster{target, settings_.render_scale};
+        for (auto& vertex : raster_polygon) {
+            scale_to_stored(vertex.point, settings_.render_scale);
+        }
         if (material.texture == nullptr) {
             fill_source_polygon(target, raster_polygon, material.colour,
                 settings_.colour_index_base, pose, surfaces, surface);

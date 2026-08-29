@@ -166,6 +166,37 @@ std::string_view display_profile_name(
     }
 }
 
+constexpr std::array<std::string_view,
+    starfox::simulation::render_scale_count> render_scale_names{{
+    "1X  NATIVE",
+    "2X",
+    "3X",
+    "4X",
+    "5X",
+    "6X",
+    "7X",
+    "8X",
+    "9X",
+    "10X",
+}};
+
+std::uint32_t render_scale_index(
+    starfox::simulation::RenderScale scale) noexcept {
+    return std::min(static_cast<std::uint32_t>(scale),
+        static_cast<std::uint32_t>(
+            starfox::simulation::render_scale_count - 1U));
+}
+
+std::uint32_t render_scale_factor(
+    starfox::simulation::RenderScale scale) noexcept {
+    return render_scale_index(scale) + 1U;
+}
+
+std::string_view render_scale_name(
+    starfox::simulation::RenderScale scale) noexcept {
+    return render_scale_names[render_scale_index(scale)];
+}
+
 std::string_view crosshair_colour_name(
     starfox::simulation::CrosshairColour colour) noexcept {
     switch (colour) {
@@ -694,9 +725,24 @@ public:
         std::span<const starfox::render::Rgba8> palette,
         const starfox::simulation::CircleEffectState& circle,
         const PresentationEffects& effects = {}) {
-        ensure_dimensions(framebuffer.width(), framebuffer.height());
+        window_scale_ = framebuffer.draw_scale();
+        ensure_dimensions(
+            framebuffer.stored_width(), framebuffer.stored_height());
         starfox::render::expand_rgba(framebuffer, rgba_, palette);
-        const auto composite_subtractive_overlay = [this, &framebuffer, palette](
+        // Presentation effects address the source raster. Apply each one to
+        // every stored pixel the render scale expanded that raster cell into.
+        const auto render_scale = framebuffer.draw_scale();
+        const auto stored_width =
+            static_cast<std::size_t>(framebuffer.stored_width());
+        const auto stored_pixel = [render_scale, stored_width](
+                                      std::size_t x, std::size_t y,
+                                      std::uint32_t column, std::uint32_t row) {
+            return ((y * render_scale + row) * stored_width
+                + x * render_scale + column) * 4U;
+        };
+        const auto composite_subtractive_overlay = [this, &framebuffer, palette,
+                                                       &stored_pixel,
+                                                       render_scale](
                                                        const auto* overlay_pointer,
                                                        std::uint8_t requested_brightness) {
             if (overlay_pointer == nullptr) return;
@@ -707,8 +753,6 @@ public:
                 for (std::uint32_t x = 0; x < framebuffer.width(); ++x) {
                     const auto colour = overlay.get(x, y);
                     if (colour == 0U || colour >= palette.size()) continue;
-                    const auto pixel = (static_cast<std::size_t>(y)
-                        * framebuffer.width() + x) * 4U;
                     const auto& source = palette[colour];
                     // PLANETS.ASM fades BG2 by subtracting a fixed white
                     // colour through CGADSUB. Multiplying RGB made the
@@ -724,10 +768,17 @@ public:
                         return static_cast<std::uint8_t>(
                             (result_five << 3U) | (result_five >> 2U));
                     };
+for (std::uint32_t block_row = 0; block_row < render_scale;
+                         ++block_row) {
+                    for (std::uint32_t block_column = 0;
+                         block_column < render_scale; ++block_column) {
+                    const auto pixel = stored_pixel(x, y, block_column, block_row);
                     rgba_[pixel] = fade_component(source.r);
                     rgba_[pixel + 1U] = fade_component(source.g);
                     rgba_[pixel + 2U] = fade_component(source.b);
                     rgba_[pixel + 3U] = source.a;
+                    }
+                    }
                 }
             }
         };
@@ -772,11 +823,18 @@ public:
                             continue;
                         }
                     }
-                    const auto pixel = (static_cast<std::size_t>(y)
-                        * framebuffer.width() + static_cast<std::size_t>(x))
-                        * 4U;
-                    subtract_fixed_white(pixel,
-                        effects.background_fixed_white_subtract);
+                    for (std::uint32_t block_row = 0;
+                         block_row < render_scale; ++block_row) {
+                        for (std::uint32_t block_column = 0;
+                             block_column < render_scale; ++block_column) {
+                            const auto pixel = stored_pixel(
+                                static_cast<std::size_t>(x),
+                                static_cast<std::size_t>(y),
+                                block_column, block_row);
+                            subtract_fixed_white(pixel,
+                                effects.background_fixed_white_subtract);
+                        }
+                    }
                 }
             }
         }
@@ -814,9 +872,13 @@ public:
                     // not washed into the expanding disk.
                     if (source_index >= 128U
                         && (circle.affected_layers & 0x10U) == 0U) continue;
-                    const auto pixel = (static_cast<std::size_t>(y)
-                        * framebuffer.width()
-                        + static_cast<std::size_t>(x)) * 4U;
+for (std::uint32_t block_row = 0; block_row < render_scale;
+                         ++block_row) {
+                    for (std::uint32_t block_column = 0;
+                         block_column < render_scale; ++block_column) {
+                    const auto pixel = stored_pixel(
+                        static_cast<std::size_t>(x),
+                        static_cast<std::size_t>(y), block_column, block_row);
                     for (std::size_t component = 0; component < 3U; ++component) {
                         const auto main = static_cast<std::int32_t>(
                             (static_cast<std::uint32_t>(rgba_[pixel + component])
@@ -827,6 +889,8 @@ public:
                         value = std::clamp(value, 0, 31);
                         rgba_[pixel + component] = static_cast<std::uint8_t>(
                             (value << 3U) | (value >> 2U));
+                    }
+                    }
                     }
                 }
             }
@@ -840,10 +904,18 @@ public:
                         && x <= effects.planet.isolate_right
                         && y >= effects.planet.isolate_top
                         && y <= effects.planet.isolate_bottom) continue;
-                    const auto pixel = (static_cast<std::size_t>(y)
-                        * framebuffer.width() + static_cast<std::size_t>(x)) * 4U;
-                    subtract_fixed_white(
-                        pixel, effects.planet.isolate_amount);
+                    for (std::uint32_t block_row = 0;
+                         block_row < render_scale; ++block_row) {
+                        for (std::uint32_t block_column = 0;
+                             block_column < render_scale; ++block_column) {
+                            const auto pixel = stored_pixel(
+                                static_cast<std::size_t>(x),
+                                static_cast<std::size_t>(y),
+                                block_column, block_row);
+                            subtract_fixed_white(
+                                pixel, effects.planet.isolate_amount);
+                        }
+                    }
                 }
             }
         }
@@ -904,13 +976,19 @@ public:
                     default: masked = window_1 || window_2; break; // OR
                     }
                     if (!masked) continue;
-                    const auto pixel = (static_cast<std::size_t>(y)
-                        * framebuffer.width() + static_cast<std::size_t>(x))
-                        * 4U;
+for (std::uint32_t block_row = 0; block_row < render_scale;
+                         ++block_row) {
+                    for (std::uint32_t block_column = 0;
+                         block_column < render_scale; ++block_column) {
+                    const auto pixel = stored_pixel(
+                        static_cast<std::size_t>(x),
+                        static_cast<std::size_t>(y), block_column, block_row);
                     rgba_[pixel] = 0U;
                     rgba_[pixel + 1U] = 0U;
                     rgba_[pixel + 2U] = 0U;
                     rgba_[pixel + 3U] = 255U;
+                    }
+                    }
                 }
             }
         }
@@ -924,12 +1002,19 @@ public:
                 for (std::int32_t x = 0;
                      x < static_cast<std::int32_t>(framebuffer.width()); ++x) {
                     if (x >= left && x < right) continue;
-                    const auto pixel = (static_cast<std::size_t>(y)
-                        * framebuffer.width() + static_cast<std::size_t>(x)) * 4U;
+for (std::uint32_t block_row = 0; block_row < render_scale;
+                         ++block_row) {
+                    for (std::uint32_t block_column = 0;
+                         block_column < render_scale; ++block_column) {
+                    const auto pixel = stored_pixel(
+                        static_cast<std::size_t>(x),
+                        static_cast<std::size_t>(y), block_column, block_row);
                     rgba_[pixel] = 0U;
                     rgba_[pixel + 1U] = 0U;
                     rgba_[pixel + 2U] = 0U;
                     rgba_[pixel + 3U] = 255U;
+                    }
+                    }
                 }
             }
         }
@@ -938,7 +1023,8 @@ public:
         if (rtx_lighting_) apply_rtx_lighting(framebuffer, effects);
         if (effects.host_overlay != nullptr) {
             const auto& overlay = *effects.host_overlay;
-            const auto paint = [this, &framebuffer](
+            const auto paint = [this, &framebuffer, &stored_pixel,
+                                   render_scale](
                                    std::int32_t x, std::int32_t y,
                                    std::uint8_t value) {
                 if (x < 0 || y < 0
@@ -946,12 +1032,18 @@ public:
                     || y >= static_cast<std::int32_t>(framebuffer.height())) {
                     return;
                 }
-                const auto pixel = (static_cast<std::size_t>(y)
-                    * framebuffer.width() + static_cast<std::size_t>(x)) * 4U;
+                for (std::uint32_t block_row = 0; block_row < render_scale;
+                     ++block_row) {
+                for (std::uint32_t block_column = 0;
+                     block_column < render_scale; ++block_column) {
+                const auto pixel = stored_pixel(static_cast<std::size_t>(x),
+                    static_cast<std::size_t>(y), block_column, block_row);
                 rgba_[pixel] = value;
                 rgba_[pixel + 1U] = value;
                 rgba_[pixel + 2U] = value;
                 rgba_[pixel + 3U] = 255U;
+                }
+                }
             };
             // Draw a one-pixel black shadow first, then opaque white glyphs.
             // This host diagnostic remains legible through every cartridge
@@ -1014,7 +1106,8 @@ public:
         if (anti_aliasing_ != starfox::simulation::AntiAliasingMode::off) {
             apply_fxaa(anti_aliasing_);
         }
-        present_rgba_pixels(framebuffer.width(), framebuffer.height(), rgba_);
+        present_rgba_pixels(
+            framebuffer.stored_width(), framebuffer.stored_height(), rgba_);
     }
 
     void present_rgba(std::uint32_t width, std::uint32_t height,
@@ -1121,6 +1214,10 @@ private:
             >> 8U);
     }
 
+    // Coordinates here are stored-raster, not source-raster. Scan conversion
+    // writes both the indexed pixel and its surface sample at the render
+    // scale, so the effect passes address them the same way and resolve
+    // polygon edges at whatever scale the frame was drawn at.
     [[nodiscard]] static const starfox::render::SurfaceSample* model_surface_at(
         const starfox::render::Framebuffer& framebuffer,
         const PresentationEffects& effects,
@@ -1135,8 +1232,8 @@ private:
             || local_y >= static_cast<std::int32_t>(
                 effects.model_surfaces->height())
             || x < 0 || y < 0
-            || x >= static_cast<std::int32_t>(framebuffer.width())
-            || y >= static_cast<std::int32_t>(framebuffer.height())) {
+            || x >= static_cast<std::int32_t>(framebuffer.stored_width())
+            || y >= static_cast<std::int32_t>(framebuffer.stored_height())) {
             return nullptr;
         }
         const auto& sample = effects.model_surfaces->get(
@@ -1145,7 +1242,7 @@ private:
         // A later particle, HUD element, or cartridge layer may cover the
         // polygon. Only shade the surface if its indexed colour still owns the
         // final composite pixel.
-        if (!sample.valid || framebuffer.get(
+        if (!sample.valid || framebuffer.get_stored(
                 static_cast<std::uint32_t>(x),
                 static_cast<std::uint32_t>(y)) != sample.palette_index) {
             return nullptr;
@@ -1192,20 +1289,21 @@ private:
         const PresentationEffects& effects) {
         if (effects.model_surfaces == nullptr
             || effects.model_surfaces->empty()
-            || framebuffer.width() < 3U || framebuffer.height() < 3U) {
+            || framebuffer.stored_width() < 3U
+            || framebuffer.stored_height() < 3U) {
             return;
         }
-        const auto width = static_cast<std::size_t>(framebuffer.width());
+        const auto width = static_cast<std::size_t>(framebuffer.stored_width());
         const auto first_x = std::max(1, effects.model_surface_x
             + static_cast<std::int32_t>(effects.model_surfaces->minimum_x()) - 1);
         const auto first_y = std::max(1, effects.model_surface_y
             + static_cast<std::int32_t>(effects.model_surfaces->minimum_y()) - 1);
         const auto last_x = std::min(
-            static_cast<std::int32_t>(framebuffer.width()) - 1,
+            static_cast<std::int32_t>(framebuffer.stored_width()) - 1,
             effects.model_surface_x
                 + static_cast<std::int32_t>(effects.model_surfaces->maximum_x()) + 1);
         const auto last_y = std::min(
-            static_cast<std::int32_t>(framebuffer.height()) - 1,
+            static_cast<std::int32_t>(framebuffer.stored_height()) - 1,
             effects.model_surface_y
                 + static_cast<std::int32_t>(effects.model_surfaces->maximum_y()) + 1);
         capture_effect_source_region(
@@ -1272,20 +1370,21 @@ private:
         const PresentationEffects& effects) {
         if (effects.model_surfaces == nullptr
             || effects.model_surfaces->empty()
-            || framebuffer.width() < 3U || framebuffer.height() < 3U) {
+            || framebuffer.stored_width() < 3U
+            || framebuffer.stored_height() < 3U) {
             return;
         }
-        const auto width = static_cast<std::size_t>(framebuffer.width());
+        const auto width = static_cast<std::size_t>(framebuffer.stored_width());
         const auto first_x = std::max(1, effects.model_surface_x
             + static_cast<std::int32_t>(effects.model_surfaces->minimum_x()) - 1);
         const auto first_y = std::max(1, effects.model_surface_y
             + static_cast<std::int32_t>(effects.model_surfaces->minimum_y()) - 1);
         const auto last_x = std::min(
-            static_cast<std::int32_t>(framebuffer.width()) - 1,
+            static_cast<std::int32_t>(framebuffer.stored_width()) - 1,
             effects.model_surface_x
                 + static_cast<std::int32_t>(effects.model_surfaces->maximum_x()) + 1);
         const auto last_y = std::min(
-            static_cast<std::int32_t>(framebuffer.height()) - 1,
+            static_cast<std::int32_t>(framebuffer.stored_height()) - 1,
             effects.model_surface_y
                 + static_cast<std::int32_t>(effects.model_surfaces->maximum_y()) + 1);
         capture_effect_source_region(
@@ -1394,20 +1493,21 @@ private:
         const PresentationEffects& effects) {
         if (effects.model_surfaces == nullptr
             || effects.model_surfaces->empty()
-            || framebuffer.width() < 3U || framebuffer.height() < 3U) {
+            || framebuffer.stored_width() < 3U
+            || framebuffer.stored_height() < 3U) {
             return;
         }
-        const auto width = static_cast<std::size_t>(framebuffer.width());
+        const auto width = static_cast<std::size_t>(framebuffer.stored_width());
         const auto first_x = std::max(1, effects.model_surface_x
             + static_cast<std::int32_t>(effects.model_surfaces->minimum_x()));
         const auto first_y = std::max(1, effects.model_surface_y
             + static_cast<std::int32_t>(effects.model_surfaces->minimum_y()));
         const auto last_x = std::min(
-            static_cast<std::int32_t>(framebuffer.width()) - 1,
+            static_cast<std::int32_t>(framebuffer.stored_width()) - 1,
             effects.model_surface_x
                 + static_cast<std::int32_t>(effects.model_surfaces->maximum_x()));
         const auto last_y = std::min(
-            static_cast<std::int32_t>(framebuffer.height()) - 1,
+            static_cast<std::int32_t>(framebuffer.stored_height()) - 1,
             effects.model_surface_y
                 + static_cast<std::int32_t>(effects.model_surfaces->maximum_y()));
         // Camera-space key light from above-left, a cool frontal fill, and the
@@ -1555,11 +1655,13 @@ private:
     }
 
     void set_windowed_size(std::uint32_t width, std::uint32_t height) noexcept {
-        const auto integer_scale = width <= snes_width
-            ? 4U : (width <= widescreen_16_9_width ? 3U : 2U);
+        const auto raster_width = width / window_scale_;
+        const auto raster_height = height / window_scale_;
+        const auto integer_scale = raster_width <= snes_width
+            ? 4U : (raster_width <= widescreen_16_9_width ? 3U : 2U);
         SDL_SetWindowSize(window_,
-            static_cast<int>(width * integer_scale),
-            static_cast<int>(height * integer_scale));
+            static_cast<int>(raster_width * integer_scale),
+            static_cast<int>(raster_height * integer_scale));
     }
 
     void present_rgba_pixels(std::uint32_t width, std::uint32_t height,
@@ -1599,6 +1701,7 @@ private:
         texture_height_ = height;
     }
 
+    std::uint32_t window_scale_{1U};
     SDL_Window* window_{};
     SDL_Renderer* renderer_{};
     SDL_Texture* texture_{};
@@ -2348,6 +2451,7 @@ int main(int argc, char** argv) {
                 game.rumble(),
                 static_cast<std::uint8_t>(game.crosshair_colour()),
                 static_cast<std::uint8_t>(game.experience()),
+                static_cast<std::uint8_t>(game.render_scale()),
             };
         };
         {
@@ -2419,6 +2523,18 @@ int main(int argc, char** argv) {
             game.set_crosshair_colour(
                 static_cast<starfox::simulation::CrosshairColour>(
                     saved_pregame.crosshair_colour));
+            game.set_render_scale(static_cast<starfox::simulation::RenderScale>(
+                saved_pregame.render_scale));
+            if (const auto* forced_scale = std::getenv(
+                    "STARFOX_TEST_RENDER_SCALE")) {
+                const auto factor = std::atoi(forced_scale);
+                if (factor >= 1 && factor <= static_cast<int>(
+                        starfox::simulation::render_scale_count)) {
+                    game.set_render_scale(
+                        static_cast<starfox::simulation::RenderScale>(
+                            factor - 1));
+                }
+            }
             game.set_experience(active_experience);
             if (hud_editor_preview) {
                 // Build the editor's static reference image from a genuine
@@ -2723,19 +2839,21 @@ int main(int argc, char** argv) {
         // Widescreen grows the scene symmetrically to 400x224 while HUD and
         // dialogue retain their original 224x192 coordinates in a centred
         // inset layer.
-        starfox::render::Framebuffer framebuffer{snes_width, snes_height};
+        auto render_scale = render_scale_factor(game.render_scale());
+        starfox::render::Framebuffer framebuffer{
+            snes_width, snes_height, render_scale};
         starfox::render::Framebuffer superfx_frame{
-            snes_width, superfx_height};
+            snes_width, superfx_height, render_scale};
         starfox::render::SurfaceBuffer superfx_surfaces{
-            snes_width, superfx_height};
+            snes_width * render_scale, superfx_height * render_scale};
         starfox::render::Framebuffer superfx_ui{
-            superfx_ui_width, superfx_height};
+            superfx_ui_width, superfx_height, render_scale};
         starfox::render::Framebuffer comms_hud{
-            superfx_ui_width, superfx_height};
+            superfx_ui_width, superfx_height, render_scale};
         starfox::render::Framebuffer superfx_hud{
-            snes_width, superfx_height};
+            snes_width, superfx_height, render_scale};
         starfox::render::Framebuffer controls_player_layer{
-            snes_width, superfx_height};
+            snes_width, superfx_height, render_scale};
         starfox::render::Framebuffer native_ex_overlay{
             snes_width, snes_height};
         starfox::render::Framebuffer planet_overlay{snes_width, snes_height};
@@ -2745,7 +2863,8 @@ int main(int argc, char** argv) {
         starfox::render::Framebuffer exit_confirmation_overlay{112U, 40U};
         starfox::render::RenderSettings render_settings;
         render_settings.colour_index_base = 7U * 16U;
-        const starfox::render::SoftwareRenderer renderer{render_settings};
+        render_settings.render_scale = render_scale;
+        starfox::render::SoftwareRenderer renderer{render_settings};
         const starfox::render::ParticleRenderer particle_renderer;
         const starfox::render::ScaledTextRenderer text_renderer{rom, symbols};
         const starfox::render::BackgroundRenderer background_renderer;
@@ -3520,7 +3639,7 @@ int main(int argc, char** argv) {
                                    == starfox::simulation::GameFlowState::pregame_menu
                                && game.pregame_page()
                                    == starfox::simulation::PregamePage::options
-                               && game.pregame_selection() == 3U
+                               && game.pregame_selection() == 4U
                                && (controls.pressed
                                    & (starfox::input::a
                                       | starfox::input::select)) != 0U) {
@@ -3656,12 +3775,30 @@ int main(int argc, char** argv) {
                 ? snes_height : superfx_height;
             const auto scene_offset_y = extend_scene_vertical
                 ? 0 : superfx_offset_y;
+            render_scale = render_scale_factor(game.render_scale());
+            if (render_settings.render_scale != render_scale) {
+                render_settings.render_scale = render_scale;
+                renderer = starfox::render::SoftwareRenderer{render_settings};
+            }
+            for (auto* layer : {&framebuffer, &superfx_frame, &superfx_hud,
+                     &controls_player_layer, &superfx_ui, &comms_hud}) {
+                layer->set_draw_scale(render_scale);
+            }
             framebuffer.resize(display_width, snes_height);
             superfx_frame.resize(display_width, scene_height);
-            superfx_surfaces.resize(display_width, scene_height);
+            // Surface samples parallel the stored 3D raster, so at a high
+            // render scale this is the largest per-frame allocation. Only the
+            // three surface-driven effects read it; leave it empty otherwise.
+            const auto surface_effects = game.enhanced_graphics()
+                || game.smooth_polys() || game.rtx_lighting();
+            superfx_surfaces.resize(
+                surface_effects ? display_width * render_scale : 0U,
+                surface_effects ? scene_height * render_scale : 0U);
             superfx_hud.resize(display_width, superfx_height);
             controls_player_layer.resize(display_width, superfx_height);
             native_ex_overlay.resize(display_width, snes_height);
+            superfx_ui.resize(superfx_ui_width, superfx_height);
+            comms_hud.resize(superfx_ui_width, superfx_height);
             planet_overlay.resize(display_width, snes_height);
             planet_text_overlay.resize(display_width, snes_height);
             // A paused cartridge presents one completed source frame. Do not
@@ -4932,18 +5069,23 @@ int main(int argc, char** argv) {
                             ? std::string_view{"ON"} : std::string_view{"OFF"};
                         const auto crosshair = crosshair_colour_name(
                             game.crosshair_colour());
-                        draw_row("GOD MODE", god_value, 56,
+                        constexpr std::array<std::int32_t, 6> option_y{
+                            56, 76, 96, 116, 136, 162};
+                        draw_row("GOD MODE", god_value, option_y[0],
                             game.pregame_selection() == 0U);
-                        draw_row("ON-SCREEN FPS", fps_value, 76,
+                        draw_row("ON-SCREEN FPS", fps_value, option_y[1],
                             game.pregame_selection() == 1U);
-                        draw_row("CROSSHAIR COLOR", crosshair, 96,
+                        draw_row("CROSSHAIR COLOR", crosshair, option_y[2],
                             game.pregame_selection() == 2U);
-                        draw_row("CUSTOMIZE SCREEN", "A  OPEN", 116,
-                            game.pregame_selection() == 3U);
-                        draw_row("BACK", "", 146,
+                        draw_row("RENDER SCALE",
+                            render_scale_name(game.render_scale()),
+                            option_y[3], game.pregame_selection() == 3U);
+                        draw_row("CUSTOMIZE SCREEN", "A  OPEN", option_y[4],
                             game.pregame_selection() == 4U);
-                        constexpr std::array<std::int32_t, 5> cursor_y{
-                            59, 79, 99, 119, 149};
+                        draw_row("BACK", "", option_y[5],
+                            game.pregame_selection() == 5U);
+                        constexpr std::array<std::int32_t, 6> cursor_y{
+                            59, 79, 99, 119, 139, 165};
                         draw_cursor(cursor_y[game.pregame_selection()]);
                         draw_centred("A/LEFT/RIGHT  CHANGE", 180, 13U);
                         draw_centred("B  BACK", 194, 13U);
@@ -5188,7 +5330,8 @@ int main(int argc, char** argv) {
                 game.enhanced_graphics() || game.smooth_polys()
                         || game.rtx_lighting()
                 ? &superfx_surfaces : nullptr;
-            presentation_effects.model_surface_y = scene_offset_y;
+            presentation_effects.model_surface_y =
+                scene_offset_y * static_cast<std::int32_t>(render_scale);
             presentation_effects.background_fixed_white_subtract =
                 game.game_over_background_subtract();
             if (presentation_effects.background_fixed_white_subtract != 0U) {
@@ -5219,8 +5362,8 @@ int main(int argc, char** argv) {
             }
             window.present(
                 framebuffer, palette, circle, presentation_effects);
-            presentation_history.record(
-                framebuffer.width(), framebuffer.height(), window.rgba());
+            presentation_history.record(framebuffer.stored_width(),
+                framebuffer.stored_height(), window.rgba());
             if (advance_frozen_frame) {
                 window.set_frame_debug_status(true,
                     presentation_history.cursor(),

@@ -63,11 +63,38 @@ void composite_transparent_layer(const Framebuffer& source,
                     continue;
                 }
             }
-            const auto colour = source.get(
-                static_cast<std::uint32_t>(source_x),
-                static_cast<std::uint32_t>(source_y));
-            if (colour != 0U) {
-                destination.set(destination_x, destination_y, colour);
+            // Clipping and mosaic stay on the source raster grid, matching
+            // the PPU. Only the transfer itself runs at the stored scale so a
+            // higher-resolution 3D layer keeps its detail through the pass.
+            const auto scale = source.draw_scale();
+            if (scale == 1U && destination.draw_scale() == 1U) {
+                const auto colour = source.get(
+                    static_cast<std::uint32_t>(source_x),
+                    static_cast<std::uint32_t>(source_y));
+                if (colour != 0U) {
+                    destination.set(destination_x, destination_y, colour);
+                }
+                continue;
+            }
+            if (destination_x < 0 || destination_y < 0) continue;
+            const auto source_origin_x =
+                static_cast<std::uint32_t>(source_x) * scale;
+            const auto source_origin_y =
+                static_cast<std::uint32_t>(source_y) * scale;
+            const auto destination_origin_x =
+                static_cast<std::uint32_t>(destination_x)
+                * destination.draw_scale();
+            const auto destination_origin_y =
+                static_cast<std::uint32_t>(destination_y)
+                * destination.draw_scale();
+            for (std::uint32_t row = 0; row < scale; ++row) {
+                for (std::uint32_t column = 0; column < scale; ++column) {
+                    const auto colour = source.get_stored(
+                        source_origin_x + column, source_origin_y + row);
+                    if (colour == 0U) continue;
+                    destination.set_stored(destination_origin_x + column,
+                        destination_origin_y + row, colour);
+                }
             }
         }
     }

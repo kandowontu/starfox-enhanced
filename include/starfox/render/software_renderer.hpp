@@ -86,6 +86,10 @@ struct RenderSettings {
     bool backface_culling{false};
     std::uint8_t background_colour{};
     std::uint8_t colour_index_base{};
+    // Supersampling factor applied to scan conversion only. Projection,
+    // visibility and clipping stay on the source raster at every setting, so
+    // the geometry drawn is identical and scale-independent.
+    std::uint32_t render_scale{1U};
 };
 
 // Presentation metadata for a host-rendered Super FX surface. The indexed

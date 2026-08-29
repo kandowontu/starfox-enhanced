@@ -93,6 +93,7 @@ struct PregameSettings {
     bool rumble{true};
     std::uint8_t crosshair_colour{};
     std::uint8_t experience{};
+    std::uint8_t render_scale{};
 
     [[nodiscard]] bool operator==(const PregameSettings&) const = default;
 };
