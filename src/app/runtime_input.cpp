@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -97,13 +98,18 @@ int gamepad_preference(SDL_JoystickID identifier) {
     return score;
 }
 
-std::filesystem::path settings_path() {
+std::filesystem::path preference_directory() {
     char* preference_path = SDL_GetPrefPath("StarFoxEnhanced", "StarFoxEnhanced");
     if (preference_path == nullptr) return {};
-    const std::filesystem::path result =
-        std::filesystem::path{preference_path} / "input-bindings.cfg";
+    const std::filesystem::path result{preference_path};
     SDL_free(preference_path);
     return result;
+}
+
+std::filesystem::path settings_path() {
+    const auto directory = preference_directory();
+    if (directory.empty()) return {};
+    return directory / "input-bindings.cfg";
 }
 
 std::filesystem::path documents_settings_path(std::string_view filename) {
@@ -116,6 +122,12 @@ std::filesystem::path documents_settings_path(std::string_view filename) {
     if (const auto* profile = std::getenv("USERPROFILE");
         profile != nullptr && *profile != '\0') {
         return std::filesystem::path{profile}
+            / "Documents" / "Star Fox Enhanced" / filename;
+    }
+#else
+    if (const auto* home = std::getenv("HOME");
+        home != nullptr && *home != '\0') {
+        return std::filesystem::path{home}
             / "Documents" / "Star Fox Enhanced" / filename;
     }
 #endif
@@ -435,6 +447,12 @@ void InputBindings::save() const {
         output << "G " << action << ' ' << kind << ' '
                << binding.control << '\n';
     }
+}
+
+std::filesystem::path single_instance_lock_path() {
+    const auto directory = preference_directory();
+    if (directory.empty()) return {};
+    return directory / "runtime.lock";
 }
 
 std::filesystem::path pregame_settings_path() {

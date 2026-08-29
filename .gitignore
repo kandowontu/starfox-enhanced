@@ -5,6 +5,10 @@
 /upstream-retro-cpu/
 /upstream-snes-spc/
 Starfox-Assets.BIN
+# User-supplied retail cartridge dumps are never redistributed.
+*.sfc
+*.smc
+/dist/StarFoxEnhanced/starfox_pc
 /dist/StarFoxEnhanced/starfox_pc.exe
 /assets/hud_editor/*.bmp
 /tmp/

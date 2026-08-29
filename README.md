@@ -1,6 +1,6 @@
 # Star Fox Enhanced
 
-A native Windows PC port of the open-source
+A native Windows and Linux PC port of the open-source
 [UltraStarFox](https://github.com/Sunlitspace542/ultrastarfox) codebase. It
 presents at a selectable 20, 30, 60, 90, 120, 240, 360, or 480 frames per
 second while preserving the original game's intended NTSC simulation speed
@@ -8,7 +8,7 @@ and assembled model data. The default is 60 FPS.
 
 This repository is an early playable fidelity pass. It does not track a game
 executable, retail ROM, reconstructed ROM, or generated asset companion. The
-Windows executable embeds source-built BPS deltas and symbol data. The
+native executable embeds source-built BPS deltas and symbol data. The
 complete optional compressed MSU-1 music set is distributed separately as
 `Starfox-MSU1.PAK` beside the executable. On its
 first launch it validates the user's own unmodified Star Fox USA v1.2 (Rev 2)
@@ -79,7 +79,7 @@ in a resizable window. It is a hybrid source port: a pinned 65C816 core
 executes bounded original routines while timing, asset decoding, simulation
 orchestration, rendering, audio output, and presentation are native C++.
 
-## Quick start (Windows)
+## Quick start
 
 Build the pinned UltraStarFox and Star Fox EX sources first so their local ROM
 and symbol outputs exist. These generated files stay ignored and untracked:
@@ -97,6 +97,10 @@ Then run:
 .\play-starfox.ps1
 ```
 
+```bash
+./play-starfox.sh
+```
+
 The launcher configures an optimized build on first use and starts at the
 pre-game setup. On the executable's first run, supply any supported unmodified
 1 MiB retail Star Fox/Starwing ROM:
@@ -106,7 +110,8 @@ Star Fox (Japan), revisions 1.0 or 1.1
 Star Fox (USA), revisions 1.0, 1.1, or 1.2
 Starwing (Europe), revisions 1.0 or 1.1
 Starwing (Germany), revision 1.0
-the ROM beside starfox_pc.exe or in C:\NTSC-US Super Nintendo System Roms
+the ROM beside the executable, in C:\NTSC-US Super Nintendo System Roms on
+Windows, or in ~/NTSC-US Super Nintendo System Roms on Linux
 the path named by STARFOX_RETAIL_ROM
 ```
 
@@ -122,6 +127,10 @@ A development map can be selected explicitly:
 
 ```powershell
 .\play-starfox.ps1 LEVEL1_1
+```
+
+```bash
+./play-starfox.sh LEVEL1_1
 ```
 
 Explicit external ROM/symbol pairs can still be passed to a development build
@@ -141,7 +150,8 @@ The UltraStarFox DOSBox assembler toolchain must be present in that checkout,
 as described by its own build instructions. The helper idempotently applies
 `config/ultrastarfox-native-runtime.patch`, which enables the authored MSU-1
 and rumble events while retaining stock SPC music for the runtime ON/OFF
-switch and routing the physical rumble transmitter through SDL.
+switch and routing the physical rumble transmitter through SDL. On Linux, run
+`tools/build_upstream.sh` in place of the PowerShell helper.
 
 The Star Fox EX 1.11.03 source revision is pinned separately in
 `config/upstream-ex.json`:
@@ -152,13 +162,26 @@ git -C upstream-star-fox-ex checkout b5e2d837a15a72a532cd019bfe332b7a4b660924
 powershell -ExecutionPolicy Bypass -File tools/build_starfox_ex.ps1
 ```
 
-That checkout also supplies its DOSBox assembler toolchain. Both build helpers
-reject a different source revision so the embedded symbol tables remain bound
-to the checked-in BPS deltas.
+That checkout also supplies its DOSBox assembler toolchain. On Linux, run
+`tools/build_starfox_ex.sh` in place of the PowerShell helper; both shell
+helpers drive a native `dosbox-x` from `PATH`. Both build helpers reject a
+different source revision so the embedded symbol tables remain bound to the
+checked-in BPS deltas.
 
 ## Build and test
 
-```powershell
+SDL3 is built from source, so a Linux host needs its development packages
+first. On Fedora:
+
+```bash
+sudo dnf install libX11-devel libXext-devel libXcursor-devel \
+    libXrandr-devel libXfixes-devel libXi-devel libXtst-devel \
+    libXScrnSaver-devel libxkbcommon-devel wayland-devel libdecor-devel \
+    mesa-libGL-devel mesa-libEGL-devel dbus-devel alsa-lib-devel \
+    pulseaudio-libs-devel pipewire-devel ibus-devel
+```
+
+```text
 cmake -S . -B build/release -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build/release -j 8
 ctest --test-dir build/release --output-on-failure
@@ -166,21 +189,22 @@ ctest --test-dir build/release --output-on-failure
 
 Create a portable executable folder (ROM data remains user-supplied):
 
-```powershell
+```text
 cmake --install build/release --prefix dist/StarFoxEnhanced
 ```
 
 The default build downloads the pinned music sources and installs the optional
-`Starfox-MSU1.PAK` beside `starfox_pc.exe`. Configure with
+`Starfox-MSU1.PAK` beside the executable. Configure with
 `-DSTARFOX_PACKAGE_MSU1_MUSIC=OFF` to build and install the game without that
 companion; the executable remains fully playable with the original SPC music.
 
-You can launch the binary directly:
+You can launch the binary directly, as `starfox_pc.exe` on Windows and
+`starfox_pc` on Linux:
 
-```powershell
-build/release/starfox_pc.exe
-build/release/starfox_pc.exe LEVEL2_3
-build/release/starfox_pc.exe path/to/SF.SFC path/to/SYMBOLS.TXT TITLEMAP
+```text
+build/release/starfox_pc
+build/release/starfox_pc LEVEL2_3
+build/release/starfox_pc path/to/SF.SFC path/to/SYMBOLS.TXT TITLEMAP
 ```
 
 ## Controls

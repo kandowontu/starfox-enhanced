@@ -41,6 +41,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
@@ -50,6 +51,10 @@
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#else
+#include <fcntl.h>
+#include <sys/file.h>
+#include <unistd.h>
 #endif
 
 namespace {
@@ -388,7 +393,8 @@ std::vector<ScriptedPress> parse_scripted_presses(const char* text) {
     return result;
 }
 
-#if defined(_WIN32) && defined(STARFOX_HAS_EMBEDDED_ASSETS)
+#if defined(STARFOX_HAS_EMBEDDED_ASSETS)
+#if defined(_WIN32)
 std::span<const std::uint8_t> embedded_resource(int identifier) {
     const auto module = GetModuleHandleW(nullptr);
     const auto resource = FindResourceW(
@@ -408,6 +414,75 @@ std::span<const std::uint8_t> embedded_resource(int identifier) {
     return std::span<const std::uint8_t>{
         data, static_cast<std::size_t>(size)};
 }
+#else
+// starfox_assets.s.in binds each payload into .rodata under these symbols.
+extern "C" {
+extern const std::uint8_t starfox_patch_begin[];
+extern const std::uint8_t starfox_patch_end[];
+extern const std::uint8_t starfox_symbols_begin[];
+extern const std::uint8_t starfox_symbols_end[];
+extern const std::uint8_t starfox_ex_patch_begin[];
+extern const std::uint8_t starfox_ex_patch_end[];
+extern const std::uint8_t starfox_ex_symbols_begin[];
+extern const std::uint8_t starfox_ex_symbols_end[];
+extern const std::uint8_t starfox_retail_japan_v10_patch_begin[];
+extern const std::uint8_t starfox_retail_japan_v10_patch_end[];
+extern const std::uint8_t starfox_retail_japan_v11_patch_begin[];
+extern const std::uint8_t starfox_retail_japan_v11_patch_end[];
+extern const std::uint8_t starfox_retail_usa_v10_patch_begin[];
+extern const std::uint8_t starfox_retail_usa_v10_patch_end[];
+extern const std::uint8_t starfox_retail_usa_v11_patch_begin[];
+extern const std::uint8_t starfox_retail_usa_v11_patch_end[];
+extern const std::uint8_t starfox_retail_europe_v10_patch_begin[];
+extern const std::uint8_t starfox_retail_europe_v10_patch_end[];
+extern const std::uint8_t starfox_retail_europe_v11_patch_begin[];
+extern const std::uint8_t starfox_retail_europe_v11_patch_end[];
+extern const std::uint8_t starfox_retail_germany_v10_patch_begin[];
+extern const std::uint8_t starfox_retail_germany_v10_patch_end[];
+}
+
+struct EmbeddedAsset {
+    int identifier;
+    const std::uint8_t* begin;
+    const std::uint8_t* end;
+};
+
+constexpr std::array embedded_assets{
+    EmbeddedAsset{101, starfox_patch_begin, starfox_patch_end},
+    EmbeddedAsset{102, starfox_symbols_begin, starfox_symbols_end},
+    EmbeddedAsset{108, starfox_ex_patch_begin, starfox_ex_patch_end},
+    EmbeddedAsset{109, starfox_ex_symbols_begin, starfox_ex_symbols_end},
+    EmbeddedAsset{120, starfox_retail_japan_v10_patch_begin,
+        starfox_retail_japan_v10_patch_end},
+    EmbeddedAsset{121, starfox_retail_japan_v11_patch_begin,
+        starfox_retail_japan_v11_patch_end},
+    EmbeddedAsset{122, starfox_retail_usa_v10_patch_begin,
+        starfox_retail_usa_v10_patch_end},
+    EmbeddedAsset{123, starfox_retail_usa_v11_patch_begin,
+        starfox_retail_usa_v11_patch_end},
+    EmbeddedAsset{124, starfox_retail_europe_v10_patch_begin,
+        starfox_retail_europe_v10_patch_end},
+    EmbeddedAsset{125, starfox_retail_europe_v11_patch_begin,
+        starfox_retail_europe_v11_patch_end},
+    EmbeddedAsset{126, starfox_retail_germany_v10_patch_begin,
+        starfox_retail_germany_v10_patch_end},
+};
+
+std::span<const std::uint8_t> embedded_resource(int identifier) {
+    const auto asset = std::find_if(embedded_assets.begin(),
+        embedded_assets.end(), [identifier](const EmbeddedAsset& candidate) {
+            return candidate.identifier == identifier;
+        });
+    if (asset == embedded_assets.end()) {
+        throw std::runtime_error{"embedded Star Fox asset resource is missing"};
+    }
+    if (asset->end <= asset->begin) {
+        throw std::runtime_error{"embedded Star Fox asset resource is invalid"};
+    }
+    return std::span<const std::uint8_t>{asset->begin,
+        static_cast<std::size_t>(asset->end - asset->begin)};
+}
+#endif
 
 RuntimeAssets make_runtime_assets(
     std::vector<std::uint8_t> rom,
@@ -484,6 +559,16 @@ std::vector<std::uint8_t> canonicalize_retail_rom(
     return canonical;
 }
 
+std::filesystem::path retail_library_directory() {
+#if defined(_WIN32)
+    return std::filesystem::path{R"(C:\NTSC-US Super Nintendo System Roms)"};
+#else
+    const auto* home = std::getenv("HOME");
+    if (home == nullptr || *home == '\0') return {};
+    return std::filesystem::path{home} / "NTSC-US Super Nintendo System Roms";
+#endif
+}
+
 std::pair<std::filesystem::path, std::vector<std::uint8_t>>
 load_required_retail(const std::filesystem::path& executable_directory) {
     std::vector<std::filesystem::path> candidates;
@@ -506,11 +591,11 @@ load_required_retail(const std::filesystem::path& executable_directory) {
         "Star Fox v1.2.sfc",
     };
     const std::array directories{
-        std::filesystem::path{
-            R"(C:\NTSC-US Super Nintendo System Roms)"},
+        retail_library_directory(),
         executable_directory,
     };
     for (const auto& directory : directories) {
+        if (directory.empty()) continue;
         for (const auto* filename : filenames) {
             candidates.emplace_back(directory / filename);
         }
@@ -528,8 +613,9 @@ load_required_retail(const std::filesystem::path& executable_directory) {
     throw std::runtime_error{
         "Star Fox Enhanced requires an unmodified retail Star Fox/Starwing "
         "ROM: Japan 1.0/1.1, USA 1.0/1.1/1.2, Europe 1.0/1.1, or Germany "
-        "1.0. Place it beside the game, in C:\\NTSC-US Super Nintendo "
-        "System Roms, or set STARFOX_RETAIL_ROM to its full path."};
+        "1.0. Place it beside the game, in "
+        + retail_library_directory().string()
+        + ", or set STARFOX_RETAIL_ROM to its full path."};
 }
 
 std::uint32_t embedded_asset_manifest() {
@@ -581,6 +667,7 @@ void write_asset_companion(
                 "unable to write asset companion: " + path.string()};
         }
     }
+#if defined(_WIN32)
     if (!MoveFileExW(temporary.c_str(), path.c_str(),
             MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
         const auto error = GetLastError();
@@ -589,6 +676,17 @@ void write_asset_companion(
             "unable to install asset companion (Windows error "
             + std::to_string(error) + "): " + path.string()};
     }
+#else
+    std::error_code error;
+    std::filesystem::rename(temporary, path, error);
+    if (error) {
+        const auto reason = error.message();
+        std::filesystem::remove(temporary, error);
+        throw std::runtime_error{
+            "unable to install asset companion (" + reason + "): "
+            + path.string()};
+    }
+#endif
 }
 
 RuntimeAssetSet load_or_compile_runtime_assets(
@@ -625,6 +723,17 @@ RuntimeAssetSet load_or_compile_runtime_assets(
     return unpack_runtime_assets(std::move(payload));
 }
 #endif
+
+// argv[0] is only a resolvable path when the runtime was launched by one; the
+// companion and its side files must still land beside the real executable.
+std::filesystem::path executable_path(const char* argv0) {
+#if !defined(_WIN32)
+    std::error_code error;
+    auto resolved = std::filesystem::read_symlink("/proc/self/exe", error);
+    if (!error) return resolved;
+#endif
+    return std::filesystem::absolute(argv0);
+}
 
 RuntimeAssets load_external_assets(
     const std::filesystem::path& rom_path,
@@ -2159,10 +2268,10 @@ CameraPoint world_to_camera(
 } // namespace
 
 int main(int argc, char** argv) {
-#if defined(_WIN32)
     // Keep the lock alive through the catch block and its modal error dialog.
-    // If it lived inside try, stack unwinding released it before MessageBoxA;
+    // If it lived inside try, stack unwinding released it before the dialog;
     // a second launch could then enter and display an identical second box.
+#if defined(_WIN32)
     struct SingleInstanceMutex {
         HANDLE handle{};
         ~SingleInstanceMutex() {
@@ -2175,24 +2284,47 @@ int main(int argc, char** argv) {
         if (single_instance.handle == nullptr) return 1;
         if (GetLastError() == ERROR_ALREADY_EXISTS) return 0;
     }
+#else
+    // POSIX has no named mutex. An advisory whole-file lock is equivalent here
+    // and the kernel drops it however the process ends.
+    struct SingleInstanceLock {
+        int descriptor{-1};
+        ~SingleInstanceLock() {
+            if (descriptor >= 0) ::close(descriptor);
+        }
+    } single_instance;
+    if (std::getenv("STARFOX_TEST_FRAMES") == nullptr) {
+        const auto lock_path = starfox::app::single_instance_lock_path();
+        if (!lock_path.empty()) {
+            std::error_code lock_error;
+            std::filesystem::create_directories(
+                lock_path.parent_path(), lock_error);
+            single_instance.descriptor = ::open(
+                lock_path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0644);
+            if (single_instance.descriptor >= 0
+                && ::flock(single_instance.descriptor, LOCK_EX | LOCK_NB) != 0) {
+                return 0;
+            }
+        }
+    }
 #endif
     try {
         const SdlContext sdl;
         Window window;
         std::string initial_map = "BOOT";
         const auto executable_directory =
-            std::filesystem::absolute(argv[0]).parent_path();
+            executable_path(argv[0]).parent_path();
         const starfox::audio::Msu1Pack msu1_pack{
             executable_directory
                 / std::filesystem::path{starfox::audio::msu1_pack_filename}};
-#if defined(_WIN32) && defined(STARFOX_HAS_EMBEDDED_ASSETS)
+#if defined(STARFOX_HAS_EMBEDDED_ASSETS)
         auto embedded_runtime_assets =
             load_or_compile_runtime_assets(executable_directory);
 #endif
         const auto original_assets = [&]() -> RuntimeAssets {
             if (argc == 1 || argc == 2) {
                 if (argc == 2) initial_map = argv[1];
-#if defined(_WIN32) && defined(STARFOX_HAS_EMBEDDED_ASSETS)
+#if defined(STARFOX_HAS_EMBEDDED_ASSETS)
                 return std::move(embedded_runtime_assets.original);
 #else
                 std::filesystem::path rom_path;
@@ -2233,7 +2365,7 @@ int main(int argc, char** argv) {
             throw std::runtime_error{"invalid command-line arguments"};
         }();
         std::optional<RuntimeAssets> starfox_ex_assets;
-#if defined(_WIN32) && defined(STARFOX_HAS_EMBEDDED_ASSETS)
+#if defined(STARFOX_HAS_EMBEDDED_ASSETS)
         starfox_ex_assets.emplace(
             std::move(embedded_runtime_assets.starfox_ex));
 #else
@@ -5292,15 +5424,13 @@ int main(int argc, char** argv) {
         const std::string message =
             std::string{"Star Fox Enhanced could not start:\n\n"} + error.what();
         std::cerr << "starfox_pc failed: " << error.what() << '\n';
-#if defined(_WIN32)
         // Automated runtime checks must remain headless even when they find a
         // regression; stderr and the non-zero exit status are sufficient and
         // cannot strand modal dialogs on the user's desktop.
         if (std::getenv("STARFOX_TEST_FRAMES") == nullptr) {
-            MessageBoxA(nullptr, message.c_str(), "Star Fox Enhanced",
-                MB_OK | MB_ICONERROR | MB_TASKMODAL);
+            static_cast<void>(SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
+                "Star Fox Enhanced", message.c_str(), nullptr));
         }
-#endif
         return 1;
     }
 }

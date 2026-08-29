@@ -5,7 +5,7 @@ project(starfox_enhanced VERSION 0.1.0 LANGUAGES CXX)
 option(STARFOX_BUILD_TESTS "Build deterministic timing tests" ON)
 option(STARFOX_BUILD_RUNTIME "Build the SDL3 native PC runtime" ON)
 option(STARFOX_EMBED_RUNTIME_ASSETS
-    "Embed source-built BPS deltas and symbol tables into the Windows runtime" ON)
+    "Embed source-built BPS deltas and symbol tables into the native runtime" ON)
 option(STARFOX_PACKAGE_MSU1_MUSIC
     "Build and install the optional Starfox-MSU1.PAK companion" ON)
 set(STARFOX_ROM_FILE
@@ -26,23 +26,30 @@ set(STARFOX_ORIGINAL_PATCH_FILE
 set(STARFOX_EX_PATCH_FILE
     "${CMAKE_CURRENT_SOURCE_DIR}/assets/patches/starfox-ex-v12.bps"
     CACHE FILEPATH "Star Fox EX BPS delta for a clean Star Fox USA v1.2 ROM")
+if(WIN32)
+    set(STARFOX_RETAIL_ROM_DIR "C:/NTSC-US Super Nintendo System Roms"
+        CACHE PATH "Directory searched for the clean retail validation ROMs")
+else()
+    set(STARFOX_RETAIL_ROM_DIR "$ENV{HOME}/NTSC-US Super Nintendo System Roms"
+        CACHE PATH "Directory searched for the clean retail validation ROMs")
+endif()
 set(STARFOX_RETAIL_V12_FILE
-    "C:/NTSC-US Super Nintendo System Roms/Star Fox (USA) (Rev 2).sfc"
+    "${STARFOX_RETAIL_ROM_DIR}/Star Fox (USA) (Rev 2).sfc"
     CACHE FILEPATH "Clean Star Fox USA v1.2 ROM used only for local validation")
 set(STARFOX_RETAIL_JAPAN_V10_FILE
-    "C:/NTSC-US Super Nintendo System Roms/Star Fox (Japan).sfc")
+    "${STARFOX_RETAIL_ROM_DIR}/Star Fox (Japan).sfc")
 set(STARFOX_RETAIL_JAPAN_V11_FILE
-    "C:/NTSC-US Super Nintendo System Roms/Star Fox (Japan) (Rev 1).sfc")
+    "${STARFOX_RETAIL_ROM_DIR}/Star Fox (Japan) (Rev 1).sfc")
 set(STARFOX_RETAIL_USA_V10_FILE
-    "C:/NTSC-US Super Nintendo System Roms/Star Fox (USA).sfc")
+    "${STARFOX_RETAIL_ROM_DIR}/Star Fox (USA).sfc")
 set(STARFOX_RETAIL_USA_V11_FILE
-    "C:/NTSC-US Super Nintendo System Roms/Star Fox (USA) (Rev 1).sfc")
+    "${STARFOX_RETAIL_ROM_DIR}/Star Fox (USA) (Rev 1).sfc")
 set(STARFOX_RETAIL_EUROPE_V10_FILE
-    "C:/NTSC-US Super Nintendo System Roms/Starwing (Europe).sfc")
+    "${STARFOX_RETAIL_ROM_DIR}/Starwing (Europe).sfc")
 set(STARFOX_RETAIL_EUROPE_V11_FILE
-    "C:/NTSC-US Super Nintendo System Roms/Starwing (Europe) (Rev 1).sfc")
+    "${STARFOX_RETAIL_ROM_DIR}/Starwing (Europe) (Rev 1).sfc")
 set(STARFOX_RETAIL_GERMANY_V10_FILE
-    "C:/NTSC-US Super Nintendo System Roms/Starwing (Germany).sfc")
+    "${STARFOX_RETAIL_ROM_DIR}/Starwing (Germany).sfc")
 set(STARFOX_RETAIL_JAPAN_V10_PATCH_FILE
     "${CMAKE_CURRENT_SOURCE_DIR}/assets/patches/retail-japan-v10-to-usa-v12.bps")
 set(STARFOX_RETAIL_JAPAN_V11_PATCH_FILE
@@ -201,7 +208,6 @@ if(STARFOX_BUILD_RUNTIME)
         set_target_properties(starfox_pc PROPERTIES WIN32_EXECUTABLE TRUE)
     endif()
     target_link_libraries(starfox_pc PRIVATE starfox_core SDL3::SDL3)
-
     if(STARFOX_PACKAGE_MSU1_MUSIC)
         FetchContent_Declare(
             starfox_msu_pack
@@ -251,7 +257,7 @@ if(STARFOX_BUILD_RUNTIME)
         install(FILES "${STARFOX_MSU1_PACK}" DESTINATION .)
     endif()
 
-    if(WIN32 AND STARFOX_EMBED_RUNTIME_ASSETS)
+    if(STARFOX_EMBED_RUNTIME_ASSETS)
         if(EXISTS "${STARFOX_ORIGINAL_PATCH_FILE}"
            AND EXISTS "${STARFOX_SYMBOLS_FILE}"
            AND EXISTS "${STARFOX_EX_PATCH_FILE}"
@@ -263,7 +269,9 @@ if(STARFOX_BUILD_RUNTIME)
            AND EXISTS "${STARFOX_RETAIL_EUROPE_V10_PATCH_FILE}"
            AND EXISTS "${STARFOX_RETAIL_EUROPE_V11_PATCH_FILE}"
            AND EXISTS "${STARFOX_RETAIL_GERMANY_V10_PATCH_FILE}")
-            enable_language(RC)
+            if(WIN32)
+                enable_language(RC)
+            endif()
             file(TO_CMAKE_PATH
                 "${STARFOX_ORIGINAL_PATCH_FILE}" STARFOX_EMBEDDED_PATCH)
             file(TO_CMAKE_PATH "${STARFOX_SYMBOLS_FILE}" STARFOX_EMBEDDED_SYMBOLS)
@@ -284,19 +292,39 @@ if(STARFOX_BUILD_RUNTIME)
                 STARFOX_RETAIL_EUROPE_V11_PATCH)
             file(TO_CMAKE_PATH "${STARFOX_RETAIL_GERMANY_V10_PATCH_FILE}"
                 STARFOX_RETAIL_GERMANY_V10_PATCH)
-            configure_file(
-                src/app/starfox_assets.rc.in
-                "${CMAKE_CURRENT_BINARY_DIR}/starfox_assets.rc"
-                @ONLY
-            )
+            if(WIN32)
+                configure_file(
+                    src/app/starfox_assets.rc.in
+                    "${CMAKE_CURRENT_BINARY_DIR}/starfox_assets.rc"
+                    @ONLY
+                )
+                set(STARFOX_EMBEDDED_SOURCE
+                    "${CMAKE_CURRENT_BINARY_DIR}/starfox_assets.rc")
+            else()
+                enable_language(ASM)
+                configure_file(
+                    src/app/starfox_assets.s.in
+                    "${CMAKE_CURRENT_BINARY_DIR}/starfox_assets.s"
+                    @ONLY
+                )
+                set(STARFOX_EMBEDDED_SOURCE
+                    "${CMAKE_CURRENT_BINARY_DIR}/starfox_assets.s")
+            endif()
+            # Neither the resource compiler nor .incbin reports the payloads
+            # it reads, so a reassembled ROM would otherwise keep a stale
+            # runtime.
+            set_source_files_properties("${STARFOX_EMBEDDED_SOURCE}" PROPERTIES
+                OBJECT_DEPENDS "${STARFOX_EMBEDDED_PATCH};\
+${STARFOX_EMBEDDED_SYMBOLS};${STARFOX_EX_EMBEDDED_PATCH};\
+${STARFOX_EX_EMBEDDED_SYMBOLS};${STARFOX_RETAIL_JAPAN_V10_PATCH};\
+${STARFOX_RETAIL_JAPAN_V11_PATCH};${STARFOX_RETAIL_USA_V10_PATCH};\
+${STARFOX_RETAIL_USA_V11_PATCH};${STARFOX_RETAIL_EUROPE_V10_PATCH};\
+${STARFOX_RETAIL_EUROPE_V11_PATCH};${STARFOX_RETAIL_GERMANY_V10_PATCH}")
             # Keep the resource compiler isolated from the C++ target's
             # include path. GNU windres forwards quoted -I paths through its
             # preprocessor incorrectly when the workspace contains spaces.
             add_library(starfox_runtime_resources OBJECT
-                "${CMAKE_CURRENT_BINARY_DIR}/starfox_assets.rc")
-            set_property(SOURCE "${CMAKE_CURRENT_BINARY_DIR}/starfox_assets.rc"
-                PROPERTY OBJECT_DEPENDS
-                    "${STARFOX_ORIGINAL_PATCH_FILE};${STARFOX_SYMBOLS_FILE};${STARFOX_EX_PATCH_FILE};${STARFOX_EX_SYMBOLS_FILE};${STARFOX_RETAIL_JAPAN_V10_PATCH_FILE};${STARFOX_RETAIL_JAPAN_V11_PATCH_FILE};${STARFOX_RETAIL_USA_V10_PATCH_FILE};${STARFOX_RETAIL_USA_V11_PATCH_FILE};${STARFOX_RETAIL_EUROPE_V10_PATCH_FILE};${STARFOX_RETAIL_EUROPE_V11_PATCH_FILE};${STARFOX_RETAIL_GERMANY_V10_PATCH_FILE}")
+                "${STARFOX_EMBEDDED_SOURCE}")
             target_sources(starfox_pc PRIVATE
                 $<TARGET_OBJECTS:starfox_runtime_resources>)
             target_compile_definitions(starfox_pc PRIVATE

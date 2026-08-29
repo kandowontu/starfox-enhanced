@@ -1,0 +1,70 @@
+    .section .rodata
+    .balign 4
+
+    .globl starfox_patch_begin
+    .globl starfox_patch_end
+starfox_patch_begin:
+    .incbin "@STARFOX_EMBEDDED_PATCH@"
+starfox_patch_end:
+
+    .globl starfox_symbols_begin
+    .globl starfox_symbols_end
+starfox_symbols_begin:
+    .incbin "@STARFOX_EMBEDDED_SYMBOLS@"
+starfox_symbols_end:
+
+    .globl starfox_ex_patch_begin
+    .globl starfox_ex_patch_end
+starfox_ex_patch_begin:
+    .incbin "@STARFOX_EX_EMBEDDED_PATCH@"
+starfox_ex_patch_end:
+
+    .globl starfox_ex_symbols_begin
+    .globl starfox_ex_symbols_end
+starfox_ex_symbols_begin:
+    .incbin "@STARFOX_EX_EMBEDDED_SYMBOLS@"
+starfox_ex_symbols_end:
+
+    .globl starfox_retail_japan_v10_patch_begin
+    .globl starfox_retail_japan_v10_patch_end
+starfox_retail_japan_v10_patch_begin:
+    .incbin "@STARFOX_RETAIL_JAPAN_V10_PATCH@"
+starfox_retail_japan_v10_patch_end:
+
+    .globl starfox_retail_japan_v11_patch_begin
+    .globl starfox_retail_japan_v11_patch_end
+starfox_retail_japan_v11_patch_begin:
+    .incbin "@STARFOX_RETAIL_JAPAN_V11_PATCH@"
+starfox_retail_japan_v11_patch_end:
+
+    .globl starfox_retail_usa_v10_patch_begin
+    .globl starfox_retail_usa_v10_patch_end
+starfox_retail_usa_v10_patch_begin:
+    .incbin "@STARFOX_RETAIL_USA_V10_PATCH@"
+starfox_retail_usa_v10_patch_end:
+
+    .globl starfox_retail_usa_v11_patch_begin
+    .globl starfox_retail_usa_v11_patch_end
+starfox_retail_usa_v11_patch_begin:
+    .incbin "@STARFOX_RETAIL_USA_V11_PATCH@"
+starfox_retail_usa_v11_patch_end:
+
+    .globl starfox_retail_europe_v10_patch_begin
+    .globl starfox_retail_europe_v10_patch_end
+starfox_retail_europe_v10_patch_begin:
+    .incbin "@STARFOX_RETAIL_EUROPE_V10_PATCH@"
+starfox_retail_europe_v10_patch_end:
+
+    .globl starfox_retail_europe_v11_patch_begin
+    .globl starfox_retail_europe_v11_patch_end
+starfox_retail_europe_v11_patch_begin:
+    .incbin "@STARFOX_RETAIL_EUROPE_V11_PATCH@"
+starfox_retail_europe_v11_patch_end:
+
+    .globl starfox_retail_germany_v10_patch_begin
+    .globl starfox_retail_germany_v10_patch_end
+starfox_retail_germany_v10_patch_begin:
+    .incbin "@STARFOX_RETAIL_GERMANY_V10_PATCH@"
+starfox_retail_germany_v10_patch_end:
+
+    .section .note.GNU-stack,"",%progbits
