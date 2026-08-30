@@ -228,13 +228,22 @@ int main() {
             "zero-geometry controller header was rejected as an invalid model");
 
     starfox::render::Framebuffer framebuffer{224, 192};
+    starfox::render::SurfaceBuffer surfaces{224, 192};
     starfox::render::SoftwareRenderer renderer{{180.0, false, 0}};
-    renderer.draw(shape, {}, framebuffer);
+    renderer.draw(shape, {}, framebuffer, true, &surfaces);
     std::size_t coloured_pixels = 0;
-    for (const auto pixel : framebuffer.pixels()) {
-        coloured_pixels += pixel != 0;
+    std::size_t surface_pixels = 0;
+    for (std::uint32_t y = 0U; y < framebuffer.height(); ++y) {
+        for (std::uint32_t x = 0U; x < framebuffer.width(); ++x) {
+            coloured_pixels += framebuffer.get(x, y) != 0U;
+            const auto& surface = surfaces.get(x, y);
+            surface_pixels += surface.valid
+                && surface.palette_index == framebuffer.get(x, y);
+        }
     }
     require(coloured_pixels > 50, "decoded shape did not render a visible polygon");
+    require(surface_pixels == coloured_pixels,
+            "rendered polygon did not retain per-pixel surface metadata");
     starfox::render::Framebuffer wireframe{224, 192};
     starfox::render::RenderPose wireframe_pose;
     wireframe_pose.wireframe_mode = 1U;

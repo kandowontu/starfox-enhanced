@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <functional>
+#include <numeric>
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
@@ -635,7 +636,9 @@ void fill_source_polygon(
     const std::vector<RasterVertex>& polygon,
     FaceColour colour,
     std::uint8_t colour_index_base,
-    const RenderPose& pose) {
+    const RenderPose& pose,
+    SurfaceBuffer* surfaces,
+    const SurfaceSample& surface) {
     if (polygon.size() < 3U) return;
     struct Point {
         std::int32_t x{};
@@ -769,9 +772,13 @@ void fill_source_polygon(
         const auto x2 = integer_x(right.x);
         if (x2 >= x1) {
             const auto plot = [&](std::int32_t x, std::int32_t plot_y) {
-                target.set(x, plot_y, static_cast<std::uint8_t>(colour_index_base
+                const auto palette_index = static_cast<std::uint8_t>(colour_index_base
                     + (colour.dither && ((x ^ plot_y) & 1) != 0
-                        ? colour.odd : colour.even)));
+                        ? colour.odd : colour.even));
+                target.set(x, plot_y, palette_index);
+                if (surfaces != nullptr) {
+                    surfaces->set(x, plot_y, surface, palette_index);
+                }
             };
             // Wobble mode 2 selects hlines22: its span loop deliberately has
             // PLOT commented out. On continuing right-edge segments the
@@ -833,7 +840,9 @@ void fill_source_textured_polygon(
     const assets::TextureImage& texture,
     std::int32_t texture_scroll_x,
     std::int32_t texture_scroll_y,
-    std::uint8_t colour_index_base) {
+    std::uint8_t colour_index_base,
+    SurfaceBuffer* surfaces,
+    const SurfaceSample& surface) {
     if (polygon.size() < 3U) return;
     struct Point {
         std::int32_t x{};
@@ -984,8 +993,12 @@ void fill_source_textured_polygon(
                     static_cast<std::size_t>(sample_v) * width
                     + static_cast<std::size_t>(sample_u)];
                 if (texel != 0U) {
-                    target.set(x, y, static_cast<std::uint8_t>(
-                        colour_index_base + texel));
+                    const auto palette_index = static_cast<std::uint8_t>(
+                        colour_index_base + texel);
+                    target.set(x, y, palette_index);
+                    if (surfaces != nullptr) {
+                        surfaces->set(x, y, surface, palette_index);
+                    }
                 }
                 u = starfox::simulation::add16(u, u_increment);
                 v = starfox::simulation::add16(v, v_increment);
@@ -1360,9 +1373,11 @@ void SoftwareRenderer::draw(
     const assets::Shape& shape,
     const RenderPose& pose,
     Framebuffer& target,
-    bool clear_target) const {
+    bool clear_target,
+    SurfaceBuffer* surfaces) const {
     if (clear_target) {
         target.clear(settings_.background_colour);
+        if (surfaces != nullptr) surfaces->clear();
     }
     if (pose.simple_scaled_sprite) {
         const auto* texture = texture_for_colour(
@@ -1615,6 +1630,32 @@ void SoftwareRenderer::draw(
             continue;
         }
 
+        auto surface = SurfaceSample{};
+        if (surfaces != nullptr) {
+            auto normal_pose = pose;
+            normal_pose.x = 0.0;
+            normal_pose.y = 0.0;
+            normal_pose.z = 0.0;
+            normal_pose.scale = 1.0;
+            const auto transformed_normal = rotate(face.normal, normal_pose, 0U);
+            const auto normal_length = std::sqrt(
+                transformed_normal.x * transformed_normal.x
+                + transformed_normal.y * transformed_normal.y
+                + transformed_normal.z * transformed_normal.z);
+            if (normal_length > 0.0001) {
+                surface.normal_x = static_cast<float>(
+                    transformed_normal.x / normal_length);
+                surface.normal_y = static_cast<float>(
+                    transformed_normal.y / normal_length);
+                surface.normal_z = static_cast<float>(
+                    transformed_normal.z / normal_length);
+            }
+            surface.depth = static_cast<float>(std::accumulate(
+                camera_polygon.begin(), camera_polygon.end(), 0.0,
+                [](double total, const Vec3& point) { return total + point.z; })
+                / static_cast<double>(camera_polygon.size()));
+        }
+
         if (any_behind && material.texture != nullptr) {
             // MOBJ.MC explicitly declines to 3D-clip texture maps.
             continue;
@@ -1675,11 +1716,11 @@ void SoftwareRenderer::draw(
         if (raster_polygon.size() < 3U) continue;
         if (material.texture == nullptr) {
             fill_source_polygon(target, raster_polygon, material.colour,
-                settings_.colour_index_base, pose);
+                settings_.colour_index_base, pose, surfaces, surface);
         } else {
             fill_source_textured_polygon(target, raster_polygon,
                 *material.texture, pose.texture_scroll_x, pose.texture_scroll_y,
-                settings_.colour_index_base);
+                settings_.colour_index_base, surfaces, surface);
         }
     }
 }

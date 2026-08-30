@@ -60,7 +60,8 @@ GameSimulation::GameSimulation(
     const assets::RomImage& rom,
     const assets::SymbolMap& symbols,
     const std::string& initial_map,
-    std::span<const std::uint8_t> cartridge_ram)
+    std::span<const std::uint8_t> cartridge_ram,
+    bool source_initialize_direct_map)
     : rom_(&rom),
       symbols_(&symbols),
       objects_(native_object_capacity(symbols), native_object_layout(symbols)),
@@ -96,6 +97,7 @@ GameSimulation::GameSimulation(
       stay_black_(ram_symbol("STAYBLACK")),
       background_music_count_(ram_symbol("BGMCNT")),
       background_music_command_(ram_symbol("BGM_MUSIC")),
+      fade_to_red_(ram_symbol("FADETORED")),
       background_flags_(ram_symbol("BGFLAGS")),
       calculate_background_scroll_(rom_symbol("CALCBGSCROLL_L")),
       calculate_background_vertical_offsets_(rom_symbol("CALCBG2VOFFSETS_L")),
@@ -330,6 +332,34 @@ GameSimulation::GameSimulation(
         }
         return std::uint32_t{};
     };
+    end_game_sequence_ = find_optional_rom("END_GAME_SEQ");
+    ending_transfer_ = find_optional_rom("TRANSFER_L");
+    ending_end_transfer_ = find_optional_rom("ENDTRANS");
+    credits_entry_ = find_optional_rom("CREDSTUFF");
+    final_total_score_ = find_optional_rom("MAKETOTALSCORE2");
+    credits_music_original_ = find_optional_rom("DO_BGM_STAFF");
+    credits_music_ex_ = find_optional_rom("DO_BGM_SP0RCH");
+    if (credits_entry_ == 0U && end_game_sequence_ != 0U) {
+        // Retail MAIN.ASM does not export a CREDSTUFF label. Its equivalent
+        // boundary is the instruction immediately following JSL ENDSEQ_L:
+        // score and boss roll are complete there, while credits setup has not
+        // started yet. Resolve the call site from assembled code so revision
+        // layout differences do not require a hard-coded PC.
+        const auto end_sequence = find_optional_rom("ENDSEQ_L");
+        for (std::uint32_t offset = 0U;
+             end_sequence != 0U && offset < 0x400U; ++offset) {
+            const auto address = end_game_sequence_ + offset;
+            if (rom_->read8(address) != 0x22U) continue;
+            const auto target = static_cast<std::uint32_t>(
+                rom_->read8(address + 1U))
+                | (static_cast<std::uint32_t>(rom_->read8(address + 2U)) << 8U)
+                | (static_cast<std::uint32_t>(rom_->read8(address + 3U)) << 16U);
+            if (target == end_sequence) {
+                credits_entry_ = address + 4U;
+                break;
+            }
+        }
+    }
     if (find_optional_rom("PLANETSEQ2_L") != 0U) {
         starfox_ex_cartridge_ = true;
         planet_count_ = 31U;
@@ -337,6 +367,14 @@ GameSimulation::GameSimulation(
         map2_flag_ = find_optional_ram("MAP2");
         actual_route_ = find_optional_ram("ACTUALROUTE");
         ex_foxy_continue_ = find_optional_rom("FOXY_CONTINUE_L");
+        const auto ex_title_intro = find_optional_rom("BG_TITLEI");
+        const auto ex_background_lists = find_optional_rom("BGLISTS");
+        if (ex_title_intro != 0U && ex_background_lists != 0U
+            && (ex_title_intro & 0xff0000U)
+                == (ex_background_lists & 0xff0000U)) {
+            ex_title_intro_background_ = static_cast<std::uint16_t>(
+                ex_title_intro - ex_background_lists);
+        }
         ex_foxy_self_ = find_optional_rom("SELF");
         ex_randomize_background_ = find_optional_rom("RANDOMIZEBG");
         ex_restart_ = find_optional_rom("RESTART");
@@ -486,6 +524,7 @@ GameSimulation::GameSimulation(
         ex_target_percentage_ = find_optional_ram("CLA2");
         ex_results_exit_ = find_optional_ram("CLB2");
         ex_machine_type_ = find_optional_ram("MACHINETYPE");
+        ex_do_palette_stuff_ = find_optional_rom("DOPALSTUFF_L");
         friends_messages_2_ = find_optional_rom("FRIENDS_MESSAGES2_L");
         friends_message_2_ = find_optional_ram("FRIENDS_MSG2");
         message_count_1_2_ = find_optional_ram("MSG_COUNT12");
@@ -779,10 +818,22 @@ GameSimulation::GameSimulation(
         || initial_upper == "PLANETSELECT"
         || initial_upper == "TITLEMAP"
         || initial_upper == "INTROMAP"
-        || initial_upper == "CONTMAP";
+        || initial_upper == "CONTMAP"
+        || initial_upper == "CONTINUE"
+        || initial_upper == "CREDITSMAP";
     if (!native_flow_entry) {
-        start_map(initial_map);
-        configure_route_for_map(initial_map);
+        if (source_initialize_direct_map) {
+            // Development CLI entry is still a real level launch. Use the
+            // cartridge initializer so the 3D viewport/background mode and
+            // stage audio pipeline are established exactly as they are after
+            // planet selection. The lower-level constructor mode remains
+            // available to deterministic VM diagnostics.
+            configure_route_for_map(initial_map);
+            initialize_native_map(rom_symbol(initial_map));
+        } else {
+            start_map(initial_map);
+            configure_route_for_map(initial_map);
+        }
     }
     // INITGAME_L clears this after installing the player and level maps. The
     // constructor performs those same steps separately so its MAPP bytecode
@@ -814,6 +865,12 @@ GameSimulation::GameSimulation(
         enter_title();
     } else if (initial_upper == "CONTMAP") {
         enter_controls(GameFlowState::controls_type);
+    } else if (initial_upper == "CONTINUE") {
+        // Deterministic diagnostic entry used by the native renderer smoke
+        // tests; ordinary play still reaches this through GAME OVER.
+        enter_continue_screen();
+    } else if (initial_upper == "CREDITSMAP") {
+        enter_credits();
     }
 }
 
@@ -880,6 +937,11 @@ void GameSimulation::enter_pregame_menu() {
     pregame_page_ = PregamePage::main;
     god_mode_ = false;
     show_fps_ = false;
+    anti_aliasing_mode_ = AntiAliasingMode::off;
+    enhanced_graphics_ = false;
+    smooth_polys_ = false;
+    rtx_lighting_ = false;
+    vsync_ = false;
     crosshair_colour_ = CrosshairColour::green;
     armed_god_nukes_.clear();
     flow_ticks_ = 0U;
@@ -911,7 +973,7 @@ GameTickResult GameSimulation::tick_pregame_menu(
 
     const auto previous_selection = pregame_selection_;
     const auto selection_count = pregame_page_ == PregamePage::main
-        ? std::uint8_t{7U} : std::uint8_t{5U};
+        ? std::uint8_t{12U} : std::uint8_t{5U};
     if ((input.pressed & starfox::input::up) != 0U) {
         pregame_selection_ = static_cast<std::uint8_t>(
             (pregame_selection_ + selection_count - 1U) % selection_count);
@@ -928,7 +990,7 @@ GameTickResult GameSimulation::tick_pregame_menu(
                     | starfox::input::select)) != 0U);
         if (go_back) {
             pregame_page_ = PregamePage::main;
-            pregame_selection_ = 5U;
+            pregame_selection_ = 10U;
             queue_sound_effect(0x11U);
         } else if (pregame_selection_ == 0U
                    && (input.pressed & (starfox::input::left
@@ -1029,7 +1091,33 @@ GameTickResult GameSimulation::tick_pregame_menu(
         queue_sound_effect(0x11U);
     }
 
-    const auto open_options = pregame_selection_ == 5U
+    const auto toggle_render_option =
+        (input.pressed & (starfox::input::left | starfox::input::right
+            | starfox::input::select | starfox::input::a
+            | starfox::input::b)) != 0U;
+    if (toggle_render_option && pregame_selection_ >= 4U
+        && pregame_selection_ <= 8U) {
+        switch (pregame_selection_) {
+        case 4U: {
+            auto mode = static_cast<std::uint8_t>(anti_aliasing_mode_);
+            if ((input.pressed & starfox::input::left) != 0U) {
+                mode = static_cast<std::uint8_t>((mode + 3U) % 4U);
+            } else {
+                mode = static_cast<std::uint8_t>((mode + 1U) % 4U);
+            }
+            anti_aliasing_mode_ = static_cast<AntiAliasingMode>(mode);
+            break;
+        }
+        case 5U: enhanced_graphics_ = !enhanced_graphics_; break;
+        case 6U: smooth_polys_ = !smooth_polys_; break;
+        case 7U: rtx_lighting_ = !rtx_lighting_; break;
+        case 8U: vsync_ = !vsync_; break;
+        default: break;
+        }
+        queue_sound_effect(0x11U);
+    }
+
+    const auto open_options = pregame_selection_ == 10U
         && (input.pressed & (starfox::input::a | starfox::input::b)) != 0U;
     if (open_options) {
         pregame_page_ = PregamePage::options;
@@ -1040,7 +1128,7 @@ GameTickResult GameSimulation::tick_pregame_menu(
     }
 
     const auto start_pressed = (input.pressed & starfox::input::start) != 0U;
-    const auto confirm_start = pregame_selection_ == 6U
+    const auto confirm_start = pregame_selection_ == 11U
         && (input.pressed & (starfox::input::a | starfox::input::b)) != 0U;
     if (start_pressed || confirm_start) {
         queue_sound_effect(0x10U);
@@ -1715,6 +1803,23 @@ std::uint8_t GameSimulation::required_video_phases() const noexcept {
         && flow_state_ != GameFlowState::game_over) {
         return 3U;
     }
+    const auto communication_active =
+        map_.read_native_byte(message_count_1_) != 0U
+        || map_.read_native_byte(message_count_2_) != 0U
+        || (friends_message_2_ != 0U
+            && (map_.read_native_byte(message_count_1_2_) != 0U
+                || map_.read_native_byte(message_count_2_2_) != 0U));
+    if (flow_state_ == GameFlowState::gameplay
+        && communication_active && boss_music_before_death_.has_value()
+        && (post_boss_dialogue_active_
+            || map_.read_native_byte(boss_max_health_) == 0U)) {
+        // SEND_MESSAGE gives post-boss chatter exactly 50 source updates.
+        // At this point the boss has left the draw list and the cartridge is
+        // back at its 20 Hz ceiling. Counting the lingering debris handles as
+        // live Super FX pressure stretched those 50 updates well past the
+        // original 2.5 seconds in ORIGINAL SPEED mode.
+        return 3U;
+    }
     // NTSC capture of the 10.7 MHz cartridge launch falls between six and
     // seven video phases per completed source update while the tunnel and
     // four Arwings are submitted. The earlier constant seven came from PAL
@@ -1849,6 +1954,8 @@ std::uint32_t GameSimulation::resolve_route_stage(std::uint16_t remaining_stage)
 
 void GameSimulation::initialize_native_map(std::uint32_t address) {
     paused_ = false;
+    boss_music_before_death_.reset();
+    post_boss_dialogue_active_ = false;
     circle_effect_ = {};
     // INITGAME3D_L normally follows the complete cartridge teardown, which
     // clears the colour-window program. Host scene changes call the native
@@ -1862,6 +1969,11 @@ void GameSimulation::initialize_native_map(std::uint32_t address) {
     // INITGAME3D_L resets M_PARTICLERAND to $1234 for every map. The native
     // Super FX draw list is host-translated, so reset its host pool here too.
     particles_.reset();
+    // Communication counters and the submitted Super FX bitmap are owned by
+    // the outgoing map. INITGAME does not consistently clear EX's second
+    // channel, so an intro/training portrait could otherwise remain burned
+    // into BG1 after the flow had moved to controls, title, or gameplay.
+    clear_communications();
     map_.write_native_word(ram_symbol("MAPPTR"),
         static_cast<std::uint16_t>(address & 0x7fffU));
     map_.write_native_byte(ram_symbol("MAPBANK"),
@@ -1873,6 +1985,30 @@ void GameSimulation::initialize_native_map(std::uint32_t address) {
     refresh_player_reference();
     draw_order_ = objects_.active_handles();
     ++scene_revision_;
+}
+
+void GameSimulation::clear_communications() {
+    map_.write_native_word(friends_message_, 0U);
+    map_.write_native_byte(message_count_1_, 0U);
+    map_.write_native_byte(message_count_2_, 0U);
+    map_.write_native_byte(which_friend_, 0U);
+    map_.write_native_word(face_pointer_, 0U);
+    if (starfox_ex_cartridge_) {
+        map_.write_native_word(friends_message_2_, 0U);
+        map_.write_native_byte(message_count_1_2_, 0U);
+        map_.write_native_byte(message_count_2_2_, 0U);
+        map_.write_native_byte(which_friend_2_, 0U);
+    }
+
+    // M_CLRBITMAPS is deliberately optional during some front-end maps. Force
+    // one transition clear, submit it through the normal FOXIRQ path, then
+    // restore the cartridge's policy for subsequent source frames.
+    const auto clear_bitmaps = ram_symbol("M_CLRBITMAPS");
+    const auto previous = map_.read_native_word(clear_bitmaps);
+    map_.write_native_word(clear_bitmaps, 1U);
+    map_.begin_superfx_bitmap_frame();
+    map_.submit_superfx_bitmap();
+    map_.write_native_word(clear_bitmaps, previous);
 }
 
 void GameSimulation::enter_game_over() {
@@ -1888,6 +2024,10 @@ void GameSimulation::enter_game_over() {
     registers.status = 0x24U;
     map_.call_native_routine(
         game_over_background_, registers, 50'000'000, true);
+    // The death sequence arrives here at brightness zero. MAIN presents the
+    // GAME/OVER map immediately; the host does not execute its surrounding
+    // raster fade loop, so reveal the initialized scene explicitly.
+    map_.set_display_brightness(15U);
     map_.write_native_word(level_finished_, 0U);
     draw_order_ = objects_.active_handles();
     flow_ticks_ = 0U;
@@ -1910,6 +2050,26 @@ void GameSimulation::enter_continue_screen() {
     map_.write_native_byte(foxy_option_, 0U);
     map_.write_native_byte(foxy_frame_, 0U);
     map_.write_native_byte(foxy_foot_, 0U);
+    // CONTINUE.ASM restores NUMLIVES both when the screen opens and when YES
+    // is accepted. The shared host reconstruction must do the same for retail
+    // and EX rather than carrying the zero that triggered game over.
+    // LIVES includes the currently active Arwing. SPRITES.ASM displays
+    // LIVES-1, so the source's NUMLIVES value of four is the visible x3 the
+    // player receives after continuing.
+    map_.write_native_byte(lives_, 4U);
+    if (starfox_ex_cartridge_) {
+        for (const auto* reserve : {
+                 "LIVESTWO", "LIVESTHREE", "LIVESFOUR", "LIVESFIVE"}) {
+            map_.write_native_byte(ram_symbol(reserve), 4U);
+        }
+    }
+
+    if (starfox_ex_cartridge_ && ex_do_palette_stuff_ != 0U) {
+        Wdc65816Registers palette_registers;
+        palette_registers.status = 0x24U;
+        map_.call_native_routine(
+            ex_do_palette_stuff_, palette_registers, 5'000'000, true);
+    }
 
     auto background_characters =
         assets::decrunch_reverse(*rom_, bg_fox_characters_).bytes;
@@ -1942,6 +2102,16 @@ void GameSimulation::enter_continue_screen() {
     }
     map_.write_cgram(0U, palette);
 
+    // BGFOXPAC supplies the 2D Continue artwork, then SETPAL 1 replaces the
+    // dedicated 3D palette row used by the interactive Arwing. Without this
+    // second source step the model inherited Fox/background hues (purple in
+    // the retail pack) even after its projection was corrected.
+    Wdc65816Registers model_palette_registers;
+    model_palette_registers.a = 1U;
+    model_palette_registers.status = 0x24U;
+    map_.call_native_routine(rom_symbol("SETPAL_L"),
+        model_palette_registers, 5'000'000, true);
+
     Wdc65816Registers registers;
     registers.status = 0x24U;
     map_.call_native_routine(set_charmap_fox_, registers, 5'000'000, true);
@@ -1959,13 +2129,30 @@ void GameSimulation::enter_continue_screen() {
     }
 
     objects_.reset();
-    const auto demo = objects_.allocate_after();
-    auto& object = objects_.at(demo);
-    object.shape = static_cast<std::uint16_t>(fox_shape_);
-    object.world_z = 350;
-    object.rotation_y = 4U;
-    player_ = demo;
-    draw_order_ = {demo};
+    // The Continue Arwing itself is drawn by MSHOWOBJ3 below. Keep one
+    // non-presented host slot alive, however: INITGAME_L uses the existing
+    // player handle as its bridge while rebuilding EX's stage checkpoint.
+    // Clearing the pool and leaving player_ at zero allowed the route fade
+    // to finish but produced gameplay with no active player afterward.
+    const auto player_seed = objects_.allocate_after();
+    auto& seed = objects_.at(player_seed);
+    seed.shape = static_cast<std::uint16_t>(fox_shape_);
+    seed.world_z = 350;
+    player_ = player_seed;
+    draw_order_.clear();
+    continue_rotation_velocity_x_ = 0U;
+    continue_rotation_velocity_y_ = 4U;
+    continue_rotation_velocity_z_ = 0U;
+    continue_rotation_x_ = 0U;
+    continue_rotation_y_ = 0U;
+    continue_rotation_z_ = 0U;
+    continue_model_z_ = 350;
+    map_.write_native_word(ram_symbol("M_BIGZ"),
+        static_cast<std::uint16_t>(continue_model_z_));
+    map_.set_native_model_draw({true,
+        static_cast<std::uint16_t>(fox_shape_), 0, 0, continue_model_z_,
+        continue_rotation_x_, continue_rotation_y_, continue_rotation_z_,
+        112, 96, 0, 0});
     update_continue_sprites();
     registers = {};
     registers.status = 0x24U;
@@ -2187,13 +2374,46 @@ GameTickResult GameSimulation::tick_continue_screen(const input::TickInput& inpu
     if ((input.pressed & starfox::input::up) != 0U) option = 0U;
     if ((input.pressed & starfox::input::down) != 0U) option = 1U;
     map_.write_native_byte(foxy_option_, option == 0U ? 0U : 0xffU);
-    if (objects_.is_active(player_)) {
-        auto& object = objects_.at(player_);
-        if ((input.held & starfox::input::left) != 0U) ++object.rotation_y;
-        if ((input.held & starfox::input::right) != 0U) --object.rotation_y;
-        if ((input.held & starfox::input::up) != 0U) ++object.rotation_x;
-        if ((input.held & starfox::input::down) != 0U) --object.rotation_x;
+    // CONTINUE.ASM changes angular velocity with the D-pad, then advances
+    // M_ROTX/Y/Z every source frame. Its Arwing is submitted through the
+    // dedicated MSHOWOBJ3 projection, not through the gameplay draw list.
+    if ((input.held & starfox::input::left) != 0U) {
+        ++continue_rotation_velocity_y_;
     }
+    if ((input.held & starfox::input::right) != 0U) {
+        --continue_rotation_velocity_y_;
+    }
+    if ((input.held & starfox::input::up) != 0U) {
+        ++continue_rotation_velocity_x_;
+    }
+    if ((input.held & starfox::input::down) != 0U) {
+        --continue_rotation_velocity_x_;
+    }
+    if ((input.pressed & starfox::input::x) != 0U) {
+        continue_rotation_velocity_x_ = 0U;
+        continue_rotation_velocity_y_ = 0U;
+        continue_rotation_velocity_z_ = 0U;
+    }
+    if ((input.held & starfox::input::left_shoulder) != 0U
+        && continue_model_z_ >= 170) {
+        continue_model_z_ = static_cast<std::int16_t>(continue_model_z_ - 20);
+    }
+    if ((input.held & starfox::input::right_shoulder) != 0U
+        && continue_model_z_ <= 960) {
+        continue_model_z_ = static_cast<std::int16_t>(continue_model_z_ + 20);
+    }
+    continue_rotation_x_ = static_cast<std::uint8_t>(
+        continue_rotation_x_ + continue_rotation_velocity_x_);
+    continue_rotation_y_ = static_cast<std::uint8_t>(
+        continue_rotation_y_ + continue_rotation_velocity_y_);
+    continue_rotation_z_ = static_cast<std::uint8_t>(
+        continue_rotation_z_ + continue_rotation_velocity_z_);
+    map_.write_native_word(ram_symbol("M_BIGZ"),
+        static_cast<std::uint16_t>(continue_model_z_));
+    map_.set_native_model_draw({true,
+        static_cast<std::uint16_t>(fox_shape_), 0, 0, continue_model_z_,
+        continue_rotation_x_, continue_rotation_y_, continue_rotation_z_,
+        112, 96, 0, 0});
     update_continue_sprites();
     if ((input.pressed & (starfox::input::a | starfox::input::b
             | starfox::input::start)) != 0U) {
@@ -2207,17 +2427,125 @@ GameTickResult GameSimulation::tick_continue_screen(const input::TickInput& inpu
 }
 
 void GameSimulation::continue_current_stage() {
+    map_.write_native_byte(lives_, 4U);
+    if (starfox_ex_cartridge_) {
+        for (const auto* reserve : {
+                 "LIVESTWO", "LIVESTHREE", "LIVESFOUR", "LIVESFIVE"}) {
+            map_.write_native_byte(ram_symbol(reserve), 4U);
+        }
+    }
     const auto map_address = selected_route_stage(map_.read_native_word(stage_));
     enter_planet_map(false, map_address);
 }
 
 void GameSimulation::enter_credits() {
     paused_ = false;
+    ending_task_active_ = false;
+    ending_final_score_ = false;
+    pending_end_game_ = false;
+    credits_complete_ = false;
+    const auto credits_music = map_.read_native_byte(which_route_) >= 4U
+        && credits_music_ex_ != 0U
+        ? credits_music_ex_ : credits_music_original_;
+    if (credits_music != 0U) {
+        Wdc65816Registers music_registers;
+        music_registers.status = 0x24U;
+        map_.call_native_routine(
+            credits_music, music_registers, 50'000'000U, true);
+    }
     initialize_native_map(credits_map_);
     map_.write_native_word(meters_enabled_, 0U);
     map_.write_native_word(level_finished_, 0U);
     flow_ticks_ = 0U;
     flow_state_ = GameFlowState::credits;
+}
+
+void GameSimulation::begin_end_game_sequence() {
+    pending_end_game_ = false;
+    paused_ = false;
+    clear_communications();
+    map_.write_native_word(meters_enabled_, 0U);
+    flow_ticks_ = 0U;
+    flow_state_ = GameFlowState::credits;
+    credits_complete_ = false;
+    ending_final_score_ = false;
+    ++scene_revision_;
+
+    if (end_game_sequence_ == 0U || ending_transfer_ == 0U
+        || ending_end_transfer_ == 0U) {
+        // Older symbol packs can omit private MAIN/ENDSEQ labels. Preserve a
+        // playable ending rather than trapping the completed level.
+        enter_credits();
+        return;
+    }
+
+    ending_registers_ = {};
+    ending_registers_.status = 0x24U;
+    const std::array stops{ending_transfer_, ending_end_transfer_,
+        credits_entry_ != 0U ? credits_entry_ : ending_transfer_};
+    const auto task = map_.begin_native_near_task(end_game_sequence_,
+        ending_registers_, stops, 50'000'000U, true);
+    if ((credits_entry_ != 0U && task.stop_address == credits_entry_)
+        || task.returned) {
+        enter_credits();
+        return;
+    }
+    ending_task_active_ = true;
+    refresh_player_reference();
+    draw_order_ = objects_.active_handles();
+}
+
+GameTickResult GameSimulation::tick_end_game_sequence(
+    const input::TickInput& input) {
+    constexpr std::uint32_t spc_clocks_per_tick = 1'024'000U / 20U;
+    write_input(input);
+    GameTickResult result;
+    for (std::size_t phase = 0; phase < current_tick_video_phases_; ++phase) {
+        map_.set_apu_clock_offset(static_cast<std::uint32_t>(
+            phase * spc_clocks_per_tick / current_tick_video_phases_));
+        service_audio_irq(result.sound_effect_commands);
+    }
+
+    const std::array stops{ending_transfer_, ending_end_transfer_,
+        credits_entry_ != 0U ? credits_entry_ : ending_transfer_};
+    const auto task = map_.resume_native_task(ending_registers_, stops,
+        50'000'000U, true, true);
+    result.prelude_instructions += task.instructions;
+    const auto native_map =
+        (static_cast<std::uint32_t>(map_.read_native_byte(ram_symbol("MAPBANK")))
+            << 16U)
+        | 0x8000U
+        | (map_.read_native_word(ram_symbol("MAPPTR")) & 0x7fffU);
+    const auto reached_credits = !ending_final_score_
+        && ((credits_entry_ != 0U && task.stop_address == credits_entry_)
+            || (credits_entry_ == 0U && native_map == credits_map_));
+    if (reached_credits || (task.returned && !ending_final_score_)) {
+        ending_task_active_ = false;
+        enter_credits();
+        result.audio_port_writes = map_.take_apu_port_writes();
+        return result;
+    }
+
+    // END_GAME_SEQ and ENDSEQ_L build their object lists inside native
+    // TRANSFER/ENDTRANS loops. Import those exact objects at each source-frame
+    // yield, then rebuild only the host presentation metadata they replace.
+    refresh_player_reference();
+    calculate_view();
+    draw_order_ = objects_.active_handles();
+    auto palette = std::array<std::uint16_t, 8U * 16U>{};
+    for (std::size_t index = 0; index < palette.size(); ++index) {
+        palette[index] = map_.read_native_word(
+            ppu_palette_ + static_cast<std::uint32_t>(index * 2U));
+    }
+    map_.write_cgram(0U, palette);
+    map_.upload_oam(sprite_block_, 544U);
+    if (task.returned && ending_final_score_) {
+        ending_task_active_ = false;
+        ending_final_score_ = false;
+        flow_state_ = GameFlowState::finished;
+    }
+    result.audio_port_writes = map_.take_apu_port_writes();
+    return result;
 }
 
 void GameSimulation::update_control_screen_sprites() {
@@ -2473,7 +2801,8 @@ void GameSimulation::update_planet_ship_sprite() {
 }
 
 void GameSimulation::enter_planet_map(
-    bool selecting_route, std::uint32_t pending_map) {
+    bool selecting_route, std::uint32_t pending_map,
+    bool wait_for_arrival_confirmation) {
     paused_ = false;
     circle_effect_ = {};
     if (!route_display_order_) {
@@ -2486,6 +2815,7 @@ void GameSimulation::enter_planet_map(
     }
     pending_map_ = pending_map;
     planet_travel_complete_ = false;
+    planet_arrival_confirmation_required_ = wait_for_arrival_confirmation;
     planet_route_blink_frames_ = 0U;
     planet_route_lines_visible_ = false;
     briefing_started_ = false;
@@ -2774,6 +3104,7 @@ void GameSimulation::begin_planet_selection_sequence() {
     request_music(0xf1U);
     queue_sound_effect(0x10U);
     map_.write_native_byte(flash_ship_, 1U);
+    planet_arrival_confirmation_required_ = false;
     flow_state_ = GameFlowState::planet_travel;
     frontend_phase_ = FrontendPhase::planet_confirm_hold;
     frontend_frames_ = 0U;
@@ -3109,7 +3440,10 @@ GameTickResult GameSimulation::tick_planet_map(const input::TickInput& input) {
             begin_planet_selection_sequence();
         }
     } else if (frontend_phase_ == FrontendPhase::planet_route) {
-        if (planet_travel_complete_ || flow_ticks_ >= 240U) {
+        const auto arrived = planet_travel_complete_ || flow_ticks_ >= 240U;
+        const auto confirmed = !planet_arrival_confirmation_required_
+            || (input.pressed & starfox::input::a) != 0U;
+        if (arrived && confirmed) {
             begin_planet_selection_sequence();
         }
     } else if (frontend_phase_ == FrontendPhase::planet_briefing) {
@@ -3143,14 +3477,49 @@ void GameSimulation::service_level_exit() {
         return;
     }
     if (flow_state_ == GameFlowState::credits) {
-        if (exit == 8U) flow_state_ = GameFlowState::finished;
+        if (exit == 8U) {
+            // CREDITS.ASM intentionally continues presenting its completed
+            // THE END composition. Freezing GameSimulation here stopped its
+            // paths, prevented EX's final score overlay, and ignored the
+            // source's post-credits input loop.
+            map_.write_native_word(level_finished_, 0U);
+            if (starfox_ex_cartridge_) {
+                credits_complete_ = true;
+            } else if (final_total_score_ != 0U
+                && ending_transfer_ != 0U) {
+                // Retail MAIN.ASM follows CREDITSMAP with MAKETOTALSCORE2,
+                // then holds that final composition forever. Run the native
+                // routine as a resumable transfer task so its aggregate score
+                // is actually shown instead of leaving the credits flyby up.
+                ending_registers_ = {};
+                ending_registers_.status = 0x24U;
+                const std::array stops{ending_transfer_,
+                    ending_end_transfer_ != 0U
+                        ? ending_end_transfer_ : ending_transfer_,
+                    ending_transfer_};
+                const auto task = map_.begin_native_near_task(
+                    final_total_score_, ending_registers_, stops,
+                    50'000'000U, true);
+                ending_final_score_ = true;
+                if (task.returned) {
+                    ending_final_score_ = false;
+                    flow_state_ = GameFlowState::finished;
+                } else {
+                    ending_task_active_ = true;
+                }
+                refresh_player_reference();
+                draw_order_ = objects_.active_handles();
+            } else {
+                flow_state_ = GameFlowState::finished;
+            }
+        }
         return;
     }
     if (exit == 10U) {
         enter_game_over();
         return;
     }
-    if (exit == 6U || exit == 9U) {
+    if (exit == 9U) {
         enter_credits();
         return;
     }
@@ -3158,7 +3527,8 @@ void GameSimulation::service_level_exit() {
         flow_state_ = GameFlowState::finished;
         return;
     }
-    // MAIN.ASM increments STAGE before normal and special route exits.
+    pending_end_game_ = exit == 6U;
+    // MAIN.ASM increments STAGE before normal, special and final route exits.
     const auto next_stage = static_cast<std::uint16_t>(
         map_.read_native_word(stage_) + 1U);
     map_.write_native_word(stage_, next_stage);
@@ -3177,7 +3547,7 @@ void GameSimulation::service_level_exit() {
         map_.write_native_word(percentage_pointer_,
             static_cast<std::uint16_t>(pointer + 1U));
         const auto next_map = selected_route_stage(next_stage);
-        enter_planet_map(false, next_map);
+        enter_planet_map(false, next_map, true);
         return;
     }
 
@@ -3232,8 +3602,12 @@ void GameSimulation::service_level_exit() {
         if (task.returned) {
             ex_results_recorded_ = true;
             map_.write_native_word(level_finished_, 0U);
-            map_.start_display_fade(-1);
-            frontend_phase_ = FrontendPhase::stage_results_fade_to_map;
+            if (pending_end_game_) {
+                begin_end_game_sequence();
+            } else {
+                map_.start_display_fade(-1);
+                frontend_phase_ = FrontendPhase::stage_results_fade_to_map;
+            }
         }
         return;
     }
@@ -3251,6 +3625,14 @@ GameTickResult GameSimulation::tick_stage_results(const input::TickInput& input)
         service_audio_irq(result.sound_effect_commands);
     }
     ++flow_ticks_;
+    if (pending_end_game_ && !starfox_ex_cartridge_) {
+        // Retail's final END_LEVEL_SEQ only stores the last percentage and
+        // immediately falls into END_GAME_SEQ; it has no ordinary per-stage
+        // tally hold here.
+        finish_stage_results();
+        result.audio_port_writes = map_.take_apu_port_writes();
+        return result;
+    }
     if (frontend_phase_ == FrontendPhase::stage_results_fade_to_map) {
         if (map_.fade_direction() == 0 && map_.display_brightness() == 0U) {
             finish_stage_results();
@@ -3274,11 +3656,15 @@ GameTickResult GameSimulation::tick_stage_results(const input::TickInput& input)
             ex_results_task_active_ = false;
             ex_results_recorded_ = true;
             map_.write_native_word(level_finished_, 0U);
-            // END_LEVEL_SEQ returns to MAIN.ASM immediately before its source
-            // FADEDOWN loop. Keep the completed native bitmap visible while
-            // the host's presentation-timed fade reaches true black.
-            map_.start_display_fade(-1);
-            frontend_phase_ = FrontendPhase::stage_results_fade_to_map;
+            if (pending_end_game_) {
+                begin_end_game_sequence();
+            } else {
+                // END_LEVEL_SEQ returns to MAIN.ASM immediately before its
+                // source FADEDOWN loop. Keep the completed native bitmap
+                // visible while the host fade reaches true black.
+                map_.start_display_fade(-1);
+                frontend_phase_ = FrontendPhase::stage_results_fade_to_map;
+            }
         }
         result.audio_port_writes = map_.take_apu_port_writes();
         return result;
@@ -3316,15 +3702,21 @@ void GameSimulation::finish_stage_results() {
         map_.write_native_byte(ex_doing_end_, 0U);
     }
     ex_results_recorded_ = false;
+    if (pending_end_game_) {
+        begin_end_game_sequence();
+        return;
+    }
     const auto next_map = selected_route_stage(map_.read_native_word(stage_));
-    enter_planet_map(false, next_map);
+    enter_planet_map(false, next_map, true);
 }
 
 void GameSimulation::service_transfer_request() {
     Wdc65816Registers registers;
     registers.status = 0x24U;
     auto flags = map_.read_native_byte(background_flags_);
+    auto restarted = false;
     if ((flags & 1U) != 0U) {
+        restarted = true;
         // TRANS.ASM services this before background and info requests. The
         // original routine rebuilds the object lists and advances WORLD.ASM's
         // map interpreter from its saved checkpoint, so import those native
@@ -3338,6 +3730,7 @@ void GameSimulation::service_transfer_request() {
         // uninterrupted restart frame.
         map_.write_native_byte(game_flags_, static_cast<std::uint8_t>(
             map_.read_native_byte(game_flags_) & ~static_cast<std::uint8_t>(0x42U)));
+        map_.write_native_byte(fade_to_red_, 0U);
         set_player_control(true);
         paused_ = false;
         flags = map_.read_native_byte(background_flags_);
@@ -3358,6 +3751,13 @@ void GameSimulation::service_transfer_request() {
     // transswap clears all three request bits together after servicing them.
     map_.write_native_byte(background_flags_, static_cast<std::uint8_t>(
         map_.read_native_byte(background_flags_) & ~static_cast<std::uint8_t>(13U)));
+    if (restarted && boss_music_before_death_) {
+        // Player death replaces the active boss track with the short death
+        // drumroll. The map interpreter resumes inside its boss wait and does
+        // not execute SETBGM a second time, so restart the track that was
+        // active before death after the background restart has finished.
+        request_music(*boss_music_before_death_);
+    }
 }
 
 void GameSimulation::calculate_view() {
@@ -3584,7 +3984,59 @@ std::size_t GameSimulation::update_view_flags_and_cull() {
 
 GameTickResult GameSimulation::tick(const input::TickInput& input) {
     if (flow_state_ == GameFlowState::finished) return {};
+    // Snapshot the live encounter track before SETBLACK/background setup or
+    // either cartridge's strategies can clear the last boss-health marker.
+    // EX does that earlier in its transfer than retail; taking this sample
+    // near the draw-list build missed EX and left both death recovery music
+    // and post-boss communication timing without an encounter boundary.
+    if (flow_state_ == GameFlowState::gameplay
+        && map_.read_native_byte(boss_max_health_) != 0U
+        && (map_.read_native_byte(game_flags_) & 0x42U) == 0U) {
+        const auto music = map_.read_native_byte(background_music_command_);
+        if (music != 0U && music != 0x11U && music != 0xf1U) {
+            boss_music_before_death_ = music;
+        }
+    }
+    const auto communication_active =
+        map_.read_native_byte(message_count_1_) != 0U
+        || map_.read_native_byte(message_count_2_) != 0U
+        || (friends_message_2_ != 0U
+            && (map_.read_native_byte(message_count_1_2_) != 0U
+                || map_.read_native_byte(message_count_2_2_) != 0U));
+    if (!communication_active) {
+        post_boss_dialogue_active_ = false;
+    } else if (flow_state_ == GameFlowState::gameplay
+        && boss_music_before_death_.has_value()
+        && map_.read_native_byte(boss_max_health_) == 0U) {
+        // Once the defeated-boss message begins, keep its source 20 Hz cadence
+        // even if EX's following strategy pass briefly rebuilds M_BOSSMAXHP
+        // from a lingering component. The communication queue, not that
+        // transient draw-meter byte, owns the end of this timing interval.
+        post_boss_dialogue_active_ = true;
+    }
     complete_video_phases_for_tick();
+    if (ending_task_active_) {
+        return tick_end_game_sequence(input);
+    }
+    if (flow_state_ == GameFlowState::credits && credits_complete_
+        && starfox_ex_cartridge_
+        && (input.pressed & starfox::input::start) != 0U) {
+        // EX's completed CREDITSMAP tail-jumps into FOXY_CONTINUE_L. A native
+        // tail jump cannot return to the host's bounded map-code call, so make
+        // that exact ownership handoff here once the source prompt accepts
+        // START.
+        queue_sound_effect(0xabU);
+        Wdc65816Registers registers;
+        registers.status = 0x24U;
+        map_.call_native_routine(
+            ex_randomize_background_, registers, 5'000'000U, true);
+        map_.write_native_byte(ex_fade_palette_fx_pink_, 33U);
+        map_.write_native_byte(ex_fade_palette_yamao_, 33U);
+        enter_ex_pregame_menu(false);
+        GameTickResult result;
+        result.audio_port_writes = map_.take_apu_port_writes();
+        return result;
+    }
     if (starfox_ex_cartridge_) {
         // EX's source MAX FPS experiment is intentionally disabled. Keep the
         // cartridge on its stable/default 20-transfer path regardless of an
@@ -3708,15 +4160,20 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
     map_.write_native_byte(previous_video_frame_count_,
         map_.read_native_byte(video_frame_counter_));
     map_.write_native_byte(video_frame_counter_, 0U);
+    const auto ex_title_logo_active = starfox_ex_cartridge_
+        && flow_state_ == GameFlowState::title
+        && ex_title_intro_background_ != 0U
+        && map_.background() == ex_title_intro_background_;
     const auto ex_title_model_test_requested = starfox_ex_cartridge_
         && flow_state_ == GameFlowState::title
+        && !ex_title_logo_active
         && frontend_phase_ == FrontendPhase::none
         && flow_ticks_ >= 40U
         && (input.held & (starfox::input::left_shoulder
                 | starfox::input::select))
             == (starfox::input::left_shoulder | starfox::input::select);
     auto native_input = input;
-    if (flow_state_ == GameFlowState::title) {
+    if (flow_state_ == GameFlowState::title && !ex_title_logo_active) {
         // The PC front end owns the title-screen START transition. The EX
         // title map handles the same edge by entering TRANSFER_L and then
         // tail-jumping into its persistent special-menu loop. Following that
@@ -4106,6 +4563,10 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
         // Their Super FX output is host-rendered, but the original 65C816
         // routines still control portrait animation, text lifetime and
         // voice/effect commands in both flows.
+        const auto first_message_was_speaking =
+            map_.read_native_byte(message_count_1_) != 0U;
+        const auto second_message_was_speaking = friends_message_2_ != 0U
+            && map_.read_native_byte(message_count_1_2_) != 0U;
         registers = {};
         registers.status = 0x24U;
         result.prelude_instructions += map_.call_native_routine(
@@ -4115,6 +4576,34 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
             registers.status = 0x24U;
             result.prelude_instructions += map_.call_native_routine(
                 friends_messages_2_, registers, 5'000'000, true);
+        }
+        const auto communication_just_finished =
+            (first_message_was_speaking
+                && map_.read_native_byte(message_count_1_) == 0U)
+            || (second_message_was_speaking
+                && map_.read_native_byte(message_count_1_2_) == 0U);
+        if (communication_just_finished
+            && (!starfox_ex_cartridge_
+                || map_.read_native_byte(ex_no_sfx_) == 0U)) {
+            // Both cartridge routines issue effect $64 on the last speaking
+            // frame to release the SPC driver's dialogue BGM attenuation.
+            // A full 16-entry source ring silently overwrites that command;
+            // this is much easier to hit in EX because two portrait channels
+            // and its extra ambient effects share port 3. Preserve one copy
+            // after the routines have run so a busy frame cannot leave the
+            // music permanently ducked.
+            auto restore_is_queued =
+                map_.read_native_byte(sound_pending_) == 0x64U;
+            auto read = static_cast<std::uint8_t>(
+                map_.read_native_byte(sound_read_) & 15U);
+            const auto write = static_cast<std::uint8_t>(
+                map_.read_native_byte(sound_write_) & 15U);
+            while (!restore_is_queued && read != write) {
+                restore_is_queued =
+                    map_.read_native_byte(sound_buffer_ + read) == 0x64U;
+                read = static_cast<std::uint8_t>((read + 1U) & 15U);
+            }
+            if (!restore_is_queued) queue_sound_effect(0x64U);
         }
         // Star Fox EX MAIN.ASM invokes CESTIMER_L after both communications
         // channels on every scored-mode gameplay frame.  Despite its legacy
@@ -4186,7 +4675,7 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
         ++flow_ticks_;
         // MAIN.ASM presents 50 transfers, then accepts START (or waits up to
         // 60 seconds) before opening FOXY_CONTINUE_L.
-        if (flow_ticks_ >= 50U
+        if (flow_ticks_ >= 17U
             && ((input.pressed & starfox::input::start) != 0U
                 || flow_ticks_ >= 1'250U)) {
             enter_continue_screen();
@@ -4248,7 +4737,8 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
             queue_sound_effect(0xabU);
             map_.start_display_fade(-3);
             frontend_phase_ = FrontendPhase::title_fade_to_ex_model_test;
-        } else if (frontend_phase_ == FrontendPhase::none && flow_ticks_ >= 40U
+        } else if (frontend_phase_ == FrontendPhase::none
+            && !ex_title_logo_active && flow_ticks_ >= 40U
             && (input.pressed & starfox::input::start) != 0U) {
             queue_sound_effect(starfox_ex_cartridge_ ? 0xabU : 0x10U);
             request_music(0xf1U);

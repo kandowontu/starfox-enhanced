@@ -30,6 +30,11 @@ int main(int argc, char** argv) {
         }
         const auto trace_transitions = std::getenv("STARFOX_TRACE_TRANSITIONS") != nullptr;
         const auto force_exit = std::getenv("STARFOX_FORCE_EXIT") != nullptr;
+        const auto force_exit_value = std::getenv("STARFOX_FORCE_EXIT_VALUE")
+            != nullptr
+            ? static_cast<std::uint16_t>(std::strtoul(
+                std::getenv("STARFOX_FORCE_EXIT_VALUE"), nullptr, 0))
+            : std::uint16_t{1U};
         std::uint32_t previous_strategy = 0xffffffffU;
         std::size_t instructions = 0;
         std::size_t audio_writes = 0;
@@ -45,7 +50,7 @@ int main(int argc, char** argv) {
             }
             if (force_exit && tick == 400UL) {
                 game.map().write_native_word(
-                    symbols.find("LEVELFINISHED").front(), 1U);
+                    symbols.find("LEVELFINISHED").front(), force_exit_value);
             }
             if (trace_transitions && game.objects().is_active(game.player())) {
                 const auto strategy = game.objects().at(game.player()).strategy_address;
@@ -108,6 +113,7 @@ int main(int argc, char** argv) {
             }
         }
         std::cout << argv[3] << ": ticks=" << ticks
+                  << ", flow=" << static_cast<unsigned>(game.flow_state())
                   << ", map=" << (game.map().ended() ? "ended" : "active")
                   << ", cursor=$" << std::hex << game.map().cursor() << std::dec
                   << ", countdown=" << game.map().countdown()

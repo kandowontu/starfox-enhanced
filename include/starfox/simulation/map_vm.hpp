@@ -108,6 +108,9 @@ public:
     [[nodiscard]] const NativeModelDrawState& native_model_draw() const noexcept {
         return cpu_.native_model_draw();
     }
+    void set_native_model_draw(const NativeModelDrawState& state) noexcept {
+        cpu_.set_native_model_draw(state);
+    }
     [[nodiscard]] const std::vector<std::uint32_t>& unknown_superfx_launches()
         const noexcept {
         return cpu_.unknown_superfx_launches();

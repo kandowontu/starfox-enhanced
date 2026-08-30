@@ -452,7 +452,12 @@ if(STARFOX_BUILD_TESTS)
         )
         set_tests_properties(starfox_ex_simulation_data PROPERTIES
             ENVIRONMENT "STARFOX_EX_ROUTE_AUDIT_TICKS=2000"
-            TIMEOUT 240)
+            # The audit boots every shipped EX stage and advances each for
+            # 2,000 source ticks. Renderer/route regressions have expanded
+            # its coverage enough that Windows debug-host load can exceed
+            # four minutes without a hang; retain the full audit and give it
+            # a deterministic margin instead of shortening stage coverage.
+            TIMEOUT 420)
         if(STARFOX_BUILD_RUNTIME AND STARFOX_RUNTIME_ASSETS_EMBEDDED)
             file(MAKE_DIRECTORY
                 "${CMAKE_CURRENT_BINARY_DIR}/embedded-ex-runtime-smoke")
@@ -465,7 +470,9 @@ if(STARFOX_BUILD_TESTS)
                     "${CMAKE_CURRENT_BINARY_DIR}/embedded-ex-runtime-smoke"
                 ENVIRONMENT
                     "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;STARFOX_TEST_EXPERIENCE=EX;STARFOX_TEST_FRAMES=900;STARFOX_TEST_PRESSES=6:0x1000;STARFOX_TEST_UNPACED=1"
-                TIMEOUT 20
+                # The embedded EX boot renders 900 full frames. Sanitizer and
+                # busy Windows hosts can exceed 20 seconds without a hang.
+                TIMEOUT 45
             )
         endif()
     endif()

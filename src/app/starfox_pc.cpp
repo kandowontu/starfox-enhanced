@@ -83,6 +83,7 @@ struct PresentationEffects {
     std::int32_t host_overlay_y{};
     starfox::simulation::PlanetPresentationState planet;
     starfox::simulation::WindowWipeState wipe;
+    bool expand_wipe{};
     bool clip_circle{};
     std::int16_t circle_left{};
     std::int16_t circle_top{};
@@ -91,6 +92,9 @@ struct PresentationEffects {
     bool black_side_bars{};
     std::int32_t side_bar_left{};
     std::int32_t side_bar_right{};
+    const starfox::render::SurfaceBuffer* model_surfaces{};
+    std::int32_t model_surface_x{};
+    std::int32_t model_surface_y{};
 };
 
 std::uint32_t display_width_for(
@@ -174,6 +178,21 @@ std::string_view crosshair_colour_name(
     case starfox::simulation::CrosshairColour::green:
     default:
         return "GREEN";
+    }
+}
+
+std::string_view anti_aliasing_name(
+    starfox::simulation::AntiAliasingMode mode) noexcept {
+    switch (mode) {
+    case starfox::simulation::AntiAliasingMode::light:
+        return "LIGHT";
+    case starfox::simulation::AntiAliasingMode::medium:
+        return "MEDIUM";
+    case starfox::simulation::AntiAliasingMode::heavy:
+        return "HEAVY";
+    case starfox::simulation::AntiAliasingMode::off:
+    default:
+        return "OFF";
     }
 }
 
@@ -783,6 +802,8 @@ public:
             const auto origin_x = static_cast<std::int32_t>(
                 framebuffer.width() > snes_width
                     ? (framebuffer.width() - snes_width) / 2U : 0U);
+            const auto source_width = static_cast<std::int32_t>(
+                framebuffer.width());
             const auto logic = static_cast<std::uint8_t>(
                 effects.wipe.logic & 3U);
             for (std::int32_t y = superfx_offset_y;
@@ -799,7 +820,17 @@ public:
                     effects.wipe.right[line]);
                 for (std::int32_t x = 0;
                      x < static_cast<std::int32_t>(framebuffer.width()); ++x) {
-                    const auto source_x = x - origin_x;
+                    // The source window tables describe the complete
+                    // 256-pixel cartridge display. For a wide presentation,
+                    // scale that mask over the complete host display too.
+                    // Merely subtracting the centred viewport origin made the
+                    // added columns enter/leave as independent black slabs at
+                    // the scramble -> Corneria handoff.
+                    const auto source_x = effects.expand_wipe
+                        ? std::clamp(x * static_cast<std::int32_t>(snes_width)
+                                / std::max(source_width, 1),
+                            0, static_cast<std::int32_t>(snes_width - 1U))
+                        : x - origin_x;
                     const auto inside_dynamic = left <= right
                         ? source_x >= left && source_x <= right
                         : source_x >= left || source_x <= right;
@@ -845,6 +876,9 @@ public:
                 }
             }
         }
+        if (enhanced_graphics_) apply_enhanced_surfaces(framebuffer, effects);
+        if (smooth_polys_) apply_smooth_polygons(framebuffer, effects);
+        if (rtx_lighting_) apply_rtx_lighting(framebuffer, effects);
         if (effects.host_overlay != nullptr) {
             const auto& overlay = *effects.host_overlay;
             const auto paint = [this, &framebuffer](
@@ -882,6 +916,9 @@ public:
                 }
             }
         }
+        if (anti_aliasing_ != starfox::simulation::AntiAliasingMode::off) {
+            apply_fxaa(anti_aliasing_);
+        }
         present_rgba_pixels(framebuffer.width(), framebuffer.height(), rgba_);
     }
 
@@ -897,6 +934,27 @@ public:
 
     [[nodiscard]] std::span<const std::uint8_t> rgba() const noexcept {
         return rgba_;
+    }
+
+    void set_render_options(
+        starfox::simulation::AntiAliasingMode anti_aliasing,
+        bool enhanced_graphics,
+        bool smooth_polys, bool rtx_lighting, bool vsync) noexcept {
+        anti_aliasing_ = anti_aliasing;
+        smooth_polys_ = smooth_polys;
+        rtx_lighting_ = rtx_lighting;
+        if (enhanced_graphics_ != enhanced_graphics) {
+            enhanced_graphics_ = enhanced_graphics;
+            if (texture_ != nullptr) {
+                static_cast<void>(SDL_SetTextureScaleMode(texture_,
+                    enhanced_graphics_ ? SDL_SCALEMODE_LINEAR
+                                       : SDL_SCALEMODE_NEAREST));
+            }
+        }
+        if (vsync_ != vsync) {
+            vsync_ = vsync;
+            static_cast<void>(SDL_SetRenderVSync(renderer_, vsync_ ? 1 : 0));
+        }
     }
 
     void save_bmp(const std::filesystem::path& path) const {
@@ -959,6 +1017,448 @@ public:
     }
 
 private:
+    [[nodiscard]] static std::uint16_t luma(
+        std::span<const std::uint8_t> pixels, std::size_t pixel) noexcept {
+        return static_cast<std::uint16_t>(
+            (static_cast<std::uint32_t>(pixels[pixel]) * 77U
+                + static_cast<std::uint32_t>(pixels[pixel + 1U]) * 150U
+                + static_cast<std::uint32_t>(pixels[pixel + 2U]) * 29U)
+            >> 8U);
+    }
+
+    [[nodiscard]] static const starfox::render::SurfaceSample* model_surface_at(
+        const starfox::render::Framebuffer& framebuffer,
+        const PresentationEffects& effects,
+        std::int32_t x,
+        std::int32_t y) noexcept {
+        if (effects.model_surfaces == nullptr) return nullptr;
+        const auto local_x = x - effects.model_surface_x;
+        const auto local_y = y - effects.model_surface_y;
+        if (local_x < 0 || local_y < 0
+            || local_x >= static_cast<std::int32_t>(
+                effects.model_surfaces->width())
+            || local_y >= static_cast<std::int32_t>(
+                effects.model_surfaces->height())
+            || x < 0 || y < 0
+            || x >= static_cast<std::int32_t>(framebuffer.width())
+            || y >= static_cast<std::int32_t>(framebuffer.height())) {
+            return nullptr;
+        }
+        const auto& sample = effects.model_surfaces->get(
+            static_cast<std::uint32_t>(local_x),
+            static_cast<std::uint32_t>(local_y));
+        // A later particle, HUD element, or cartridge layer may cover the
+        // polygon. Only shade the surface if its indexed colour still owns the
+        // final composite pixel.
+        if (!sample.valid || framebuffer.get(
+                static_cast<std::uint32_t>(x),
+                static_cast<std::uint32_t>(y)) != sample.palette_index) {
+            return nullptr;
+        }
+        return &sample;
+    }
+
+    void capture_effect_source_region(
+        std::int32_t first_x, std::int32_t first_y,
+        std::int32_t last_x, std::int32_t last_y) {
+        first_x = std::clamp(first_x, 0,
+            static_cast<std::int32_t>(texture_width_));
+        first_y = std::clamp(first_y, 0,
+            static_cast<std::int32_t>(texture_height_));
+        last_x = std::clamp(last_x, first_x,
+            static_cast<std::int32_t>(texture_width_));
+        last_y = std::clamp(last_y, first_y,
+            static_cast<std::int32_t>(texture_height_));
+        effect_source_x_ = first_x;
+        effect_source_y_ = first_y;
+        effect_source_width_ = static_cast<std::size_t>(last_x - first_x);
+        const auto height = static_cast<std::size_t>(last_y - first_y);
+        effect_source_.resize(effect_source_width_ * height * 4U);
+        const auto source_width = static_cast<std::size_t>(texture_width_);
+        for (std::size_t row = 0U; row < height; ++row) {
+            const auto source = ((static_cast<std::size_t>(first_y) + row)
+                * source_width + static_cast<std::size_t>(first_x)) * 4U;
+            std::copy_n(rgba_.begin() + static_cast<std::ptrdiff_t>(source),
+                static_cast<std::ptrdiff_t>(effect_source_width_ * 4U),
+                effect_source_.begin()
+                    + static_cast<std::ptrdiff_t>(row * effect_source_width_ * 4U));
+        }
+    }
+
+    [[nodiscard]] std::size_t effect_source_pixel(
+        std::int32_t x, std::int32_t y) const noexcept {
+        return (static_cast<std::size_t>(y - effect_source_y_)
+            * effect_source_width_
+            + static_cast<std::size_t>(x - effect_source_x_)) * 4U;
+    }
+
+    void apply_enhanced_surfaces(
+        const starfox::render::Framebuffer& framebuffer,
+        const PresentationEffects& effects) {
+        if (effects.model_surfaces == nullptr
+            || effects.model_surfaces->empty()
+            || framebuffer.width() < 3U || framebuffer.height() < 3U) {
+            return;
+        }
+        const auto width = static_cast<std::size_t>(framebuffer.width());
+        const auto first_x = std::max(1, effects.model_surface_x
+            + static_cast<std::int32_t>(effects.model_surfaces->minimum_x()) - 1);
+        const auto first_y = std::max(1, effects.model_surface_y
+            + static_cast<std::int32_t>(effects.model_surfaces->minimum_y()) - 1);
+        const auto last_x = std::min(
+            static_cast<std::int32_t>(framebuffer.width()) - 1,
+            effects.model_surface_x
+                + static_cast<std::int32_t>(effects.model_surfaces->maximum_x()) + 1);
+        const auto last_y = std::min(
+            static_cast<std::int32_t>(framebuffer.height()) - 1,
+            effects.model_surface_y
+                + static_cast<std::int32_t>(effects.model_surfaces->maximum_y()) + 1);
+        capture_effect_source_region(
+            first_x - 1, first_y - 1, last_x + 1, last_y + 1);
+        constexpr std::array<std::array<std::int32_t, 2>, 8> neighbours{{
+            {{-1, 0}}, {{1, 0}}, {{0, -1}}, {{0, 1}},
+            {{-1, -1}}, {{1, -1}}, {{-1, 1}}, {{1, 1}},
+        }};
+        for (auto y = first_y; y < last_y; ++y) {
+            for (auto x = first_x; x < last_x; ++x) {
+                const auto pixel = (static_cast<std::size_t>(y) * width
+                    + static_cast<std::size_t>(x)) * 4U;
+                const auto* centre = model_surface_at(framebuffer, effects, x, y);
+                if (centre != nullptr) {
+                    // Bilateral filtering smooths the source's coarse texture
+                    // samples and checkerboard material dithering, but refuses
+                    // to smear across a real polygon crease or depth break.
+                    std::array<std::uint32_t, 3> total{
+                        static_cast<std::uint32_t>(effect_source_[
+                            effect_source_pixel(x, y)]) * 6U,
+                        static_cast<std::uint32_t>(effect_source_[
+                            effect_source_pixel(x, y) + 1U]) * 6U,
+                        static_cast<std::uint32_t>(effect_source_[
+                            effect_source_pixel(x, y) + 2U]) * 6U,
+                    };
+                    auto weight = 6U;
+                    for (std::size_t index = 0; index < neighbours.size(); ++index) {
+                        const auto nx = x + neighbours[index][0];
+                        const auto ny = y + neighbours[index][1];
+                        const auto neighbour_pixel = effect_source_pixel(nx, ny);
+                        const auto* neighbour = model_surface_at(
+                            framebuffer, effects, nx, ny);
+                        if (neighbour == nullptr) continue;
+                        const auto normal_dot = centre->normal_x * neighbour->normal_x
+                            + centre->normal_y * neighbour->normal_y
+                            + centre->normal_z * neighbour->normal_z;
+                        const auto depth_limit = std::max(
+                            24.0F, std::abs(centre->depth) * 0.025F);
+                        if (normal_dot < 0.94F
+                            || std::abs(centre->depth - neighbour->depth)
+                                > depth_limit) {
+                            continue;
+                        }
+                        const auto sample_weight = index < 4U ? 2U : 1U;
+                        for (std::size_t component = 0U;
+                             component < 3U; ++component) {
+                            total[component] += effect_source_[
+                                neighbour_pixel + component]
+                                * sample_weight;
+                        }
+                        weight += sample_weight;
+                    }
+                    for (std::size_t component = 0U; component < 3U; ++component) {
+                        rgba_[pixel + component] = static_cast<std::uint8_t>(
+                            (total[component] + weight / 2U) / weight);
+                    }
+                }
+            }
+        }
+    }
+
+    void apply_smooth_polygons(
+        const starfox::render::Framebuffer& framebuffer,
+        const PresentationEffects& effects) {
+        if (effects.model_surfaces == nullptr
+            || effects.model_surfaces->empty()
+            || framebuffer.width() < 3U || framebuffer.height() < 3U) {
+            return;
+        }
+        const auto width = static_cast<std::size_t>(framebuffer.width());
+        const auto first_x = std::max(1, effects.model_surface_x
+            + static_cast<std::int32_t>(effects.model_surfaces->minimum_x()) - 1);
+        const auto first_y = std::max(1, effects.model_surface_y
+            + static_cast<std::int32_t>(effects.model_surfaces->minimum_y()) - 1);
+        const auto last_x = std::min(
+            static_cast<std::int32_t>(framebuffer.width()) - 1,
+            effects.model_surface_x
+                + static_cast<std::int32_t>(effects.model_surfaces->maximum_x()) + 1);
+        const auto last_y = std::min(
+            static_cast<std::int32_t>(framebuffer.height()) - 1,
+            effects.model_surface_y
+                + static_cast<std::int32_t>(effects.model_surfaces->maximum_y()) + 1);
+        capture_effect_source_region(
+            first_x - 1, first_y - 1, last_x + 1, last_y + 1);
+        constexpr std::array<std::array<std::int32_t, 2>, 9> samples{{
+            {{0, 0}}, {{-1, 0}}, {{1, 0}}, {{0, -1}}, {{0, 1}},
+            {{-1, -1}}, {{1, -1}}, {{-1, 1}}, {{1, 1}},
+        }};
+        for (auto y = first_y; y < last_y; ++y) {
+            for (auto x = first_x; x < last_x; ++x) {
+                const auto pixel = (static_cast<std::size_t>(y) * width
+                    + static_cast<std::size_t>(x)) * 4U;
+                const auto* centre = model_surface_at(framebuffer, effects, x, y);
+                std::array<std::uint32_t, 3> model_total{};
+                std::array<std::uint32_t, 3> background_total{};
+                std::array<std::uint32_t, 3> crease_total{};
+                auto model_count = 0U;
+                auto background_count = 0U;
+                auto crease_count = 0U;
+                for (const auto& offset : samples) {
+                    const auto sample_x = x + offset[0];
+                    const auto sample_y = y + offset[1];
+                    const auto sample_pixel = effect_source_pixel(
+                        sample_x, sample_y);
+                    const auto* surface = model_surface_at(
+                        framebuffer, effects, sample_x, sample_y);
+                    if (surface == nullptr) {
+                        for (std::size_t component = 0U;
+                             component < 3U; ++component) {
+                            background_total[component] += effect_source_[
+                                sample_pixel + component];
+                        }
+                        ++background_count;
+                        continue;
+                    }
+                    for (std::size_t component = 0U; component < 3U; ++component) {
+                        model_total[component] += effect_source_[
+                            sample_pixel + component];
+                    }
+                    ++model_count;
+                    if (centre != nullptr && surface != centre) {
+                        const auto normal_dot = centre->normal_x * surface->normal_x
+                            + centre->normal_y * surface->normal_y
+                            + centre->normal_z * surface->normal_z;
+                        if (normal_dot < 0.90F) {
+                            for (std::size_t component = 0U;
+                                 component < 3U; ++component) {
+                                crease_total[component] += effect_source_[
+                                    sample_pixel + component];
+                            }
+                            ++crease_count;
+                        }
+                    }
+                }
+
+                if (centre != nullptr && background_count != 0U) {
+                    // Reconstruct a narrow fractional-coverage edge on both
+                    // sides of the binary source silhouette. Keep most of the
+                    // owning face at boundary pixels so the low-resolution
+                    // models become clean rather than soft or out of focus.
+                    const auto coverage = std::clamp(
+                        (model_count + 5U) * 256U / 14U, 184U, 246U);
+                    for (std::size_t component = 0U; component < 3U; ++component) {
+                        const auto model_colour = (model_total[component]
+                            + model_count / 2U) / model_count;
+                        const auto background_colour = (background_total[component]
+                            + background_count / 2U) / background_count;
+                        rgba_[pixel + component] = static_cast<std::uint8_t>(
+                            (model_colour * coverage
+                                + background_colour * (256U - coverage) + 128U)
+                            / 256U);
+                    }
+                } else if (centre == nullptr && model_count != 0U) {
+                    const auto coverage = std::min(51U, model_count * 9U);
+                    const auto background_divisor = std::max(1U, background_count);
+                    for (std::size_t component = 0U; component < 3U; ++component) {
+                        const auto model_colour = (model_total[component]
+                            + model_count / 2U) / model_count;
+                        const auto background_colour = (background_total[component]
+                            + background_divisor / 2U) / background_divisor;
+                        rgba_[pixel + component] = static_cast<std::uint8_t>(
+                            (background_colour * (256U - coverage)
+                                + model_colour * coverage + 128U) / 256U);
+                    }
+                } else if (crease_count != 0U) {
+                    // Internal polygon boundaries receive a much narrower
+                    // sub-pixel blend than the silhouette, retaining the
+                    // low-poly facets while removing diagonal stair-steps.
+                    const auto amount = std::min(38U, crease_count * 9U);
+                    const auto source_pixel = effect_source_pixel(x, y);
+                    for (std::size_t component = 0U; component < 3U; ++component) {
+                        const auto crease_colour = (crease_total[component]
+                            + crease_count / 2U) / crease_count;
+                        rgba_[pixel + component] = static_cast<std::uint8_t>(
+                            (effect_source_[source_pixel + component]
+                                    * (256U - amount)
+                                + crease_colour * amount + 128U) / 256U);
+                    }
+                }
+            }
+        }
+    }
+
+    void apply_rtx_lighting(
+        const starfox::render::Framebuffer& framebuffer,
+        const PresentationEffects& effects) {
+        if (effects.model_surfaces == nullptr
+            || effects.model_surfaces->empty()
+            || framebuffer.width() < 3U || framebuffer.height() < 3U) {
+            return;
+        }
+        const auto width = static_cast<std::size_t>(framebuffer.width());
+        const auto first_x = std::max(1, effects.model_surface_x
+            + static_cast<std::int32_t>(effects.model_surfaces->minimum_x()));
+        const auto first_y = std::max(1, effects.model_surface_y
+            + static_cast<std::int32_t>(effects.model_surfaces->minimum_y()));
+        const auto last_x = std::min(
+            static_cast<std::int32_t>(framebuffer.width()) - 1,
+            effects.model_surface_x
+                + static_cast<std::int32_t>(effects.model_surfaces->maximum_x()));
+        const auto last_y = std::min(
+            static_cast<std::int32_t>(framebuffer.height()) - 1,
+            effects.model_surface_y
+                + static_cast<std::int32_t>(effects.model_surfaces->maximum_y()));
+        // Camera-space key light from above-left, a cool frontal fill, and the
+        // camera-facing half vector used for a tight material highlight.
+        constexpr std::array<float, 3> key{-0.474F, -0.632F, -0.613F};
+        constexpr std::array<float, 3> fill{0.422F, 0.211F, -0.881F};
+        constexpr std::array<float, 3> half_vector{-0.267F, -0.356F, -0.895F};
+        for (auto y = first_y; y < last_y; ++y) {
+            for (auto x = first_x; x < last_x; ++x) {
+                const auto* sample = model_surface_at(framebuffer, effects, x, y);
+                if (sample == nullptr) continue;
+                auto nx = sample->normal_x;
+                auto ny = sample->normal_y;
+                auto nz = sample->normal_z;
+                // Source shapes are not consistent about winding. Orient the
+                // visible flat toward the camera before evaluating PC lights.
+                if (nz > 0.0) {
+                    nx = -nx;
+                    ny = -ny;
+                    nz = -nz;
+                }
+                const auto key_light = std::max(
+                    0.0F, nx * key[0] + ny * key[1] + nz * key[2]);
+                const auto fill_light = std::max(
+                    0.0F, nx * fill[0] + ny * fill[1] + nz * fill[2]);
+                const auto facing = std::clamp(-nz, 0.0F, 1.0F);
+                const auto rim_base = 1.0F - facing;
+                const auto rim = rim_base * rim_base * 0.32F;
+                const auto specular_dot = std::max(0.0F,
+                    nx * half_vector[0] + ny * half_vector[1]
+                        + nz * half_vector[2]);
+                const auto specular_2 = specular_dot * specular_dot;
+                const auto specular_4 = specular_2 * specular_2;
+                const auto specular_8 = specular_4 * specular_4;
+                const auto specular_16 = specular_8 * specular_8;
+                const auto specular = specular_16 * specular_4 * 105.0F;
+
+                auto nearer_neighbours = 0U;
+                constexpr std::array<std::array<std::int32_t, 2>, 4> adjacent{{
+                    {{-1, 0}}, {{1, 0}}, {{0, -1}}, {{0, 1}},
+                }};
+                for (const auto& offset : adjacent) {
+                    const auto* neighbour = model_surface_at(
+                        framebuffer, effects, x + offset[0], y + offset[1]);
+                    if (neighbour != nullptr
+                        && neighbour->depth < sample->depth
+                            - std::max(20.0F, std::abs(sample->depth) * 0.02F)) {
+                        ++nearer_neighbours;
+                    }
+                }
+                const auto occlusion = static_cast<float>(nearer_neighbours) * 0.055F;
+                const auto illumination = std::clamp(
+                    0.34F + key_light * 1.02F + fill_light * 0.24F
+                        + rim - occlusion,
+                    0.28F, 1.58F);
+                const auto pixel = (static_cast<std::size_t>(y) * width
+                    + static_cast<std::size_t>(x)) * 4U;
+                constexpr std::array<float, 3> warmth{1.08F, 1.0F, 0.91F};
+                constexpr std::array<float, 3> highlight{1.0F, 0.94F, 0.78F};
+                for (std::size_t component = 0U; component < 3U; ++component) {
+                    const auto value = rgba_[pixel + component] * illumination
+                            * warmth[component]
+                        + specular * highlight[component];
+                    rgba_[pixel + component] = static_cast<std::uint8_t>(
+                        std::clamp(static_cast<std::int32_t>(value + 0.5F),
+                            0, 255));
+                }
+            }
+        }
+    }
+
+    void apply_fxaa(starfox::simulation::AntiAliasingMode mode) {
+        if (texture_width_ < 3U || texture_height_ < 3U) return;
+        auto threshold_floor = std::uint16_t{12U};
+        auto relative_divisor = std::uint16_t{8U};
+        auto centre_weight = std::uint32_t{2U};
+        auto neighbour_weight = std::uint32_t{1U};
+        switch (mode) {
+        case starfox::simulation::AntiAliasingMode::light:
+            threshold_floor = 20U;
+            relative_divisor = 6U;
+            centre_weight = 6U;
+            break;
+        case starfox::simulation::AntiAliasingMode::heavy:
+            threshold_floor = 6U;
+            relative_divisor = 12U;
+            centre_weight = 1U;
+            break;
+        case starfox::simulation::AntiAliasingMode::medium:
+        case starfox::simulation::AntiAliasingMode::off:
+        default:
+            break;
+        }
+        const auto total_weight = centre_weight + neighbour_weight * 2U;
+        capture_effect_source_region(
+            0, 0, static_cast<std::int32_t>(texture_width_),
+            static_cast<std::int32_t>(texture_height_));
+        const auto& source = effect_source_;
+        const auto width = static_cast<std::size_t>(texture_width_);
+        const auto pixel_count = width * texture_height_;
+        luma_scratch_.resize(pixel_count);
+        for (std::size_t index = 0U; index < pixel_count; ++index) {
+            luma_scratch_[index] = luma(source, index * 4U);
+        }
+        for (std::size_t y = 1U; y + 1U < texture_height_; ++y) {
+            for (std::size_t x = 1U; x + 1U < texture_width_; ++x) {
+                const auto pixel = (y * width + x) * 4U;
+                const auto left = pixel - 4U;
+                const auto right = pixel + 4U;
+                const auto up = pixel - width * 4U;
+                const auto down = pixel + width * 4U;
+                const auto luma_pixel = y * width + x;
+                const auto centre_luma = luma_scratch_[luma_pixel];
+                const auto left_luma = luma_scratch_[luma_pixel - 1U];
+                const auto right_luma = luma_scratch_[luma_pixel + 1U];
+                const auto up_luma = luma_scratch_[luma_pixel - width];
+                const auto down_luma = luma_scratch_[luma_pixel + width];
+                const auto minimum = std::min({centre_luma, left_luma,
+                    right_luma, up_luma, down_luma});
+                const auto maximum = std::max({centre_luma, left_luma,
+                    right_luma, up_luma, down_luma});
+                const auto range = static_cast<std::uint16_t>(maximum - minimum);
+                if (range < std::max<std::uint16_t>(
+                        threshold_floor, maximum / relative_divisor)) continue;
+                const auto horizontal = std::abs(
+                    static_cast<std::int32_t>(left_luma)
+                    - static_cast<std::int32_t>(right_luma));
+                const auto vertical = std::abs(
+                    static_cast<std::int32_t>(up_luma)
+                    - static_cast<std::int32_t>(down_luma));
+                const auto first = horizontal >= vertical ? up : left;
+                const auto second = horizontal >= vertical ? down : right;
+                for (std::size_t component = 0U; component < 3U; ++component) {
+                    rgba_[pixel + component] = static_cast<std::uint8_t>(
+                        (static_cast<std::uint32_t>(source[pixel + component])
+                                * centre_weight
+                            + static_cast<std::uint32_t>(
+                                source[first + component]) * neighbour_weight
+                            + static_cast<std::uint32_t>(
+                                source[second + component]) * neighbour_weight)
+                            / total_weight);
+                }
+            }
+        }
+    }
+
     void set_windowed_size(std::uint32_t width, std::uint32_t height) noexcept {
         const auto integer_scale = width <= snes_width
             ? 4U : (width <= widescreen_16_9_width ? 3U : 2U);
@@ -988,7 +1488,8 @@ private:
             throw std::runtime_error{
                 std::string{"SDL_CreateTexture: "} + SDL_GetError()};
         }
-        SDL_SetTextureScaleMode(texture_, SDL_SCALEMODE_NEAREST);
+        SDL_SetTextureScaleMode(texture_, enhanced_graphics_
+            ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST);
         if (!SDL_SetRenderLogicalPresentation(renderer_,
                 static_cast<int>(width), static_cast<int>(height),
                 SDL_LOGICAL_PRESENTATION_LETTERBOX)) {
@@ -1009,7 +1510,20 @@ private:
     std::uint32_t texture_width_{snes_width};
     std::uint32_t texture_height_{snes_height};
     bool relative_mouse_mode_{};
+    starfox::simulation::AntiAliasingMode anti_aliasing_{
+        starfox::simulation::AntiAliasingMode::off};
+    bool enhanced_graphics_{};
+    bool smooth_polys_{};
+    bool rtx_lighting_{};
+    bool vsync_{};
     std::vector<std::uint8_t> rgba_;
+    // Reused presentation scratch avoids allocating and copying a complete
+    // 32:9 frame separately for every optional model effect.
+    std::vector<std::uint8_t> effect_source_;
+    std::vector<std::uint16_t> luma_scratch_;
+    std::int32_t effect_source_x_{};
+    std::int32_t effect_source_y_{};
+    std::size_t effect_source_width_{};
 };
 
 class AudioOutput {
@@ -1557,7 +2071,7 @@ int main(int argc, char** argv) {
             ? std::span<const std::uint8_t>{persisted_ex_save}
             : std::span<const std::uint8_t>{};
         starfox::simulation::GameSimulation game{
-            rom, symbols, initial_map, initial_ex_save};
+            rom, symbols, initial_map, initial_ex_save, true};
         auto warned_ex_save_failure = false;
         const auto synchronize_ex_save = [&] {
             if (active_experience
@@ -1588,6 +2102,11 @@ int main(int argc, char** argv) {
                 static_cast<std::uint8_t>(game.display_mode()),
                 game.god_mode(),
                 game.show_fps(),
+                static_cast<std::uint8_t>(game.anti_aliasing_mode()),
+                game.enhanced_graphics(),
+                game.smooth_polys(),
+                game.rtx_lighting(),
+                game.vsync(),
                 static_cast<std::uint8_t>(game.crosshair_colour()),
                 static_cast<std::uint8_t>(game.experience()),
             };
@@ -1596,10 +2115,49 @@ int main(int argc, char** argv) {
             game.set_timing_mode(static_cast<starfox::simulation::TimingMode>(
                 saved_pregame.timing_mode));
             game.set_presentation_fps(saved_pregame.presentation_fps);
+            if (const auto* forced_fps = std::getenv(
+                    "STARFOX_TEST_PRESENTATION_FPS")) {
+                game.set_presentation_fps(static_cast<std::uint16_t>(
+                    std::stoul(forced_fps)));
+            }
             game.set_display_mode(static_cast<starfox::simulation::DisplayMode>(
                 saved_pregame.display_mode));
             game.set_god_mode(saved_pregame.god_mode);
             game.set_show_fps(saved_pregame.show_fps);
+            game.set_anti_aliasing_mode(
+                static_cast<starfox::simulation::AntiAliasingMode>(
+                    saved_pregame.anti_aliasing));
+            if (const auto* forced_aa = std::getenv(
+                    "STARFOX_TEST_ANTI_ALIASING")) {
+                const auto mode = std::string_view{forced_aa};
+                game.set_anti_aliasing_mode(mode == "LIGHT" || mode == "1"
+                        ? starfox::simulation::AntiAliasingMode::light
+                    : mode == "MEDIUM" || mode == "2"
+                        ? starfox::simulation::AntiAliasingMode::medium
+                    : mode == "HEAVY" || mode == "3"
+                        ? starfox::simulation::AntiAliasingMode::heavy
+                        : starfox::simulation::AntiAliasingMode::off);
+            }
+            game.set_enhanced_graphics(saved_pregame.enhanced_graphics);
+            game.set_smooth_polys(saved_pregame.smooth_polys);
+            game.set_rtx_lighting(saved_pregame.rtx_lighting);
+            game.set_vsync(saved_pregame.vsync);
+            if (const auto* forced_vsync = std::getenv("STARFOX_TEST_VSYNC")) {
+                game.set_vsync(std::string_view{forced_vsync} != "0");
+            }
+            if (const auto* forced_enhanced = std::getenv(
+                    "STARFOX_TEST_ENHANCED")) {
+                game.set_enhanced_graphics(std::string_view{forced_enhanced}
+                    != "0");
+            }
+            if (const auto* forced_smoothing = std::getenv(
+                    "STARFOX_TEST_SMOOTH_POLYS")) {
+                game.set_smooth_polys(std::string_view{forced_smoothing} != "0");
+            }
+            if (const auto* forced_lighting = std::getenv(
+                    "STARFOX_TEST_RTX_LIGHTING")) {
+                game.set_rtx_lighting(std::string_view{forced_lighting} != "0");
+            }
             game.set_crosshair_colour(
                 static_cast<starfox::simulation::CrosshairColour>(
                     saved_pregame.crosshair_colour));
@@ -1866,6 +2424,8 @@ int main(int argc, char** argv) {
         starfox::render::Framebuffer framebuffer{snes_width, snes_height};
         starfox::render::Framebuffer superfx_frame{
             snes_width, superfx_height};
+        starfox::render::SurfaceBuffer superfx_surfaces{
+            snes_width, superfx_height};
         starfox::render::Framebuffer superfx_ui{
             superfx_ui_width, superfx_height};
         starfox::render::Framebuffer comms_hud{
@@ -1874,6 +2434,8 @@ int main(int argc, char** argv) {
             snes_width, superfx_height};
         starfox::render::Framebuffer controls_player_layer{
             snes_width, superfx_height};
+        starfox::render::Framebuffer native_ex_overlay{
+            snes_width, snes_height};
         starfox::render::Framebuffer planet_overlay{snes_width, snes_height};
         starfox::render::Framebuffer planet_text_overlay{
             snes_width, snes_height};
@@ -1889,6 +2451,9 @@ int main(int argc, char** argv) {
         struct ObjectPresentationSnapshot {
             starfox::timing::TransformSnapshot transform;
             starfox::simulation::MatrixQ15 rotation_matrix{};
+            std::uint16_t shape{};
+            std::uint32_t strategy_address{};
+            std::uint8_t type{};
         };
         using SnapshotMap = std::unordered_map<starfox::simulation::ObjectHandle,
             ObjectPresentationSnapshot>;
@@ -1914,7 +2479,8 @@ int main(int argc, char** argv) {
                         starfox::simulation::wrap16(-static_cast<std::int32_t>(
                             transform.roll))));
                 result.emplace(handle, ObjectPresentationSnapshot{
-                    transform, rotation_matrix});
+                    transform, rotation_matrix, object.shape,
+                    object.strategy_address, object.type});
             }
             return result;
         };
@@ -1943,11 +2509,12 @@ int main(int argc, char** argv) {
             std::int16_t bg3_scroll_x{};
             std::int16_t bg3_scroll_y{};
             std::array<std::int16_t, 224> bg2_horizontal_offsets{};
+            std::array<std::uint16_t, 32> bg2_vertical_offsets{};
         };
         const auto capture_raster_motion = [&game, background_x_address,
                                              background_y_address]() {
             const auto& ppu = game.map().ppu_state();
-            return RasterMotionSnapshot{
+            auto snapshot = RasterMotionSnapshot{
                 static_cast<std::int16_t>(
                     game.map().read_native_word(background_x_address)),
                 static_cast<std::int16_t>(
@@ -1960,9 +2527,19 @@ int main(int argc, char** argv) {
                 ppu.bg3_scroll_y,
                 ppu.bg2_horizontal_offsets,
             };
+            for (std::size_t index = 0;
+                 index < snapshot.bg2_vertical_offsets.size(); ++index) {
+                const auto byte = (0x2fa0U + index) * 2U;
+                snapshot.bg2_vertical_offsets[index] =
+                    static_cast<std::uint16_t>(ppu.vram[byte])
+                    | (static_cast<std::uint16_t>(ppu.vram[byte + 1U]) << 8U);
+            }
+            return snapshot;
         };
         auto previous_raster_motion = capture_raster_motion();
         auto current_raster_motion = previous_raster_motion;
+        auto previous_oam = game.map().ppu_state().oam;
+        auto current_oam = previous_oam;
         auto previous_circle = game.circle_effect_state();
         auto current_circle = previous_circle;
         std::unordered_map<std::uint32_t, starfox::assets::Shape> shape_cache;
@@ -1996,6 +2573,7 @@ int main(int argc, char** argv) {
         std::uint8_t audio_video_phases{};
         MouseCameraState mouse_camera;
         ExMouseInputLatch ex_mouse_input;
+        std::uint32_t launch_wipe_reveal_frames{};
         bool window_focused = true;
         bool frame_frozen{};
         bool suppress_fullscreen_start{};
@@ -2033,6 +2611,20 @@ int main(int argc, char** argv) {
             bool step_frame_backward{};
             SDL_Event event;
             while (SDL_PollEvent(&event)) {
+                const auto reset_to_setup_key =
+                    event.type == SDL_EVENT_KEY_DOWN
+                    && !event.key.repeat
+                    && event.key.scancode == SDL_SCANCODE_R
+                    && (event.key.mod & SDL_KMOD_CTRL) != 0U;
+                if (reset_to_setup_key) {
+                    // Reconstruct the runtime at BOOT so this works from any
+                    // cartridge or host-owned screen, including paused play,
+                    // EX native menus and the HUD editor.
+                    initial_map = "BOOT";
+                    restart_runtime = true;
+                    running = false;
+                    break;
+                }
                 const auto fullscreen_key =
                     event.type == SDL_EVENT_KEY_DOWN
                     && !event.key.repeat
@@ -2297,6 +2889,9 @@ int main(int argc, char** argv) {
             }
 
             if (!running) break;
+            window.set_render_options(game.anti_aliasing_mode(),
+                game.enhanced_graphics(), game.smooth_polys(),
+                game.rtx_lighting(), game.vsync());
             if (toggle_frame_freeze) {
                 frame_frozen = !frame_frozen;
                 input.reset();
@@ -2512,7 +3107,7 @@ int main(int argc, char** argv) {
                                    == starfox::simulation::GameFlowState::pregame_menu
                                && game.pregame_page()
                                    == starfox::simulation::PregamePage::main
-                               && game.pregame_selection() == 4U
+                               && game.pregame_selection() == 9U
                                && (controls.pressed
                                    & (starfox::input::a | starfox::input::b))
                                    != 0U) {
@@ -2546,6 +3141,7 @@ int main(int argc, char** argv) {
                     previous = current;
                     previous_camera = current_camera;
                     previous_raster_motion = current_raster_motion;
+                    previous_oam = current_oam;
                     previous_circle = current_circle;
                     const auto previous_scene = game.scene_revision();
                     const auto settings_before_tick = capture_pregame_settings();
@@ -2574,6 +3170,7 @@ int main(int argc, char** argv) {
                     current = capture();
                     current_camera = capture_camera();
                     current_raster_motion = capture_raster_motion();
+                    current_oam = game.map().ppu_state().oam;
                     current_circle = game.circle_effect_state();
                     const auto camera_cut =
                         starfox::timing::camera_transform_is_discontinuous(
@@ -2588,6 +3185,7 @@ int main(int argc, char** argv) {
                         previous = current;
                         previous_camera = current_camera;
                         previous_raster_motion = current_raster_motion;
+                        previous_oam = current_oam;
                         previous_circle = current_circle;
                     }
                     for (const auto& [handle, snapshot] : current) {
@@ -2625,7 +3223,9 @@ int main(int argc, char** argv) {
                 || game.flow_state()
                     == starfox::simulation::GameFlowState::training
                 || game.flow_state()
-                    == starfox::simulation::GameFlowState::stage_results;
+                    == starfox::simulation::GameFlowState::stage_results
+                || game.flow_state()
+                    == starfox::simulation::GameFlowState::credits;
             const auto gameplay_hud = game.flow_state()
                     == starfox::simulation::GameFlowState::gameplay
                 || game.flow_state()
@@ -2648,8 +3248,10 @@ int main(int argc, char** argv) {
                 ? 0 : superfx_offset_y;
             framebuffer.resize(display_width, snes_height);
             superfx_frame.resize(display_width, scene_height);
+            superfx_surfaces.resize(display_width, scene_height);
             superfx_hud.resize(display_width, superfx_height);
             controls_player_layer.resize(display_width, superfx_height);
+            native_ex_overlay.resize(display_width, snes_height);
             planet_overlay.resize(display_width, snes_height);
             planet_text_overlay.resize(display_width, snes_height);
             // A paused cartridge presents one completed source frame. Do not
@@ -2676,6 +3278,8 @@ int main(int argc, char** argv) {
                 ex_native_menu ? current_raster_motion.bg2_scroll_y
                                : current_raster_motion.background_y);
             auto ppu = game.map().ppu_state();
+            starfox::render::interpolate_crosshair_oam(
+                previous_oam, interpolation_alpha, ppu);
             const auto ex_title_logo_screen = game.experience()
                     == starfox::simulation::Experience::starfox_ex
                 && game.flow_state()
@@ -2700,16 +3304,52 @@ int main(int argc, char** argv) {
                     previous_raster_motion.bg2_horizontal_offsets[line],
                     current_raster_motion.bg2_horizontal_offsets[line]);
             }
+            for (std::size_t index = 0;
+                 index < current_raster_motion.bg2_vertical_offsets.size();
+                 ++index) {
+                const auto previous_value =
+                    previous_raster_motion.bg2_vertical_offsets[index];
+                const auto current_value =
+                    current_raster_motion.bg2_vertical_offsets[index];
+                auto interpolated = current_value;
+                // DOVOFS words contain a 13-bit wrapping scroll value and a
+                // validity flag. Interpolate only while the same table entry
+                // remains active, following the shortest wrapped distance.
+                if (((previous_value ^ current_value) & 0x4000U) == 0U
+                    && (current_value & 0x4000U) != 0U) {
+                    const auto previous_scroll =
+                        static_cast<std::int32_t>(previous_value & 0x1fffU);
+                    const auto current_scroll =
+                        static_cast<std::int32_t>(current_value & 0x1fffU);
+                    auto difference = (current_scroll - previous_scroll)
+                        & 0x1fff;
+                    if (difference > 4'095) difference -= 8'192;
+                    auto scroll = previous_scroll + static_cast<std::int32_t>(
+                        std::lround(static_cast<double>(difference)
+                            * interpolation_alpha));
+                    scroll %= 8'192;
+                    if (scroll < 0) scroll += 8'192;
+                    interpolated = static_cast<std::uint16_t>(
+                        (current_value & 0xe000U)
+                        | static_cast<std::uint16_t>(scroll));
+                }
+                const auto byte = (0x2fa0U + index) * 2U;
+                ppu.vram[byte] = static_cast<std::uint8_t>(interpolated);
+                ppu.vram[byte + 1U] =
+                    static_cast<std::uint8_t>(interpolated >> 8U);
+            }
             auto circle = interpolate_circle_effect(
                 previous_circle, current_circle, interpolation_alpha);
             circle.centre_x = static_cast<std::int16_t>(
                 circle.centre_x + viewport_origin);
             framebuffer.clear(0U);
             superfx_frame.clear(0U);
+            superfx_surfaces.clear();
             superfx_ui.clear(0U);
             superfx_hud.clear(0U);
             comms_hud.clear(0U);
             controls_player_layer.clear(0U);
+            native_ex_overlay.clear(0U);
             planet_overlay.clear(0U);
             planet_text_overlay.clear(0U);
             // EX's 224-pixel Super FX bitmap is centred inside a 256-pixel
@@ -2956,7 +3596,22 @@ int main(int argc, char** argv) {
                 if ((object.strategy_flags[3] & 0x08U) != 0U) continue;
                 const auto current_transform = current.find(handle);
                 if (current_transform == current.end()) continue;
-                const auto prior = previous.find(handle);
+                auto prior = previous.find(handle);
+                if (prior != previous.end()
+                    && (prior->second.shape
+                            != current_transform->second.shape
+                        || prior->second.strategy_address
+                            != current_transform->second.strategy_address
+                        || prior->second.type
+                            != current_transform->second.type)) {
+                    // Object handles are cartridge slots, not stable entity
+                    // IDs. A removed object can be replaced in the same slot
+                    // between two source frames. Interpolating that new model
+                    // from the old slot's pose made fresh controller/training
+                    // ships appear off-screen and made multi-part bosses such
+                    // as Linktron jump between unrelated component poses.
+                    prior = previous.end();
+                }
                 // TRAIL_ISTRAT pieces are discrete source afterimages. Moving
                 // every clone through fractional positions made the Nintendo
                 // logo look smeared after its main text had already settled.
@@ -3022,6 +3677,12 @@ int main(int argc, char** argv) {
             // resort interpolated presentation coordinates.
             for (auto& item : visible) {
                 const auto& object = game.objects().at(item.handle);
+                // Text/trail objects use NULLSHAPE only as a strategy carrier;
+                // TEXTURE_SCROLL_X, AL_COLTAB and AL_DEPTHOFFSET contain the
+                // actual raster data. Requiring NULLSHAPE to decode before
+                // this branch silently discarded Meteor's chained fire trail
+                // whenever that placeholder was absent from the shape cache.
+                if ((object.strategy_flags[0] & 0x40U) != 0U) continue;
                 const auto colour_table = effective_colour_table(object);
                 const auto base_shape_key = (static_cast<std::uint32_t>(object.shape) << 16U)
                     | colour_table;
@@ -3165,24 +3826,24 @@ int main(int argc, char** argv) {
             for (const auto& item : visible) {
                 const auto& object = game.objects().at(item.handle);
                 if ((object.strategy_flags[0] & 0x04U) != 0U) continue;
+                auto& target = controls_screen && item.handle == game.player()
+                    ? controls_player_layer : superfx_frame;
+                if ((object.strategy_flags[0] & 0x40U) != 0U) {
+                    text_renderer.draw(object.colour_table, object.extended[21],
+                        std::bit_cast<std::int8_t>(object.texture_scroll_x),
+                        make_pose(item, false), target);
+                    continue;
+                }
                 const auto colour_table = effective_colour_table(object);
                 const auto base_shape_key = (static_cast<std::uint32_t>(object.shape) << 16U)
                     | colour_table;
                 if (object.shape == 0 || invalid_shapes.contains(base_shape_key)) continue;
                 const auto base = shape_cache.find(base_shape_key);
                 if (base == shape_cache.end()) continue;
-                auto& target = controls_screen && item.handle == game.player()
-                    ? controls_player_layer : superfx_frame;
                 if ((object.strategy_flags[0] & 0x10U) != 0U) {
                     particle_renderer.draw_owner(game.particles(), item.handle,
                         make_pose(item, false), interpolation_alpha,
                         target);
-                    continue;
-                }
-                if ((object.strategy_flags[0] & 0x40U) != 0U) {
-                    text_renderer.draw(object.colour_table, object.extended[21],
-                        std::bit_cast<std::int8_t>(object.texture_scroll_x),
-                        make_pose(item, false), target);
                     continue;
                 }
                 const auto base_header = base->second.header;
@@ -3216,20 +3877,28 @@ int main(int argc, char** argv) {
                     pose.simple_sprite_colour = object.extended[21];
                     pose.simple_sprite_world_size = diameter;
                 }
-                renderer.draw(found->second, pose, target, false);
+                renderer.draw(found->second, pose, target, false,
+                    &target == &superfx_frame
+                            && (game.enhanced_graphics() || game.smooth_polys()
+                                || game.rtx_lighting())
+                        ? &superfx_surfaces : nullptr);
             }
             if (game.flow_state()
-                    == starfox::simulation::GameFlowState::ex_pregame_menu) {
+                    == starfox::simulation::GameFlowState::ex_pregame_menu
+                || game.flow_state()
+                    == starfox::simulation::GameFlowState::continue_choice) {
                 const auto& native_model = game.map().native_model_draw();
                 if (native_model.active && native_model.shape != 0U) {
-                    const auto shape_key = static_cast<std::uint32_t>(
-                        native_model.shape) << 16U;
+                    const auto shape_key =
+                        (static_cast<std::uint32_t>(native_model.shape) << 16U)
+                        | native_model.colour_table;
                     if (!invalid_shapes.contains(shape_key)) {
                         auto found = shape_cache.find(shape_key);
                         if (found == shape_cache.end()) {
                             try {
                                 found = shape_cache.emplace(shape_key,
-                                    decoder.decode(native_model.shape)).first;
+                                    decoder.decode(native_model.shape, {},
+                                        native_model.colour_table)).first;
                             } catch (const std::exception&) {
                                 invalid_shapes.insert(shape_key);
                             }
@@ -3253,6 +3922,13 @@ int main(int argc, char** argv) {
                                 (native_model.rotation_y & 0x00ffU) << 8U);
                             pose.roll = static_cast<std::uint16_t>(
                                 (native_model.rotation_z & 0x00ffU) << 8U);
+                            pose.rotation_matrix =
+                                starfox::simulation::rotation_matrix_q15(
+                                    trigonometry,
+                                    static_cast<std::int16_t>(pose.pitch),
+                                    static_cast<std::int16_t>(pose.yaw),
+                                    static_cast<std::int16_t>(pose.roll));
+                            pose.use_rotation_matrix = true;
                             // MSHOWOBJ3 (the source model viewer) enters
                             // MSHOWOBJECT directly; only the normal draw-list
                             // MSHOWOBJ2 path applies Huge Models.
@@ -3291,7 +3967,10 @@ int main(int argc, char** argv) {
                                 depth_table_address, depth_thresholds,
                                 depth_colours, 0U, pose);
                             renderer.draw(
-                                found->second, pose, superfx_frame, false);
+                                found->second, pose, superfx_frame, false,
+                                game.enhanced_graphics() || game.smooth_polys()
+                                        || game.rtx_lighting()
+                                    ? &superfx_surfaces : nullptr);
                         }
                     }
                 }
@@ -3491,12 +4170,31 @@ int main(int argc, char** argv) {
                 && gameplay_hud) {
                 // EX draws its scored/FPS/multiplayer diagnostics and full
                 // interactive pause menu into the native Super FX BG1
-                // bitmap. Geometry is host-rendered, so composite only that
-                // source bitmap here: above world models and below the HUD
-                // meters and SNES object layer, matching TRANS.ASM.
-                background_renderer.draw_bg1(ppu, framebuffer,
+                // bitmap. Render it into a transparent staging layer first:
+                // source guard pixels can use non-zero palette entries whose
+                // RGB value is black, and drawing those directly created 4:3
+                // bars over the expanded EX world. The PC communication HUD
+                // is authoritative while a message is active, avoiding a
+                // second copy of the same EX portrait/text from this bitmap.
+                background_renderer.draw_bg1(ppu, native_ex_overlay,
                     starfox::render::TilePriorityPass::all,
                     viewport_origin, false);
+                if (dialogue.active && !game.paused()) {
+                    native_ex_overlay.clear(0U);
+                } else {
+                    for (std::uint32_t y = 0U;
+                         y < native_ex_overlay.height(); ++y) {
+                        for (std::uint32_t x = 0U;
+                             x < native_ex_overlay.width(); ++x) {
+                            const auto index = native_ex_overlay.get(x, y);
+                            if (index != 0U
+                                && (ppu.cgram[index] & 0x7fffU) == 0U) {
+                                native_ex_overlay.set(x, y, 0U);
+                            }
+                        }
+                    }
+                }
+                composite_superfx(native_ex_overlay, 0, 0, false);
             }
             composite_superfx(
                 superfx_hud, 0, superfx_offset_y, false);
@@ -3817,7 +4515,7 @@ int main(int argc, char** argv) {
                         draw_centred("A/LEFT/RIGHT  CHANGE", 181, 13U);
                         draw_centred("B  BACK", 191, 13U);
                     } else {
-                        draw_centred("PRE-GAME SETUP", 46, 10U);
+                        draw_centred("PRE-GAME SETUP", 39, 10U);
                         const auto timing = game.timing_mode()
                             == starfox::simulation::TimingMode::unlocked_20_fps
                             ? std::string_view{"UNLOCKED 20 HZ"}
@@ -3844,8 +4542,13 @@ int main(int argc, char** argv) {
                             == starfox::simulation::Experience::original
                             ? std::string_view{"ORIGINAL"}
                             : std::string_view{"STARFOX EX"};
-                        constexpr std::array<std::int32_t, 7> row_y{
-                            60, 78, 96, 114, 132, 150, 168};
+                        constexpr std::array<std::int32_t, 12> row_y{
+                            49, 60, 71, 82, 93, 104,
+                            115, 126, 137, 148, 159, 170};
+                        const auto on_off = [](bool enabled) {
+                            return enabled ? std::string_view{"ON"}
+                                           : std::string_view{"OFF"};
+                        };
                         draw_row("EXPERIENCE", experience, row_y[0],
                             game.pregame_selection() == 0U);
                         draw_row("GAME PACE", timing, row_y[1],
@@ -3854,17 +4557,32 @@ int main(int argc, char** argv) {
                             game.pregame_selection() == 2U);
                         draw_row("DISPLAY", display, row_y[3],
                             game.pregame_selection() == 3U);
-                        draw_row("CONTROLLER", "A  REMAP", row_y[4],
+                        draw_row("ANTI-ALIASING",
+                            anti_aliasing_name(game.anti_aliasing_mode()), row_y[4],
                             game.pregame_selection() == 4U);
-                        draw_row("OPTIONS", "A  OPEN", row_y[5],
+                        draw_row("ENHANCED TEXTURES",
+                            on_off(game.enhanced_graphics()), row_y[5],
                             game.pregame_selection() == 5U);
-                        draw_row("START GAME", "", row_y[6],
+                        draw_row("SMOOTH POLYS",
+                            on_off(game.smooth_polys()), row_y[6],
                             game.pregame_selection() == 6U);
-                        constexpr std::array<std::int32_t, 7> cursor_y{
-                            63, 81, 99, 117, 135, 153, 171};
+                        draw_row("RTX LIGHTING",
+                            on_off(game.rtx_lighting()), row_y[7],
+                            game.pregame_selection() == 7U);
+                        draw_row("VSYNC", on_off(game.vsync()), row_y[8],
+                            game.pregame_selection() == 8U);
+                        draw_row("CONTROLLER", "A  REMAP", row_y[9],
+                            game.pregame_selection() == 9U);
+                        draw_row("OPTIONS", "A  OPEN", row_y[10],
+                            game.pregame_selection() == 10U);
+                        draw_row("START GAME", "", row_y[11],
+                            game.pregame_selection() == 11U);
+                        constexpr std::array<std::int32_t, 12> cursor_y{
+                            52, 63, 74, 85, 96, 107,
+                            118, 129, 140, 151, 162, 173};
                         draw_cursor(cursor_y[game.pregame_selection()]);
-                        draw_centred("D-PAD CHOOSE   A SELECT", 181, 13U);
-                        draw_centred("START  BEGIN", 191, 13U);
+                        draw_centred("D-PAD CHOOSE   A SELECT", 190, 13U);
+                        draw_centred("START  BEGIN", 201, 13U);
                     }
                 }
             }
@@ -3897,8 +4615,31 @@ int main(int argc, char** argv) {
                     == starfox::simulation::GameFlowState::gameplay
                 || game.flow_state()
                     == starfox::simulation::GameFlowState::intro;
+            const auto window_wipe = game.window_wipe_state();
             const auto forced_black = uses_black_window
                 && game.map().read_native_byte(stay_black_address) != 0xffU;
+            const auto launch_wipe = game.flow_state()
+                    == starfox::simulation::GameFlowState::gameplay
+                // ExitBase hands the source colour-window reveal to the
+                // first Corneria background ($33) before normal play begins.
+                && game.map().background() == 0x33U
+                && window_wipe.active;
+            auto wipe_has_started_revealing = false;
+            if (launch_wipe) {
+                for (std::size_t line = 0U;
+                     line < window_wipe.left.size(); ++line) {
+                    if (window_wipe.left[line] != 16U
+                        || window_wipe.right[line] != 239U) {
+                        wipe_has_started_revealing = true;
+                        break;
+                    }
+                }
+            }
+            if (wipe_has_started_revealing) {
+                ++launch_wipe_reveal_frames;
+            } else if (!launch_wipe) {
+                launch_wipe_reveal_frames = 0U;
+            }
             if (forced_black) {
                 framebuffer.clear(0U);
                 planet_overlay.clear(0U);
@@ -3914,8 +4655,23 @@ int main(int argc, char** argv) {
             auto base_palette = starfox::render::decode_bgr555_palette(
                 game.map().ppu_state().cgram);
             apply_crosshair_tint(base_palette, game.crosshair_colour());
+            auto presentation_brightness = game.map().display_brightness();
+            if (wipe_has_started_revealing
+                && launch_wipe_reveal_frames > 1U) {
+                // ExitBase arms its visible window a few raster phases before
+                // its coarse 20 Hz map loop begins FADEUP.  Let the reveal and
+                // fade overlap at a physical 60 Hz cadence, as they do on the
+                // cartridge, instead of presenting an extra dead-black hold
+                // followed by a 0->9 brightness pop on low output rates.
+                const auto reveal_phases = static_cast<std::uint32_t>(
+                    (launch_wipe_reveal_frames - 1U) * 60U
+                    / std::max<std::uint16_t>(game.presentation_fps(), 1U));
+                presentation_brightness = static_cast<std::uint8_t>(
+                    std::max<std::uint32_t>(presentation_brightness,
+                        std::min<std::uint32_t>(15U, reveal_phases * 3U)));
+            }
             auto palette = starfox::render::apply_snes_brightness(
-                base_palette, game.map().display_brightness());
+                base_palette, presentation_brightness);
             if (forced_black) palette.fill({0U, 0U, 0U, 255U});
             if (hud_editor.active) {
                 // Pick neutral editor colours already present in the active
@@ -3948,7 +4704,14 @@ int main(int argc, char** argv) {
                     : 0U;
             }
             presentation_effects.planet = planet_presentation;
-            presentation_effects.wipe = game.window_wipe_state();
+            presentation_effects.wipe = window_wipe;
+            presentation_effects.model_surfaces =
+                game.enhanced_graphics() || game.smooth_polys()
+                        || game.rtx_lighting()
+                ? &superfx_surfaces : nullptr;
+            presentation_effects.model_surface_y = scene_offset_y;
+            presentation_effects.expand_wipe = display_width > snes_width
+                && extend_cartridge_scene;
             presentation_effects.clip_circle = controls_screen;
             presentation_effects.circle_left = static_cast<std::int16_t>(
                 24 + viewport_origin);
@@ -3983,6 +4746,31 @@ int main(int argc, char** argv) {
             ++presented_frames;
             if (test_frames != 0 && presented_frames >= test_frames) {
                 if (!capture_path.empty()) window.save_bmp(capture_path);
+                if (std::getenv("STARFOX_TRACE_RENDER_STATE") != nullptr) {
+                    const auto& trace_ppu = game.map().ppu_state();
+                    std::cerr << "render-state flow="
+                              << static_cast<unsigned>(game.flow_state())
+                              << " mode="
+                              << static_cast<unsigned>(trace_ppu.background_mode)
+                              << " tm=$" << std::hex
+                              << static_cast<unsigned>(trace_ppu.main_screen)
+                              << " bg2sc=$" << trace_ppu.bg2_screen_base
+                              << " bg2chr=$" << trace_ppu.bg2_character_base
+                              << " bg2tile="
+                              << (trace_ppu.bg2_tile_size_16 ? 16 : 8)
+                              << " bg3sc=$" << trace_ppu.bg3_screen_base
+                              << " bg3chr=$" << trace_ppu.bg3_character_base
+                              << " bg=" << game.map().background()
+                              << std::dec << " scroll=("
+                              << trace_ppu.bg2_scroll_x << ','
+                              << trace_ppu.bg2_scroll_y << ") vofs="
+                              << trace_ppu.bg2_vertical_offsets_enabled
+                              << " hofs="
+                              << trace_ppu.bg2_horizontal_offsets_enabled
+                              << " dots="
+                              << static_cast<int>(game.map().dots_mode())
+                              << '\n';
+                }
                 running = false;
             }
         }

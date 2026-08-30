@@ -53,6 +53,7 @@ struct NativeModelDrawState {
     std::int16_t vanish_y{96};
     std::uint16_t animation_frame{};
     std::uint16_t colour_frame{};
+    std::uint16_t colour_table{};
 };
 
 // Project-owned adapter around the pinned MIT RetroCPU core. It supplies the
@@ -83,6 +84,7 @@ public:
         const std::array<std::uint8_t, 4>& ports) noexcept;
     [[nodiscard]] const SnesPpuState& ppu_state() const noexcept;
     [[nodiscard]] const NativeModelDrawState& native_model_draw() const noexcept;
+    void set_native_model_draw(const NativeModelDrawState& state) noexcept;
     [[nodiscard]] const std::vector<std::uint32_t>& unknown_superfx_launches()
         const noexcept;
     [[nodiscard]] std::uint64_t apu_upload_generation() const noexcept;

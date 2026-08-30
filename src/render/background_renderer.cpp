@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <vector>
 
@@ -88,6 +89,31 @@ bool selected_priority(std::uint16_t tile, TilePriorityPass pass) noexcept {
     return high == (pass == TilePriorityPass::high);
 }
 
+struct TileSample {
+    std::uint16_t tile{};
+    std::uint32_t x{};
+    std::uint32_t y{};
+};
+
+TileSample tile_sample(std::uint16_t tile, std::int32_t source_x,
+    std::int32_t source_y, bool tile_size_16) noexcept {
+    if (!tile_size_16) {
+        return {tile, static_cast<std::uint32_t>(source_x) & 7U,
+            static_cast<std::uint32_t>(source_y) & 7U};
+    }
+    auto x = static_cast<std::uint32_t>(source_x) & 15U;
+    auto y = static_cast<std::uint32_t>(source_y) & 15U;
+    if ((tile & 0x4000U) != 0U) x = 15U - x;
+    if ((tile & 0x8000U) != 0U) y = 15U - y;
+    // A 16x16 SNES character is four ordinary 8x8 characters. Horizontal
+    // neighbours are consecutive; the lower pair starts 16 characters later.
+    const auto character = static_cast<std::uint16_t>((tile & 0x03ffU)
+        + (x >= 8U ? 1U : 0U) + (y >= 8U ? 16U : 0U));
+    return {static_cast<std::uint16_t>((tile & 0x3c00U)
+                | (character & 0x03ffU)),
+        x & 7U, y & 7U};
+}
+
 std::int32_t mosaic_coordinate(
     std::int32_t coordinate,
     std::uint8_t mosaic,
@@ -114,8 +140,9 @@ void BackgroundRenderer::draw_bg1(
     const auto width_tiles = (ppu.bg1_screen_size & 1U) != 0U ? 64U : 32U;
     const auto height_tiles = (ppu.bg1_screen_size & 2U) != 0U ? 64U : 32U;
     const auto pages_wide = width_tiles / 32U;
-    const auto width_pixels = static_cast<std::int32_t>(width_tiles * 8U);
-    const auto height_pixels = static_cast<std::int32_t>(height_tiles * 8U);
+    const auto tile_edge = ppu.bg1_tile_size_16 ? 16U : 8U;
+    const auto width_pixels = static_cast<std::int32_t>(width_tiles * tile_edge);
+    const auto height_pixels = static_cast<std::int32_t>(height_tiles * tile_edge);
     const auto wrap = [](std::int32_t value, std::int32_t modulus) {
         value %= modulus;
         return value < 0 ? value + modulus : value;
@@ -125,7 +152,7 @@ void BackgroundRenderer::draw_bg1(
             static_cast<std::int32_t>(screen_y), ppu.mosaic, 0x01U);
         const auto source_y = wrap(sample_y
             + ppu.bg1_scroll_y, height_pixels);
-        const auto tile_y = static_cast<std::uint32_t>(source_y) >> 3U;
+        const auto tile_y = static_cast<std::uint32_t>(source_y) / tile_edge;
         const auto inset = static_cast<std::int32_t>(
             std::min(horizontal_inset, 128U));
         const auto first_x = extend_horizontal ? 0U
@@ -141,20 +168,20 @@ void BackgroundRenderer::draw_bg1(
                 logical_x, ppu.mosaic, 0x01U);
             const auto source_x = wrap(sample_x
                 + ppu.bg1_scroll_x, width_pixels);
-            const auto tile_x = static_cast<std::uint32_t>(source_x) >> 3U;
+            const auto tile_x = static_cast<std::uint32_t>(source_x) / tile_edge;
             const auto page = (tile_x >> 5U) + (tile_y >> 5U) * pages_wide;
             const auto entry = page * 0x400U
                 + (tile_y & 31U) * 32U + (tile_x & 31U);
             const auto tile = vram_word(ppu,
                 static_cast<std::uint32_t>(ppu.bg1_screen_base) + entry);
             if (!selected_priority(tile, priority)) continue;
-            const auto pixel_x = static_cast<std::uint32_t>(source_x) & 7U;
-            const auto pixel_y = static_cast<std::uint32_t>(source_y) & 7U;
+            const auto sample = tile_sample(
+                tile, source_x, source_y, ppu.bg1_tile_size_16);
             const auto colour = ppu.background_mode == 3U
-                ? tile_pixel_8bpp(ppu, ppu.bg1_character_base, tile,
-                    pixel_x, pixel_y)
-                : tile_pixel_4bpp(ppu, ppu.bg1_character_base, tile,
-                    pixel_x, pixel_y);
+                ? tile_pixel_8bpp(ppu, ppu.bg1_character_base, sample.tile,
+                    sample.x, sample.y)
+                : tile_pixel_4bpp(ppu, ppu.bg1_character_base, sample.tile,
+                    sample.x, sample.y);
             if (colour != 0U) {
                 target.set(static_cast<std::int32_t>(screen_x),
                     static_cast<std::int32_t>(screen_y),
@@ -178,8 +205,9 @@ void BackgroundRenderer::draw_bg2(
     const auto width_tiles = (ppu.bg2_screen_size & 1U) != 0U ? 64U : 32U;
     const auto height_tiles = (ppu.bg2_screen_size & 2U) != 0U ? 64U : 32U;
     const auto pages_wide = width_tiles / 32U;
-    const auto width_pixels = static_cast<std::int32_t>(width_tiles * 8U);
-    const auto height_pixels = static_cast<std::int32_t>(height_tiles * 8U);
+    const auto tile_edge = ppu.bg2_tile_size_16 ? 16U : 8U;
+    const auto width_pixels = static_cast<std::int32_t>(width_tiles * tile_edge);
+    const auto height_pixels = static_cast<std::int32_t>(height_tiles * tile_edge);
     const auto wrap = [](std::int32_t value, std::int32_t modulus) {
         value %= modulus;
         return value < 0 ? value + modulus : value;
@@ -219,6 +247,46 @@ void BackgroundRenderer::draw_bg2(
         : 1;
     const auto expanded_mode2 = extend_horizontal && target.width() > 256U
         && ppu.background_mode == 2U && ppu.bg2_vertical_offsets_enabled;
+    // The six cartridge roll tables are integer-quantised samples of one
+    // straight horizon. Repeating those steps beyond x=0/255 makes the added
+    // columns change angle at each join, and using one edge pair makes the
+    // extension warble whenever that pair quantises to a different value.
+    // Recover the underlying line from every valid sample. This is used only
+    // for expanded presentation; the 256-pixel cartridge raster remains exact.
+    auto fitted_intercept = 0.0;
+    auto fitted_slope = 0.0;
+    auto fitted_samples = std::size_t{};
+    auto sum_x = 0.0;
+    auto sum_y = 0.0;
+    auto sum_xx = 0.0;
+    auto sum_xy = 0.0;
+    auto previous_raw = std::int32_t{};
+    auto previous_unwrapped = std::int32_t{};
+    auto have_previous = false;
+    for (std::size_t index = 0; index < vertical_offsets.size(); ++index) {
+        if (!vertical_valid(index)) continue;
+        const auto raw = vertical_value(index);
+        const auto unwrapped = have_previous
+            ? previous_unwrapped + signed_difference(raw, previous_raw)
+            : raw;
+        const auto x = static_cast<double>(index + 1U);
+        const auto y = static_cast<double>(unwrapped);
+        sum_x += x;
+        sum_y += y;
+        sum_xx += x * x;
+        sum_xy += x * y;
+        ++fitted_samples;
+        previous_raw = raw;
+        previous_unwrapped = unwrapped;
+        have_previous = true;
+    }
+    if (fitted_samples != 0U) {
+        const auto count = static_cast<double>(fitted_samples);
+        const auto denominator = count * sum_xx - sum_x * sum_x;
+        fitted_slope = fitted_samples > 1U && denominator != 0.0
+            ? (count * sum_xy - sum_x * sum_y) / denominator : 0.0;
+        fitted_intercept = (sum_y - fitted_slope * sum_x) / count;
+    }
     const auto extended_vertical_offset = [&vertical_value, &vertical_valid,
                                                extrapolated_delta,
                                                extrapolated_span,
@@ -275,20 +343,37 @@ void BackgroundRenderer::draw_bg2(
                 - horizontal_origin;
             const auto column_coordinate = logical_x
                 + (static_cast<std::int32_t>(scroll_x) & 7);
-            const auto visible_column = column_coordinate >= 0
-                ? column_coordinate / 8
-                : -((-column_coordinate + 7) / 8);
-            column_scroll_y[screen_x - first_x] = extended_vertical_offset(
-                visible_column, scroll_y);
+            if (expanded_mode2 && fitted_samples != 0U) {
+                // Evaluate at pixel precision across the complete wide view.
+                // That removes both the 8-pixel staircase in the extensions
+                // and the derivative change where they meet the native area.
+                const auto visible_column =
+                    static_cast<double>(column_coordinate) / 8.0;
+                auto value = static_cast<std::int32_t>(std::lround(
+                    fitted_intercept + fitted_slope * visible_column));
+                value %= 8'192;
+                if (value < 0) value += 8'192;
+                column_scroll_y[screen_x - first_x] = value;
+            } else {
+                const auto visible_column = column_coordinate >= 0
+                    ? column_coordinate / 8
+                    : -((-column_coordinate + 7) / 8);
+                column_scroll_y[screen_x - first_x] = extended_vertical_offset(
+                    visible_column, scroll_y);
+            }
         }
     }
     std::vector<std::uint8_t> last_opaque_ground;
+    std::vector<std::int32_t> previous_ground_source_y;
+    std::vector<bool> ground_source_wrapped;
     if (extend_ground_down) {
         // Rolled Corneria ground can live in either BG2 priority pass. Keep a
         // continuation colour for both; tracking only the low pass left the
         // final one or two wide-mode strips transparent whenever the ground
         // tile was high priority, exposing CGRAM colour zero as a blue wedge.
         last_opaque_ground.resize(final_x - first_x, 0U);
+        previous_ground_source_y.resize(final_x - first_x, -1);
+        ground_source_wrapped.resize(final_x - first_x, false);
     }
 
     for (std::uint32_t screen_y = 0; screen_y < target.height(); ++screen_y) {
@@ -316,10 +401,33 @@ void BackgroundRenderer::draw_bg2(
             const auto source_y = wrap(
                 sample_y + current_scroll_y,
                 height_pixels);
-            const auto tile_y = static_cast<std::uint32_t>(source_y) >> 3U;
+            const auto column_index = screen_x - first_x;
+            if (!previous_ground_source_y.empty()) {
+                const auto previous_source_y =
+                    previous_ground_source_y[column_index];
+                if (screen_y >= 144U && previous_source_y >= 0
+                    && source_y < previous_source_y
+                    && previous_source_y - source_y > height_pixels / 2) {
+                    // A rolled floor that reaches the bottom of its 256-line
+                    // tilemap must continue with its last ground colour. The
+                    // wrapped source row is opaque sky, so transparency-only
+                    // continuation still exposed a blue wedge at the front.
+                    ground_source_wrapped[column_index] = true;
+                }
+                previous_ground_source_y[column_index] = source_y;
+                if (ground_source_wrapped[column_index]) {
+                    const auto ground = last_opaque_ground[column_index];
+                    if (ground != 0U) {
+                        target.set(static_cast<std::int32_t>(screen_x),
+                            static_cast<std::int32_t>(screen_y), ground);
+                    }
+                    continue;
+                }
+            }
+            const auto tile_y = static_cast<std::uint32_t>(source_y) / tile_edge;
             const auto source_x = wrap(
                 sample_x + row_scroll_x, width_pixels);
-            const auto tile_x = static_cast<std::uint32_t>(source_x) >> 3U;
+            const auto tile_x = static_cast<std::uint32_t>(source_x) / tile_edge;
             const auto page = (tile_x >> 5U) + (tile_y >> 5U) * pages_wide;
             const auto entry = page * 0x400U
                 + (tile_y & 31U) * 32U + (tile_x & 31U);
@@ -335,9 +443,10 @@ void BackgroundRenderer::draw_bg2(
                 }
                 continue;
             }
-            auto colour = tile_pixel_4bpp(ppu, ppu.bg2_character_base, tile,
-                static_cast<std::uint32_t>(source_x) & 7U,
-                static_cast<std::uint32_t>(source_y) & 7U);
+            const auto sample = tile_sample(
+                tile, source_x, source_y, ppu.bg2_tile_size_16);
+            auto colour = tile_pixel_4bpp(ppu, ppu.bg2_character_base,
+                sample.tile, sample.x, sample.y);
             auto palette = static_cast<std::uint8_t>((tile >> 10U) & 7U);
             if (colour == 0U && !last_opaque_ground.empty()
                 && screen_y >= 144U) {
@@ -371,8 +480,9 @@ void BackgroundRenderer::draw_bg3(
     const auto width_tiles = (ppu.bg3_screen_size & 1U) != 0U ? 64U : 32U;
     const auto height_tiles = (ppu.bg3_screen_size & 2U) != 0U ? 64U : 32U;
     const auto pages_wide = width_tiles / 32U;
-    const auto width_pixels = static_cast<std::int32_t>(width_tiles * 8U);
-    const auto height_pixels = static_cast<std::int32_t>(height_tiles * 8U);
+    const auto tile_edge = ppu.bg3_tile_size_16 ? 16U : 8U;
+    const auto width_pixels = static_cast<std::int32_t>(width_tiles * tile_edge);
+    const auto height_pixels = static_cast<std::int32_t>(height_tiles * tile_edge);
     const auto wrap = [](std::int32_t value, std::int32_t modulus) {
         value %= modulus;
         return value < 0 ? value + modulus : value;
@@ -383,7 +493,7 @@ void BackgroundRenderer::draw_bg3(
             static_cast<std::int32_t>(screen_y), ppu.mosaic, 0x04U);
         const auto source_y = wrap(sample_y
             + ppu.bg3_scroll_y, height_pixels);
-        const auto tile_y = static_cast<std::uint32_t>(source_y) >> 3U;
+        const auto tile_y = static_cast<std::uint32_t>(source_y) / tile_edge;
         const auto first_x = extend_horizontal ? 0U
             : static_cast<std::uint32_t>(std::max(horizontal_origin, 0));
         const auto final_x = extend_horizontal ? target.width()
@@ -396,16 +506,17 @@ void BackgroundRenderer::draw_bg3(
                 logical_x, ppu.mosaic, 0x04U);
             const auto source_x = wrap(sample_x
                 + ppu.bg3_scroll_x, width_pixels);
-            const auto tile_x = static_cast<std::uint32_t>(source_x) >> 3U;
+            const auto tile_x = static_cast<std::uint32_t>(source_x) / tile_edge;
             const auto page = (tile_x >> 5U) + (tile_y >> 5U) * pages_wide;
             const auto entry = page * 0x400U
                 + (tile_y & 31U) * 32U + (tile_x & 31U);
             const auto tile = vram_word(ppu,
                 static_cast<std::uint32_t>(ppu.bg3_screen_base) + entry);
             if (!selected_priority(tile, priority)) continue;
-            const auto colour = tile_pixel_2bpp(ppu, ppu.bg3_character_base, tile,
-                static_cast<std::uint32_t>(source_x) & 7U,
-                static_cast<std::uint32_t>(source_y) & 7U);
+            const auto sample = tile_sample(
+                tile, source_x, source_y, ppu.bg3_tile_size_16);
+            const auto colour = tile_pixel_2bpp(ppu, ppu.bg3_character_base,
+                sample.tile, sample.x, sample.y);
             if (colour == 0U) continue;
             const auto palette = static_cast<std::uint8_t>((tile >> 10U) & 7U);
             target.set(static_cast<std::int32_t>(screen_x),

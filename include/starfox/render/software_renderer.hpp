@@ -6,7 +6,10 @@
 #include "starfox/simulation/math.hpp"
 
 #include <cstdint>
+#include <cstddef>
 #include <array>
+#include <algorithm>
+#include <vector>
 
 namespace starfox::render {
 
@@ -85,6 +88,95 @@ struct RenderSettings {
     std::uint8_t colour_index_base{};
 };
 
+// Presentation metadata for a host-rendered Super FX surface. The indexed
+// framebuffer remains source-accurate; this parallel buffer gives optional PC
+// rendering effects the actual polygon normal and depth instead of asking a
+// screen-space filter to guess them from palette brightness.
+struct SurfaceSample {
+    float normal_x{};
+    float normal_y{};
+    float normal_z{1.0F};
+    float depth{};
+    std::uint8_t palette_index{};
+    bool valid{};
+};
+
+class SurfaceBuffer {
+public:
+    SurfaceBuffer(std::uint32_t width, std::uint32_t height)
+        : width_(width), height_(height), samples_(
+              static_cast<std::size_t>(width) * height) {}
+
+    [[nodiscard]] std::uint32_t width() const noexcept { return width_; }
+    [[nodiscard]] std::uint32_t height() const noexcept { return height_; }
+
+    void resize(std::uint32_t width, std::uint32_t height) {
+        if (width == width_ && height == height_) return;
+        width_ = width;
+        height_ = height;
+        samples_.assign(static_cast<std::size_t>(width) * height, {});
+        reset_bounds();
+    }
+
+    void clear() noexcept {
+        if (!empty()) {
+            for (auto y = minimum_y_; y < maximum_y_; ++y) {
+                const auto first = samples_.begin()
+                    + static_cast<std::ptrdiff_t>(
+                        static_cast<std::size_t>(y) * width_ + minimum_x_);
+                std::fill(first, first + static_cast<std::ptrdiff_t>(
+                    maximum_x_ - minimum_x_), SurfaceSample{});
+            }
+        }
+        reset_bounds();
+    }
+
+    void set(std::int32_t x, std::int32_t y, SurfaceSample sample,
+        std::uint8_t palette_index) noexcept {
+        if (x < 0 || y < 0 || x >= static_cast<std::int32_t>(width_)
+            || y >= static_cast<std::int32_t>(height_)) {
+            return;
+        }
+        sample.palette_index = palette_index;
+        sample.valid = true;
+        samples_[static_cast<std::size_t>(y) * width_
+            + static_cast<std::size_t>(x)] = sample;
+        minimum_x_ = std::min(minimum_x_, static_cast<std::uint32_t>(x));
+        minimum_y_ = std::min(minimum_y_, static_cast<std::uint32_t>(y));
+        maximum_x_ = std::max(maximum_x_, static_cast<std::uint32_t>(x) + 1U);
+        maximum_y_ = std::max(maximum_y_, static_cast<std::uint32_t>(y) + 1U);
+    }
+
+    [[nodiscard]] const SurfaceSample& get(
+        std::uint32_t x, std::uint32_t y) const noexcept {
+        return samples_[static_cast<std::size_t>(y) * width_ + x];
+    }
+
+    [[nodiscard]] bool empty() const noexcept {
+        return minimum_x_ >= maximum_x_ || minimum_y_ >= maximum_y_;
+    }
+    [[nodiscard]] std::uint32_t minimum_x() const noexcept { return minimum_x_; }
+    [[nodiscard]] std::uint32_t minimum_y() const noexcept { return minimum_y_; }
+    [[nodiscard]] std::uint32_t maximum_x() const noexcept { return maximum_x_; }
+    [[nodiscard]] std::uint32_t maximum_y() const noexcept { return maximum_y_; }
+
+private:
+    void reset_bounds() noexcept {
+        minimum_x_ = width_;
+        minimum_y_ = height_;
+        maximum_x_ = 0U;
+        maximum_y_ = 0U;
+    }
+
+    std::uint32_t width_{};
+    std::uint32_t height_{};
+    std::vector<SurfaceSample> samples_;
+    std::uint32_t minimum_x_{width_};
+    std::uint32_t minimum_y_{height_};
+    std::uint32_t maximum_x_{};
+    std::uint32_t maximum_y_{};
+};
+
 class SoftwareRenderer {
 public:
     explicit SoftwareRenderer(RenderSettings settings = {});
@@ -93,7 +185,8 @@ public:
         const assets::Shape& shape,
         const RenderPose& pose,
         Framebuffer& target,
-        bool clear_target = true) const;
+        bool clear_target = true,
+        SurfaceBuffer* surfaces = nullptr) const;
 
     // MHUD.MC's first-person direction indicators are a Super FX line pass,
     // separate from both the 3D object list and the SNES OAM reticle.

@@ -148,7 +148,8 @@ int main() {
     const auto pregame_test_path = std::filesystem::temp_directory_path()
         / "starfox-enhanced-pregame-test.cfg";
     const starfox::app::PregameSettings saved_pregame{
-        1U, 90U, 3U, true, true, 5U, 1U};
+        1U, 90U, 3U, true, true,
+        3U, true, true, true, true, 5U, 1U};
     require(starfox::app::save_pregame_settings(
                 pregame_test_path, saved_pregame),
             "pre-game settings could not be saved");
@@ -157,6 +158,20 @@ int main() {
                 pregame_test_path, loaded_pregame)
                 && loaded_pregame == saved_pregame,
             "pre-game settings did not round-trip");
+    {
+        std::ofstream legacy_pregame{pregame_test_path, std::ios::trunc};
+        legacy_pregame
+            << "SFE_PREGAME_V4\n"
+            << "EXPERIENCE 0\nTIMING_MODE 0\nPRESENTATION_FPS 60\n"
+            << "DISPLAY_MODE 0\nGOD_MODE 0\nSHOW_FPS 0\n"
+            << "ANTI_ALIASING 1\nENHANCED_GRAPHICS 0\nSMOOTH_POLYS 0\n"
+            << "RTX_LIGHTING 0\nVSYNC 0\nCROSSHAIR_COLOUR 0\n";
+    }
+    loaded_pregame = {};
+    require(starfox::app::load_pregame_settings(
+                pregame_test_path, loaded_pregame)
+                && loaded_pregame.anti_aliasing == 2U,
+            "legacy enabled FXAA was not migrated to medium strength");
     std::error_code pregame_remove_error;
     std::filesystem::remove(pregame_test_path, pregame_remove_error);
     require(!pregame_remove_error,

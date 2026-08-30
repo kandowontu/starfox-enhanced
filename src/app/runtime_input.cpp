@@ -448,12 +448,23 @@ bool load_pregame_settings(
     std::ifstream input{path};
     std::string version;
     if (!(input >> version)
-        || (version != "SFE_PREGAME_V1" && version != "SFE_PREGAME_V2")) {
+        || (version != "SFE_PREGAME_V1" && version != "SFE_PREGAME_V2"
+            && version != "SFE_PREGAME_V3"
+            && version != "SFE_PREGAME_V4"
+            && version != "SFE_PREGAME_V5")) {
         return false;
     }
     auto loaded = PregameSettings{};
-    std::array<bool, 7> found{};
+    std::array<bool, 12> found{};
     found[6] = version == "SFE_PREGAME_V1";
+    if (version == "SFE_PREGAME_V1" || version == "SFE_PREGAME_V2") {
+        std::fill(found.begin() + 7, found.end(), true);
+    } else if (version == "SFE_PREGAME_V3") {
+        // V3's combined Enhanced option already included polygon edge
+        // smoothing. Preserve that visible result when splitting it into a
+        // dedicated V4 choice.
+        found[9] = true;
+    }
     std::string name;
     int value{};
     while (input >> name >> value) {
@@ -473,6 +484,22 @@ bool load_pregame_settings(
         } else if (name == "SHOW_FPS") {
             loaded.show_fps = value != 0;
             found[4] = value == 0 || value == 1;
+        } else if (name == "ANTI_ALIASING") {
+            loaded.anti_aliasing = static_cast<std::uint8_t>(value);
+            found[7] = value >= 0 && value <= (version == "SFE_PREGAME_V5"
+                ? 3 : 1);
+        } else if (name == "ENHANCED_GRAPHICS") {
+            loaded.enhanced_graphics = value != 0;
+            found[8] = value == 0 || value == 1;
+        } else if (name == "SMOOTH_POLYS") {
+            loaded.smooth_polys = value != 0;
+            found[9] = value == 0 || value == 1;
+        } else if (name == "RTX_LIGHTING") {
+            loaded.rtx_lighting = value != 0;
+            found[10] = value == 0 || value == 1;
+        } else if (name == "VSYNC") {
+            loaded.vsync = value != 0;
+            found[11] = value == 0 || value == 1;
         } else if (name == "CROSSHAIR_COLOUR") {
             loaded.crosshair_colour = static_cast<std::uint8_t>(value);
             found[5] = value >= 0 && value <= 7;
@@ -483,6 +510,13 @@ bool load_pregame_settings(
     }
     if (!std::all_of(found.begin(), found.end(),
             [](bool value) { return value; })) return false;
+    if (version == "SFE_PREGAME_V3") {
+        loaded.smooth_polys = loaded.enhanced_graphics;
+    }
+    if (version != "SFE_PREGAME_V5" && loaded.anti_aliasing != 0U) {
+        // The original ON setting used what is now the medium FXAA kernel.
+        loaded.anti_aliasing = 2U;
+    }
     settings = loaded;
     return true;
 }
@@ -492,6 +526,7 @@ bool save_pregame_settings(
     const PregameSettings& settings) noexcept {
     if (path.empty() || settings.timing_mode > 1U
         || settings.display_mode > 4U || settings.crosshair_colour > 7U
+        || settings.anti_aliasing > 3U
         || settings.experience > 1U) {
         return false;
     }
@@ -504,13 +539,22 @@ bool save_pregame_settings(
     if (error) return false;
     std::ofstream output{path, std::ios::trunc};
     if (!output) return false;
-    output << "SFE_PREGAME_V2\n"
+    output << "SFE_PREGAME_V5\n"
            << "EXPERIENCE " << static_cast<unsigned>(settings.experience) << '\n'
            << "TIMING_MODE " << static_cast<unsigned>(settings.timing_mode) << '\n'
            << "PRESENTATION_FPS " << settings.presentation_fps << '\n'
            << "DISPLAY_MODE " << static_cast<unsigned>(settings.display_mode) << '\n'
            << "GOD_MODE " << static_cast<unsigned>(settings.god_mode) << '\n'
            << "SHOW_FPS " << static_cast<unsigned>(settings.show_fps) << '\n'
+           << "ANTI_ALIASING "
+           << static_cast<unsigned>(settings.anti_aliasing) << '\n'
+           << "ENHANCED_GRAPHICS "
+           << static_cast<unsigned>(settings.enhanced_graphics) << '\n'
+           << "SMOOTH_POLYS "
+           << static_cast<unsigned>(settings.smooth_polys) << '\n'
+           << "RTX_LIGHTING "
+           << static_cast<unsigned>(settings.rtx_lighting) << '\n'
+           << "VSYNC " << static_cast<unsigned>(settings.vsync) << '\n'
            << "CROSSHAIR_COLOUR "
            << static_cast<unsigned>(settings.crosshair_colour) << '\n';
     return static_cast<bool>(output);

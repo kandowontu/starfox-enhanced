@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 
@@ -13,6 +14,93 @@ namespace {
 constexpr std::array<std::array<std::uint8_t, 2>, 6> kObjectSizes{{
     {{8, 16}}, {{8, 32}}, {{8, 64}}, {{16, 32}}, {{16, 64}}, {{32, 64}},
 }};
+
+struct CrosshairOamGroup {
+    std::size_t first_object{};
+    std::int32_t centre_x{};
+    std::int32_t centre_y{};
+};
+
+std::int32_t object_x(
+    const std::array<std::uint8_t, 544>& oam,
+    std::size_t object) noexcept {
+    const auto low = object * 4U;
+    const auto shift = static_cast<unsigned>((object & 3U) * 2U);
+    auto x = static_cast<std::int32_t>(oam[low])
+        | (static_cast<std::int32_t>((oam[512U + object / 4U] >> shift) & 1U)
+            << 8U);
+    if (x >= 256) x -= 512;
+    return x;
+}
+
+std::int32_t wrapped_difference(
+    std::int32_t from, std::int32_t to, std::int32_t modulus) noexcept {
+    auto difference = (to - from) % modulus;
+    if (difference > modulus / 2) difference -= modulus;
+    if (difference < -modulus / 2) difference += modulus;
+    return difference;
+}
+
+std::optional<CrosshairOamGroup> find_crosshair_oam_group(
+    const std::array<std::uint8_t, 544>& oam) noexcept {
+    // DO_CROSSHAIR emits the four tile-$61 quadrants consecutively with the
+    // flip pattern 00, H, V, HV. Depending on VOBJBASE the source tile byte is
+    // either $61 or $e1, hence the low-seven-bit comparison.
+    constexpr std::array<std::uint8_t, 4> flips{0U, 0x40U, 0x80U, 0xc0U};
+    for (std::size_t first = 0U; first + 3U < 128U; ++first) {
+        const auto first_low = first * 4U;
+        const auto common_attributes = static_cast<std::uint8_t>(
+            oam[first_low + 3U] & 0x3fU);
+        auto matches = true;
+        for (std::size_t quadrant = 0U; quadrant < 4U; ++quadrant) {
+            const auto low = (first + quadrant) * 4U;
+            matches = matches
+                && (oam[low + 2U] & 0x7fU) == 0x61U
+                && (oam[low + 3U] & 0x3fU) == common_attributes
+                && (oam[low + 3U] & 0xc0U) == flips[quadrant];
+        }
+        if (!matches) continue;
+
+        const auto x0 = object_x(oam, first);
+        const auto x1 = object_x(oam, first + 1U);
+        const auto x2 = object_x(oam, first + 2U);
+        const auto x3 = object_x(oam, first + 3U);
+        const auto y0 = static_cast<std::int32_t>(oam[first_low + 1U]);
+        const auto y1 = static_cast<std::int32_t>(oam[first_low + 5U]);
+        const auto y2 = static_cast<std::int32_t>(oam[first_low + 9U]);
+        const auto y3 = static_cast<std::int32_t>(oam[first_low + 13U]);
+        if (wrapped_difference(x0, x1, 512) != 16
+            || wrapped_difference(x0, x2, 512) != 0
+            || wrapped_difference(x1, x3, 512) != 0
+            || wrapped_difference(y0, y1, 256) != 0
+            || wrapped_difference(y0, y2, 256) != 16
+            || wrapped_difference(y1, y3, 256) != 16) {
+            continue;
+        }
+        return CrosshairOamGroup{first, x0 + 8, y0 + 8};
+    }
+    return std::nullopt;
+}
+
+void set_object_position(
+    std::array<std::uint8_t, 544>& oam,
+    std::size_t object,
+    std::int32_t x,
+    std::int32_t y) noexcept {
+    auto wrapped_x = x % 512;
+    if (wrapped_x < 0) wrapped_x += 512;
+    auto wrapped_y = y % 256;
+    if (wrapped_y < 0) wrapped_y += 256;
+    const auto low = object * 4U;
+    oam[low] = static_cast<std::uint8_t>(wrapped_x);
+    oam[low + 1U] = static_cast<std::uint8_t>(wrapped_y);
+    const auto high = 512U + object / 4U;
+    const auto shift = static_cast<unsigned>((object & 3U) * 2U);
+    const auto x_high_mask = static_cast<std::uint8_t>(1U << shift);
+    oam[high] = static_cast<std::uint8_t>(
+        (oam[high] & ~x_high_mask)
+        | (((wrapped_x >> 8U) & 1U) << shift));
+}
 
 std::uint8_t object_pixel(
     const simulation::SnesPpuState& ppu,
@@ -41,6 +129,31 @@ std::uint8_t object_pixel(
 }
 
 } // namespace
+
+void interpolate_crosshair_oam(
+    const std::array<std::uint8_t, 544>& previous_oam,
+    double interpolation_alpha,
+    simulation::SnesPpuState& current_ppu) noexcept {
+    const auto previous = find_crosshair_oam_group(previous_oam);
+    const auto current = find_crosshair_oam_group(current_ppu.oam);
+    if (!previous || !current) return;
+
+    const auto alpha = std::clamp(interpolation_alpha, 0.0, 1.0);
+    const auto centre_x = previous->centre_x + static_cast<std::int32_t>(
+        std::lround(static_cast<double>(wrapped_difference(
+            previous->centre_x, current->centre_x, 512)) * alpha));
+    const auto centre_y = previous->centre_y + static_cast<std::int32_t>(
+        std::lround(static_cast<double>(wrapped_difference(
+            previous->centre_y, current->centre_y, 256)) * alpha));
+    constexpr std::array<std::int32_t, 4> x_offsets{-8, 8, -8, 8};
+    constexpr std::array<std::int32_t, 4> y_offsets{-8, -8, 8, 8};
+    for (std::size_t quadrant = 0U; quadrant < 4U; ++quadrant) {
+        set_object_position(current_ppu.oam,
+            current->first_object + quadrant,
+            centre_x + x_offsets[quadrant],
+            centre_y + y_offsets[quadrant]);
+    }
+}
 
 void SpriteRenderer::draw_objects(
     const simulation::SnesPpuState& ppu,
@@ -71,21 +184,37 @@ void SpriteRenderer::draw_objects(
             && ppu.oam[low + 1U] == 0U
             && ppu.oam[low + 2U] == 0U
             && ppu.oam[low + 3U] == 0U) continue;
+        // PLANETS hides all unused/blinking route records at (-8,-8). A stale
+        // packed large-size bit otherwise wraps the lower half of that object
+        // into a short green segment at the top-left corner.
+        if (ppu.oam[low] == 0xf8U && ppu.oam[low + 1U] == 0xf8U) continue;
         auto x = static_cast<std::int32_t>(ppu.oam[low])
             | (static_cast<std::int32_t>(high_bits & 1U) << 8U);
         if (x >= 256) x -= 512;
         const auto y_byte = ppu.oam[low + 1U];
+        const auto tile = static_cast<std::uint16_t>(
+            static_cast<std::uint16_t>(ppu.oam[low + 2U])
+            | (static_cast<std::uint16_t>(ppu.oam[low + 3U] & 1U) << 8U));
+        // SPRITES.ASM builds the first-person reticle from four tile-$61
+        // objects. Its Y position legitimately enters the top and bottom HUD
+        // bands as the player aims. Classifying those quadrants as lives,
+        // shield, or bombs moved each one toward a different widescreen edge
+        // (and applied unrelated saved HUD offsets), fragmenting the reticle.
+        const auto cockpit_crosshair_tile = (tile & 0x7fU) == 0x61U;
+        const auto boss_label_tile = y_byte < 32U
+            && tile >= 0x71U && tile <= 0x74U;
         auto object_origin = horizontal_origin;
         if (anchor_edge_hud && horizontal_origin > 0
+            && !cockpit_crosshair_tile
             && (y_byte < 32U || y_byte >= 168U)) {
             // Only the top/bottom gameplay OAM bands are edge HUD artwork.
             // Keep those labels, lives and bombs at the expanded edges. The
             // middle band contains the cockpit crosshair and communication
             // portraits, which must remain centred as a single composition.
-            object_origin = x < 128 ? 0 : horizontal_origin * 2;
+            object_origin = boss_label_tile
+                ? horizontal_origin * 2
+                : (x < 128 ? 0 : horizontal_origin * 2);
         }
-        const auto tile = static_cast<std::uint16_t>(ppu.oam[low + 2U])
-            | (static_cast<std::uint16_t>(ppu.oam[low + 3U] & 1U) << 8U);
         // EX deliberately relocates the life icon/count beside the lower-left
         // shield readout. Position-only classification therefore tied both
         // groups to the Shield layout. These are the source HUD life tiles in
@@ -94,7 +223,11 @@ void SpriteRenderer::draw_objects(
         const auto lives_tile = tile == 189U || tile == 226U
             || tile == 229U || tile == 230U;
         auto element = std::optional<HudElement>{};
-        if (lives_tile || (y_byte < 32U && x < 128)) {
+        if (cockpit_crosshair_tile) {
+            // The reticle is gameplay geometry, not a configurable HUD group.
+        } else if (boss_label_tile) {
+            element = HudElement::boss_health;
+        } else if (lives_tile || (y_byte < 32U && x < 128)) {
             element = HudElement::lives;
         } else if (y_byte >= 168U) {
             element = x < 128

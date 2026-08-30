@@ -78,6 +78,13 @@ enum class CrosshairColour {
     orange,
 };
 
+enum class AntiAliasingMode : std::uint8_t {
+    off,
+    light,
+    medium,
+    heavy,
+};
+
 struct MeterState {
     std::uint8_t damage{};
     std::uint8_t boost{};
@@ -172,7 +179,8 @@ public:
         const assets::RomImage& rom,
         const assets::SymbolMap& symbols,
         const std::string& initial_map = "LEVEL1_1",
-        std::span<const std::uint8_t> cartridge_ram = {});
+        std::span<const std::uint8_t> cartridge_ram = {},
+        bool source_initialize_direct_map = false);
 
     [[nodiscard]] GameTickResult tick(const input::TickInput& input);
     void present_frame();
@@ -220,6 +228,35 @@ public:
     void set_god_mode(bool enabled) noexcept { god_mode_ = enabled; }
     [[nodiscard]] bool show_fps() const noexcept { return show_fps_; }
     void set_show_fps(bool enabled) noexcept { show_fps_ = enabled; }
+    [[nodiscard]] bool anti_aliasing() const noexcept {
+        return anti_aliasing_mode_ != AntiAliasingMode::off;
+    }
+    void set_anti_aliasing(bool enabled) noexcept {
+        anti_aliasing_mode_ = enabled
+            ? AntiAliasingMode::medium : AntiAliasingMode::off;
+    }
+    [[nodiscard]] AntiAliasingMode anti_aliasing_mode() const noexcept {
+        return anti_aliasing_mode_;
+    }
+    void set_anti_aliasing_mode(AntiAliasingMode mode) noexcept {
+        anti_aliasing_mode_ = mode;
+    }
+    [[nodiscard]] bool enhanced_graphics() const noexcept {
+        return enhanced_graphics_;
+    }
+    void set_enhanced_graphics(bool enabled) noexcept {
+        enhanced_graphics_ = enabled;
+    }
+    [[nodiscard]] bool smooth_polys() const noexcept { return smooth_polys_; }
+    void set_smooth_polys(bool enabled) noexcept { smooth_polys_ = enabled; }
+    [[nodiscard]] bool rtx_lighting() const noexcept {
+        return rtx_lighting_;
+    }
+    void set_rtx_lighting(bool enabled) noexcept {
+        rtx_lighting_ = enabled;
+    }
+    [[nodiscard]] bool vsync() const noexcept { return vsync_; }
+    void set_vsync(bool enabled) noexcept { vsync_ = enabled; }
     [[nodiscard]] CrosshairColour crosshair_colour() const noexcept {
         return crosshair_colour_;
     }
@@ -302,10 +339,14 @@ private:
     void enter_intro();
     void update_continue_sprites();
     void enter_credits();
+    void begin_end_game_sequence();
+    [[nodiscard]] GameTickResult tick_end_game_sequence(
+        const input::TickInput& input);
     void continue_current_stage();
     void start_initial_route();
     void select_planet_campaign(bool second_map);
-    void enter_planet_map(bool selecting_route, std::uint32_t pending_map = 0U);
+    void enter_planet_map(bool selecting_route, std::uint32_t pending_map = 0U,
+        bool wait_for_arrival_confirmation = false);
     void animate_planet_frame(bool advance_rotation = true);
     void advance_planet_rotation();
     void redraw_planet_route(bool complete_route);
@@ -333,6 +374,7 @@ private:
     void enter_training();
     void update_control_screen_sprites();
     void initialize_native_map(std::uint32_t address);
+    void clear_communications();
     void initialize_ex_save_ram(std::span<const std::uint8_t> cartridge_ram);
     void apply_god_mode_state();
     void service_god_nuke(const input::TickInput& input,
@@ -405,6 +447,7 @@ private:
     std::uint32_t stay_black_{};
     std::uint32_t background_music_count_{};
     std::uint32_t background_music_command_{};
+    std::uint32_t fade_to_red_{};
     std::uint32_t background_flags_{};
     std::uint32_t calculate_background_scroll_{};
     std::uint32_t calculate_background_vertical_offsets_{};
@@ -529,6 +572,7 @@ private:
     std::uint32_t title_map_{};
     std::uint32_t intro_map_{};
     std::uint32_t ex_foxy_continue_{};
+    std::uint16_t ex_title_intro_background_{};
     std::uint32_t ex_foxy_self_{};
     std::uint32_t ex_randomize_background_{};
     std::uint32_t ex_restart_{};
@@ -606,6 +650,7 @@ private:
     std::uint32_t ex_target_percentage_{};
     std::uint32_t ex_results_exit_{};
     std::uint32_t ex_machine_type_{};
+    std::uint32_t ex_do_palette_stuff_{};
     std::uint32_t initialize_music_{};
     std::uint32_t intro_music_{};
     std::uint32_t controls_music_{};
@@ -620,6 +665,13 @@ private:
     std::uint32_t foxy_option_{};
     std::uint32_t foxy_frame_{};
     std::uint32_t foxy_foot_{};
+    std::uint8_t continue_rotation_velocity_x_{};
+    std::uint8_t continue_rotation_velocity_y_{};
+    std::uint8_t continue_rotation_velocity_z_{};
+    std::uint8_t continue_rotation_x_{};
+    std::uint8_t continue_rotation_y_{};
+    std::uint8_t continue_rotation_z_{};
+    std::int16_t continue_model_z_{350};
     std::uint32_t bg_fox_palette_{};
     std::uint32_t bg_fox_characters_{};
     std::uint32_t bg_fox_tilemap_{};
@@ -630,6 +682,13 @@ private:
     std::uint16_t vsc_base_2_{};
     std::uint16_t vobj_base_{};
     std::uint32_t credits_map_{};
+    std::uint32_t end_game_sequence_{};
+    std::uint32_t ending_transfer_{};
+    std::uint32_t ending_end_transfer_{};
+    std::uint32_t credits_entry_{};
+    std::uint32_t final_total_score_{};
+    std::uint32_t credits_music_original_{};
+    std::uint32_t credits_music_ex_{};
     std::uint32_t previous_view_position_{};
     std::uint32_t view_position_{};
     std::uint32_t view_shake_{};
@@ -719,6 +778,7 @@ private:
     std::vector<ObjectHandle> armed_god_nukes_;
     Wdc65816Registers ex_menu_registers_{};
     Wdc65816Registers ex_results_registers_{};
+    Wdc65816Registers ending_registers_{};
     std::uint32_t flow_ticks_{};
     std::uint32_t frontend_frames_{};
     std::uint8_t intro_reveal_frames_{};
@@ -739,8 +799,14 @@ private:
     Experience experience_{Experience::original};
     bool god_mode_{};
     bool show_fps_{};
+    AntiAliasingMode anti_aliasing_mode_{AntiAliasingMode::off};
+    bool enhanced_graphics_{};
+    bool smooth_polys_{};
+    bool rtx_lighting_{};
+    bool vsync_{};
     CrosshairColour crosshair_colour_{CrosshairColour::green};
     bool planet_travel_complete_{};
+    bool planet_arrival_confirmation_required_{};
     std::uint8_t stage_percentage_{};
     std::uint8_t displayed_stage_percentage_{};
     std::uint16_t stage_hit_score_{};
@@ -769,9 +835,15 @@ private:
     std::uint8_t background_music_start_delay_phases_{};
     std::uint8_t background_music_upload_delay_override_{};
     bool background_music_start_pending_{};
+    std::optional<std::uint8_t> boss_music_before_death_{};
+    bool post_boss_dialogue_active_{};
     std::uint64_t observed_apu_upload_generation_{};
     bool ex_results_task_active_{};
     bool ex_results_recorded_{};
+    bool pending_end_game_{};
+    bool ending_task_active_{};
+    bool ending_final_score_{};
+    bool credits_complete_{};
     bool paused_{};
 };
 

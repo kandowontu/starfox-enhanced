@@ -63,6 +63,12 @@ std::uint32_t find_symbol_or(
     return found == 0U ? fallback : found;
 }
 
+std::uint32_t find_rom_symbol_or_alias(const assets::SymbolMap* symbols,
+    const char* primary, const char* alias) noexcept {
+    const auto found = find_rom_symbol(symbols, primary);
+    return found != 0U ? found : find_rom_symbol(symbols, alias);
+}
+
 } // namespace
 
 struct Wdc65816::Impl {
@@ -164,6 +170,7 @@ struct Wdc65816::Impl {
     std::uint32_t m_vanishy{};
     std::uint32_t m_framenum{};
     std::uint32_t m_colframe{};
+    std::uint32_t m_colourptr{};
     std::uint32_t m_lxpos{};
     std::uint32_t m_lypos{};
     std::uint32_t m_lzpos{};
@@ -173,6 +180,7 @@ struct Wdc65816::Impl {
     std::uint32_t transbmp1{};
     std::uint32_t vmap1{};
     std::uint32_t vmap2{};
+    std::uint32_t noirqbit3{};
     std::uint32_t spriteblk{};
     bool vertical_counter_high_byte{};
     bool horizontal_counter_high_byte{};
@@ -228,6 +236,11 @@ struct Wdc65816::Impl {
     std::uint32_t font0wid{};
     std::uint32_t font0fon{};
     std::uint32_t font0trn{};
+    std::uint32_t projection_zero_loop{};
+    std::uint32_t projection_return{};
+    std::uint16_t projection_x{};
+    std::uint16_t projection_result{};
+    std::uint16_t projection_vanish_x{};
     std::vector<ApuPortWrite> apu_writes;
     std::uint64_t apu_upload_generation{};
     std::vector<std::uint32_t> unknown_superfx_launches;
@@ -237,6 +250,33 @@ struct Wdc65816::Impl {
     std::uint32_t task_entry{};
     std::uint32_t task_return_sentinel{};
     WDC65C816 cpu{&bus};
+
+    bool service_zero_projection(std::uint32_t pc) {
+        if (projection_zero_loop == 0U || projection_return == 0U
+            || pc != projection_zero_loop) {
+            return false;
+        }
+        const auto direct = cpu.cpu_state.regs.d.u16;
+        const auto address = [direct](std::uint16_t value) {
+            return static_cast<std::uint16_t>(direct + value);
+        };
+        if (read_wram16(address(projection_x)) != 0U) return false;
+
+        // PROJLOG's normalization loop assumes its numerator remained
+        // non-zero after the preceding sign/shift pass. A true zero can occur
+        // while an ending text object crosses the exact view axis; hardware
+        // intends that projection to land at VANISHX, but the macro's
+        // compare/shift loop has no zero escape. Resolve that mathematical
+        // edge directly and continue at the macro's common return label.
+        const auto vanish = read_wram16(address(projection_vanish_x));
+        const auto result = address(projection_result);
+        wram[result] = static_cast<std::uint8_t>(vanish);
+        wram[static_cast<std::uint16_t>(result + 1U)] =
+            static_cast<std::uint8_t>(vanish >> 8U);
+        cpu.SetRegister("pb", projection_return >> 16U);
+        cpu.SetRegister("pc", projection_return & 0xffffU);
+        return true;
+    }
 
     static bool is_io_device_address(void*, cpuaddr_t address) {
         const auto low = address & 0xffffU;
@@ -475,6 +515,7 @@ struct Wdc65816::Impl {
           m_vanishy(find_symbol(symbols, "M_VANISHY")),
           m_framenum(find_symbol(symbols, "M_FRAMENUM")),
           m_colframe(find_symbol(symbols, "M_COLFRAME")),
+          m_colourptr(find_symbol(symbols, "M_COLOURPTR")),
           m_lxpos(find_symbol(symbols, "M_LXPOS")),
           m_lypos(find_symbol(symbols, "M_LYPOS")),
           m_lzpos(find_symbol(symbols, "M_LZPOS")),
@@ -484,6 +525,7 @@ struct Wdc65816::Impl {
           transbmp1(find_symbol(symbols, "TRANSBMP1")),
           vmap1(find_symbol(symbols, "VMAP1")),
           vmap2(find_symbol(symbols, "VMAP2")),
+          noirqbit3(find_symbol(symbols, "NOIRQBIT3")),
           spriteblk(find_symbol(symbols, "SPRITEBLK")),
           mrotplanet(find_rom_symbol(symbols, "MROTPLANET")),
           mnograd(find_rom_symbol(symbols, "MNOGRAD")),
@@ -532,7 +574,15 @@ struct Wdc65816::Impl {
           fontdata(find_rom_symbol(symbols, "FONTDATA")),
           font0wid(find_rom_symbol(symbols, "FONT0WID")),
           font0fon(find_rom_symbol(symbols, "FONT0FON")),
-          font0trn(find_rom_symbol(symbols, "FONT0TRN")) {
+          font0trn(find_rom_symbol(symbols, "FONT0TRN")),
+          projection_zero_loop(find_rom_symbol_or_alias(
+              symbols, "_BQAEPROJLX81", "_AOLLPROJLX81")),
+          projection_return(find_rom_symbol_or_alias(
+              symbols, "_BQAEPROJLX0", "_AOLLPROJLX0")),
+          projection_x(static_cast<std::uint16_t>(find_symbol(symbols, "PX"))),
+          projection_result(static_cast<std::uint16_t>(find_symbol(symbols, "PR"))),
+          projection_vanish_x(static_cast<std::uint16_t>(
+              find_symbol(symbols, "VANISHX"))) {
         for (auto& page : pages) {
             page.ptr = nullptr;
             page.flags = 0;
@@ -669,6 +719,10 @@ struct Wdc65816::Impl {
         case 0x2105U:
             ppu.background_mode = static_cast<std::uint8_t>(value & 7U);
             ppu.bg3_high_priority = (value & 0x08U) != 0U;
+            ppu.bg1_tile_size_16 = (value & 0x10U) != 0U;
+            ppu.bg2_tile_size_16 = (value & 0x20U) != 0U;
+            ppu.bg3_tile_size_16 = (value & 0x40U) != 0U;
+            ppu.bg4_tile_size_16 = (value & 0x80U) != 0U;
             break;
         case 0x2106U:
             ppu.mosaic = value;
@@ -1985,6 +2039,11 @@ struct Wdc65816::Impl {
             if (m_colframe != 0U) {
                 native_model_draw.colour_frame = read_superfx16(m_colframe);
             }
+            // MSHOWOBJ3 itself copies sh_col_ptr from the requested shape
+            // header into M_COLOURPTR. Because this bridge replaces that GSU
+            // entry point, the word currently in M_COLOURPTR belongs to the
+            // preceding model and must not override the requested header.
+            native_model_draw.colour_table = 0U;
             return;
         }
         if (mdecrunch == 0U || address != mdecrunch) {
@@ -2187,9 +2246,83 @@ struct Wdc65816::Impl {
                 read_wram16(vram2_address), read_wram16(vram2_length));
             wram[0] = 0U;
             break;
+        case 26U:
+            // ENDSEQ's first IRQ is the same upper-bitmap DMA as FOXIRQ1,
+            // but it advances through the dedicated 26/28/30/32 handshake.
+            // Clearing an unfamiliar 26 here left ENDTRANS waiting forever
+            // for TRANSBMP1 and eventually trapped END_GAME_SEQ in its
+            // $1fe334 TRANS_FLAG polling loop.
+            if (bitmap1 != 0U && vmap1 != 0U) {
+                copy_superfx_to_vram(static_cast<std::uint16_t>(bitmap1),
+                    read_wram16(static_cast<std::uint16_t>(vmap1)), 10'752U);
+            }
+            if (transbmp1 != 0U) {
+                wram[static_cast<std::uint16_t>(transbmp1)] = 1U;
+            }
+            wram[0] = 28U;
+            break;
+        case 28U:
+            // ENDSEQBIT2 publishes the second half before the main task calls
+            // CLRONEHALF_L. Keep its transfer state distinct from FOXIRQ2 so
+            // ENDSEQBIT3 can perform the presentation-page swap.
+            if (bitmap1 != 0U && vmap1 != 0U) {
+                copy_superfx_to_vram(static_cast<std::uint16_t>(
+                        bitmap1 + 10'752U),
+                    static_cast<std::uint16_t>(
+                        read_wram16(static_cast<std::uint16_t>(vmap1))
+                        + 5'376U),
+                    10'752U);
+            }
+            if (transbmp1 != 0U) {
+                wram[static_cast<std::uint16_t>(transbmp1)] = 2U;
+            }
+            wram[0] = 30U;
+            break;
+        case 30U: {
+            // ENDSEQBIT3 selects the completed bitmap and exchanges the two
+            // display pages, then returns to the idle ENDSEQBIT0 state. The
+            // source IRQ holds at 30 while NOIRQBIT3 is clear; a bounded host
+            // call has already completed the frame's display work when it
+            // reaches this service point, so the swap is now safe.
+            if (noirqbit3 != 0U
+                && wram[static_cast<std::uint16_t>(noirqbit3)] == 0U) {
+                break;
+            }
+            if (vmap1 != 0U && vmap2 != 0U) {
+                const auto first = read_wram16(static_cast<std::uint16_t>(vmap1));
+                const auto second = read_wram16(static_cast<std::uint16_t>(vmap2));
+                const auto bg12nba = static_cast<std::uint8_t>(
+                    ((first >> 12U) & 0x0fU)
+                    | (((ppu.bg2_character_base >> 12U) & 0x0fU) << 4U));
+                write_ppu(0x210bU, bg12nba);
+                const auto write_word = [this](std::uint32_t address,
+                                                std::uint16_t value) {
+                    const auto offset = static_cast<std::uint16_t>(address);
+                    wram[offset] = static_cast<std::uint8_t>(value);
+                    wram[static_cast<std::uint16_t>(offset + 1U)] =
+                        static_cast<std::uint8_t>(value >> 8U);
+                };
+                write_word(vmap1, second);
+                write_word(vmap2, first);
+            }
+            wram[0] = 32U;
+            break;
+        }
+        case 32U:
+            // ENDSEQBIT0 is an idle/presentation IRQ. ENDTRANS explicitly
+            // waits for this value before beginning the next bitmap upload,
+            // so it must remain observable rather than being cleared.
+            break;
         case 36U:
         case 38U:
-            ppu.background_mode = flag == 36U ? 1U : 2U;
+        case 40U:
+            // IRQSETMODE2SP writes $22 to BGMODE: Mode 2 with 16x16 BG2
+            // characters. Several EX tunnel/special-stage transitions use
+            // this third setup request. Treating it as an unknown transfer
+            // left the previous mode active and decoded its tilemap as 8x8.
+            write_ppu(0x2105U, flag == 36U ? 0x01U
+                : flag == 40U ? 0x22U : 0x02U);
+            ppu.main_screen = 0x13U;
             ppu.bg2_character_base = 0x5000U;
             ppu.bg2_screen_base = 0x7000U;
             ppu.bg2_screen_size = 3U;
@@ -2274,6 +2407,11 @@ const SnesPpuState& Wdc65816::ppu_state() const noexcept {
 
 const NativeModelDrawState& Wdc65816::native_model_draw() const noexcept {
     return impl_->native_model_draw;
+}
+
+void Wdc65816::set_native_model_draw(
+    const NativeModelDrawState& state) noexcept {
+    impl_->native_model_draw = state;
 }
 
 const std::vector<std::uint32_t>& Wdc65816::unknown_superfx_launches()
@@ -2443,6 +2581,7 @@ std::size_t Wdc65816::call(
             throw std::runtime_error{message.str()};
         }
         const auto pc = cpu.program_address();
+        if (impl_->service_zero_projection(pc)) continue;
         if (crash_entry == 0U
             && (pc == 0x1fdc9dU || pc == 0x1fdcaaU || pc == 0x1fdcb7U
                 || pc == 0x1fdcc4U || pc == 0x1fdcd1U)) {
@@ -2544,6 +2683,7 @@ Wdc65816TaskResult Wdc65816::run_task(
     bool executed_instruction = false;
     while (true) {
         const auto pc = cpu.program_address();
+        if (impl_->service_zero_projection(pc)) continue;
         if (pc == impl_->task_return_sentinel) {
             impl_->task_active = false;
             result.returned = true;
@@ -2563,7 +2703,16 @@ Wdc65816TaskResult Wdc65816::run_task(
             std::ostringstream message;
             message << "65C816 task at $" << std::hex << impl_->task_entry
                     << " exceeded the instruction limit at $" << pc
-                    << " (recent";
+                    << " (P=$" << static_cast<unsigned>(cpu.GetStatusRegister())
+                    << " D=$" << cpu.cpu_state.regs.d.u16
+                    << " A=$" << cpu.a() << " X=$" << cpu.x()
+                    << " [$84]=$" << static_cast<unsigned>(
+                        impl_->wram[static_cast<std::uint16_t>(
+                            cpu.cpu_state.regs.d.u16 + 0x84U)])
+                    << " [$86]=$" << static_cast<unsigned>(
+                        impl_->wram[static_cast<std::uint16_t>(
+                            cpu.cpu_state.regs.d.u16 + 0x86U)])
+                    << " recent";
             const auto available = std::min(
                 result.instructions, recent_program_counters.size());
             for (std::size_t age = available; age != 0; --age) {

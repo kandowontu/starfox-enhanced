@@ -25,7 +25,7 @@
 int main(int argc, char** argv) {
     if (argc < 5 || argc > 6) {
         std::cerr << "Usage: starfox_stage_preview SF.SFC SYMBOLS.TXT "
-                     "MAP|CONTINUE|POSTLEVELMAP OUTPUT.bmp [ticks]\n";
+                     "MAP|CONTINUE|POSTLEVELMAP|ENDGAME OUTPUT.bmp [ticks]\n";
         return 2;
     }
     try {
@@ -35,9 +35,11 @@ int main(int argc, char** argv) {
         const std::string requested_scene = argv[3];
         const auto continue_scene = requested_scene == "CONTINUE";
         const auto post_level_map = requested_scene == "POSTLEVELMAP";
+        const auto end_game = requested_scene == "ENDGAME";
         starfox::simulation::GameSimulation game{
             rom, symbols, continue_scene ? "LEVEL1_1"
-                : post_level_map ? "PLANETSELECT" : requested_scene};
+                : post_level_map ? "PLANETSELECT"
+                : end_game ? "LEVEL1_1" : requested_scene};
         if (continue_scene) {
             const auto finished = symbols.find("LEVELFINISHED").front();
             game.map().write_native_word(finished, 10U);
@@ -80,6 +82,19 @@ int main(int argc, char** argv) {
                 game.present_frame();
                 if ((frame % 3U) == 2U) static_cast<void>(game.tick({}));
             }
+        } else if (end_game) {
+            for (std::size_t warmup = 0U; warmup < 400U; ++warmup) {
+                static_cast<void>(game.tick({}));
+            }
+            game.map().write_native_word(
+                symbols.find("LEVELFINISHED").front(), 6U);
+            static_cast<void>(game.tick({}));
+            for (unsigned long tick = 0; tick < ticks; ++tick) {
+                game.present_frame();
+                game.present_frame();
+                game.present_frame();
+                static_cast<void>(game.tick({}));
+            }
         } else {
             for (unsigned long tick = 0; tick < ticks; ++tick) {
                 static_cast<void>(game.tick({}));
@@ -105,6 +120,14 @@ int main(int argc, char** argv) {
                 if ((address >> 16U) == 0 || (address >> 16U) == 0x7eU) return address;
             }
             throw std::runtime_error{"missing camera symbol"};
+        };
+        const auto optional_ram_symbol = [&symbols](const char* name) {
+            for (const auto address : symbols.find(name)) {
+                if ((address >> 16U) == 0 || (address >> 16U) == 0x7eU) {
+                    return address;
+                }
+            }
+            return std::uint32_t{};
         };
         const auto mario_symbol = [&symbols](const char* name) {
             for (const auto address : symbols.find(name)) {
@@ -310,10 +333,16 @@ int main(int argc, char** argv) {
                   << static_cast<unsigned>(game.map().read_native_byte(
                          ram_symbol("FRAMERATE")))
                   << ", depth=($" << std::hex
-                  << game.map().read_native_word(ram_symbol("DEPTHTABPTR"))
+                  << game.map().read_native_word(
+                         optional_ram_symbol("DEPTHTABPTR"))
                   << ",$" << game.map().read_native_word(0x70004eU)
                   << ",$" << game.map().read_native_word(0x700050U) << std::dec << ')'
                   << '\n';
+        std::cout << "palette=";
+        for (const auto colour : game.palette_words()) {
+            std::cout << '$' << std::hex << colour << ' ';
+        }
+        std::cout << std::dec << '\n';
         struct RenderItem {
             starfox::simulation::ObjectHandle handle{};
             std::array<std::int16_t, 3> position{};
@@ -485,9 +514,12 @@ int main(int argc, char** argv) {
             }
             if (std::getenv("STARFOX_DUMP_OBJECTS") != nullptr || diagnostics++ < 12) {
                 std::cout << "object=" << handle << " shape=$" << std::hex << object.shape
+                          << " colour=$" << object.colour_table
                           << std::dec << " pose=(" << pose.x << ',' << pose.y << ',' << pose.z
                           << ") shift=" << static_cast<unsigned>(found->second.header.shift)
                           << " vertices=" << found->second.vertices.size()
+                          << " cptr=$" << std::hex
+                          << found->second.header.colour_pointer << std::dec
                           << " type=$" << std::hex
                           << static_cast<unsigned>(object.type) << " sflags=$"
                           << static_cast<unsigned>(object.strategy_flags[0]) << std::dec
@@ -498,6 +530,26 @@ int main(int argc, char** argv) {
                           << " textures=" << found->second.textures.size()
                           << " velocity=(" << object.velocity_x << ',' << object.velocity_y
                           << ',' << object.velocity_z << ") speed=" << object.velocity << '\n';
+                if (handle == game.player()) {
+                    std::cout << "model-colours=";
+                    for (const auto word : found->second.colour_words) {
+                        std::cout << '$' << std::hex << word << ' ';
+                    }
+                    std::cout << std::dec << '\n';
+                    std::cout << "model-faces=";
+                    for (const auto& face : found->second.faces) {
+                        std::cout << static_cast<unsigned>(face.colour_id) << '@'
+                                  << static_cast<int>(face.normal.x) << ','
+                                  << static_cast<int>(face.normal.y) << ','
+                                  << static_cast<int>(face.normal.z) << ' ';
+                    }
+                    std::cout << '\n';
+                    std::cout << "model-matrix=";
+                    for (const auto value : pose.rotation_matrix) {
+                        std::cout << value << ' ';
+                    }
+                    std::cout << '\n';
+                }
             }
             renderer.draw(found->second, pose, framebuffer, false);
             ++rendered;
@@ -523,6 +575,18 @@ int main(int argc, char** argv) {
         const auto palette = starfox::render::apply_snes_brightness(
             base_palette, game.map().display_brightness());
         starfox::render::write_bmp(framebuffer, output, palette);
+        const auto debug_word = [&symbols, &game](const char* name) {
+            const auto addresses = symbols.find(name);
+            return addresses.empty() ? std::uint16_t{}
+                : game.map().read_native_word(addresses.front());
+        };
+        std::cout << "flow=" << static_cast<unsigned>(game.flow_state())
+                  << ", level-finished=" << debug_word("LEVELFINISHED")
+                  << ", demo-count=" << debug_word("DEMOCNT")
+                  << ", boss-pointer=" << debug_word("BOSS_PTR")
+                  << ", transfer=" << debug_word("TRANS_FLAG")
+                  << ", map=$" << std::hex
+                  << debug_word("MAPPTR") << std::dec << '\n';
         std::cout << "Rendered " << rendered << " live objects and "
                   << game.particles().active_count() << " particles to "
                   << output << '\n';

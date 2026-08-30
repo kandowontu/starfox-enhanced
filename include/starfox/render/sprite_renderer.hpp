@@ -13,6 +13,14 @@ struct MeterState;
 
 namespace starfox::render {
 
+// The cartridge rebuilds the four-piece reticle only on its 20 Hz logic
+// update. Keep the source OAM itself authoritative, but move that rigid group
+// between its previous and current source positions for high-rate presents.
+void interpolate_crosshair_oam(
+    const std::array<std::uint8_t, 544>& previous_oam,
+    double interpolation_alpha,
+    simulation::SnesPpuState& current_ppu) noexcept;
+
 class SpriteRenderer {
 public:
     void draw_objects(

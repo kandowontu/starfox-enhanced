@@ -24,6 +24,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <numeric>
 #include <vector>
 
@@ -199,6 +200,28 @@ int main(int argc, char** argv) {
     require(tall_bg_frame.get(0, 0) == 1U,
             "32x64 BG tilemap lower page used the 64x64 page stride");
 
+    starfox::simulation::SnesPpuState large_tile_ppu;
+    large_tile_ppu.background_mode = 2U;
+    large_tile_ppu.main_screen = 0x02U;
+    large_tile_ppu.bg2_tile_size_16 = true;
+    large_tile_ppu.bg2_screen_size = 0U;
+    const auto large_tile_map = static_cast<std::size_t>(
+        large_tile_ppu.bg2_screen_base) * 2U;
+    large_tile_ppu.vram[large_tile_map] = 1U;
+    const auto large_tile_characters = static_cast<std::size_t>(
+        large_tile_ppu.bg2_character_base) * 2U;
+    large_tile_ppu.vram[large_tile_characters + 1U * 32U] = 0x80U;
+    large_tile_ppu.vram[large_tile_characters + 2U * 32U + 1U] = 0x80U;
+    large_tile_ppu.vram[large_tile_characters + 17U * 32U] = 0x80U;
+    large_tile_ppu.vram[large_tile_characters + 17U * 32U + 1U] = 0x80U;
+    starfox::render::Framebuffer large_tile_frame{16U, 16U};
+    background_renderer.draw_bg2(
+        large_tile_ppu, 0, 0, large_tile_frame);
+    require(large_tile_frame.get(0, 0) == 1U
+                && large_tile_frame.get(8, 0) == 2U
+                && large_tile_frame.get(0, 8) == 3U,
+            "Mode 2 special tunnel did not decode 16x16 BG2 characters");
+
     starfox::simulation::SnesPpuState mode2_edge_ppu;
     mode2_edge_ppu.background_mode = 2U;
     mode2_edge_ppu.main_screen = 0x02U;
@@ -348,6 +371,43 @@ int main(int argc, char** argv) {
     require(high_ground_frame.get(72, 223) == 1U,
             "high-priority wide ground stopped before the bottom strips");
 
+    auto opaque_wrap_ppu = extended_ground_ppu;
+    for (std::size_t index = 0; index < 32U; ++index) {
+        opaque_wrap_ppu.vram[mode2_offset + index * 2U] = 100U;
+        opaque_wrap_ppu.vram[mode2_offset + index * 2U + 1U] = 0x40U;
+    }
+    std::fill_n(opaque_wrap_ppu.vram.begin() + mode2_characters + 32U,
+        64U, 0U);
+    for (std::size_t row = 0; row < 8U; ++row) {
+        opaque_wrap_ppu.vram[mode2_characters + 32U + row * 2U] = 0xffU;
+        opaque_wrap_ppu.vram[mode2_characters + 64U + row * 2U] = 0xffU;
+        opaque_wrap_ppu.vram[mode2_characters + 64U + row * 2U + 1U] = 0xffU;
+    }
+    for (std::size_t row = 0; row < 32U; ++row) {
+        for (std::size_t column = 0; column < 32U; ++column) {
+            const auto entry = row * 32U + column;
+            opaque_wrap_ppu.vram[mode2_map + entry * 2U]
+                = row < 13U ? 2U : 1U;
+            opaque_wrap_ppu.vram[mode2_map + entry * 2U + 1U] = 0U;
+        }
+    }
+    starfox::render::Framebuffer opaque_retail_frame{256U, 224U};
+    background_renderer.draw_bg2(opaque_wrap_ppu, 0, 0,
+        opaque_retail_frame, starfox::render::TilePriorityPass::all, 0, true);
+    require(opaque_retail_frame.get(128, 223) == 3U,
+            "opaque-wrap fixture did not reach its sky tile");
+    for (const auto width : {360U, 400U, 520U, 800U}) {
+        starfox::render::Framebuffer opaque_wide_frame{width, 224U};
+        const auto origin = static_cast<std::int32_t>((width - 256U) / 2U);
+        background_renderer.draw_bg2(opaque_wrap_ppu, 0, 0,
+            opaque_wide_frame, starfox::render::TilePriorityPass::all,
+            origin, true);
+        require(opaque_wide_frame.get(0, 223) == 1U
+                    && opaque_wide_frame.get(width / 2U, 223) == 1U
+                    && opaque_wide_frame.get(width - 1U, 223) == 1U,
+                "expanded ground wrapped back to opaque blue sky");
+    }
+
     starfox::simulation::SnesPpuState empty_oam_ppu;
     empty_oam_ppu.main_screen = 0x10U;
     empty_oam_ppu.vram[0U] = 0x80U;
@@ -359,6 +419,84 @@ int main(int argc, char** argv) {
     sprite_renderer.draw_objects(empty_oam_ppu, empty_oam_frame);
     require(empty_oam_frame.get(0, 0) == 42U,
             "zeroed unused OAM with stale size exposed OBJ tile zero");
+    empty_oam_ppu.oam[0U] = 0xf8U;
+    empty_oam_ppu.oam[1U] = 0xf8U;
+    empty_oam_ppu.oam[2U] = 0U;
+    empty_oam_ppu.oam[3U] = 0U;
+    empty_oam_frame.clear(42U);
+    sprite_renderer.draw_objects(empty_oam_ppu, empty_oam_frame);
+    require(empty_oam_frame.get(0, 0) == 42U,
+            "hidden route OBJ wrapped into the top-left map corner");
+
+    starfox::simulation::SnesPpuState boss_label_ppu;
+    boss_label_ppu.main_screen = 0x10U;
+    boss_label_ppu.object_select = 0U;
+    boss_label_ppu.oam[0U] = 100U;
+    boss_label_ppu.oam[1U] = 16U;
+    boss_label_ppu.oam[2U] = 0x71U;
+    boss_label_ppu.vram[0x71U * 32U] = 0x80U;
+    starfox::render::HudLayout boss_label_layout;
+    boss_label_layout[starfox::render::HudElement::boss_health] = {-10, 3};
+    starfox::render::Framebuffer boss_label_frame{400U, 224U};
+    sprite_renderer.draw_objects(boss_label_ppu, boss_label_frame,
+        std::nullopt, 72, true, true, &boss_label_layout);
+    require(boss_label_frame.get(234, 19) == 129U
+                && boss_label_frame.get(100, 16) == 0U,
+            "ENEMY label did not remain grouped with the wide boss meter");
+
+    starfox::simulation::SnesPpuState crosshair_ppu;
+    crosshair_ppu.main_screen = 0x10U;
+    crosshair_ppu.object_select = 0U;
+    crosshair_ppu.oam[0U] = 100U;
+    crosshair_ppu.oam[1U] = 180U;
+    // VOBJBASE makes the source cartridge emit tile byte $e1 for logical
+    // crosshair tile $61 in normal gameplay.
+    crosshair_ppu.oam[2U] = 0xe1U;
+    crosshair_ppu.vram[0xe1U * 32U] = 0x80U;
+    starfox::render::HudLayout separated_hud;
+    separated_hud[starfox::render::HudElement::shield] = {23, -9};
+    starfox::render::Framebuffer crosshair_frame{400U, 224U};
+    sprite_renderer.draw_objects(crosshair_ppu, crosshair_frame,
+        std::nullopt, 72, true, true, &separated_hud);
+    require(crosshair_frame.get(172, 180) == 129U
+                && crosshair_frame.get(123, 171) == 0U
+                && crosshair_frame.get(100, 180) == 0U,
+            "cockpit crosshair fragment was mistaken for edge HUD artwork");
+
+    // Crosshair OBJ slots can move when the source sprite list changes. Match
+    // the complete four-quadrant group rather than assuming stable indices,
+    // and interpolate it as one rigid reticle between 20 Hz source updates.
+    const auto write_crosshair = [](auto& oam, std::size_t first,
+                                     std::uint8_t x, std::uint8_t y) {
+        constexpr std::array<std::uint8_t, 4> x_offsets{0U, 16U, 0U, 16U};
+        constexpr std::array<std::uint8_t, 4> y_offsets{0U, 0U, 16U, 16U};
+        constexpr std::array<std::uint8_t, 4> attributes{
+            0x28U, 0x68U, 0xa8U, 0xe8U};
+        for (std::size_t quadrant = 0U; quadrant < 4U; ++quadrant) {
+            const auto low = (first + quadrant) * 4U;
+            oam[low] = static_cast<std::uint8_t>(x + x_offsets[quadrant]);
+            oam[low + 1U] = static_cast<std::uint8_t>(y + y_offsets[quadrant]);
+            oam[low + 2U] = 0xe1U;
+            oam[low + 3U] = attributes[quadrant];
+        }
+    };
+    auto previous_crosshair_ppu =
+        std::make_unique<starfox::simulation::SnesPpuState>();
+    write_crosshair(previous_crosshair_ppu->oam, 4U, 100U, 70U);
+    auto current_crosshair_ppu =
+        std::make_unique<starfox::simulation::SnesPpuState>();
+    write_crosshair(current_crosshair_ppu->oam, 20U, 112U, 76U);
+    current_crosshair_ppu->oam[0U] = 37U;
+    current_crosshair_ppu->oam[1U] = 41U;
+    starfox::render::interpolate_crosshair_oam(
+        previous_crosshair_ppu->oam, 0.5, *current_crosshair_ppu);
+    require(current_crosshair_ppu->oam[20U * 4U] == 106U
+                && current_crosshair_ppu->oam[20U * 4U + 1U] == 73U
+                && current_crosshair_ppu->oam[21U * 4U] == 122U
+                && current_crosshair_ppu->oam[22U * 4U + 1U] == 89U
+                && current_crosshair_ppu->oam[0U] == 37U
+                && current_crosshair_ppu->oam[1U] == 41U,
+            "crosshair presentation interpolation jittered or moved other OAM");
 
     starfox::simulation::SnesPpuState mode3_ppu;
     mode3_ppu.background_mode = 3U;
@@ -900,6 +1038,22 @@ int main(int argc, char** argv) {
             require(!map2.empty() && !which_route.empty()
                         && !actual_route.empty() && !ship_angle.empty(),
                     "Star Fox EX planet campaign flags are missing");
+
+            // MODE2SP is a separate IRQ request used when EX enters several
+            // tunnels and special stages. It is Mode 2 with 16x16 BG2 tiles,
+            // not an alias for the ordinary 8x8 Mode 2 setup.
+            {
+                starfox::simulation::Wdc65816 mode2sp_cpu{
+                    upstream_rom, &upstream_symbols};
+                starfox::simulation::Wdc65816Registers registers;
+                registers.status = 0x24U;
+                mode2sp_cpu.call_long(
+                    upstream_symbols.find("BG_6_2_1").front(), registers,
+                    50'000'000U, true);
+                require(mode2sp_cpu.ppu_state().background_mode == 2U
+                            && mode2sp_cpu.ppu_state().bg2_tile_size_16,
+                        "EX MODE2SP tunnel transfer did not enable 16x16 BG2");
+            }
 
             // Exercise every EX-only horizontal-offset GSU entry directly.
             // Long stage traces reach these only on particular late routes,
@@ -1529,6 +1683,21 @@ int main(int argc, char** argv) {
                 "real walking-enemy PATH did not emit its positional sound");
 
         starfox::simulation::GameSimulation game{upstream_rom, upstream_symbols, "LEVEL1_1"};
+        {
+            // The desktop CLI's direct-level argument is a real source level
+            // launch, not the low-level deterministic map-VM fixture used by
+            // most tests in this file. It must pass through INITGAME_L so the
+            // Mode 2 playfield and the sound-driver handshake are installed.
+            starfox::simulation::GameSimulation direct_cli_game{
+                upstream_rom, upstream_symbols, "LEVEL1_1", {}, true};
+            require(direct_cli_game.map().ppu_state().background_mode == 2U
+                        && (direct_cli_game.map().ppu_state().main_screen
+                            & 0x02U) != 0U,
+                    "direct-level CLI launch did not initialize the gameplay display mode");
+            const auto first_cli_tick = direct_cli_game.tick({});
+            require(!first_cli_tick.audio_port_writes.empty(),
+                    "direct-level CLI launch did not initialize the source audio pipeline");
+        }
         if (starfox_ex_cartridge) {
             // DARKMODE is source-save item 17 (two bytes per SAVEMEM entry).
             // It is restored before IRQSETMODE1 chooses the initial depth
@@ -2551,26 +2720,29 @@ int main(int argc, char** argv) {
                     upstream_symbols.find("NOSETPORT3").front(), 0U);
             }
             starfox::simulation::Wdc65816Registers comm_registers;
-            comm_registers.a = 1U;
+            // Message 36 is Rabbit's "incoming enemy craft" warning. Its
+            // voice command ducks the SPC BGM until FRIENDS_MESSAGES closes
+            // the portrait with command $64.
+            comm_registers.a = 36U;
             comm_registers.status = 0x24U;
             comm_game.map().call_native_routine(
                 upstream_symbols.find("SEND_MESSAGE_L").front(),
                 comm_registers, 2'000'000, true);
-            if (starfox_ex_cartridge) {
-                // EX's direct Corneria diagnostic is still inside its custom
-                // opening and can reassert NOSFX before MAIN reaches this
-                // presentation routine. Advance the five source portrait-open
-                // steps directly so this test measures the comm sample queue,
-                // not the unrelated campaign-entry cutscene.
+            {
+                // Advance the complete source portrait lifetime directly so
+                // unrelated stage messages cannot replace this diagnostic
+                // warning before its restore command is issued.
                 const auto friends_messages =
                     upstream_symbols.find("FRIENDS_MESSAGES_L").front();
-                for (std::size_t frame = 0; frame < 5U; ++frame) {
+                for (std::size_t frame = 0; frame < 55U; ++frame) {
+                    if (starfox_ex_cartridge) {
                     comm_game.map().write_native_byte(
                         upstream_symbols.find("NOSFX").front(), 0U);
                     comm_game.map().write_native_byte(
                         upstream_symbols.find("BGMSFX").front(), 0U);
                     comm_game.map().write_native_byte(
                         upstream_symbols.find("NOSETPORT3").front(), 0U);
+                    }
                     starfox::simulation::Wdc65816Registers message_registers;
                     message_registers.status = 0x24U;
                     comm_game.map().call_native_routine(
@@ -2579,6 +2751,8 @@ int main(int argc, char** argv) {
             }
             bool saw_comm_command = false;
             bool saw_comm_acknowledgement = false;
+            bool saw_comm_restore_command = false;
+            bool saw_comm_restore_acknowledgement = false;
             for (std::size_t tick = 0; tick < 24U; ++tick) {
                 const auto comm_tick = comm_game.tick({});
                 static_cast<void>(comm_audio.render_logic_tick(
@@ -2587,13 +2761,34 @@ int main(int argc, char** argv) {
                     comm_audio.output_ports());
                 saw_comm_command = saw_comm_command
                     || std::find(comm_tick.sound_effect_commands.begin(),
-                           comm_tick.sound_effect_commands.end(), 0x60U)
+                           comm_tick.sound_effect_commands.end(), 0x62U)
                         != comm_tick.sound_effect_commands.end();
                 saw_comm_acknowledgement = saw_comm_acknowledgement
-                    || comm_audio.output_ports()[3] == 0x60U;
+                    || comm_audio.output_ports()[3] == 0x62U;
+                saw_comm_restore_command = saw_comm_restore_command
+                    || std::find(comm_tick.sound_effect_commands.begin(),
+                           comm_tick.sound_effect_commands.end(), 0x64U)
+                        != comm_tick.sound_effect_commands.end();
+                saw_comm_restore_acknowledgement =
+                    saw_comm_restore_acknowledgement
+                    || comm_audio.output_ports()[3] == 0x64U;
             }
             require(saw_comm_command && saw_comm_acknowledgement,
                     "teammate comm sample did not complete its SPC acknowledgement");
+            if (!(saw_comm_restore_command
+                    && saw_comm_restore_acknowledgement)) {
+                std::cerr << "diagnostic: comm restore command="
+                          << saw_comm_restore_command << ", acknowledgement="
+                          << saw_comm_restore_acknowledgement << ", count1="
+                          << static_cast<unsigned>(comm_game.map().read_native_byte(
+                              upstream_symbols.find("MSG_COUNT1").front()))
+                          << ", count2="
+                          << static_cast<unsigned>(comm_game.map().read_native_byte(
+                              upstream_symbols.find("MSG_COUNT2").front())) << '\n';
+            }
+            require(saw_comm_restore_command
+                        && saw_comm_restore_acknowledgement,
+                    "teammate comm close did not restore BGM volume through the SPC");
         }
 
         if (starfox_ex_cartridge) {
@@ -3504,20 +3699,36 @@ int main(int argc, char** argv) {
         const auto initial_route_ship_position =
             game.map().read_native_word(ship_position_address);
         auto saw_route_ship_move = false;
-        for (std::size_t frame = 0;
-             frame < 3'000U
-                 && game.flow_state()
-                     == starfox::simulation::GameFlowState::planet_travel;
-             ++frame) {
+        for (std::size_t frame = 0; frame < 900U; ++frame) {
             game.present_frame();
             saw_route_ship_move = saw_route_ship_move
                 || game.map().read_native_word(ship_position_address)
                     != initial_route_ship_position;
             if ((frame % 3U) == 2U) static_cast<void>(game.tick({}));
         }
+        require(game.flow_state()
+                        == starfox::simulation::GameFlowState::planet_travel
+                    && saw_route_ship_move && !game.briefing_state().active,
+                "post-level route did not hold at the arrived planet for A");
+        static_cast<void>(game.tick(
+            {0U, starfox::input::a, 0U}));
+        auto saw_valid_post_level_briefing = false;
+        for (std::size_t frame = 0;
+             frame < 3'000U
+                 && game.flow_state()
+                     == starfox::simulation::GameFlowState::planet_travel;
+             ++frame) {
+            game.present_frame();
+            if (const auto briefing = game.briefing_state(); briefing.active) {
+                saw_valid_post_level_briefing =
+                    briefing.message_address != 0U
+                    && briefing.planet_name_address != 0U;
+            }
+            if ((frame % 3U) == 2U) static_cast<void>(game.tick({}));
+        }
         require(game.flow_state() == starfox::simulation::GameFlowState::gameplay
-                    && saw_route_ship_move,
-                "route ship travel did not launch the selected next map");
+                    && saw_valid_post_level_briefing,
+                "A did not advance the post-level route through a valid briefing");
         require(!game.map().ended() && game.objects().is_active(game.player()),
                 "next-stage INITGAME_L did not rebuild a playable object/map state");
 
@@ -3540,7 +3751,7 @@ int main(int argc, char** argv) {
         static_cast<void>(game.tick({0, starfox::input::start, 0}));
         require(game.flow_state() == starfox::simulation::GameFlowState::game_over,
                 "game-over START lock accepted input before 50 source frames");
-        for (std::size_t tick = 2; tick < 50; ++tick) {
+        for (std::size_t tick = 2; tick < 17; ++tick) {
             static_cast<void>(game.tick({}));
         }
         static_cast<void>(game.tick({0, starfox::input::start, 0}));
@@ -3549,11 +3760,24 @@ int main(int argc, char** argv) {
         require(game.flow_state()
                         == starfox::simulation::GameFlowState::continue_choice
                     && game.map().ppu_state().background_mode == 1U
-                    && has_shape(static_cast<std::uint16_t>(my_demo))
+                    && game.map().native_model_draw().active
+                    && game.map().native_model_draw().shape
+                        == static_cast<std::uint16_t>(my_demo)
                     && std::any_of(game.map().ppu_state().vram.begin(),
                         game.map().ppu_state().vram.end(),
                         [](std::uint8_t byte) { return byte != 0U; }),
                 "game-over lock did not open the original Fox continue screen");
+        require(game.map().read_native_byte(
+                    upstream_symbols.find("LIVES").front()) == 4U,
+                "continue screen did not restore the source's visible x3 reserve");
+        if (starfox_ex_cartridge) {
+            for (const auto* reserve : {
+                     "LIVESTWO", "LIVESTHREE", "LIVESFOUR", "LIVESFIVE"}) {
+                require(game.map().read_native_byte(
+                            upstream_symbols.find(reserve).front()) == 4U,
+                        "EX continue screen did not restore every ship reserve");
+            }
+        }
         static_cast<void>(game.tick({0, starfox::input::down, 0}));
         require(game.map().read_native_byte(foxy_option) == 0xffU,
                 "continue screen DOWN did not select NO");
@@ -3579,13 +3803,78 @@ int main(int argc, char** argv) {
 
         game.map().write_native_word(level_finished.front(), 6U);
         static_cast<void>(game.tick({}));
+        if (!starfox_ex_cartridge
+            && game.flow_state()
+                == starfox::simulation::GameFlowState::stage_results) {
+            static_cast<void>(game.tick({}));
+        }
+        if (!(game.flow_state() == starfox::simulation::GameFlowState::credits
+                && !game.map().ended() && !game.meter_state().enabled)) {
+            std::cerr << "ending diagnostic: flow="
+                      << static_cast<unsigned>(game.flow_state())
+                      << ", ended=" << game.map().ended()
+                      << ", meters=" << game.meter_state().enabled << '\n';
+        }
         require(game.flow_state() == starfox::simulation::GameFlowState::credits
                     && !game.map().ended() && !game.meter_state().enabled,
-                "end-of-game exit did not enter the original credits map");
-        game.map().write_native_word(level_finished.front(), 8U);
-        static_cast<void>(game.tick({}));
-        require(game.flow_state() == starfox::simulation::GameFlowState::finished,
-                "end-of-credits exit did not settle on the final presentation");
+                "end-of-game exit did not enter the native score/ending sequence");
+        const auto credits_map = upstream_symbols.find("CREDITSMAP").front();
+        auto reached_credits_map = false;
+        for (std::size_t tick = 0U; tick < 12'000U; ++tick) {
+            static_cast<void>(game.tick({}));
+            const auto native_map =
+                (static_cast<std::uint32_t>(game.map().read_native_byte(
+                     upstream_symbols.find("MAPBANK").front())) << 16U)
+                | 0x8000U
+                | (game.map().read_native_word(
+                       upstream_symbols.find("MAPPTR").front()) & 0x7fffU);
+            reached_credits_map = reached_credits_map
+                || ((native_map & 0xff0000U) == (credits_map & 0xff0000U)
+                    && native_map >= credits_map
+                    && native_map - credits_map < 0x4000U);
+            if ((!starfox_ex_cartridge
+                    && game.flow_state()
+                        == starfox::simulation::GameFlowState::finished)
+                || (starfox_ex_cartridge && reached_credits_map)) {
+                break;
+            }
+        }
+        require(starfox_ex_cartridge
+                    ? reached_credits_map
+                    : game.flow_state()
+                        == starfox::simulation::GameFlowState::finished,
+                "native ending did not reach credits/final score in bounded source time");
+
+        starfox::simulation::GameSimulation completed_credits{
+            upstream_rom, upstream_symbols, "CREDITSMAP"};
+        completed_credits.map().write_native_word(level_finished.front(), 8U);
+        static_cast<void>(completed_credits.tick({}));
+        if (starfox_ex_cartridge) {
+            static_cast<void>(completed_credits.tick(
+                {0, starfox::input::start, 0}));
+            if (completed_credits.flow_state()
+                    != starfox::simulation::GameFlowState::ex_pregame_menu) {
+                std::cerr << "EX credits return diagnostic: flow="
+                          << static_cast<unsigned>(
+                              completed_credits.flow_state())
+                          << ", exit=" << completed_credits.map().read_native_word(
+                              level_finished.front()) << '\n';
+            }
+            require(completed_credits.flow_state()
+                            == starfox::simulation::GameFlowState::ex_pregame_menu,
+                    "EX completed credits did not return to its source menu");
+        } else {
+            for (std::size_t frame = 0; frame < 500U
+                    && completed_credits.flow_state()
+                        != starfox::simulation::GameFlowState::finished;
+                 ++frame) {
+                static_cast<void>(completed_credits.tick({}));
+            }
+            require(completed_credits.flow_state()
+                            == starfox::simulation::GameFlowState::finished
+                        && !completed_credits.draw_order().empty(),
+                    "retail credits did not settle on its final total-score presentation");
+        }
 
         starfox::simulation::GameSimulation title_game{
             upstream_rom, upstream_symbols, "TITLEMAP"};
@@ -3602,6 +3891,21 @@ int main(int argc, char** argv) {
             heard_title_music = heard_title_music
                 || std::any_of(title_pcm.begin(), title_pcm.end(),
                     [](std::int16_t sample) { return sample != 0; });
+        }
+        if (starfox_ex_cartridge) {
+            // The first post-lock START belongs to EX's logo animation and
+            // must land on the regular title, not the pre-game menu.
+            title_tick = title_game.tick({0, starfox::input::start, 0});
+            static_cast<void>(title_audio.render_logic_tick(
+                title_tick.audio_port_writes));
+            title_game.synchronize_apu_output_ports(title_audio.output_ports());
+            for (std::size_t tick = 0; tick < 120U; ++tick) {
+                title_tick = title_game.tick({});
+                static_cast<void>(title_audio.render_logic_tick(
+                    title_tick.audio_port_writes));
+                title_game.synchronize_apu_output_ports(
+                    title_audio.output_ports());
+            }
         }
         if (starfox_ex_cartridge) {
             starfox::simulation::GameSimulation showcase_game{
@@ -3762,7 +4066,9 @@ int main(int argc, char** argv) {
             // viewer or following its persistent tail jump inside one call.
             starfox::simulation::GameSimulation title_model_game{
                 upstream_rom, upstream_symbols, "TITLEMAP"};
-            for (std::size_t tick = 0U; tick < 45U; ++tick) {
+            // EX first plays its source logo map; the shortcut belongs to the
+            // regular title map that follows it.
+            for (std::size_t tick = 0U; tick < 400U; ++tick) {
                 static_cast<void>(title_model_game.tick({}));
             }
             constexpr auto title_model_chord = static_cast<
@@ -4011,6 +4317,23 @@ int main(int argc, char** argv) {
             controls_music_tick.audio_port_writes));
         controls_music_game.synchronize_apu_output_ports(
             controls_audio.output_ports());
+        if (starfox_ex_cartridge) {
+            // START during EX's logo animation only skips to the regular title.
+            // Wait for that handoff, then press START there to open the menu.
+            for (std::size_t tick = 0; tick < 120U; ++tick) {
+                controls_music_tick = controls_music_game.tick({});
+                static_cast<void>(controls_audio.render_logic_tick(
+                    controls_music_tick.audio_port_writes));
+                controls_music_game.synchronize_apu_output_ports(
+                    controls_audio.output_ports());
+            }
+            controls_music_tick = controls_music_game.tick(
+                {0, starfox::input::start, 0});
+            static_cast<void>(controls_audio.render_logic_tick(
+                controls_music_tick.audio_port_writes));
+            controls_music_game.synchronize_apu_output_ports(
+                controls_audio.output_ports());
+        }
         bool heard_controls_music = false;
         bool left_ex_menu = false;
         for (std::size_t tick = 0; tick < 300U; ++tick) {
@@ -4284,9 +4607,10 @@ int main(int argc, char** argv) {
                         && title_game.map().native_model_draw().active
                         && title_game.map().native_model_draw().shape == a_wing
                         && title_game.map().native_model_draw().z == 350
+                        && title_game.map().native_model_draw().colour_table == 0U
                         && title_game.map().unknown_superfx_launches().size()
                             == unknown_before_model,
-                    "EX MODEL VIEWER did not submit its source MSHOWOBJ3 model");
+                    "EX MODEL VIEWER did not submit its source-header MSHOWOBJ3 model");
             const auto model_z_before =
                 title_game.map().read_native_word(
                     upstream_symbols.find("M_BIGZ").front());
@@ -4768,6 +5092,11 @@ int main(int argc, char** argv) {
                         == starfox::simulation::Experience::original
                     && !boot_game.god_mode()
                     && !boot_game.show_fps()
+                     && !boot_game.anti_aliasing()
+                     && !boot_game.enhanced_graphics()
+                     && !boot_game.smooth_polys()
+                     && !boot_game.rtx_lighting()
+                    && !boot_game.vsync()
                     && boot_game.crosshair_colour()
                         == starfox::simulation::CrosshairColour::green,
                 "cold boot did not begin with the default pre-game settings");
@@ -4846,13 +5175,59 @@ int main(int argc, char** argv) {
                 "pre-game display selector did not step backward to 32:9");
         drive_boot({0, starfox::input::down, 0});
         require(boot_game.pregame_selection() == 4U,
-                "pre-game cursor did not reach CONTROLS");
+                "pre-game cursor did not reach ANTI-ALIASING");
+        drive_boot({0, starfox::input::a, 0});
+        require(boot_game.anti_aliasing_mode()
+                    == starfox::simulation::AntiAliasingMode::light,
+                "pre-game Anti-Aliasing option did not select light FXAA");
+        drive_boot({0, starfox::input::right, 0});
+        require(boot_game.anti_aliasing_mode()
+                    == starfox::simulation::AntiAliasingMode::medium,
+                "pre-game Anti-Aliasing option did not select medium FXAA");
+        drive_boot({0, starfox::input::right, 0});
+        require(boot_game.anti_aliasing_mode()
+                    == starfox::simulation::AntiAliasingMode::heavy,
+                "pre-game Anti-Aliasing option did not select heavy FXAA");
+        drive_boot({0, starfox::input::right, 0});
+        require(!boot_game.anti_aliasing(),
+                "pre-game Anti-Aliasing choices did not wrap to off");
+        drive_boot({0, starfox::input::left, 0});
+        require(boot_game.anti_aliasing_mode()
+                    == starfox::simulation::AntiAliasingMode::heavy,
+                "pre-game Anti-Aliasing choices did not step backward");
+        drive_boot({0, starfox::input::down, 0});
+        require(boot_game.pregame_selection() == 5U,
+                "pre-game cursor did not reach ENHANCED TEXTURES");
+        drive_boot({0, starfox::input::a, 0});
+        require(boot_game.enhanced_graphics(),
+                "pre-game enhanced texture filtering did not enable");
+        drive_boot({0, starfox::input::down, 0});
+        require(boot_game.pregame_selection() == 6U,
+                "pre-game cursor did not reach SMOOTH POLYS");
+        drive_boot({0, starfox::input::a, 0});
+        require(boot_game.smooth_polys(),
+                "pre-game polygon smoothing option did not enable");
+        drive_boot({0, starfox::input::down, 0});
+        require(boot_game.pregame_selection() == 7U,
+                "pre-game cursor did not reach RTX LIGHTING");
+        drive_boot({0, starfox::input::a, 0});
+        require(boot_game.rtx_lighting(),
+                "pre-game RTX lighting option did not enable");
+        drive_boot({0, starfox::input::down, 0});
+        require(boot_game.pregame_selection() == 8U,
+                "pre-game cursor did not reach VSYNC");
+        drive_boot({0, starfox::input::a, 0});
+        require(boot_game.vsync(),
+                "pre-game VSync option did not enable");
+        drive_boot({0, starfox::input::down, 0});
+        require(boot_game.pregame_selection() == 9U,
+                "pre-game cursor did not reach CONTROLLER");
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.flow_state()
                     == starfox::simulation::GameFlowState::pregame_menu,
-                "CONTROLS selection incorrectly started the game");
+                "CONTROLLER selection incorrectly started the game");
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 5U,
+        require(boot_game.pregame_selection() == 10U,
                 "pre-game cursor did not reach OPTIONS");
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.pregame_page()
@@ -4894,15 +5269,20 @@ int main(int argc, char** argv) {
                 "pre-game cursor did not reach OPTIONS BACK");
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.pregame_page()
-                    == starfox::simulation::PregamePage::main
-                    && boot_game.pregame_selection() == 5U
+                     == starfox::simulation::PregamePage::main
+                     && boot_game.pregame_selection() == 10U
                     && boot_game.god_mode()
                     && boot_game.show_fps()
+                     && boot_game.anti_aliasing()
+                     && boot_game.enhanced_graphics()
+                     && boot_game.smooth_polys()
+                     && boot_game.rtx_lighting()
+                    && boot_game.vsync()
                     && boot_game.crosshair_colour()
                         == starfox::simulation::CrosshairColour::green,
                 "OPTIONS did not retain its toggles when returning to setup");
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 6U,
+        require(boot_game.pregame_selection() == 11U,
                 "pre-game cursor did not reach START GAME");
         drive_boot({0, starfox::input::start, 0});
         require(boot_game.flow_state()
@@ -4978,6 +5358,36 @@ int main(int argc, char** argv) {
         const auto background_flags = upstream_symbols.find("BGFLAGS").front();
         const auto player_ship_flags = upstream_symbols.find("PSHIPFLAGS").front();
         const auto game_flags = upstream_symbols.find("GAMEFLAGS").front();
+        const auto fade_to_red = upstream_symbols.find("FADETORED").front();
+        const auto boss_max_health = upstream_symbols.find("M_BOSSMAXHP").front();
+        const auto background_music = upstream_symbols.find("BGM_MUSIC").front();
+        const auto background_music_count = upstream_symbols.find("BGMCNT").front();
+        // Capture the active encounter track immediately before the synthetic
+        // death. The native death sequence replaces it with $11.
+        restart_game.map().write_native_byte(boss_max_health, 70U);
+        restart_game.map().write_native_byte(background_music, 0x66U);
+        restart_game.map().write_native_byte(background_music_count, 2U);
+        static_cast<void>(restart_game.tick({}));
+        const auto message_count_1 = upstream_symbols.find("MSG_COUNT1").front();
+        const auto message_count_2 = upstream_symbols.find("MSG_COUNT2").front();
+        restart_game.map().write_native_byte(boss_max_health, 0U);
+        restart_game.map().write_native_byte(message_count_1, 50U);
+        restart_game.map().write_native_byte(message_count_2, 5U);
+        restart_game.set_timing_mode(
+            starfox::simulation::TimingMode::original_speed);
+        std::size_t post_boss_updates{};
+        for (std::size_t presentation = 0; presentation < 150U;
+             ++presentation) {
+            restart_game.present_frame();
+            if (restart_game.logic_tick_ready()) {
+                static_cast<void>(restart_game.tick({}));
+                ++post_boss_updates;
+            }
+        }
+        require(post_boss_updates == 50U,
+                "post-boss dialogue did not retain its original 20 Hz cadence");
+        restart_game.set_timing_mode(
+            starfox::simulation::TimingMode::unlocked_20_fps);
         restart_game.map().write_native_byte(game_flags,
             static_cast<std::uint8_t>(
                 restart_game.map().read_native_byte(game_flags) | 0x42U));
@@ -4987,6 +5397,8 @@ int main(int argc, char** argv) {
         restart_game.map().write_native_byte(background_flags,
             static_cast<std::uint8_t>(
                 restart_game.map().read_native_byte(background_flags) | 1U));
+        restart_game.map().write_native_byte(fade_to_red, 1U);
+        restart_game.map().write_native_byte(background_music, 0x11U);
         require(restart_game.map().read_native_word(restart_pointer) != 0U,
                 "Corneria did not establish its native death checkpoint");
         auto restart_tick = restart_game.tick({});
@@ -4997,8 +5409,13 @@ int main(int argc, char** argv) {
                     && (restart_game.map().read_native_byte(player_ship_flags)
                         & 0x60U) == 0U
                     && (restart_game.map().read_native_byte(game_flags)
-                        & 0x42U) == 0U,
-                "death restart did not restore live player control ownership");
+                        & 0x42U) == 0U
+                    && restart_game.map().read_native_byte(fade_to_red) == 0U,
+                "death restart did not restore control and palette ownership");
+        require(restart_game.map().read_native_byte(background_music) == 0x66U
+                    && restart_game.map().read_native_byte(
+                        background_music_count) == 0U,
+                "boss restart did not replace the death drumroll with the encounter track");
         const auto restart_x = restart_game.objects().at(
             restart_game.player()).world_x;
         for (std::size_t tick = 0; tick < 80U; ++tick) {
