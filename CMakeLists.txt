@@ -6,8 +6,8 @@ option(STARFOX_BUILD_TESTS "Build deterministic timing tests" ON)
 option(STARFOX_BUILD_RUNTIME "Build the SDL3 native PC runtime" ON)
 option(STARFOX_EMBED_RUNTIME_ASSETS
     "Embed source-built BPS deltas and symbol tables into the Windows runtime" ON)
-option(STARFOX_EMBED_MSU1_MUSIC
-    "Embed the complete compressed Star Fox MSU-1 music pack in the Windows EXE" ON)
+option(STARFOX_PACKAGE_MSU1_MUSIC
+    "Build and install the optional Starfox-MSU1.PAK companion" ON)
 set(STARFOX_ROM_FILE
     "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
     CACHE FILEPATH "Assembled UltraStarFox ROM used by the native runtime")
@@ -113,6 +113,7 @@ endif()
 
 add_library(starfox_core
     src/audio/msu1_audio.cpp
+    src/audio/msu1_pack.cpp
     src/audio/spc700_audio.cpp
     src/assets/bps.cpp
     src/assets/decrunch.cpp
@@ -200,42 +201,57 @@ if(STARFOX_BUILD_RUNTIME)
         set_target_properties(starfox_pc PROPERTIES WIN32_EXECUTABLE TRUE)
     endif()
     target_link_libraries(starfox_pc PRIVATE starfox_core SDL3::SDL3)
+
+    if(STARFOX_PACKAGE_MSU1_MUSIC)
+        FetchContent_Declare(
+            starfox_msu_pack
+            GIT_REPOSITORY https://github.com/Sunlitspace542/star-fox-msu1-pcm.git
+            GIT_TAG 7a86296d7f62fd26bc2c51a7ed43eda8e4b21588
+            SOURCE_SUBDIR _starfox_no_upstream_project
+        )
+        FetchContent_MakeAvailable(starfox_msu_pack)
+        set(STARFOX_MSU_TRACK_FILES
+            titledemo title controls trainingmode map blackholemap
+            briefing briefingshort scramble level1_1 level1_2 level1_3
+            level1_4 level1_6 level2_2 level2_3 level2_4 level2_6
+            level3_3 level3_5 boss1_1 boss1_2 boss1_3 boss1_4 boss2_3
+            boss3_3 boss3_5 boss1_5a boss1_5b boss1_5c bossandross
+            bossootd levelblackhole levelootd clearband clearorch
+            clearootd downband downorch gameover continue secretactivated
+            blackholewarp blackholeexit dangerous lastbossclear
+            gamecleardemo bossroll staffroll enterhyperspace1
+            enterhyperspace2 exithyperspace)
+        set(STARFOX_MSU_TRACK_PATHS "")
+        foreach(STARFOX_MSU_TRACK IN LISTS STARFOX_MSU_TRACK_FILES)
+            set(STARFOX_MSU_TRACK_PATH
+                "${starfox_msu_pack_SOURCE_DIR}/${STARFOX_MSU_TRACK}.flac")
+            if(NOT EXISTS "${STARFOX_MSU_TRACK_PATH}")
+                message(FATAL_ERROR
+                    "MSU-1 pack is missing ${STARFOX_MSU_TRACK}.flac")
+            endif()
+            list(APPEND STARFOX_MSU_TRACK_PATHS "${STARFOX_MSU_TRACK_PATH}")
+        endforeach()
+        find_package(Python3 REQUIRED COMPONENTS Interpreter)
+        set(STARFOX_MSU1_PACK
+            "${CMAKE_CURRENT_BINARY_DIR}/Starfox-MSU1.PAK")
+        add_custom_command(
+            OUTPUT "${STARFOX_MSU1_PACK}"
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/pack_msu1.py"
+                --output "${STARFOX_MSU1_PACK}"
+                ${STARFOX_MSU_TRACK_PATHS}
+            DEPENDS
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/pack_msu1.py"
+                ${STARFOX_MSU_TRACK_PATHS}
+            COMMENT "Packing optional MSU-1 soundtrack companion"
+            VERBATIM)
+        add_custom_target(starfox_msu1_pack ALL
+            DEPENDS "${STARFOX_MSU1_PACK}")
+        add_dependencies(starfox_pc starfox_msu1_pack)
+        install(FILES "${STARFOX_MSU1_PACK}" DESTINATION .)
+    endif()
+
     if(WIN32 AND STARFOX_EMBED_RUNTIME_ASSETS)
-        set(STARFOX_MSU_RESOURCE_LINES "")
-        if(STARFOX_EMBED_MSU1_MUSIC)
-            FetchContent_Declare(
-                starfox_msu_pack
-                GIT_REPOSITORY https://github.com/Sunlitspace542/star-fox-msu1-pcm.git
-                GIT_TAG 7a86296d7f62fd26bc2c51a7ed43eda8e4b21588
-                SOURCE_SUBDIR _starfox_no_upstream_project
-            )
-            FetchContent_MakeAvailable(starfox_msu_pack)
-            set(STARFOX_MSU_TRACK_FILES
-                titledemo title controls trainingmode map blackholemap
-                briefing briefingshort scramble level1_1 level1_2 level1_3
-                level1_4 level1_6 level2_2 level2_3 level2_4 level2_6
-                level3_3 level3_5 boss1_1 boss1_2 boss1_3 boss1_4 boss2_3
-                boss3_3 boss3_5 boss1_5a boss1_5b boss1_5c bossandross
-                bossootd levelblackhole levelootd clearband clearorch
-                clearootd downband downorch gameover continue secretactivated
-                blackholewarp blackholeexit dangerous lastbossclear
-                gamecleardemo bossroll staffroll enterhyperspace1
-                enterhyperspace2 exithyperspace)
-            set(STARFOX_MSU_TRACK_ID 301)
-            foreach(STARFOX_MSU_TRACK IN LISTS STARFOX_MSU_TRACK_FILES)
-                set(STARFOX_MSU_TRACK_PATH
-                    "${starfox_msu_pack_SOURCE_DIR}/${STARFOX_MSU_TRACK}.flac")
-                if(NOT EXISTS "${STARFOX_MSU_TRACK_PATH}")
-                    message(FATAL_ERROR
-                        "MSU-1 pack is missing ${STARFOX_MSU_TRACK}.flac")
-                endif()
-                file(TO_CMAKE_PATH "${STARFOX_MSU_TRACK_PATH}"
-                    STARFOX_MSU_TRACK_PATH)
-                string(APPEND STARFOX_MSU_RESOURCE_LINES
-                    "${STARFOX_MSU_TRACK_ID} RCDATA \"${STARFOX_MSU_TRACK_PATH}\"\n")
-                math(EXPR STARFOX_MSU_TRACK_ID "${STARFOX_MSU_TRACK_ID} + 1")
-            endforeach()
-        endif()
         if(EXISTS "${STARFOX_ORIGINAL_PATCH_FILE}"
            AND EXISTS "${STARFOX_SYMBOLS_FILE}"
            AND EXISTS "${STARFOX_EX_PATCH_FILE}"
@@ -285,10 +301,6 @@ if(STARFOX_BUILD_RUNTIME)
                 $<TARGET_OBJECTS:starfox_runtime_resources>)
             target_compile_definitions(starfox_pc PRIVATE
                 STARFOX_HAS_EMBEDDED_ASSETS=1)
-            if(STARFOX_EMBED_MSU1_MUSIC)
-                target_compile_definitions(starfox_pc PRIVATE
-                    STARFOX_HAS_EMBEDDED_MSU1=1)
-            endif()
             set(STARFOX_RUNTIME_ASSETS_EMBEDDED TRUE)
         else()
             message(WARNING
@@ -361,6 +373,10 @@ if(STARFOX_BUILD_TESTS)
     add_executable(starfox_core_tests tests/timing_tests.cpp)
     target_link_libraries(starfox_core_tests PRIVATE starfox_core)
     add_test(NAME starfox_core_tests COMMAND starfox_core_tests)
+
+    add_executable(starfox_msu1_pack_tests tests/msu1_pack_tests.cpp)
+    target_link_libraries(starfox_msu1_pack_tests PRIVATE starfox_core)
+    add_test(NAME starfox_msu1_pack_tests COMMAND starfox_msu1_pack_tests)
 
     add_executable(starfox_shape_decoder_tests tests/shape_decoder_tests.cpp)
     target_link_libraries(starfox_shape_decoder_tests PRIVATE starfox_core)

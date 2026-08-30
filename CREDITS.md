@@ -77,9 +77,9 @@ README credits:
   data, tools, research, and documentation on which the native runtime is
   based, credited individually above.
 
-## Embedded MSU-1 music set
+## Optional MSU-1 music companion
 
-The optional in-executable music uses SunlitSpace542's
+The optional `Starfox-MSU1.PAK` companion uses SunlitSpace542's
 [Star Fox MSU-1 PCM set](https://github.com/Sunlitspace542/star-fox-msu1-pcm),
 which is based on Aelieth's Church of Kondo set with additions and remapping
 for Sunlit's patch. The pack README also thanks qwertymodo for MSUPCM++.

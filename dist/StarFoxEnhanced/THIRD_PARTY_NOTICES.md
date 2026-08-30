@@ -92,8 +92,9 @@ Source: <https://github.com/Sunlitspace542/star-fox-msu1-pcm>
 
 Pinned revision: `7a86296d7f62fd26bc2c51a7ed43eda8e4b21588`
 
-The compressed source tracks are embedded as executable resources when
-`STARFOX_EMBED_MSU1_MUSIC` is enabled. The set was assembled by
+The compressed source tracks are packaged separately as the optional
+`Starfox-MSU1.PAK` companion when `STARFOX_PACKAGE_MSU1_MUSIC` is enabled.
+The set was assembled by
 SunlitSpace542 from Aelieth's Church of Kondo set, with changes and additions
 for Sunlit's MSU-1 track mapping. The pack README thanks qwertymodo for
 MSUPCM++. Original Star Fox compositions remain credited to Hajime Hirasawa.

@@ -12,11 +12,11 @@ namespace starfox::audio {
 
 // Host-side MSU-1 audio device. The cartridge still owns track selection,
 // looping, fades, and volume through the real $2004-$2007 register protocol;
-// this class only decodes and presents the selected embedded FLAC stream.
+// this class only decodes and presents the selected FLAC stream.
 class Msu1Audio {
 public:
     using TrackLoader =
-        std::function<std::span<const std::uint8_t>(std::uint16_t)>;
+        std::function<std::vector<std::uint8_t>(std::uint16_t)>;
 
     explicit Msu1Audio(TrackLoader loader = {});
 

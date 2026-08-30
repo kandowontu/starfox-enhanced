@@ -260,7 +260,16 @@ public:
     [[nodiscard]] bool vsync() const noexcept { return vsync_; }
     void set_vsync(bool enabled) noexcept { vsync_ = enabled; }
     [[nodiscard]] bool msu1_music() const noexcept { return msu1_music_; }
-    void set_msu1_music(bool enabled) noexcept { msu1_music_ = enabled; }
+    void set_msu1_music(bool enabled) noexcept {
+        msu1_music_ = enabled && msu1_available_;
+    }
+    [[nodiscard]] bool msu1_available() const noexcept {
+        return msu1_available_;
+    }
+    void set_msu1_available(bool available) noexcept {
+        msu1_available_ = available;
+        if (!available) msu1_music_ = false;
+    }
     [[nodiscard]] bool rumble() const noexcept { return rumble_; }
     void set_rumble(bool enabled) noexcept { rumble_ = enabled; }
     [[nodiscard]] CrosshairColour crosshair_colour() const noexcept {
@@ -824,6 +833,7 @@ private:
     bool rtx_lighting_{};
     bool vsync_{};
     bool msu1_music_{};
+    bool msu1_available_{true};
     bool rumble_{true};
     CrosshairColour crosshair_colour_{CrosshairColour::green};
     bool planet_travel_complete_{};

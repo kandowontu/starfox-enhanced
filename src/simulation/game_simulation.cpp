@@ -1113,7 +1113,9 @@ GameTickResult GameSimulation::tick_pregame_menu(
     if (toggle_render_option && pregame_selection_ >= 4U
         && pregame_selection_ <= 10U) {
         switch (pregame_selection_) {
-        case 4U: msu1_music_ = !msu1_music_; break;
+        case 4U:
+            if (msu1_available_) msu1_music_ = !msu1_music_;
+            break;
         case 5U: rumble_ = !rumble_; break;
         case 6U: {
             auto mode = static_cast<std::uint8_t>(anti_aliasing_mode_);

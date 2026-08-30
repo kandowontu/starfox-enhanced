@@ -5350,6 +5350,18 @@ int main(int argc, char** argv) {
                     && boot_game.crosshair_colour()
                         == starfox::simulation::CrosshairColour::green,
                 "cold boot did not begin with the default pre-game settings");
+        starfox::simulation::GameSimulation missing_msu_game{
+            upstream_rom, upstream_symbols, "BOOT"};
+        missing_msu_game.set_msu1_available(false);
+        for (std::size_t row = 0U; row < 4U; ++row) {
+            static_cast<void>(missing_msu_game.tick(
+                {0, starfox::input::down, 0}));
+        }
+        static_cast<void>(missing_msu_game.tick(
+            {0, starfox::input::a, 0}));
+        require(!missing_msu_game.msu1_available()
+                    && !missing_msu_game.msu1_music(),
+                "missing MSU-1 companion did not disable its menu option");
         starfox::audio::Spc700Audio boot_audio;
         bool heard_start_sound = false;
         const auto drive_boot = [&](const starfox::input::TickInput& input) {

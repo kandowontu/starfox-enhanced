@@ -8,8 +8,9 @@ and assembled model data. The default is 60 FPS.
 
 This repository is an early playable fidelity pass. It does not track a game
 executable, retail ROM, reconstructed ROM, or generated asset companion. The
-Windows executable embeds source-built BPS deltas, symbol data, and the
-complete optional compressed MSU-1 music set. On its
+Windows executable embeds source-built BPS deltas and symbol data. The
+complete optional compressed MSU-1 music set is distributed separately as
+`Starfox-MSU1.PAK` beside the executable. On its
 first launch it validates the user's own unmodified Star Fox USA v1.2 (Rev 2)
 ROM, reconstructs the Original and Star Fox EX runtime data locally, and writes
 one version-bound `Starfox-Assets.BIN` companion beside the executable. Later
@@ -43,8 +44,10 @@ unchanged.
 The setup also independently selects game pace, render FPS, display mode,
 MSU-1 music, rumble, controller remapping, and a separate Options page.
 MSU-1 music is off by default and, when enabled for Original, replaces the
-SPC music stem with the embedded orchestral set while leaving sound effects on
-their own channel. Rumble is on by default for Original and plays the authored
+SPC music stem with the companion orchestral set while leaving sound effects
+on their own channel. If `Starfox-MSU1.PAK` is not beside the executable, the
+option reads `NOT FOUND` and cannot be enabled. Rumble is on by default for
+Original and plays the authored
 UltraStarFox sequences on compatible SDL, XInput, and Steam Input controllers.
 The Options page's first option is the
 Star Fox EX-style God Mode: player collision is disabled,
@@ -166,6 +169,11 @@ Create a portable executable folder (ROM data remains user-supplied):
 ```powershell
 cmake --install build/release --prefix dist/StarFoxEnhanced
 ```
+
+The default build downloads the pinned music sources and installs the optional
+`Starfox-MSU1.PAK` beside `starfox_pc.exe`. Configure with
+`-DSTARFOX_PACKAGE_MSU1_MUSIC=OFF` to build and install the game without that
+companion; the executable remains fully playable with the original SPC music.
 
 You can launch the binary directly:
 

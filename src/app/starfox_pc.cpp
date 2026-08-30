@@ -1,5 +1,6 @@
 #include "starfox/audio/spc700_audio.hpp"
 #include "starfox/audio/msu1_audio.hpp"
+#include "starfox/audio/msu1_pack.hpp"
 #include "starfox/app/runtime_input.hpp"
 #include "starfox/assets/bps.hpp"
 #include "starfox/assets/rom.hpp"
@@ -624,18 +625,6 @@ RuntimeAssetSet load_or_compile_runtime_assets(
     return unpack_runtime_assets(std::move(payload));
 }
 #endif
-
-std::span<const std::uint8_t> embedded_msu_track(std::uint16_t track) {
-#if defined(_WIN32) && defined(STARFOX_HAS_EMBEDDED_ASSETS) \
-    && defined(STARFOX_HAS_EMBEDDED_MSU1)
-    if (track >= 1U && track <= 52U) {
-        return embedded_resource(300 + static_cast<int>(track));
-    }
-#else
-    static_cast<void>(track);
-#endif
-    return {};
-}
 
 RuntimeAssets load_external_assets(
     const std::filesystem::path& rom_path,
@@ -1634,7 +1623,10 @@ private:
 
 class AudioOutput {
 public:
-    AudioOutput() : msu1_(embedded_msu_track) {
+    explicit AudioOutput(const starfox::audio::Msu1Pack& pack)
+        : msu1_([&pack](std::uint16_t track) {
+              return pack.load_track(track);
+          }) {
         constexpr SDL_AudioSpec spec{
             SDL_AUDIO_S16, 2,
             static_cast<int>(starfox::audio::Spc700Audio::sample_rate)};
@@ -2188,9 +2180,12 @@ int main(int argc, char** argv) {
         const SdlContext sdl;
         Window window;
         std::string initial_map = "BOOT";
-#if defined(_WIN32) && defined(STARFOX_HAS_EMBEDDED_ASSETS)
         const auto executable_directory =
             std::filesystem::absolute(argv[0]).parent_path();
+        const starfox::audio::Msu1Pack msu1_pack{
+            executable_directory
+                / std::filesystem::path{starfox::audio::msu1_pack_filename}};
+#if defined(_WIN32) && defined(STARFOX_HAS_EMBEDDED_ASSETS)
         auto embedded_runtime_assets =
             load_or_compile_runtime_assets(executable_directory);
 #endif
@@ -2202,8 +2197,6 @@ int main(int argc, char** argv) {
 #else
                 std::filesystem::path rom_path;
                 std::filesystem::path symbols_path;
-                const auto executable_directory =
-                    std::filesystem::absolute(argv[0]).parent_path();
                 const auto workspace = executable_directory.parent_path().parent_path();
                 const auto current = std::filesystem::current_path();
                 const std::array candidates{
@@ -2244,8 +2237,6 @@ int main(int argc, char** argv) {
         starfox_ex_assets.emplace(
             std::move(embedded_runtime_assets.starfox_ex));
 #else
-        const auto executable_directory =
-            std::filesystem::absolute(argv[0]).parent_path();
         const auto workspace = executable_directory.parent_path().parent_path();
         const auto current = std::filesystem::current_path();
         const std::array ex_candidates{
@@ -2403,6 +2394,7 @@ int main(int argc, char** argv) {
             game.set_smooth_polys(saved_pregame.smooth_polys);
             game.set_rtx_lighting(saved_pregame.rtx_lighting);
             game.set_vsync(saved_pregame.vsync);
+            game.set_msu1_available(msu1_pack.available());
             game.set_msu1_music(saved_pregame.msu1_music);
             game.set_rumble(saved_pregame.rumble);
             if (const auto* forced_msu = std::getenv("STARFOX_TEST_MSU1")) {
@@ -2635,7 +2627,7 @@ int main(int argc, char** argv) {
             game_text_symbol("SLIPPYTXT"),
         };
 
-        AudioOutput audio;
+        AudioOutput audio{msu1_pack};
         audio.set_msu1_enabled(game.msu1_music()
             && active_experience
                 == starfox::simulation::Experience::original);
@@ -5016,7 +5008,10 @@ int main(int argc, char** argv) {
                             game.pregame_selection() == 2U);
                         draw_compact_row("DISPLAY", display, row_y[3],
                             game.pregame_selection() == 3U);
-                        draw_compact_row("MSU-1 MUSIC", on_off(game.msu1_music()),
+                        const auto msu1_value = game.msu1_available()
+                            ? on_off(game.msu1_music())
+                            : std::string_view{"NOT FOUND"};
+                        draw_compact_row("MSU-1 MUSIC", msu1_value,
                             row_y[4], game.pregame_selection() == 4U);
                         draw_compact_row("RUMBLE", on_off(game.rumble()), row_y[5],
                             game.pregame_selection() == 5U);
@@ -5252,6 +5247,7 @@ int main(int argc, char** argv) {
                 }
                 if (std::getenv("STARFOX_TRACE_MSU1") != nullptr) {
                     std::cerr << "msu1 enabled=" << game.msu1_music()
+                              << " available=" << game.msu1_available()
                               << " track=" << audio.msu1_track()
                               << " playing=" << audio.msu1_playing() << '\n';
                 }
