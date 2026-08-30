@@ -185,6 +185,78 @@ int main(int argc, char** argv) {
                 && mosaic_bg2_frame.get(0, 1) == 1U,
             "SNES BG2 mosaic did not repeat its source pixel");
 
+    starfox::simulation::SnesPpuState title_priority_ppu;
+    title_priority_ppu.background_mode = 1U;
+    title_priority_ppu.main_screen = 0x07U;
+    title_priority_ppu.bg3_screen_base = 0x1000U;
+    title_priority_ppu.bg3_character_base = 0x2000U;
+    title_priority_ppu.bg1_screen_base = 0x3000U;
+    title_priority_ppu.bg1_character_base = 0x4000U;
+    title_priority_ppu.bg2_screen_base = 0x5000U;
+    title_priority_ppu.bg2_character_base = 0x6000U;
+    title_priority_ppu.cgram[1U] = 0x7fffU;
+    const auto title_bg3_map = static_cast<std::size_t>(
+        title_priority_ppu.bg3_screen_base) * 2U;
+    title_priority_ppu.vram[title_bg3_map] = 1U;
+    title_priority_ppu.vram[title_bg3_map + 2U] = 1U;
+    title_priority_ppu.vram[title_bg3_map + 3U] = 0x20U;
+    title_priority_ppu.vram[static_cast<std::size_t>(
+        title_priority_ppu.bg3_character_base) * 2U + 16U] = 0x80U;
+    const auto title_bg1_map = static_cast<std::size_t>(
+        title_priority_ppu.bg1_screen_base) * 2U;
+    title_priority_ppu.vram[title_bg1_map + 4U] = 1U;
+    title_priority_ppu.vram[static_cast<std::size_t>(
+        title_priority_ppu.bg1_character_base) * 2U + 32U] = 0x80U;
+    const auto title_bg2_map = static_cast<std::size_t>(
+        title_priority_ppu.bg2_screen_base) * 2U;
+    title_priority_ppu.vram[title_bg2_map + 6U] = 1U;
+    title_priority_ppu.vram[title_bg2_map + 7U] = 0x20U;
+    title_priority_ppu.vram[static_cast<std::size_t>(
+        title_priority_ppu.bg2_character_base) * 2U + 32U] = 0x80U;
+    starfox::render::Framebuffer title_priority_frame{32U, 8U};
+    title_priority_frame.clear(42U);
+    background_renderer.draw_title_foreground(
+        title_priority_ppu, 0, 0, title_priority_frame, 0, false);
+    require(title_priority_frame.get(0, 0) == 42U
+                && title_priority_frame.get(8, 0) == 1U
+                && title_priority_frame.get(16, 0) == 42U
+                && title_priority_frame.get(24, 0) == 1U,
+            "title foreground did not split backdrop and roster priorities");
+    title_priority_frame.clear(42U);
+    background_renderer.draw_title_foreground(
+        title_priority_ppu, 0, 0, title_priority_frame);
+    require(title_priority_frame.get(0, 0) == 42U
+                && title_priority_frame.get(8, 0) == 1U
+                && title_priority_frame.get(16, 0) == 1U
+                && title_priority_frame.get(24, 0) == 1U,
+            "title foreground dropped PRESS START or native BG1 text");
+    title_priority_ppu.cgram[1U] = 0U;
+    title_priority_frame.clear(42U);
+    background_renderer.draw_title_foreground(
+        title_priority_ppu, 0, 0, title_priority_frame, 0, false);
+    require(title_priority_frame.get(24, 0) == 42U,
+            "indexed-black title priority tile cut through a Super FX model");
+
+    starfox::simulation::SnesPpuState unwrapped_title_ppu;
+    unwrapped_title_ppu.background_mode = 1U;
+    unwrapped_title_ppu.main_screen = 0x02U;
+    unwrapped_title_ppu.bg2_screen_base = 0x5000U;
+    unwrapped_title_ppu.bg2_character_base = 0x6000U;
+    const auto unwrapped_map_byte = static_cast<std::size_t>(
+        unwrapped_title_ppu.bg2_screen_base) * 2U;
+    unwrapped_title_ppu.vram[unwrapped_map_byte] = 1U;
+    unwrapped_title_ppu.vram[static_cast<std::size_t>(
+        unwrapped_title_ppu.bg2_character_base) * 2U + 32U] = 0x80U;
+    starfox::render::Framebuffer unwrapped_title_frame{400U, 8U};
+    unwrapped_title_frame.clear(42U);
+    background_renderer.draw_bg2(unwrapped_title_ppu, -8, 0,
+        unwrapped_title_frame, starfox::render::TilePriorityPass::all,
+        72, true, false);
+    require(unwrapped_title_frame.get(80, 0) == 1U
+                && unwrapped_title_frame.get(72, 0) == 42U
+                && unwrapped_title_frame.get(336, 0) == 42U,
+            "wide title tilemap wrapped into duplicate outer columns");
+
     starfox::simulation::SnesPpuState tall_bg_ppu;
     tall_bg_ppu.main_screen = 0x02U;
     tall_bg_ppu.bg2_screen_size = 2U; // 32x64 tiles: page 1 is below page 0.
@@ -3754,13 +3826,35 @@ int main(int argc, char** argv) {
                     && has_shape(static_cast<std::uint16_t>(game_shape.front()))
                     && has_shape(static_cast<std::uint16_t>(over_shape.front())),
                 "game-over exit did not initialize the original GAME/OVER scene");
+        require(game.game_over_background_subtract() == 31U,
+                "game-over scene omitted its fixed-white background hold");
         static_cast<void>(game.tick({0, starfox::input::start, 0}));
         require(game.flow_state() == starfox::simulation::GameFlowState::game_over,
-                "game-over START lock accepted input before 50 source frames");
-        for (std::size_t tick = 2; tick < 17; ++tick) {
-            static_cast<void>(game.tick({}));
+                "game-over START lock accepted input before its reveal");
+        require(game.game_over_background_subtract() == 31U,
+                "game-over background reveal began during its START lock");
+        // The source lock is 50 black TRANSFERs plus 31 HALFFADE TRANSFERs.
+        // The early tick above may synthesize between three and six missing
+        // rasters in original-pace mode. Sixty more is still safely below 81.
+        for (std::size_t frame = 0U; frame < 60U; ++frame) {
+            game.present_frame();
         }
         static_cast<void>(game.tick({0, starfox::input::start, 0}));
+        require(game.flow_state() == starfox::simulation::GameFlowState::game_over
+                    && game.map().fade_direction() == 0,
+                "game-over START lock accepted input before raster 81");
+        for (std::size_t frame = 0U; frame < 21U; ++frame) {
+            game.present_frame();
+        }
+        static_cast<void>(game.tick({0, starfox::input::start, 0}));
+        require(game.flow_state() == starfox::simulation::GameFlowState::game_over
+                    && game.map().fade_direction() == -1
+                    && game.game_over_background_subtract() == 0U,
+                "game-over START did not begin the source fade after its reveal");
+        for (std::size_t frame = 0; frame < 15U; ++frame) {
+            game.present_frame();
+        }
+        static_cast<void>(game.tick({}));
         const auto my_demo = upstream_symbols.find("MY_DEMO").front();
         const auto foxy_option = upstream_symbols.find("FOXY_OPTION").front();
         require(game.flow_state()
@@ -3784,6 +3878,10 @@ int main(int argc, char** argv) {
                         "EX continue screen did not restore every ship reserve");
             }
         }
+        // CONTINUE.ASM holds one black raster, then manually presents 1..15.
+        for (std::size_t frame = 0; frame < 16U; ++frame) {
+            game.present_frame();
+        }
         static_cast<void>(game.tick({0, starfox::input::down, 0}));
         require(game.map().read_native_byte(foxy_option) == 0xffU,
                 "continue screen DOWN did not select NO");
@@ -3791,6 +3889,14 @@ int main(int argc, char** argv) {
         require(game.map().read_native_byte(foxy_option) == 0U,
                 "continue screen UP did not restore YES");
         static_cast<void>(game.tick({0, starfox::input::start, 0}));
+        require(game.flow_state()
+                        == starfox::simulation::GameFlowState::continue_choice,
+                "continue YES cut away before its source fade-out");
+        // FADELOOP2 presents full brightness once, followed by 14..0.
+        for (std::size_t frame = 0; frame < 16U; ++frame) {
+            game.present_frame();
+        }
+        static_cast<void>(game.tick({}));
         require(game.flow_state() == starfox::simulation::GameFlowState::planet_travel
                     && game.map().read_native_word(stage_address.front()) == 1U
                     && game.map().ppu_state().background_mode == 3U,
@@ -4133,6 +4239,11 @@ int main(int argc, char** argv) {
                         && heard_model_entry
                         && title_model_game.map().unknown_superfx_launches().empty(),
                     "EX title shortcut did not enter the source model-test loop");
+            // FOXY_CONTINUE draws the first model-test page under forced black
+            // and manually reveals brightness 1..15 before accepting input.
+            for (std::size_t frame = 0U; frame < 16U; ++frame) {
+                title_model_game.present_frame();
+            }
             static_cast<void>(title_model_game.tick({}));
             static_cast<void>(title_model_game.tick({
                 starfox::input::start, starfox::input::start, 0U}));
@@ -4263,6 +4374,11 @@ int main(int argc, char** argv) {
                         && scope_menu_game.map().read_native_byte(menu_selected)
                             == 15U,
                     "EX Scope test could not reach source pre-game page one");
+            // CONTINUE.ASM owns a forced-black raster followed by brightness
+            // 1..15 before it begins accepting page input.
+            for (std::size_t frame = 0U; frame < 16U; ++frame) {
+                scope_menu_game.present_frame();
+            }
             for (std::size_t item = 0U; item < 12U; ++item) {
                 static_cast<void>(scope_menu_game.tick({
                     starfox::input::down, starfox::input::down, 0U}));
@@ -4300,6 +4416,13 @@ int main(int argc, char** argv) {
             scope_menu_game.set_mouse_input({0, 0, 0U, 0x70U, 0x50U});
             static_cast<void>(scope_menu_game.tick({
                 starfox::input::start, starfox::input::start, 0U}));
+            require(scope_menu_game.flow_state()
+                            == starfox::simulation::GameFlowState::ex_pregame_menu,
+                    "EX Scope calibration cut away before its source fade-out");
+            for (std::size_t frame = 0U; frame < 16U; ++frame) {
+                scope_menu_game.present_frame();
+            }
+            static_cast<void>(scope_menu_game.tick({}));
             require(scope_menu_game.flow_state()
                             == starfox::simulation::GameFlowState::controls_type,
                     "EX Scope calibration did not return through source restart");
@@ -4339,6 +4462,18 @@ int main(int argc, char** argv) {
                 controls_music_tick.audio_port_writes));
             controls_music_game.synchronize_apu_output_ports(
                 controls_audio.output_ports());
+            for (std::size_t tick = 0U; tick < 48U
+                 && controls_music_game.flow_state()
+                    == starfox::simulation::GameFlowState::title; ++tick) {
+                controls_music_tick = controls_music_game.tick({});
+                static_cast<void>(controls_audio.render_logic_tick(
+                    controls_music_tick.audio_port_writes));
+                controls_music_game.synchronize_apu_output_ports(
+                    controls_audio.output_ports());
+            }
+            for (std::size_t frame = 0U; frame < 16U; ++frame) {
+                controls_music_game.present_frame();
+            }
         }
         bool heard_controls_music = false;
         bool left_ex_menu = false;
@@ -4525,6 +4660,9 @@ int main(int argc, char** argv) {
                             title_game.map().ppu_state().vram.end(),
                             [](std::uint8_t byte) { return byte != 0U; }),
                     "EX title START did not open source pre-game menu page one");
+            for (std::size_t frame = 0U; frame < 16U; ++frame) {
+                title_game.present_frame();
+            }
             const auto menu_scroll_before =
                 title_game.map().ppu_state().bg2_scroll_x;
             static_cast<void>(title_game.tick({}));
@@ -4657,8 +4795,14 @@ int main(int argc, char** argv) {
             static_cast<void>(title_game.tick(
                 {starfox::input::start, starfox::input::start, 0}));
             require(title_game.map().read_native_byte(ex_god_mode) != 0U
-                        && title_game.god_mode(),
+                        && title_game.god_mode()
+                        && title_game.flow_state()
+                            == starfox::simulation::GameFlowState::ex_pregame_menu,
                     "EX restart did not preserve its source menu options");
+            for (std::size_t frame = 0U; frame < 16U; ++frame) {
+                title_game.present_frame();
+            }
+            static_cast<void>(title_game.tick({}));
             const auto committed_ex_ram = std::vector<std::uint8_t>{
                 title_game.ex_save_ram().begin(),
                 title_game.ex_save_ram().end()};
@@ -5103,7 +5247,8 @@ int main(int argc, char** argv) {
                         == static_cast<std::uint8_t>(
                             upstream_symbols.find("INTROMAP").front() >> 16U),
                 "title timeout did not enter the original attract-mode map");
-        for (std::size_t tick = 0; tick < 29U; ++tick) {
+        const auto attract_skip_ticks = starfox_ex_cartridge ? 44U : 29U;
+        for (std::size_t tick = 0; tick < attract_skip_ticks; ++tick) {
             static_cast<void>(attract_game.tick({}));
         }
         static_cast<void>(attract_game.tick({0, starfox::input::start, 0}));
@@ -5217,6 +5362,23 @@ int main(int argc, char** argv) {
                 "pre-game display selector did not step backward to 32:9");
         drive_boot({0, starfox::input::down, 0});
         require(boot_game.pregame_selection() == 4U,
+                "pre-game cursor did not reach MSU-1 MUSIC");
+        drive_boot({0, starfox::input::a, 0});
+        require(boot_game.msu1_music(),
+                "pre-game MSU-1 music option did not enable");
+        drive_boot({0, starfox::input::down, 0});
+        require(boot_game.pregame_selection() == 5U,
+                "pre-game cursor did not reach RUMBLE");
+        require(boot_game.rumble(),
+                "pre-game rumble option did not default on");
+        drive_boot({0, starfox::input::a, 0});
+        require(!boot_game.rumble(),
+                "pre-game rumble option did not disable");
+        drive_boot({0, starfox::input::a, 0});
+        require(boot_game.rumble(),
+                "pre-game rumble option did not re-enable");
+        drive_boot({0, starfox::input::down, 0});
+        require(boot_game.pregame_selection() == 6U,
                 "pre-game cursor did not reach ANTI-ALIASING");
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.anti_aliasing_mode()
@@ -5238,38 +5400,38 @@ int main(int argc, char** argv) {
                     == starfox::simulation::AntiAliasingMode::heavy,
                 "pre-game Anti-Aliasing choices did not step backward");
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 5U,
+        require(boot_game.pregame_selection() == 7U,
                 "pre-game cursor did not reach ENHANCED TEXTURES");
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.enhanced_graphics(),
                 "pre-game enhanced texture filtering did not enable");
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 6U,
+        require(boot_game.pregame_selection() == 8U,
                 "pre-game cursor did not reach SMOOTH POLYS");
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.smooth_polys(),
                 "pre-game polygon smoothing option did not enable");
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 7U,
+        require(boot_game.pregame_selection() == 9U,
                 "pre-game cursor did not reach RTX LIGHTING");
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.rtx_lighting(),
                 "pre-game RTX lighting option did not enable");
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 8U,
+        require(boot_game.pregame_selection() == 10U,
                 "pre-game cursor did not reach VSYNC");
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.vsync(),
                 "pre-game VSync option did not enable");
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 9U,
+        require(boot_game.pregame_selection() == 11U,
                 "pre-game cursor did not reach CONTROLLER");
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.flow_state()
                     == starfox::simulation::GameFlowState::pregame_menu,
                 "CONTROLLER selection incorrectly started the game");
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 10U,
+        require(boot_game.pregame_selection() == 12U,
                 "pre-game cursor did not reach OPTIONS");
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.pregame_page()
@@ -5312,7 +5474,7 @@ int main(int argc, char** argv) {
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.pregame_page()
                      == starfox::simulation::PregamePage::main
-                     && boot_game.pregame_selection() == 10U
+                     && boot_game.pregame_selection() == 12U
                     && boot_game.god_mode()
                     && boot_game.show_fps()
                      && boot_game.anti_aliasing()
@@ -5324,7 +5486,7 @@ int main(int argc, char** argv) {
                         == starfox::simulation::CrosshairColour::green,
                 "OPTIONS did not retain its toggles when returning to setup");
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 11U,
+        require(boot_game.pregame_selection() == 13U,
                 "pre-game cursor did not reach START GAME");
         drive_boot({0, starfox::input::start, 0});
         require(boot_game.flow_state()

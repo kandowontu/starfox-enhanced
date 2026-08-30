@@ -59,3 +59,44 @@ freely, subject to the following restrictions:
 2. Altered source versions must be plainly marked as such, and must not be
    misrepresented as being the original software.
 3. This notice may not be removed or altered from any source distribution.
+
+## dr_flac (dr_libs)
+
+Source: <https://github.com/mackron/dr_libs>
+
+Pinned revision: `b55a0d9a30b91ad8901f89ecf05f76a33186c185`
+
+Copyright 2020 David Reid
+
+This project uses the upstream dual-licence choice of the MIT No Attribution
+licence:
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+## Star Fox MSU-1 PCM set
+
+Source: <https://github.com/Sunlitspace542/star-fox-msu1-pcm>
+
+Pinned revision: `7a86296d7f62fd26bc2c51a7ed43eda8e4b21588`
+
+The compressed source tracks are embedded as executable resources when
+`STARFOX_EMBED_MSU1_MUSIC` is enabled. The set was assembled by
+SunlitSpace542 from Aelieth's Church of Kondo set, with changes and additions
+for Sunlit's MSU-1 track mapping. The pack README thanks qwertymodo for
+MSUPCM++. Original Star Fox compositions remain credited to Hajime Hirasawa.
+No standalone licence file is included by the pinned music-pack repository;
+this notice records provenance and attribution and does not alter any rights
+in the music or the underlying game.

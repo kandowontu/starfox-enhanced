@@ -451,11 +451,16 @@ bool load_pregame_settings(
         || (version != "SFE_PREGAME_V1" && version != "SFE_PREGAME_V2"
             && version != "SFE_PREGAME_V3"
             && version != "SFE_PREGAME_V4"
-            && version != "SFE_PREGAME_V5")) {
+            && version != "SFE_PREGAME_V5"
+            && version != "SFE_PREGAME_V6")) {
         return false;
     }
     auto loaded = PregameSettings{};
-    std::array<bool, 12> found{};
+    std::array<bool, 14> found{};
+    if (version != "SFE_PREGAME_V6") {
+        found[12] = true;
+        found[13] = true;
+    }
     found[6] = version == "SFE_PREGAME_V1";
     if (version == "SFE_PREGAME_V1" || version == "SFE_PREGAME_V2") {
         std::fill(found.begin() + 7, found.end(), true);
@@ -486,7 +491,8 @@ bool load_pregame_settings(
             found[4] = value == 0 || value == 1;
         } else if (name == "ANTI_ALIASING") {
             loaded.anti_aliasing = static_cast<std::uint8_t>(value);
-            found[7] = value >= 0 && value <= (version == "SFE_PREGAME_V5"
+            found[7] = value >= 0 && value <= (
+                version == "SFE_PREGAME_V5" || version == "SFE_PREGAME_V6"
                 ? 3 : 1);
         } else if (name == "ENHANCED_GRAPHICS") {
             loaded.enhanced_graphics = value != 0;
@@ -500,6 +506,12 @@ bool load_pregame_settings(
         } else if (name == "VSYNC") {
             loaded.vsync = value != 0;
             found[11] = value == 0 || value == 1;
+        } else if (name == "MSU1_MUSIC") {
+            loaded.msu1_music = value != 0;
+            found[12] = value == 0 || value == 1;
+        } else if (name == "RUMBLE") {
+            loaded.rumble = value != 0;
+            found[13] = value == 0 || value == 1;
         } else if (name == "CROSSHAIR_COLOUR") {
             loaded.crosshair_colour = static_cast<std::uint8_t>(value);
             found[5] = value >= 0 && value <= 7;
@@ -513,7 +525,8 @@ bool load_pregame_settings(
     if (version == "SFE_PREGAME_V3") {
         loaded.smooth_polys = loaded.enhanced_graphics;
     }
-    if (version != "SFE_PREGAME_V5" && loaded.anti_aliasing != 0U) {
+    if (version != "SFE_PREGAME_V5" && version != "SFE_PREGAME_V6"
+        && loaded.anti_aliasing != 0U) {
         // The original ON setting used what is now the medium FXAA kernel.
         loaded.anti_aliasing = 2U;
     }
@@ -539,7 +552,7 @@ bool save_pregame_settings(
     if (error) return false;
     std::ofstream output{path, std::ios::trunc};
     if (!output) return false;
-    output << "SFE_PREGAME_V5\n"
+    output << "SFE_PREGAME_V6\n"
            << "EXPERIENCE " << static_cast<unsigned>(settings.experience) << '\n'
            << "TIMING_MODE " << static_cast<unsigned>(settings.timing_mode) << '\n'
            << "PRESENTATION_FPS " << settings.presentation_fps << '\n'
@@ -555,6 +568,9 @@ bool save_pregame_settings(
            << "RTX_LIGHTING "
            << static_cast<unsigned>(settings.rtx_lighting) << '\n'
            << "VSYNC " << static_cast<unsigned>(settings.vsync) << '\n'
+           << "MSU1_MUSIC "
+           << static_cast<unsigned>(settings.msu1_music) << '\n'
+           << "RUMBLE " << static_cast<unsigned>(settings.rumble) << '\n'
            << "CROSSHAIR_COLOUR "
            << static_cast<unsigned>(settings.crosshair_colour) << '\n';
     return static_cast<bool>(output);

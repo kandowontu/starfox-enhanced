@@ -95,6 +95,9 @@ public:
     [[nodiscard]] std::vector<ApuPortWrite> take_apu_port_writes() {
         return cpu_.take_apu_port_writes();
     }
+    [[nodiscard]] std::vector<MsuRegisterWrite> take_msu_register_writes() {
+        return cpu_.take_msu_register_writes();
+    }
     void set_apu_clock_offset(std::uint32_t clocks) noexcept {
         cpu_.set_apu_clock_offset(clocks);
     }
@@ -232,8 +235,6 @@ private:
     std::int8_t fade_direction_{};
     std::uint8_t fade_value_{};
     std::uint8_t display_brightness_{15};
-    std::uint8_t slow_fade_frame_{};
-    bool slow_fade_frame_valid_{};
     bool vertical_offset_enabled_{};
     bool horizontal_offset_enabled_{};
     bool z_rotation_enabled_{};

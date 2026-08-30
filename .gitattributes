@@ -1,0 +1,2 @@
+dist/StarFoxEnhanced/starfox_pc.exe filter=lfs diff=lfs merge=lfs -text
+config/*.patch -whitespace

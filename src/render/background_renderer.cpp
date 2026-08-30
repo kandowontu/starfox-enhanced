@@ -200,7 +200,9 @@ void BackgroundRenderer::draw_bg2(
     Framebuffer& target,
     TilePriorityPass priority,
     std::int32_t horizontal_origin,
-    bool extend_horizontal) const noexcept {
+    bool extend_horizontal,
+    bool wrap_horizontal,
+    bool transparent_cgram_black) const noexcept {
     if ((ppu.main_screen & 0x02U) == 0U) return;
     const auto width_tiles = (ppu.bg2_screen_size & 1U) != 0U ? 64U : 32U;
     const auto height_tiles = (ppu.bg2_screen_size & 2U) != 0U ? 64U : 32U;
@@ -425,8 +427,17 @@ void BackgroundRenderer::draw_bg2(
                 }
             }
             const auto tile_y = static_cast<std::uint32_t>(source_y) / tile_edge;
-            const auto source_x = wrap(
-                sample_x + row_scroll_x, width_pixels);
+            const auto unwrapped_source_x = sample_x + row_scroll_x;
+            // A scrolling 256-pixel title tilemap normally wraps the portion
+            // that leaves one side back onto the other. In a wide viewport we
+            // instead draw that one tilemap occurrence beyond the native
+            // boundary. This exposes the complete EX logo without duplicating
+            // the wrapped fragment—or the whole logo—across the margins.
+            if (!wrap_horizontal && (unwrapped_source_x < 0
+                    || unwrapped_source_x >= width_pixels)) {
+                continue;
+            }
+            const auto source_x = wrap(unwrapped_source_x, width_pixels);
             const auto tile_x = static_cast<std::uint32_t>(source_x) / tile_edge;
             const auto page = (tile_x >> 5U) + (tile_y >> 5U) * pages_wide;
             const auto entry = page * 0x400U
@@ -460,6 +471,10 @@ void BackgroundRenderer::draw_bg2(
             if (colour != 0U) {
                 const auto indexed_colour = static_cast<std::uint8_t>(
                     palette * 16U + colour);
+                if (transparent_cgram_black
+                    && (ppu.cgram[indexed_colour] & 0x7fffU) == 0U) {
+                    continue;
+                }
                 if (!last_opaque_ground.empty()) {
                     last_opaque_ground[screen_x - first_x] = indexed_colour;
                 }
@@ -524,6 +539,31 @@ void BackgroundRenderer::draw_bg3(
                 static_cast<std::uint8_t>(palette * 4U + colour));
         }
     }
+}
+
+void BackgroundRenderer::draw_title_foreground(
+    const simulation::SnesPpuState& ppu,
+    std::int32_t bg2_scroll_x,
+    std::int32_t bg2_scroll_y,
+    Framebuffer& target,
+    std::int32_t horizontal_origin,
+    bool include_bg1_overlay,
+    bool extend_bg2_unwrapped) const noexcept {
+    // TITLE's Mode 1 contract splits CP's BG2 tilemap around the Super FX
+    // model: low-priority black/backdrop tiles stay behind it, while the
+    // high-priority roster/logo tiles remain in front. Reapplying every BG2
+    // tile lets the backdrop cut a black wedge into the model; omitting BG2
+    // entirely lets the model cover the roster. Restore only its foreground
+    // priority pass, followed by source BG1 text and BG3's PRESS START prompt.
+    draw_bg2(ppu, bg2_scroll_x, bg2_scroll_y, target,
+        TilePriorityPass::high, horizontal_origin, extend_bg2_unwrapped,
+        !extend_bg2_unwrapped, true);
+    if (include_bg1_overlay) {
+        draw_bg1(ppu, target, TilePriorityPass::all,
+            horizontal_origin, false);
+    }
+    draw_bg3(ppu, target, TilePriorityPass::high,
+        horizontal_origin, false);
 }
 
 } // namespace starfox::render

@@ -22,6 +22,40 @@ if ($LASTEXITCODE -ne 0 -or $actualCommit -ne $expectedCommit) {
     throw "UltraStarFox must be checked out at $expectedCommit (found $actualCommit)"
 }
 
+$nativePatch = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot `
+    '..\config\ultrastarfox-native-runtime.patch')).Path
+function Test-NativePatch {
+    param([switch]$Reverse)
+    # Windows PowerShell promotes a native process's expected stderr from a
+    # failed --check to a terminating ErrorRecord under Stop. Suppress that
+    # probe locally while still preserving the real git exit code.
+    $savedPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $arguments = @('-C', $source, 'apply')
+        if ($Reverse) { $arguments += '--reverse' }
+        $arguments += @('--check', '--ignore-space-change',
+            '--ignore-whitespace', $nativePatch)
+        & git @arguments 2>&1 | Out-Null
+        return $LASTEXITCODE -eq 0
+    }
+    finally {
+        $ErrorActionPreference = $savedPreference
+    }
+}
+
+if (Test-NativePatch) {
+    & git -C $source apply --ignore-space-change --ignore-whitespace $nativePatch
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not apply the UltraStarFox native-runtime feature patch"
+    }
+}
+else {
+    if (-not (Test-NativePatch -Reverse)) {
+        throw "UltraStarFox source does not match the native-runtime feature patch"
+    }
+}
+
 $batchPath = Join-Path $source '.starfox-port-build.bat'
 $successPath = Join-Path $source '.starfox-port-build.ok'
 if (Test-Path -LiteralPath $batchPath) {

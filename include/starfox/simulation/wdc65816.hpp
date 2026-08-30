@@ -31,6 +31,15 @@ struct ApuPortWrite {
     friend bool operator==(const ApuPortWrite&, const ApuPortWrite&) = default;
 };
 
+struct MsuRegisterWrite {
+    std::uint16_t address{};
+    std::uint8_t value{};
+    std::uint32_t clock_offset{};
+
+    friend bool operator==(const MsuRegisterWrite&, const MsuRegisterWrite&)
+        = default;
+};
+
 struct Wdc65816TaskResult {
     std::size_t instructions{};
     std::uint32_t stop_address{};
@@ -79,6 +88,7 @@ public:
         std::span<const std::uint8_t> bytes) noexcept;
     [[nodiscard]] std::span<const std::uint8_t> cartridge_ram() const noexcept;
     [[nodiscard]] std::vector<ApuPortWrite> take_apu_port_writes();
+    [[nodiscard]] std::vector<MsuRegisterWrite> take_msu_register_writes();
     void set_apu_clock_offset(std::uint32_t clocks) noexcept;
     void set_apu_output_ports(
         const std::array<std::uint8_t, 4>& ports) noexcept;

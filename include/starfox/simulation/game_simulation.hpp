@@ -156,6 +156,8 @@ struct PlanetPresentationState {
     std::int16_t isolate_bottom{};
     bool briefing_layers{};
     std::uint8_t portrait_brightness{};
+    bool level_fade{};
+    std::uint8_t level_fade_amount{};
 };
 
 // One 20 Hz sample of the physical PC mouse. Star Fox EX consumes controller
@@ -257,6 +259,10 @@ public:
     }
     [[nodiscard]] bool vsync() const noexcept { return vsync_; }
     void set_vsync(bool enabled) noexcept { vsync_ = enabled; }
+    [[nodiscard]] bool msu1_music() const noexcept { return msu1_music_; }
+    void set_msu1_music(bool enabled) noexcept { msu1_music_ = enabled; }
+    [[nodiscard]] bool rumble() const noexcept { return rumble_; }
+    void set_rumble(bool enabled) noexcept { rumble_ = enabled; }
     [[nodiscard]] CrosshairColour crosshair_colour() const noexcept {
         return crosshair_colour_;
     }
@@ -287,6 +293,7 @@ public:
     [[nodiscard]] MeterState meter_state() const noexcept;
     [[nodiscard]] CircleEffectState circle_effect_state() const noexcept;
     [[nodiscard]] WindowWipeState window_wipe_state() const noexcept;
+    [[nodiscard]] std::uint8_t game_over_background_subtract() const noexcept;
     [[nodiscard]] DialogueState dialogue_state() const noexcept;
     [[nodiscard]] StageResultsState stage_results_state() const noexcept;
     [[nodiscard]] BriefingState briefing_state() const noexcept;
@@ -296,6 +303,12 @@ private:
     enum class FrontendPhase {
         none,
         pregame_fade_to_intro,
+        ex_menu_fade_in,
+        ex_menu_fade_out,
+        game_over_fade_to_continue,
+        continue_fade_in,
+        continue_fade_to_stage,
+        continue_fade_to_title,
         title_fade_to_controls,
         title_fade_to_ex_model_test,
         title_fade_to_intro,
@@ -808,6 +821,8 @@ private:
     bool smooth_polys_{};
     bool rtx_lighting_{};
     bool vsync_{};
+    bool msu1_music_{};
+    bool rumble_{true};
     CrosshairColour crosshair_colour_{CrosshairColour::green};
     bool planet_travel_complete_{};
     bool planet_arrival_confirmation_required_{};

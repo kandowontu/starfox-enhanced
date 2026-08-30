@@ -8,7 +8,8 @@ and assembled model data. The default is 60 FPS.
 
 This repository is an early playable fidelity pass. It does not track a game
 executable, retail ROM, reconstructed ROM, or generated asset companion. The
-Windows executable embeds source-built BPS deltas and symbol data only. On its
+Windows executable embeds source-built BPS deltas, symbol data, and the
+complete optional compressed MSU-1 music set. On its
 first launch it validates the user's own unmodified Star Fox USA v1.2 (Rev 2)
 ROM, reconstructs the Original and Star Fox EX runtime data locally, and writes
 one version-bound `Starfox-Assets.BIN` companion beside the executable. Later
@@ -40,7 +41,12 @@ defaults, loading, START GAME commit, and L+R+DOWN+B intro reset paths all run
 unchanged.
 
 The setup also independently selects game pace, render FPS, display mode,
-controller remapping, and a separate Options page. Its first option is the
+MSU-1 music, rumble, controller remapping, and a separate Options page.
+MSU-1 music is off by default and, when enabled for Original, replaces the
+SPC music stem with the embedded orchestral set while leaving sound effects on
+their own channel. Rumble is on by default for Original and plays the authored
+UltraStarFox sequences on compatible SDL, XInput, and Steam Input controllers.
+The Options page's first option is the
 Star Fox EX-style God Mode: player collision is disabled,
 regular Nova Bombs remain infinite, and holding R while pressing A fires a
 God Nuke. The Options page can also enable a live on-screen FPS counter which
@@ -57,8 +63,9 @@ current display mode's defaults. Layouts are independent for 4:3,
 16:9, 16:10, 21:9, and 32:9, with separate Original and Star Fox EX layouts
 for every size. They save automatically to
 `Documents/Star Fox Enhanced/hud-layout.cfg`.
-Game pace, render FPS, display mode, God Mode, the FPS counter, and crosshair
-colour also persist in `Documents/Star Fox Enhanced/pregame.cfg`. Keyboard and
+Game pace, render FPS, display mode, MSU-1 music, rumble, God Mode, the FPS
+counter, and crosshair colour also persist in
+`Documents/Star Fox Enhanced/pregame.cfg`. Keyboard and
 controller remaps are saved automatically when the remapping screen closes.
 Standard display uses the complete 256x224 raster; Widescreen 16:9,
 Widescreen 16:10, Ultrawide 21:9, and Super Ultrawide 32:9 expand the intro
@@ -128,7 +135,10 @@ powershell -ExecutionPolicy Bypass -File tools/build_upstream.ps1
 ```
 
 The UltraStarFox DOSBox assembler toolchain must be present in that checkout,
-as described by its own build instructions.
+as described by its own build instructions. The helper idempotently applies
+`config/ultrastarfox-native-runtime.patch`, which enables the authored MSU-1
+and rumble events while retaining stock SPC music for the runtime ON/OFF
+switch and routing the physical rumble transmitter through SDL.
 
 The Star Fox EX 1.11.03 source revision is pinned separately in
 `config/upstream-ex.json`:
@@ -178,7 +188,8 @@ build/release/starfox_pc.exe path/to/SF.SFC path/to/SYMBOLS.TXT TITLEMAP
 | Select | Apostrophe (`'`) | Back/View |
 | Start | Enter | Start/Menu |
 
-Select+Start exits the PC runtime.
+Escape opens an exit-confirmation dialog. Select+Start remains available to
+the game and never exits the PC runtime.
 
 F5 toggles the presentation debugger. While frozen, F6 advances one selected
 render frame and F7 walks backward through the retained final-frame history.
@@ -237,7 +248,9 @@ strategy.
 
 Useful diagnostics include `starfox_stage_trace`, `starfox_stage_preview`,
 `starfox_shape_coverage`, and `starfox_planet_probe`. Third-party revisions
-and licenses are recorded in `THIRD_PARTY_NOTICES.md`.
+and licenses are recorded in `THIRD_PARTY_NOTICES.md`. The original Nintendo/
+Argonaut staff, Star Fox EX team, UltraStarFox contributors, native-port
+credit, and MSU-set attribution are recorded separately in `CREDITS.md`.
 
 The EX regression runs every one of the 40 stage labels shipped through
 `PLANETS` and `PLANETS2` for 2,000 deterministic logic ticks. The source-only

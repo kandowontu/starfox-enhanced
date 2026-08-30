@@ -224,7 +224,6 @@ void MapVm::sync_display_to_cpu() {
 void MapVm::set_display_brightness(std::uint8_t brightness) {
     brightness &= 0x0fU;
     fade_direction_ = 0;
-    slow_fade_frame_valid_ = false;
     fade_value_ = brightness;
     screen_enabled_ = true;
     sync_display_to_cpu();
@@ -233,7 +232,6 @@ void MapVm::set_display_brightness(std::uint8_t brightness) {
 
 void MapVm::start_display_fade(std::int8_t direction) {
     fade_direction_ = direction;
-    slow_fade_frame_valid_ = false;
     // Map streams change FADEDIR independently of INIDISP. FADE can still
     // contain zero from the preceding forced-black setup even though native
     // code has since restored a fully bright display. IRQ.ASM starts a
@@ -260,25 +258,21 @@ void MapVm::tick_video_phase() {
         if (fade_value_ == 0U && screen_enabled_ && display_brightness_ != 0U) {
             fade_value_ = display_brightness_;
         }
-        // IRQ.ASM's -3 title fade advances only while GAMEFRAME is odd.
-        // GAMEFRAME is a 20 Hz source counter. The three 60 Hz presentations
-        // of an odd source frame therefore share one brightness decrement;
-        // applying it once per presentation makes this fade three times too
-        // fast and exposes the next screen's setup animation.
+        // IRQ.ASM's -3 path branches around the decrement while GAMEFRAME is
+        // odd. SETINIDISP still runs once per raster, so all three 60 Hz
+        // presentations belonging to an even 20 Hz source frame decrement
+        // FADE. Do not collapse those three calls into one source-frame step.
         if (fade_direction_ == -3) {
             const auto game_frame = cpu_.read8(game_frame_address_);
-            if ((game_frame & 1U) == 0U
-                || (slow_fade_frame_valid_ && slow_fade_frame_ == game_frame)) {
-                return;
-            }
-            slow_fade_frame_ = game_frame;
-            slow_fade_frame_valid_ = true;
+            if ((game_frame & 1U) != 0U) return;
         }
-        const auto steps = fade_direction_ == -2 ? 2U : 1U;
+        // -2 selects QFADEDOWN in IRQ.ASM. Despite the name it has a single
+        // DEC before sharing the normal store path; unlike +2, it does not
+        // perform multiple brightness changes in one raster.
+        constexpr auto steps = 1U;
         if (fade_value_ <= steps) {
             fade_value_ = 0;
             fade_direction_ = 0;
-            slow_fade_frame_valid_ = false;
             screen_enabled_ = false;
         } else {
             fade_value_ = static_cast<std::uint8_t>(fade_value_ - steps);

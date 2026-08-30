@@ -942,6 +942,8 @@ void GameSimulation::enter_pregame_menu() {
     smooth_polys_ = false;
     rtx_lighting_ = false;
     vsync_ = false;
+    msu1_music_ = false;
+    rumble_ = true;
     crosshair_colour_ = CrosshairColour::green;
     armed_god_nukes_.clear();
     flow_ticks_ = 0U;
@@ -973,7 +975,7 @@ GameTickResult GameSimulation::tick_pregame_menu(
 
     const auto previous_selection = pregame_selection_;
     const auto selection_count = pregame_page_ == PregamePage::main
-        ? std::uint8_t{12U} : std::uint8_t{5U};
+        ? std::uint8_t{14U} : std::uint8_t{5U};
     if ((input.pressed & starfox::input::up) != 0U) {
         pregame_selection_ = static_cast<std::uint8_t>(
             (pregame_selection_ + selection_count - 1U) % selection_count);
@@ -990,7 +992,7 @@ GameTickResult GameSimulation::tick_pregame_menu(
                     | starfox::input::select)) != 0U);
         if (go_back) {
             pregame_page_ = PregamePage::main;
-            pregame_selection_ = 10U;
+            pregame_selection_ = 12U;
             queue_sound_effect(0x11U);
         } else if (pregame_selection_ == 0U
                    && (input.pressed & (starfox::input::left
@@ -1096,9 +1098,11 @@ GameTickResult GameSimulation::tick_pregame_menu(
             | starfox::input::select | starfox::input::a
             | starfox::input::b)) != 0U;
     if (toggle_render_option && pregame_selection_ >= 4U
-        && pregame_selection_ <= 8U) {
+        && pregame_selection_ <= 10U) {
         switch (pregame_selection_) {
-        case 4U: {
+        case 4U: msu1_music_ = !msu1_music_; break;
+        case 5U: rumble_ = !rumble_; break;
+        case 6U: {
             auto mode = static_cast<std::uint8_t>(anti_aliasing_mode_);
             if ((input.pressed & starfox::input::left) != 0U) {
                 mode = static_cast<std::uint8_t>((mode + 3U) % 4U);
@@ -1108,16 +1112,16 @@ GameTickResult GameSimulation::tick_pregame_menu(
             anti_aliasing_mode_ = static_cast<AntiAliasingMode>(mode);
             break;
         }
-        case 5U: enhanced_graphics_ = !enhanced_graphics_; break;
-        case 6U: smooth_polys_ = !smooth_polys_; break;
-        case 7U: rtx_lighting_ = !rtx_lighting_; break;
-        case 8U: vsync_ = !vsync_; break;
+        case 7U: enhanced_graphics_ = !enhanced_graphics_; break;
+        case 8U: smooth_polys_ = !smooth_polys_; break;
+        case 9U: rtx_lighting_ = !rtx_lighting_; break;
+        case 10U: vsync_ = !vsync_; break;
         default: break;
         }
         queue_sound_effect(0x11U);
     }
 
-    const auto open_options = pregame_selection_ == 10U
+    const auto open_options = pregame_selection_ == 12U
         && (input.pressed & (starfox::input::a | starfox::input::b)) != 0U;
     if (open_options) {
         pregame_page_ = PregamePage::options;
@@ -1128,7 +1132,7 @@ GameTickResult GameSimulation::tick_pregame_menu(
     }
 
     const auto start_pressed = (input.pressed & starfox::input::start) != 0U;
-    const auto confirm_start = pregame_selection_ == 11U
+    const auto confirm_start = pregame_selection_ == 13U
         && (input.pressed & (starfox::input::a | starfox::input::b)) != 0U;
     if (start_pressed || confirm_start) {
         queue_sound_effect(0x10U);
@@ -1386,6 +1390,22 @@ WindowWipeState GameSimulation::window_wipe_state() const noexcept {
     return result;
 }
 
+std::uint8_t GameSimulation::game_over_background_subtract() const noexcept {
+    if (flow_state_ != GameFlowState::game_over) return 0U;
+    if (frontend_phase_ == FrontendPhase::game_over_fade_to_continue) {
+        return 0U;
+    }
+    // GAMEOVER_L holds HALFFADE=$1f for fifty TRANSFER_L calls. Its reveal
+    // loop then presents the old value once more before decrementing through
+    // $1e..$01; the next ordinary transfer is the first zero-subtraction
+    // raster. frontend_frames_ is incremented once per completed transfer.
+    if (frontend_frames_ <= 51U) return 31U;
+    if (frontend_frames_ <= 81U) {
+        return static_cast<std::uint8_t>(82U - frontend_frames_);
+    }
+    return 0U;
+}
+
 DialogueState GameSimulation::dialogue_state() const noexcept {
     // MAIN.ASM advances channel 1 and then channel 2. MCOPYFACE2 therefore
     // overwrites MCOPYFACE whenever the EX channel is active, so expose that
@@ -1466,6 +1486,11 @@ PlanetPresentationState GameSimulation::planet_presentation_state() const noexce
         || frontend_phase_ == FrontendPhase::planet_briefing
         || frontend_phase_ == FrontendPhase::planet_fade_to_level;
     result.portrait_brightness = pepper_brightness_;
+    result.level_fade = frontend_phase_ == FrontendPhase::planet_fade_to_level
+        && frontend_frames_ > 2U;
+    result.level_fade_amount = static_cast<std::uint8_t>(
+        std::min<std::uint32_t>(31U,
+            frontend_frames_ > 2U ? frontend_frames_ - 3U : 0U));
     return result;
 }
 
@@ -1851,8 +1876,11 @@ double GameSimulation::logic_interpolation_alpha(
 void GameSimulation::complete_video_phases_for_tick() {
     const auto video_phases_per_tick = required_video_phases();
     while (video_phases_since_tick_ < video_phases_per_tick) {
-        map_.tick_video_phase();
-        ++video_phases_since_tick_;
+        // Tests and deterministic tools may call tick() without explicitly
+        // presenting every intervening raster. Advance through the same
+        // presentation hook as the desktop runtime so manual fades, reveal
+        // holds and other transfer-owned timing never silently run at 20 Hz.
+        present_frame();
     }
     current_tick_video_phases_ = video_phases_since_tick_;
     video_phases_since_tick_ = 0U;
@@ -2044,13 +2072,14 @@ void GameSimulation::enter_game_over() {
     registers.status = 0x24U;
     map_.call_native_routine(
         game_over_background_, registers, 50'000'000, true);
-    // The death sequence arrives here at brightness zero. MAIN presents the
-    // GAME/OVER map immediately; the host does not execute its surrounding
-    // raster fade loop, so reveal the initialized scene explicitly.
-    map_.set_display_brightness(15U);
+    // MAIN.ASM enters GAME/OVER under forced black, sets FADEDIR to +1, and
+    // lets SETINIDISP reveal the map over the following raster transfers.
+    map_.set_display_brightness(0U);
+    map_.start_display_fade(1);
     map_.write_native_word(level_finished_, 0U);
     draw_order_ = objects_.active_handles();
     flow_ticks_ = 0U;
+    frontend_frames_ = 0U;
     flow_state_ = GameFlowState::game_over;
 }
 
@@ -2137,7 +2166,10 @@ void GameSimulation::enter_continue_screen() {
     map_.call_native_routine(set_charmap_fox_, registers, 5'000'000, true);
     map_.write_native_byte(0x002105U, 1U);
     map_.write_native_byte(0x00212cU, 0x13U);
-    map_.set_display_brightness(15U);
+    // CONTINUE.ASM holds one black raster and then manually writes brightness
+    // 1..15 over the next fifteen transfers. The host setup above is atomic,
+    // so replay that visible portion from the same forced-black boundary.
+    map_.set_display_brightness(0U);
     map_.write_native_word(ram_symbol("BG2XSCROLL"), 0U);
     map_.write_native_word(ram_symbol("BG2SCROLL"), 0U);
     map_.write_native_word(vanish_x_, 112U);
@@ -2178,6 +2210,8 @@ void GameSimulation::enter_continue_screen() {
     registers.status = 0x24U;
     map_.call_native_routine(continue_music_, registers, 20'000'000, true);
     flow_ticks_ = 0U;
+    frontend_frames_ = 0U;
+    frontend_phase_ = FrontendPhase::continue_fade_in;
     flow_state_ = GameFlowState::continue_choice;
     ++scene_revision_;
 }
@@ -2250,7 +2284,10 @@ void GameSimulation::enter_ex_pregame_menu(bool model_test) {
     god_mode_ = map_.read_native_byte(ex_god_mode_) != 0U;
     flow_ticks_ = 0U;
     frontend_frames_ = 0U;
-    frontend_phase_ = FrontendPhase::none;
+    // The source menu draws its first page while forced black, then exposes
+    // it through the same manual 0..15 transfer loop as the Continue screen.
+    map_.set_display_brightness(0U);
+    frontend_phase_ = FrontendPhase::ex_menu_fade_in;
     flow_state_ = GameFlowState::ex_pregame_menu;
     ++scene_revision_;
 }
@@ -2278,6 +2315,48 @@ GameTickResult GameSimulation::tick_ex_pregame_menu(
     map_.write_native_byte(ex_fps_speed_, 0U);
     map_.write_native_byte(ex_ntsc_pal_swap_, 0U);
     write_input(native_input);
+
+    GameTickResult result;
+    const auto service_menu_audio = [&]() {
+        for (std::size_t phase = 0; phase < current_tick_video_phases_; ++phase) {
+            map_.set_apu_clock_offset(static_cast<std::uint32_t>(
+                phase * spc_clocks_per_tick / current_tick_video_phases_));
+            service_audio_irq(result.sound_effect_commands);
+        }
+        ++flow_ticks_;
+        result.audio_port_writes = map_.take_apu_port_writes();
+    };
+    if (frontend_phase_ == FrontendPhase::ex_menu_fade_in) {
+        service_menu_audio();
+        return result;
+    }
+    if (frontend_phase_ == FrontendPhase::ex_menu_fade_out) {
+        if (map_.fade_direction() != 0 || map_.display_brightness() != 0U) {
+            service_menu_audio();
+            return result;
+        }
+        // The resumable source task is parked at RESTART after its manual
+        // fade loop. Continue only once the corresponding host rasters have
+        // actually reached black.
+        const std::array restart_stop{ex_briefing_};
+        const auto restart_task = map_.resume_native_task(ex_menu_registers_,
+            restart_stop, menu_instruction_limit, true);
+        result.prelude_instructions += restart_task.instructions;
+        map_.write_native_byte(ex_fps_speed_, 0U);
+        map_.write_native_byte(ex_ntsc_pal_swap_, 0U);
+        if (restart_task.returned
+            || restart_task.stop_address != ex_briefing_) {
+            throw std::runtime_error{
+                "Star Fox EX restart did not reach its controller briefing"};
+        }
+        god_mode_ = map_.read_native_byte(ex_god_mode_) != 0U;
+        map_.write_native_byte(controls_exit_, 0U);
+        map_.write_native_byte(default_training_, 0U);
+        frontend_phase_ = FrontendPhase::none;
+        enter_controls(GameFlowState::controls_type);
+        service_menu_audio();
+        return result;
+    }
     if (map_.read_native_byte(ex_stop_counting_) == 10U
         || map_.read_native_byte(ex_stop_counting_) == 12U) {
         // CONTINUE.ASM's model viewer accidentally tests both shoulder bits
@@ -2298,7 +2377,6 @@ GameTickResult GameSimulation::tick_ex_pregame_menu(
             previous_controller_high_, model_controller_byte);
     }
 
-    GameTickResult result;
     const std::array frame_stops{ex_foxy_self_, ex_restart_};
     const auto task = map_.resume_native_task(ex_menu_registers_, frame_stops,
         menu_instruction_limit, true);
@@ -2310,27 +2388,12 @@ GameTickResult GameSimulation::tick_ex_pregame_menu(
             "Star Fox EX pre-game menu returned without choosing START GAME"};
     }
     if (task.stop_address == ex_restart_) {
-        // RESTART is EX's option-preservation boundary: it saves every menu
-        // setting, clears WRAM, restores/mirrors those fields, and performs
-        // INITIALISE_L. Pause at the source BRIEFING_L call, then hand the
-        // controller screen to the existing PC presentation bridge.
-        const std::array restart_stop{ex_briefing_};
-        map_.write_native_byte(ex_fps_speed_, 0U);
-        map_.write_native_byte(ex_ntsc_pal_swap_, 0U);
-        const auto restart_task = map_.resume_native_task(ex_menu_registers_,
-            restart_stop, menu_instruction_limit, true);
-        result.prelude_instructions += restart_task.instructions;
-        map_.write_native_byte(ex_fps_speed_, 0U);
-        map_.write_native_byte(ex_ntsc_pal_swap_, 0U);
-        if (restart_task.returned
-            || restart_task.stop_address != ex_briefing_) {
-            throw std::runtime_error{
-                "Star Fox EX restart did not reach its controller briefing"};
-        }
-        god_mode_ = map_.read_native_byte(ex_god_mode_) != 0U;
-        map_.write_native_byte(controls_exit_, 0U);
-        map_.write_native_byte(default_training_, 0U);
-        enter_controls(GameFlowState::controls_type);
+        // The task executed FADELOOP3 atomically while reaching RESTART.
+        // Restore its initial brightness and expose the 15..0 transfer
+        // sequence before allowing RESTART to clear and rebuild WRAM.
+        map_.set_display_brightness(15U);
+        frontend_frames_ = 0U;
+        frontend_phase_ = FrontendPhase::ex_menu_fade_out;
     } else if (task.stop_address != ex_foxy_self_) {
         throw std::runtime_error{
             "Star Fox EX pre-game menu stopped outside its source frame loop"};
@@ -2338,13 +2401,7 @@ GameTickResult GameSimulation::tick_ex_pregame_menu(
         god_mode_ = map_.read_native_byte(ex_god_mode_) != 0U;
     }
 
-    for (std::size_t phase = 0; phase < current_tick_video_phases_; ++phase) {
-        map_.set_apu_clock_offset(static_cast<std::uint32_t>(
-            phase * spc_clocks_per_tick / current_tick_video_phases_));
-        service_audio_irq(result.sound_effect_commands);
-    }
-    ++flow_ticks_;
-    result.audio_port_writes = map_.take_apu_port_writes();
+    service_menu_audio();
     return result;
 }
 
@@ -2388,6 +2445,23 @@ GameTickResult GameSimulation::tick_continue_screen(const input::TickInput& inpu
         service_audio_irq(result.sound_effect_commands);
     }
     ++flow_ticks_;
+    if (frontend_phase_ == FrontendPhase::continue_fade_in) {
+        result.audio_port_writes = map_.take_apu_port_writes();
+        return result;
+    }
+    if (frontend_phase_ == FrontendPhase::continue_fade_to_stage
+        || frontend_phase_ == FrontendPhase::continue_fade_to_title) {
+        if (map_.fade_direction() == 0
+            && map_.display_brightness() == 0U) {
+            const auto continue_stage = frontend_phase_
+                == FrontendPhase::continue_fade_to_stage;
+            frontend_phase_ = FrontendPhase::none;
+            if (continue_stage) continue_current_stage();
+            else enter_title();
+        }
+        result.audio_port_writes = map_.take_apu_port_writes();
+        return result;
+    }
     auto option = map_.read_native_byte(foxy_option_) != 0U
         ? std::uint8_t{1U} : std::uint8_t{};
     if ((input.pressed & starfox::input::select) != 0U) option ^= 1U;
@@ -2437,10 +2511,15 @@ GameTickResult GameSimulation::tick_continue_screen(const input::TickInput& inpu
     update_continue_sprites();
     if ((input.pressed & (starfox::input::a | starfox::input::b
             | starfox::input::start)) != 0U) {
-        if (option == 0U) continue_current_stage();
-        else enter_title();
+        map_.set_display_brightness(15U);
+        frontend_frames_ = 0U;
+        frontend_phase_ = option == 0U
+            ? FrontendPhase::continue_fade_to_stage
+            : FrontendPhase::continue_fade_to_title;
     } else if (flow_ticks_ >= 1'200U) {
-        enter_title();
+        map_.set_display_brightness(15U);
+        frontend_frames_ = 0U;
+        frontend_phase_ = FrontendPhase::continue_fade_to_title;
     }
     result.audio_port_writes = map_.take_apu_port_writes();
     return result;
@@ -3135,6 +3214,36 @@ void GameSimulation::begin_planet_selection_sequence() {
 void GameSimulation::present_frame() {
     map_.tick_video_phase();
     if (video_phases_since_tick_ != 0xffU) ++video_phases_since_tick_;
+    if (flow_state_ == GameFlowState::game_over
+        && frontend_phase_ == FrontendPhase::none
+        && frontend_frames_ < 1'280U) {
+        // GAMEOVER_L is a 65C816 transfer loop: 50 black-background rasters,
+        // 31 HALFFADE reveal rasters, then the remainder of its 60*20 timeout.
+        // It is not a 20 Hz strategy counter.
+        ++frontend_frames_;
+    }
+    if (frontend_phase_ == FrontendPhase::ex_menu_fade_in
+        || frontend_phase_ == FrontendPhase::continue_fade_in) {
+        if (frontend_frames_++ == 0U) {
+            // Both CONTINUE.ASM loops wait for one forced-black raster before
+            // writing brightness 1. Starting here, after this presentation's
+            // SETINIDISP phase, preserves that first black frame.
+            map_.start_display_fade(1);
+        } else if (map_.fade_direction() == 0
+                   && map_.display_brightness() == 15U) {
+            frontend_frames_ = 0U;
+            frontend_phase_ = FrontendPhase::none;
+        }
+    }
+    if (frontend_phase_ == FrontendPhase::ex_menu_fade_out
+        || frontend_phase_ == FrontendPhase::continue_fade_to_stage
+        || frontend_phase_ == FrontendPhase::continue_fade_to_title) {
+        if (frontend_frames_++ == 0U) {
+            // FADELOOP2/3 first presents brightness 15 unchanged, then stores
+            // 14..0. Defer FADEDIR until after that duplicate bright raster.
+            map_.start_display_fade(-1);
+        }
+    }
     if (flow_state_ == GameFlowState::intro
         && frontend_phase_ == FrontendPhase::intro_final_hold) {
         // INTRO_L presents the transfer in which the Arwing crosses the
@@ -3159,7 +3268,8 @@ void GameSimulation::present_frame() {
         if (frontend_frames_ >= 90U) {
             frontend_frames_ = 0U;
             frontend_phase_ = FrontendPhase::none;
-            map_.start_display_fade(1);
+            // CONTMAP requests SETFADEUP QUICK after its hidden fly-in.
+            map_.start_display_fade(2);
         } else {
             // CONTMAP reaches its fade-up immediately in host CPU time. Keep
             // suppressing it until the emulated upload/setup interval ends.
@@ -3289,11 +3399,11 @@ void GameSimulation::present_frame() {
                 frontend_frames_ = 0U;
             }
         } else if (frontend_phase_ == FrontendPhase::planet_fade_to_level) {
-            if (frontend_frames_ > 2U) {
-                map_.set_display_brightness(static_cast<std::uint8_t>(15U
-                    - std::min<std::uint32_t>(15U,
-                        (frontend_frames_ - 2U) / 2U)));
-            }
+            // PLANETS.ASM keeps INIDISP at full brightness and subtracts a
+            // 5-bit fixed colour from the complete scene for values 0..31.
+            // The compositor reproduces those 32 steps (including wide host
+            // columns); forced black is armed only after its final raster.
+            if (frontend_frames_ >= 34U) map_.set_display_brightness(0U);
         }
     }
     if (flow_state_ == GameFlowState::planet_travel && briefing_started_
@@ -4709,12 +4819,21 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
     draw_ex_transfer_overlay(result);
     if (flow_state_ == GameFlowState::game_over) {
         ++flow_ticks_;
-        // MAIN.ASM presents 50 transfers, then accepts START (or waits up to
-        // 60 seconds) before opening FOXY_CONTINUE_L.
-        if (flow_ticks_ >= 17U
-            && ((input.pressed & starfox::input::start) != 0U
-                || flow_ticks_ >= 1'250U)) {
+        if (frontend_phase_ == FrontendPhase::game_over_fade_to_continue
+            && map_.fade_direction() == 0
+            && map_.display_brightness() == 0U) {
+            frontend_phase_ = FrontendPhase::none;
             enter_continue_screen();
+        }
+        // MAIN.ASM presents 50 transfers with BG2/BG3 black, then spends 31
+        // more transfers reducing HALFFADE to zero. Only after that reveal
+        // does it poll START. Its #60*20 timeout is likewise counted once per
+        // TRANSFER_L raster (20 seconds), not once per strategy update.
+        if (frontend_phase_ == FrontendPhase::none && frontend_frames_ >= 81U
+            && ((input.pressed & starfox::input::start) != 0U
+                || frontend_frames_ >= 1'280U)) {
+            map_.start_display_fade(-1);
+            frontend_phase_ = FrontendPhase::game_over_fade_to_continue;
         }
     } else if (flow_state_ == GameFlowState::title) {
         ++flow_ticks_;
@@ -4792,14 +4911,16 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
             && map_.fade_direction() == 0
             && map_.display_brightness() == 0U) {
             enter_title();
-        } else if (frontend_phase_ == FrontendPhase::none && flow_ticks_ >= 30U
+        } else if (frontend_phase_ == FrontendPhase::none
+            && flow_ticks_ >= (starfox_ex_cartridge_ ? 45U : 30U)
             && (input.pressed != 0U || input.held != 0U)) {
             // INTRO_L explicitly starts its quick fade from brightness 11,
             // even when the user skips while the screen is fully bright.
             map_.set_display_brightness(11U);
             map_.start_display_fade(-2);
             frontend_phase_ = FrontendPhase::intro_fade_to_title;
-        } else if (frontend_phase_ == FrontendPhase::none && flow_ticks_ >= 30U
+        } else if (frontend_phase_ == FrontendPhase::none
+                   && flow_ticks_ >= (starfox_ex_cartridge_ ? 45U : 30U)
                    && map_.read_native_byte(exit_intro_) != 0U) {
             // The automatic ending is checked after the completed transfer;
             // defer only its fade so the near-camera ship frame is visible.

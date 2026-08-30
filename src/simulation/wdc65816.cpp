@@ -69,6 +69,13 @@ std::uint32_t find_rom_symbol_or_alias(const assets::SymbolMap* symbols,
     return found != 0U ? found : find_rom_symbol(symbols, alias);
 }
 
+std::uint32_t find_rom_symbol_or_aliases(const assets::SymbolMap* symbols,
+    const char* primary, const char* first_alias,
+    const char* second_alias) noexcept {
+    const auto found = find_rom_symbol_or_alias(symbols, primary, first_alias);
+    return found != 0U ? found : find_rom_symbol(symbols, second_alias);
+}
+
 } // namespace
 
 struct Wdc65816::Impl {
@@ -242,6 +249,8 @@ struct Wdc65816::Impl {
     std::uint16_t projection_result{};
     std::uint16_t projection_vanish_x{};
     std::vector<ApuPortWrite> apu_writes;
+    std::vector<MsuRegisterWrite> msu_writes;
+    std::array<std::uint8_t, 8> msu_registers{};
     std::uint64_t apu_upload_generation{};
     std::vector<std::uint32_t> unknown_superfx_launches;
     NativeModelDrawState native_model_draw;
@@ -281,6 +290,7 @@ struct Wdc65816::Impl {
     static bool is_io_device_address(void*, cpuaddr_t address) {
         const auto low = address & 0xffffU;
         return (low >= 0x4218U && low <= 0x421fU)
+            || (low >= 0x2000U && low <= 0x2007U)
             || (low & 0xfffcU) == 0x2140U
             || (low >= 0x2100U && low < 0x2140U)
             || (low >= 0x4202U && low <= 0x4206U)
@@ -294,7 +304,20 @@ struct Wdc65816::Impl {
     static void read_io(void* context, cpuaddr_t address, std::uint8_t* data, std::uint32_t) {
         auto& self = *static_cast<Impl*>(context);
         const auto low = address & 0xffffU;
-        if (low >= 0x4218U && low <= 0x421fU) {
+        if (low >= 0x2000U && low <= 0x2007U) {
+            if (low == 0x2000U) {
+                // Audio/data are immediately available. Revision 2 is enough
+                // for the cartridge's presence check and leaves the missing,
+                // busy, playing and repeat status bits clear.
+                *data = 0x02U;
+            } else if (low >= 0x2002U) {
+                constexpr std::array<std::uint8_t, 6> identifier{
+                    'S', '-', 'M', 'S', 'U', '1'};
+                *data = identifier[low - 0x2002U];
+            } else {
+                *data = 0U;
+            }
+        } else if (low >= 0x4218U && low <= 0x421fU) {
             *data = self.controller[low - 0x4218U];
         } else if ((low & 0xfffcU) == 0x2140U) {
             // Model the SPC boot-ROM acknowledgement protocol: it initially
@@ -343,7 +366,14 @@ struct Wdc65816::Impl {
         void* context, cpuaddr_t address, const std::uint8_t* data, std::uint32_t) {
         auto& self = *static_cast<Impl*>(context);
         const auto low = address & 0xffffU;
-        if (low >= 0x4218U && low <= 0x421fU) {
+        if (low >= 0x2000U && low <= 0x2007U) {
+            self.msu_registers[low - 0x2000U] = *data;
+            if (low >= 0x2004U) {
+                self.msu_writes.push_back({
+                    static_cast<std::uint16_t>(low), *data,
+                    self.apu_clock_offset});
+            }
+        } else if (low >= 0x4218U && low <= 0x421fU) {
             self.controller[low - 0x4218U] = *data;
         } else if ((low & 0xfffcU) == 0x2140U) {
             const auto port = static_cast<std::uint8_t>(address & 3U);
@@ -575,10 +605,12 @@ struct Wdc65816::Impl {
           font0wid(find_rom_symbol(symbols, "FONT0WID")),
           font0fon(find_rom_symbol(symbols, "FONT0FON")),
           font0trn(find_rom_symbol(symbols, "FONT0TRN")),
-          projection_zero_loop(find_rom_symbol_or_alias(
-              symbols, "_BQAEPROJLX81", "_AOLLPROJLX81")),
-          projection_return(find_rom_symbol_or_alias(
-              symbols, "_BQAEPROJLX0", "_AOLLPROJLX0")),
+          projection_zero_loop(find_rom_symbol_or_aliases(
+              symbols, "_BQAEPROJLX81", "_AOLLPROJLX81",
+              "_AORBPROJLX81")),
+          projection_return(find_rom_symbol_or_aliases(
+              symbols, "_BQAEPROJLX0", "_AOLLPROJLX0",
+              "_AORBPROJLX0")),
           projection_x(static_cast<std::uint16_t>(find_symbol(symbols, "PX"))),
           projection_result(static_cast<std::uint16_t>(find_symbol(symbols, "PR"))),
           projection_vanish_x(static_cast<std::uint16_t>(
@@ -2388,6 +2420,12 @@ std::span<const std::uint8_t> Wdc65816::cartridge_ram() const noexcept {
 std::vector<ApuPortWrite> Wdc65816::take_apu_port_writes() {
     auto result = std::move(impl_->apu_writes);
     impl_->apu_writes.clear();
+    return result;
+}
+
+std::vector<MsuRegisterWrite> Wdc65816::take_msu_register_writes() {
+    auto result = std::move(impl_->msu_writes);
+    impl_->msu_writes.clear();
     return result;
 }
 

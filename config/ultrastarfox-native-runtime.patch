@@ -1,0 +1,140 @@
+diff --git a/SF/ASM/MAIN.ASM b/SF/ASM/MAIN.ASM
+index 2011d19..a1ff4ad 100755
+--- a/SF/ASM/MAIN.ASM
++++ b/SF/ASM/MAIN.ASM
+@@ -1401,7 +1401,7 @@ dopause	php
+ 	jsl	transfer_l		;transfer bitmap, do strats etc.
+ 	jsr	printpause
+ 	jsl	transfer_l		;transfer bitmap, do strats etc.
+-	IFNE	msu1!msuvoice
++	IFNE	msu1
+ 	LDA	#audiostate_none
+ 	STA	msu_control
+ 	ENDC
+diff --git a/SF/ASM/NMI.ASM b/SF/ASM/NMI.ASM
+index 6125b49..71148e2 100755
+--- a/SF/ASM/NMI.ASM
++++ b/SF/ASM/NMI.ASM
+@@ -92,7 +92,10 @@ nmihan ; Start of NMI handler
+ 	plb ; Pull data bank from stack
+ 	ENDC ; End conditional
+ 
+-	IFNE	RUMBLE
++	; Native PC output consumes the authored rumble table at each 60 Hz host
++	; raster phase. Omitting the serial-controller transmitter also keeps the
++	; WRAM IRQ image below the hardware stack at $0200 when MSU is enabled.
++	IFNE	0
+ ; Randy's rumble controller fix for hardware
+ ; HACK: Force re-read of controller bits to get timing right for rumble handler
+ 
+diff --git a/SF/ASM/SOUND.ASM b/SF/ASM/SOUND.ASM
+index b12ca78..66235b1 100755
+--- a/SF/ASM/SOUND.ASM
++++ b/SF/ASM/SOUND.ASM
+@@ -85,11 +85,9 @@ sndtbl
+ 	snd_data	init,0h,sound0,voicepatch
+ 	ENDC
+ 
+-	IFNE	MSU1
+-	snd_data	init,0h,sound0,bgmmute
+-	ENDC
+-
+-	IFEQ	MSUVOICE+MSU1
++	; Keep stock BGM available for the native runtime's saved MSU toggle.
++	; The host mixer selects this stem or embedded MSU audio at runtime.
++	IFEQ	MSUVOICE
+ 	snd_data	init,0h,sound0
+ 	ENDC
+ 
+diff --git a/SF/CONFIG/ROM.INC b/SF/CONFIG/ROM.INC
+index 018290b..375e59c 100755
+--- a/SF/CONFIG/ROM.INC
++++ b/SF/CONFIG/ROM.INC
+@@ -14,7 +14,7 @@ SUPERFX3	equ 0
+ 
+ ; MSU-1 support [0 = off, 1 = on]
+ ; SHVC-SOUND-driven music is replaced with MSU-1 driven music.
+-msu1		equ	0
++msu1		equ	1
+ 
+ ; Voice lines for dialogue via MSU-1
+ ; You have to choose between this or MSU-1 music! You can't have both!!
+diff --git a/SF/CONFIG/XCESSORY.INC b/SF/CONFIG/XCESSORY.INC
+index 4b203ea..29a0139 100755
+--- a/SF/CONFIG/XCESSORY.INC
++++ b/SF/CONFIG/XCESSORY.INC
+@@ -17,7 +17,7 @@ analogstick	equ	0
+ 
+ ; Enable rumble support on controller port 1.
+ ; [0 = off, 1 = on]
+-rumble	equ	0
++rumble	equ	1
+ 
+ ; Enable NTT Data Pad support.
+ ; [0 = off, 1 = on port 1, 2 = on port 2]
+diff --git a/SF/EXT/MDATA.EXT b/SF/EXT/MDATA.EXT
+index 5e85db9..17e4d7d 100755
+--- a/SF/EXT/MDATA.EXT
++++ b/SF/EXT/MDATA.EXT
+@@ -23,11 +23,11 @@
+ 	global	msg_rumbleversion,msg_kando
+ 	ENDC
+ 
+-	IFNE	RUMBLE!SUPERFX3
++	IFNE	1
+ 	global	msg_randy
+ 	ENDC
+ 
+-	IFNE	RUMBLE!MSU1!SUPERFX3
++	IFNE	1
+ 	global	msg_sunlit
+ 	ENDC
+ 
+@@ -36,7 +36,7 @@
+ 	ENDC
+ 
+ 	IFNE	MSU1
+-	global	msg_msu1
++	global	msg_msu1text
+ 	ENDC
+ 	global	msg_0	
+ 	global	msg_1	
+diff --git a/SF/MAPS/CREDITS.ASM b/SF/MAPS/CREDITS.ASM
+index d15b5ad..5e4e60d 100755
+--- a/SF/MAPS/CREDITS.ASM
++++ b/SF/MAPS/CREDITS.ASM
+@@ -142,7 +142,7 @@ actualcreds
+ 
+ 	IFNE	MSU1
+ 	mapwait	credwait
+-	textpath	1000,2000,-200,3500,msu1,dsideslip,14
++	textpath	1000,2000,-200,3500,msu1text,dsideslip,14
+ 	textpath	1000,2000,200,3500,sunlit,dsideslip,14,32
+ 	ENDC
+ 
+diff --git a/SF/MARIO/MDATA.MC b/SF/MARIO/MDATA.MC
+index e9d1fde..53b28ae 100755
+--- a/SF/MARIO/MDATA.MC
++++ b/SF/MARIO/MDATA.MC
+@@ -842,18 +842,18 @@ msg_kando
+ 	mariomsg	<KANDOWONTU>
+ 	ENDC
+ 
+-	IFNE	RUMBLE!SUPERFX3
++	IFNE	1
+ msg_randy
+ 	mariomsg	<RANDAL LINDEN>
+ 	ENDC
+ 
+-	IFNE	RUMBLE!MSU1!SUPERFX3
++	IFNE	1
+ msg_sunlit
+ 	mariomsg	<SUNLIT>
+ 	ENDC
+ 
+ 	IFNE	MSU1
+-msg_msu1
++msg_msu1text
+ 	mariomsg	<MSU-1 PROGRAMMING>
+ 	ENDC
+

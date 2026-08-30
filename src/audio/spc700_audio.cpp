@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -40,6 +41,11 @@ void throw_spc_error(const char* operation, spc_err_t error) {
 } // namespace
 
 struct Spc700Audio::Impl {
+    enum class CommandStream {
+        music,
+        effects,
+    };
+
     enum class UploadState {
         waiting_for_address_low,
         waiting_for_address_high,
@@ -184,24 +190,47 @@ struct Spc700Audio::Impl {
     }
 
     std::vector<std::int16_t> render(
-        std::span<const simulation::ApuPortWrite> writes) {
+        std::span<const simulation::ApuPortWrite> writes,
+        bool split_upload_restarts = false,
+        std::size_t* rendered_frames = nullptr,
+        CommandStream command_stream = CommandStream::music) {
         std::vector<std::int16_t> output(
             Spc700Audio::stereo_frames_per_logic_tick * 2U, 0);
         if (loaded) {
             spc_set_output(spc, output.data(), static_cast<int>(output.size()));
         }
         int last_clock = 0;
+        auto finish_frame = [&] {
+            if (!loaded) return;
+            spc_end_frame(spc, kClocksPerLogicTick);
+            if (rendered_frames != nullptr) ++*rendered_frames;
+            // A later upload calls spc_load_spc and replaces the output
+            // buffer. Clear this completed bank's samples now; startup audio
+            // is intentionally inaudible and only its emulated state matters.
+            std::fill(output.begin(), output.end(), 0);
+            last_clock = 0;
+        };
 
         // A fresh sound bank begins with the source driver's explicit $ff
         // restart command. The subsequent writes are another IPL upload.
         for (const auto& write : writes) {
             if (!uploading && write.port == 0U && write.value == 0xffU) {
+                if (split_upload_restarts) finish_frame();
                 begin_upload();
             }
             const auto was_loaded = loaded;
             if (uploading) {
                 consume_upload_write(write);
             } else {
+                // The running Star Fox driver reserves CPU ports 0-2 for
+                // music/control and port 3 for its effect queue. Keep those
+                // buses on independent SPC instances so the effect driver's
+                // voice allocator can never key-off a music voice.
+                const auto accepts_command = command_stream
+                        == CommandStream::effects
+                    ? write.port == 3U
+                    : write.port != 3U;
+                if (!accepts_command) continue;
                 const auto clock = std::clamp(
                     static_cast<int>(write.clock_offset), last_clock,
                     kClocksPerLogicTick);
@@ -219,6 +248,7 @@ struct Spc700Audio::Impl {
 
         if (!loaded) return output;
         spc_end_frame(spc, kClocksPerLogicTick);
+        if (rendered_frames != nullptr) ++*rendered_frames;
         const auto generated = std::clamp(spc_sample_count(spc), 0,
                                           static_cast<int>(output.size()));
         if (generated < static_cast<int>(output.size())) {
@@ -229,36 +259,72 @@ struct Spc700Audio::Impl {
     }
 };
 
-Spc700Audio::Spc700Audio() : impl_(std::make_unique<Impl>()) {}
+Spc700Audio::Spc700Audio()
+    : music_impl_(std::make_unique<Impl>()),
+      effects_impl_(std::make_unique<Impl>()) {}
 Spc700Audio::~Spc700Audio() = default;
 Spc700Audio::Spc700Audio(Spc700Audio&&) noexcept = default;
 Spc700Audio& Spc700Audio::operator=(Spc700Audio&&) noexcept = default;
 
 std::vector<std::int16_t> Spc700Audio::render_logic_tick(
     std::span<const simulation::ApuPortWrite> writes) {
-    return impl_->render(writes);
+    last_music_samples_ = music_impl_->render(
+        writes, false, nullptr, Impl::CommandStream::music);
+    last_effect_samples_ = effects_impl_->render(
+        writes, false, nullptr, Impl::CommandStream::effects);
+    if (last_music_samples_.size() != last_effect_samples_.size()) {
+        throw std::runtime_error{"SPC music/effect stem size mismatch"};
+    }
+    auto mixed = last_music_samples_;
+    for (std::size_t index = 0; index < mixed.size(); ++index) {
+        const auto sample = static_cast<std::int32_t>(last_music_samples_[index])
+            + static_cast<std::int32_t>(last_effect_samples_[index]);
+        mixed[index] = static_cast<std::int16_t>(std::clamp(
+            sample,
+            static_cast<std::int32_t>(std::numeric_limits<std::int16_t>::min()),
+            static_cast<std::int32_t>(std::numeric_limits<std::int16_t>::max())));
+    }
+    return mixed;
 }
 
-bool Spc700Audio::driver_loaded() const noexcept { return impl_->loaded; }
+std::size_t Spc700Audio::prime_upload_sequence(
+    std::span<const simulation::ApuPortWrite> writes) {
+    std::size_t music_frames{};
+    std::size_t effect_frames{};
+    static_cast<void>(music_impl_->render(
+        writes, true, &music_frames, Impl::CommandStream::music));
+    static_cast<void>(effects_impl_->render(
+        writes, true, &effect_frames, Impl::CommandStream::effects));
+    if (music_frames != effect_frames) {
+        throw std::runtime_error{"SPC music/effect upload cadence mismatch"};
+    }
+    last_music_samples_.clear();
+    last_effect_samples_.clear();
+    return music_frames;
+}
+
+bool Spc700Audio::driver_loaded() const noexcept {
+    return music_impl_->loaded && effects_impl_->loaded;
+}
 std::size_t Spc700Audio::uploaded_bytes() const noexcept {
-    return impl_->upload_count;
+    return std::min(music_impl_->upload_count, effects_impl_->upload_count);
 }
 
 std::array<std::uint8_t, 4> Spc700Audio::output_ports() const noexcept {
-    if (!impl_->loaded) return {};
+    if (!driver_loaded()) return {};
     return {
-        static_cast<std::uint8_t>(spc_read_port(impl_->spc, 0, 0)),
-        static_cast<std::uint8_t>(spc_read_port(impl_->spc, 0, 1)),
-        static_cast<std::uint8_t>(spc_read_port(impl_->spc, 0, 2)),
-        static_cast<std::uint8_t>(spc_read_port(impl_->spc, 0, 3)),
+        static_cast<std::uint8_t>(spc_read_port(music_impl_->spc, 0, 0)),
+        static_cast<std::uint8_t>(spc_read_port(music_impl_->spc, 0, 1)),
+        static_cast<std::uint8_t>(spc_read_port(music_impl_->spc, 0, 2)),
+        static_cast<std::uint8_t>(spc_read_port(effects_impl_->spc, 0, 3)),
     };
 }
 
 Spc700Audio::State Spc700Audio::state() const {
-    if (!impl_->loaded) return {};
+    if (!driver_loaded()) return {};
     std::array<std::uint8_t, spc_file_size> snapshot{};
     spc_init_header(snapshot.data());
-    spc_save_spc(impl_->spc, snapshot.data());
+    spc_save_spc(music_impl_->spc, snapshot.data());
     return {
         static_cast<std::uint16_t>(snapshot[kPcLowOffset]
             | (static_cast<std::uint16_t>(snapshot[kPcHighOffset]) << 8U)),
@@ -271,12 +337,7 @@ Spc700Audio::State Spc700Audio::state() const {
         snapshot[kSpcDspOffset + 0x4cU],
         static_cast<std::int8_t>(snapshot[kSpcDspOffset + 0x0cU]),
         static_cast<std::int8_t>(snapshot[kSpcDspOffset + 0x1cU]),
-        {
-            static_cast<std::uint8_t>(spc_read_port(impl_->spc, 0, 0)),
-            static_cast<std::uint8_t>(spc_read_port(impl_->spc, 0, 1)),
-            static_cast<std::uint8_t>(spc_read_port(impl_->spc, 0, 2)),
-            static_cast<std::uint8_t>(spc_read_port(impl_->spc, 0, 3)),
-        },
+        output_ports(),
     };
 }
 

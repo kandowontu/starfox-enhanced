@@ -6,6 +6,8 @@ option(STARFOX_BUILD_TESTS "Build deterministic timing tests" ON)
 option(STARFOX_BUILD_RUNTIME "Build the SDL3 native PC runtime" ON)
 option(STARFOX_EMBED_RUNTIME_ASSETS
     "Embed source-built BPS deltas and symbol tables into the Windows runtime" ON)
+option(STARFOX_EMBED_MSU1_MUSIC
+    "Embed the complete compressed Star Fox MSU-1 music pack in the Windows EXE" ON)
 set(STARFOX_ROM_FILE
     "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
     CACHE FILEPATH "Assembled UltraStarFox ROM used by the native runtime")
@@ -73,6 +75,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(snes_spc)
 
+FetchContent_Declare(
+    dr_libs
+    GIT_REPOSITORY https://github.com/mackron/dr_libs.git
+    GIT_TAG b55a0d9a30b91ad8901f89ecf05f76a33186c185
+    SOURCE_SUBDIR _starfox_no_upstream_project
+)
+FetchContent_MakeAvailable(dr_libs)
+
 add_library(snes_spc_core STATIC
     "${snes_spc_SOURCE_DIR}/snes_spc/spc.cpp"
     "${snes_spc_SOURCE_DIR}/snes_spc/SNES_SPC.cpp"
@@ -102,6 +112,7 @@ if(MINGW)
 endif()
 
 add_library(starfox_core
+    src/audio/msu1_audio.cpp
     src/audio/spc700_audio.cpp
     src/assets/bps.cpp
     src/assets/decrunch.cpp
@@ -131,6 +142,7 @@ add_library(starfox_core
 )
 
 target_include_directories(starfox_core PUBLIC include)
+target_include_directories(starfox_core SYSTEM PRIVATE "${dr_libs_SOURCE_DIR}")
 target_compile_features(starfox_core PUBLIC cxx_std_20)
 target_link_libraries(starfox_core PRIVATE retro_cpu_65816 snes_spc_core)
 
@@ -189,6 +201,41 @@ if(STARFOX_BUILD_RUNTIME)
     endif()
     target_link_libraries(starfox_pc PRIVATE starfox_core SDL3::SDL3)
     if(WIN32 AND STARFOX_EMBED_RUNTIME_ASSETS)
+        set(STARFOX_MSU_RESOURCE_LINES "")
+        if(STARFOX_EMBED_MSU1_MUSIC)
+            FetchContent_Declare(
+                starfox_msu_pack
+                GIT_REPOSITORY https://github.com/Sunlitspace542/star-fox-msu1-pcm.git
+                GIT_TAG 7a86296d7f62fd26bc2c51a7ed43eda8e4b21588
+                SOURCE_SUBDIR _starfox_no_upstream_project
+            )
+            FetchContent_MakeAvailable(starfox_msu_pack)
+            set(STARFOX_MSU_TRACK_FILES
+                titledemo title controls trainingmode map blackholemap
+                briefing briefingshort scramble level1_1 level1_2 level1_3
+                level1_4 level1_6 level2_2 level2_3 level2_4 level2_6
+                level3_3 level3_5 boss1_1 boss1_2 boss1_3 boss1_4 boss2_3
+                boss3_3 boss3_5 boss1_5a boss1_5b boss1_5c bossandross
+                bossootd levelblackhole levelootd clearband clearorch
+                clearootd downband downorch gameover continue secretactivated
+                blackholewarp blackholeexit dangerous lastbossclear
+                gamecleardemo bossroll staffroll enterhyperspace1
+                enterhyperspace2 exithyperspace)
+            set(STARFOX_MSU_TRACK_ID 301)
+            foreach(STARFOX_MSU_TRACK IN LISTS STARFOX_MSU_TRACK_FILES)
+                set(STARFOX_MSU_TRACK_PATH
+                    "${starfox_msu_pack_SOURCE_DIR}/${STARFOX_MSU_TRACK}.flac")
+                if(NOT EXISTS "${STARFOX_MSU_TRACK_PATH}")
+                    message(FATAL_ERROR
+                        "MSU-1 pack is missing ${STARFOX_MSU_TRACK}.flac")
+                endif()
+                file(TO_CMAKE_PATH "${STARFOX_MSU_TRACK_PATH}"
+                    STARFOX_MSU_TRACK_PATH)
+                string(APPEND STARFOX_MSU_RESOURCE_LINES
+                    "${STARFOX_MSU_TRACK_ID} RCDATA \"${STARFOX_MSU_TRACK_PATH}\"\n")
+                math(EXPR STARFOX_MSU_TRACK_ID "${STARFOX_MSU_TRACK_ID} + 1")
+            endforeach()
+        endif()
         if(EXISTS "${STARFOX_ORIGINAL_PATCH_FILE}"
            AND EXISTS "${STARFOX_SYMBOLS_FILE}"
            AND EXISTS "${STARFOX_EX_PATCH_FILE}"
@@ -231,10 +278,17 @@ if(STARFOX_BUILD_RUNTIME)
             # preprocessor incorrectly when the workspace contains spaces.
             add_library(starfox_runtime_resources OBJECT
                 "${CMAKE_CURRENT_BINARY_DIR}/starfox_assets.rc")
+            set_property(SOURCE "${CMAKE_CURRENT_BINARY_DIR}/starfox_assets.rc"
+                PROPERTY OBJECT_DEPENDS
+                    "${STARFOX_ORIGINAL_PATCH_FILE};${STARFOX_SYMBOLS_FILE};${STARFOX_EX_PATCH_FILE};${STARFOX_EX_SYMBOLS_FILE};${STARFOX_RETAIL_JAPAN_V10_PATCH_FILE};${STARFOX_RETAIL_JAPAN_V11_PATCH_FILE};${STARFOX_RETAIL_USA_V10_PATCH_FILE};${STARFOX_RETAIL_USA_V11_PATCH_FILE};${STARFOX_RETAIL_EUROPE_V10_PATCH_FILE};${STARFOX_RETAIL_EUROPE_V11_PATCH_FILE};${STARFOX_RETAIL_GERMANY_V10_PATCH_FILE}")
             target_sources(starfox_pc PRIVATE
                 $<TARGET_OBJECTS:starfox_runtime_resources>)
             target_compile_definitions(starfox_pc PRIVATE
                 STARFOX_HAS_EMBEDDED_ASSETS=1)
+            if(STARFOX_EMBED_MSU1_MUSIC)
+                target_compile_definitions(starfox_pc PRIVATE
+                    STARFOX_HAS_EMBEDDED_MSU1=1)
+            endif()
             set(STARFOX_RUNTIME_ASSETS_EMBEDDED TRUE)
         else()
             message(WARNING
@@ -247,7 +301,7 @@ if(STARFOX_BUILD_RUNTIME)
     endif()
 
     install(TARGETS starfox_pc RUNTIME DESTINATION .)
-    install(FILES README.md THIRD_PARTY_NOTICES.md DESTINATION .)
+    install(FILES README.md CREDITS.md THIRD_PARTY_NOTICES.md DESTINATION .)
 
 endif()
 
@@ -314,7 +368,24 @@ if(STARFOX_BUILD_TESTS)
 
     add_executable(starfox_simulation_tests tests/simulation_tests.cpp)
     target_link_libraries(starfox_simulation_tests PRIVATE starfox_core)
+    # The cartridge-wide integration fixture intentionally keeps several full
+    # GameSimulation snapshots alive in nested parity sections. PE/COFF's
+    # small default stack can overflow after earlier sections begin reaching
+    # their now-correct transition endpoints, masking the actual assertions.
+    if(MINGW)
+        target_link_options(
+            starfox_simulation_tests PRIVATE "-Wl,--stack,16777216")
+    elseif(MSVC)
+        target_link_options(starfox_simulation_tests PRIVATE "/STACK:16777216")
+    endif()
     add_test(NAME starfox_simulation_tests COMMAND starfox_simulation_tests)
+
+    add_executable(starfox_direct_audio_tests tests/direct_audio_tests.cpp)
+    target_link_libraries(starfox_direct_audio_tests PRIVATE starfox_core)
+
+    add_executable(starfox_transition_parity_tests
+        tests/transition_parity_tests.cpp)
+    target_link_libraries(starfox_transition_parity_tests PRIVATE starfox_core)
 
     if(STARFOX_BUILD_RUNTIME)
         add_executable(starfox_runtime_input_tests
@@ -339,6 +410,18 @@ if(STARFOX_BUILD_TESTS)
         add_test(
             NAME starfox_upstream_simulation_data
             COMMAND starfox_simulation_tests
+                    "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT"
+        )
+        add_test(
+            NAME starfox_upstream_direct_audio
+            COMMAND starfox_direct_audio_tests
+                    "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT"
+        )
+        add_test(
+            NAME starfox_upstream_transition_parity
+            COMMAND starfox_transition_parity_tests
                     "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
                     "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT"
         )
@@ -444,6 +527,18 @@ if(STARFOX_BUILD_TESTS)
 
     if(EXISTS "${STARFOX_EX_ROM_FILE}"
        AND EXISTS "${STARFOX_EX_SYMBOLS_FILE}")
+        add_test(
+            NAME starfox_ex_direct_audio
+            COMMAND starfox_direct_audio_tests
+                    "${STARFOX_EX_ROM_FILE}"
+                    "${STARFOX_EX_SYMBOLS_FILE}"
+        )
+        add_test(
+            NAME starfox_ex_transition_parity
+            COMMAND starfox_transition_parity_tests
+                    "${STARFOX_EX_ROM_FILE}"
+                    "${STARFOX_EX_SYMBOLS_FILE}"
+        )
         add_test(
             NAME starfox_ex_simulation_data
             COMMAND starfox_simulation_tests

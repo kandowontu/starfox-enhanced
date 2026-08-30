@@ -89,6 +89,8 @@ struct PregameSettings {
     bool smooth_polys{};
     bool rtx_lighting{};
     bool vsync{};
+    bool msu1_music{};
+    bool rumble{true};
     std::uint8_t crosshair_colour{};
     std::uint8_t experience{};
 
