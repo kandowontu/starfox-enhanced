@@ -820,16 +820,17 @@ public:
                     effects.wipe.right[line]);
                 for (std::int32_t x = 0;
                      x < static_cast<std::int32_t>(framebuffer.width()); ++x) {
-                    // The source window tables describe the complete
-                    // 256-pixel cartridge display. For a wide presentation,
-                    // scale that mask over the complete host display too.
-                    // Merely subtracting the centred viewport origin made the
-                    // added columns enter/leave as independent black slabs at
-                    // the scramble -> Corneria handoff.
+                    // The source window tables describe the centred Super FX
+                    // viewport. For a wide presentation, scale that active
+                    // mask over the complete host scene too; merely centring
+                    // it made the added columns enter/leave as black slabs.
                     const auto source_x = effects.expand_wipe
-                        ? std::clamp(x * static_cast<std::int32_t>(snes_width)
-                                / std::max(source_width, 1),
-                            0, static_cast<std::int32_t>(snes_width - 1U))
+                        // Stretch the actual $10-$ef Super FX window, not
+                        // the unused 16-pixel source guards. Mapping the host
+                        // through $00-$ff made those guards become visible
+                        // side slabs while the central shutter was black.
+                        ? 16 + std::clamp(x * 223
+                                / std::max(source_width - 1, 1), 0, 223)
                         : x - origin_x;
                     const auto inside_dynamic = left <= right
                         ? source_x >= left && source_x <= right
@@ -837,7 +838,8 @@ public:
                     // W12SEL/W34SEL=$bb select the outside of dynamic window
                     // 1 and the inside of fixed viewport window 2 ($10-$f0).
                     const auto window_1 = !inside_dynamic;
-                    const auto window_2 = source_x >= 16 && source_x <= 240;
+                    const auto window_2 =
+                        source_x >= 16 && source_x <= 240;
                     bool masked{};
                     switch (logic) {
                     case 1U: masked = window_1 && window_2; break; // AND
@@ -2500,6 +2502,20 @@ int main(int argc, char** argv) {
         auto previous_camera = capture_camera();
         auto current_camera = previous_camera;
         struct RasterMotionSnapshot {
+            std::uint16_t background{};
+            std::uint8_t background_mode{};
+            std::uint8_t main_screen{};
+            bool bg1_tile_size_16{};
+            bool bg2_tile_size_16{};
+            bool bg3_tile_size_16{};
+            bool bg2_vertical_offsets_enabled{};
+            bool bg2_horizontal_offsets_enabled{};
+            std::uint16_t bg1_character_base{};
+            std::uint16_t bg1_screen_base{};
+            std::uint16_t bg2_character_base{};
+            std::uint16_t bg2_screen_base{};
+            std::uint16_t bg3_character_base{};
+            std::uint16_t bg3_screen_base{};
             std::int16_t background_x{};
             std::int16_t background_y{};
             std::int16_t bg2_scroll_x{};
@@ -2515,6 +2531,20 @@ int main(int argc, char** argv) {
                                              background_y_address]() {
             const auto& ppu = game.map().ppu_state();
             auto snapshot = RasterMotionSnapshot{
+                game.map().background(),
+                ppu.background_mode,
+                ppu.main_screen,
+                ppu.bg1_tile_size_16,
+                ppu.bg2_tile_size_16,
+                ppu.bg3_tile_size_16,
+                ppu.bg2_vertical_offsets_enabled,
+                ppu.bg2_horizontal_offsets_enabled,
+                ppu.bg1_character_base,
+                ppu.bg1_screen_base,
+                ppu.bg2_character_base,
+                ppu.bg2_screen_base,
+                ppu.bg3_character_base,
+                ppu.bg3_screen_base,
                 static_cast<std::int16_t>(
                     game.map().read_native_word(background_x_address)),
                 static_cast<std::int16_t>(
@@ -2535,6 +2565,26 @@ int main(int argc, char** argv) {
                     | (static_cast<std::uint16_t>(ppu.vram[byte + 1U]) << 8U);
             }
             return snapshot;
+        };
+        const auto raster_source_changed = [](
+            const RasterMotionSnapshot& previous,
+            const RasterMotionSnapshot& current) {
+            return previous.background != current.background
+                || previous.background_mode != current.background_mode
+                || previous.main_screen != current.main_screen
+                || previous.bg1_tile_size_16 != current.bg1_tile_size_16
+                || previous.bg2_tile_size_16 != current.bg2_tile_size_16
+                || previous.bg3_tile_size_16 != current.bg3_tile_size_16
+                || previous.bg2_vertical_offsets_enabled
+                    != current.bg2_vertical_offsets_enabled
+                || previous.bg2_horizontal_offsets_enabled
+                    != current.bg2_horizontal_offsets_enabled
+                || previous.bg1_character_base != current.bg1_character_base
+                || previous.bg1_screen_base != current.bg1_screen_base
+                || previous.bg2_character_base != current.bg2_character_base
+                || previous.bg2_screen_base != current.bg2_screen_base
+                || previous.bg3_character_base != current.bg3_character_base
+                || previous.bg3_screen_base != current.bg3_screen_base;
         };
         auto previous_raster_motion = capture_raster_motion();
         auto current_raster_motion = previous_raster_motion;
@@ -3175,7 +3225,10 @@ int main(int argc, char** argv) {
                     const auto camera_cut =
                         starfox::timing::camera_transform_is_discontinuous(
                             previous_camera, current_camera);
-                    if (game.scene_revision() != previous_scene || camera_cut) {
+                    const auto raster_cut = raster_source_changed(
+                        previous_raster_motion, current_raster_motion);
+                    if (game.scene_revision() != previous_scene || camera_cut
+                        || raster_cut) {
                         // LEVEL1_1 replaces the scramble camera with ExitBase's
                         // view in one source update. Interpolating that cut put
                         // the newly spawned docking station off-screen, then
@@ -4153,18 +4206,25 @@ int main(int argc, char** argv) {
                     source, framebuffer, settings);
             };
 
-            // CONT's Arwing is behind the controller artwork. Reapply BG2's
-            // high-priority screen tiles after that one object, then place
-            // shots, bombs and action effects in the foreground pass.
-            composite_superfx(
-                controls_player_layer, 0, superfx_offset_y, controls_screen);
-            if (controls_screen && ppu.background_mode == 1U) {
-                background_renderer.draw_bg2(ppu, background_x, background_y,
-                    framebuffer, starfox::render::TilePriorityPass::high,
-                    viewport_origin, false);
+            if (controls_screen) {
+                // CONT draws demo lasers and bombs before its player pass.
+                // Keeping those effects in the ordinary foreground layer
+                // painted them across the Arwing; composite them first, then
+                // the isolated player, and finally the controller artwork.
+                composite_superfx(
+                    superfx_frame, 0, scene_offset_y, true);
+                composite_superfx(
+                    controls_player_layer, 0, superfx_offset_y, true);
+                if (ppu.background_mode == 1U) {
+                    background_renderer.draw_bg2(ppu, background_x,
+                        background_y, framebuffer,
+                        starfox::render::TilePriorityPass::high,
+                        viewport_origin, false);
+                }
+            } else {
+                composite_superfx(
+                    superfx_frame, 0, scene_offset_y, false);
             }
-            composite_superfx(
-                superfx_frame, 0, scene_offset_y, controls_screen);
             if (game.experience()
                     == starfox::simulation::Experience::starfox_ex
                 && gameplay_hud) {
@@ -4551,7 +4611,7 @@ int main(int argc, char** argv) {
                         };
                         draw_row("EXPERIENCE", experience, row_y[0],
                             game.pregame_selection() == 0U);
-                        draw_row("GAME PACE", timing, row_y[1],
+                        draw_row("PACE/SPEED", timing, row_y[1],
                             game.pregame_selection() == 1U);
                         draw_row("RENDER FPS", presentation, row_y[2],
                             game.pregame_selection() == 2U);

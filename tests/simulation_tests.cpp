@@ -1683,6 +1683,12 @@ int main(int argc, char** argv) {
                 "real walking-enemy PATH did not emit its positional sound");
 
         starfox::simulation::GameSimulation game{upstream_rom, upstream_symbols, "LEVEL1_1"};
+        // This fixture audits the deterministic three-raster 20 Hz path.
+        // The user-facing cold default is Original pace, so select the
+        // unlocked deterministic mode explicitly instead of inheriting a UI
+        // preference into low-level timing assertions.
+        game.set_timing_mode(
+            starfox::simulation::TimingMode::unlocked_20_fps);
         {
             // The desktop CLI's direct-level argument is a real source level
             // launch, not the low-level deterministic map-VM fixture used by
@@ -4723,6 +4729,15 @@ int main(int argc, char** argv) {
                         && saw_ex_intro_secondary_portrait,
                 "EX intro did not present its source communication channel");
         }
+        const auto model_palette =
+            upstream_symbols.find("PAL0PALETTE").front() + 7U * 32U;
+        auto controller_model_palette_present = false;
+        for (std::uint32_t colour = 0U; colour < 16U; ++colour) {
+            controller_model_palette_present =
+                controller_model_palette_present
+                || (title_game.map().read_native_word(
+                        model_palette + colour * 2U) & 0x7fffU) != 0U;
+        }
         require(title_game.flow_state()
                         == starfox::simulation::GameFlowState::controls_type
                     && title_game.map().read_native_byte(map_bank)
@@ -4733,6 +4748,7 @@ int main(int argc, char** argv) {
                         title_game.map().ppu_state().vram.begin() + 0xd000U,
                         title_game.map().ppu_state().vram.end(),
                         [](std::uint8_t byte) { return byte != 0U; })
+                    && controller_model_palette_present
                     && title_game.map().apu_upload_generation()
                         > title_upload_generation,
                 "title/menu START did not install the original controller screen");
@@ -5010,12 +5026,36 @@ int main(int argc, char** argv) {
                 planet_music_game.map().read_native_word(
                     planet_rotations + static_cast<std::uint32_t>(planet * 2U));
         }
-        for (std::size_t frame = 0; frame < 6U; ++frame) {
-            planet_music_game.present_frame();
+        planet_music_game.present_frame();
+        planet_music_game.present_frame();
+        auto planet_rotation_waited_for_20_hz_phase = true;
+        for (std::size_t planet = 0; planet < initial_planet_rotations.size();
+             ++planet) {
+            planet_rotation_waited_for_20_hz_phase =
+                planet_rotation_waited_for_20_hz_phase
+                && planet_music_game.map().read_native_word(
+                    planet_rotations + static_cast<std::uint32_t>(planet * 2U))
+                    == initial_planet_rotations[planet];
         }
+        planet_music_game.present_frame();
         constexpr std::array<std::int32_t, 6> planet_rotation_steps{
             6 * 256, -3 * 256, 4 * 256, 3 * 256, -5 * 256, -5 * 256,
         };
+        auto planet_rotation_advanced_at_20_hz = true;
+        for (std::size_t planet = 0; planet < initial_planet_rotations.size();
+             ++planet) {
+            const auto expected = static_cast<std::uint16_t>(
+                initial_planet_rotations[planet]
+                + planet_rotation_steps[planet] / 2);
+            planet_rotation_advanced_at_20_hz =
+                planet_rotation_advanced_at_20_hz
+                && planet_music_game.map().read_native_word(
+                    planet_rotations + static_cast<std::uint32_t>(planet * 2U))
+                    == expected;
+        }
+        for (std::size_t frame = 0; frame < 3U; ++frame) {
+            planet_music_game.present_frame();
+        }
         auto planet_rotation_cadence_matches = true;
         for (std::size_t planet = 0; planet < initial_planet_rotations.size();
              ++planet) {
@@ -5026,9 +5066,11 @@ int main(int argc, char** argv) {
                     planet_rotations + static_cast<std::uint32_t>(planet * 2U))
                     == expected;
         }
-        require(planet_rotation_cadence_matches,
+        require(planet_rotation_waited_for_20_hz_phase
+                    && planet_rotation_advanced_at_20_hz
+                    && planet_rotation_cadence_matches,
                 "planet rotation did not preserve one source SPINPLANETS step "
-                "across six smooth 60 Hz presentations");
+                "on a fixed 20 Hz cadence across six 60 Hz presentations");
         starfox::audio::Spc700Audio planet_audio;
         auto heard_planet_music = false;
         for (std::size_t frame = 0; frame < 600U; ++frame) {
@@ -5081,7 +5123,7 @@ int main(int argc, char** argv) {
         require(boot_game.flow_state()
                     == starfox::simulation::GameFlowState::pregame_menu
                     && boot_game.timing_mode()
-                        == starfox::simulation::TimingMode::unlocked_20_fps
+                        == starfox::simulation::TimingMode::original_speed
                     && boot_game.display_mode()
                         == starfox::simulation::DisplayMode::standard_4_3
                     && boot_game.presentation_fps() == 60U
@@ -5122,11 +5164,11 @@ int main(int argc, char** argv) {
                 "pre-game experience selector did not return to Original");
         drive_boot({0, starfox::input::down, 0});
         require(boot_game.pregame_selection() == 1U,
-                "pre-game cursor did not reach GAME PACE");
+                "pre-game cursor did not reach PACE/SPEED");
         drive_boot({0, starfox::input::right, 0});
         require(boot_game.timing_mode()
-                    == starfox::simulation::TimingMode::original_speed,
-                "pre-game frame-rate selector did not enable original speed");
+                    == starfox::simulation::TimingMode::unlocked_20_fps,
+                "pre-game pace selector did not leave the Original default");
         drive_boot({0, starfox::input::down, 0});
         require(boot_game.pregame_selection() == 2U,
                 "pre-game cursor did not reach RENDER FPS");

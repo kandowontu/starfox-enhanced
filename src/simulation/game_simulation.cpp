@@ -929,7 +929,7 @@ void GameSimulation::enter_pregame_menu() {
     menu_palette[14] = 0x7fffU;
     map_.write_cgram(7U * 16U, menu_palette);
     map_.set_display_brightness(15U);
-    timing_mode_ = TimingMode::unlocked_20_fps;
+    timing_mode_ = TimingMode::original_speed;
     display_mode_ = DisplayMode::standard_4_3;
     presentation_fps_ = 60U;
     experience_ = Experience::original;
@@ -1982,6 +1982,26 @@ void GameSimulation::initialize_native_map(std::uint32_t address) {
     registers.status = 0x24U;
     map_.call_native_routine(initialize_game_, registers, 50'000'000, true);
     map_.restore_map_state_from_native();
+    // BRIEFING_L and the training/level handoffs normally arrive here with
+    // SETGAMEPAL_L's palette-7 copy already installed by the outer cartridge
+    // loop. EX's resumable RESTART task enters below that copy, however, and
+    // INITIALISE_L has just cleared PAL0PALETTE. The host renderer still
+    // rasterizes the correct models, but sixteen zero colours make the
+    // controller, training and scramble ships completely black. Restore the
+    // ordinary source palette only when that whole row is absent; valid
+    // stage- and option-specific palettes remain authoritative.
+    auto model_palette_is_empty = true;
+    for (std::uint32_t colour = 0U; colour < 16U; ++colour) {
+        model_palette_is_empty = model_palette_is_empty
+            && (map_.read_native_word(ppu_palette_ + (7U * 16U + colour) * 2U)
+                & 0x7fffU) == 0U;
+    }
+    if (model_palette_is_empty) {
+        registers = {};
+        registers.status = 0x24U;
+        map_.call_native_routine(
+            rom_symbol("SETGAMEPAL_L"), registers, 5'000'000, true);
+    }
     refresh_player_reference();
     draw_order_ = objects_.active_handles();
     ++scene_revision_;
@@ -2902,6 +2922,7 @@ void GameSimulation::enter_planet_map(
     map_.write_native_word(route_x_, 0U);
     draw_order_.clear();
     planet_spin_remainders_.fill(0);
+    planet_rotation_video_phases_ = 0U;
     ++scene_revision_;
 
     // Prime both source VRAM buffers so the first presented frame cannot
@@ -2917,7 +2938,7 @@ void GameSimulation::animate_planet_frame(bool advance_rotation) {
     if (flow_state_ != GameFlowState::planet_select
         && flow_state_ != GameFlowState::planet_travel) return;
     if (frontend_phase_ == FrontendPhase::planet_zoom) {
-        draw_selected_planet(true, true);
+        draw_selected_planet(true, advance_rotation);
         return;
     }
     // Once START is accepted, PLANETSEQ waits, performs its filter fade and
@@ -2988,17 +3009,17 @@ void GameSimulation::animate_planet_frame(bool advance_rotation) {
 
 void GameSimulation::advance_planet_rotation() {
     // SPINPLANETS applies these steps after an expensive six-planet Super FX
-    // redraw. The cartridge completes that pass at roughly one sixth of the
-    // 60 Hz presentation rate. Distribute the same step over six frames so
-    // the PC result is smooth without running the planets six times too fast.
+    // redraw. Presentation calls this routine at a fixed 20 Hz below; split
+    // each measured source step over two such updates to preserve the same
+    // real-time angular speed as one step across six 60 Hz raster phases.
     constexpr std::array<std::int32_t, 6> source_speeds{
         6 * 256, -3 * 256, 4 * 256, 3 * 256, -5 * 256, -5 * 256,
     };
     for (std::size_t index = 0; index < source_speeds.size(); ++index) {
         auto& remainder = planet_spin_remainders_[index];
         remainder += source_speeds[index];
-        const auto delta = remainder / 6;
-        remainder -= delta * 6;
+        const auto delta = remainder / 2;
+        remainder -= delta * 2;
         const auto address = planet_rotation_table_
             + static_cast<std::uint32_t>(index * 2U);
         map_.write_native_word(address, static_cast<std::uint16_t>(
@@ -3145,7 +3166,22 @@ void GameSimulation::present_frame() {
             map_.set_display_brightness(0U);
         }
     }
-    animate_planet_frame();
+    auto advance_planet_rotation = false;
+    if (flow_state_ == GameFlowState::planet_select
+        || flow_state_ == GameFlowState::planet_travel) {
+        // Planet drawing is presentation work, but its rotation belongs to
+        // the cartridge's 20 Hz pace. Keep redrawing the route/ship at the
+        // 60 Hz raster rate while changing the six planet angles only once
+        // every three phases. Since host FPS is converted to this fixed
+        // raster first, 60, 120, 240, 360 and 480 FPS all see the same spin.
+        if (++planet_rotation_video_phases_ >= 3U) {
+            planet_rotation_video_phases_ = 0U;
+            advance_planet_rotation = true;
+        }
+    } else {
+        planet_rotation_video_phases_ = 0U;
+    }
+    animate_planet_frame(advance_planet_rotation);
     const auto map_sprites_active =
         (flow_state_ == GameFlowState::planet_select
             || flow_state_ == GameFlowState::planet_travel)

@@ -147,6 +147,8 @@ int main() {
             "Star Fox EX SRAM path is not in its Documents subfolder");
     const auto pregame_test_path = std::filesystem::temp_directory_path()
         / "starfox-enhanced-pregame-test.cfg";
+    require(starfox::app::PregameSettings{}.timing_mode == 1U,
+            "new pre-game settings did not default to Original pace");
     const starfox::app::PregameSettings saved_pregame{
         1U, 90U, 3U, true, true,
         3U, true, true, true, true, 5U, 1U};

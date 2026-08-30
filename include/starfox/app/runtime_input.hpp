@@ -78,7 +78,7 @@ private:
 };
 
 struct PregameSettings {
-    std::uint8_t timing_mode{};
+    std::uint8_t timing_mode{1U};
     std::uint16_t presentation_fps{60U};
     std::uint8_t display_mode{};
     bool god_mode{};

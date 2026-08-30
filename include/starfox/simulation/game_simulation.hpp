@@ -784,6 +784,7 @@ private:
     std::uint8_t intro_reveal_frames_{};
     std::uint8_t video_phases_since_tick_{};
     std::uint8_t current_tick_video_phases_{3U};
+    std::uint8_t planet_rotation_video_phases_{};
     std::uint32_t source_update_sequence_{};
     std::array<std::int32_t, 6> planet_spin_remainders_{};
     std::uint8_t planet_route_blink_frames_{};
@@ -791,6 +792,9 @@ private:
     std::uint64_t scene_revision_{};
     GameFlowState flow_state_{GameFlowState::gameplay};
     FrontendPhase frontend_phase_{FrontendPhase::none};
+    // Direct simulation fixtures retain their deterministic three-raster
+    // mode until a caller chooses otherwise. BOOT and the persisted runtime
+    // settings select the user-facing Original default explicitly.
     TimingMode timing_mode_{TimingMode::unlocked_20_fps};
     DisplayMode display_mode_{DisplayMode::standard_4_3};
     std::uint16_t presentation_fps_{60U};
