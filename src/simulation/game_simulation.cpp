@@ -31,6 +31,18 @@ constexpr std::array<CrosshairColour, 8> kCrosshairColours{
     CrosshairColour::orange,
 };
 
+namespace msu_track {
+constexpr std::uint16_t title_demo = 1U;
+constexpr std::uint16_t controls = 3U;
+constexpr std::uint16_t map = 5U;
+constexpr std::uint16_t black_hole_map = 6U;
+constexpr std::uint16_t briefing = 7U;
+constexpr std::uint16_t briefing_short = 8U;
+constexpr std::uint16_t game_over = 40U;
+constexpr std::uint16_t continue_screen = 41U;
+constexpr std::uint16_t staff_roll = 49U;
+} // namespace msu_track
+
 std::int16_t signed_word(std::uint16_t value) noexcept {
     return std::bit_cast<std::int16_t>(value);
 }
@@ -339,6 +351,7 @@ GameSimulation::GameSimulation(
     final_total_score_ = find_optional_rom("MAKETOTALSCORE2");
     credits_music_original_ = find_optional_rom("DO_BGM_STAFF");
     credits_music_ex_ = find_optional_rom("DO_BGM_SP0RCH");
+    msu_play_ = find_optional_rom("MSUPLAY_L");
     if (credits_entry_ == 0U && end_game_sequence_ != 0U) {
         // Retail MAIN.ASM does not export a CREDSTUFF label. Its equivalent
         // boundary is the instruction immediately following JSL ENDSEQ_L:
@@ -1804,6 +1817,19 @@ void GameSimulation::request_music(std::uint8_t command) {
     background_music_hold_phases_ = 0U;
 }
 
+void GameSimulation::request_msu_music(std::uint16_t track, bool repeat) {
+    // UltraStarFox adds these calls in the outer 65C816 scene wrappers. The
+    // native runtime reconstructs several of those wrappers around their
+    // source maps, so execute the source driver explicitly at the same scene
+    // boundary. Star Fox EX has its own SPC-only music flow.
+    if (starfox_ex_cartridge_ || msu_play_ == 0U) return;
+    Wdc65816Registers registers;
+    registers.a = repeat ? 3U : 1U;
+    registers.x = track;
+    registers.status = 0x24U;
+    map_.call_native_routine(msu_play_, registers, 5'000'000U, true);
+}
+
 void GameSimulation::set_player_control(bool enabled) {
     auto flags = map_.read_native_byte(player_ship_flags_);
     if (enabled) flags &= static_cast<std::uint8_t>(~0xe0U);
@@ -2065,6 +2091,7 @@ void GameSimulation::enter_game_over() {
     registers.status = 0x24U;
     map_.call_native_routine(
         game_over_initialize_, registers, 50'000'000, true);
+    request_msu_music(msu_track::game_over, false);
     map_.restore_map_state_from_native();
     refresh_player_reference();
 
@@ -2209,6 +2236,7 @@ void GameSimulation::enter_continue_screen() {
     registers = {};
     registers.status = 0x24U;
     map_.call_native_routine(continue_music_, registers, 20'000'000, true);
+    request_msu_music(msu_track::continue_screen, true);
     flow_ticks_ = 0U;
     frontend_frames_ = 0U;
     frontend_phase_ = FrontendPhase::continue_fade_in;
@@ -2414,6 +2442,7 @@ void GameSimulation::enter_intro() {
     registers.status = 0x24U;
     map_.call_native_routine(
         intro_music_, registers, 20'000'000, true);
+    request_msu_music(msu_track::title_demo, false);
     initialize_native_map(intro_map_);
     registers = {};
     registers.status = 0x24U;
@@ -2552,6 +2581,7 @@ void GameSimulation::enter_credits() {
         map_.call_native_routine(
             credits_music, music_registers, 50'000'000U, true);
     }
+    request_msu_music(msu_track::staff_roll, false);
     initialize_native_map(credits_map_);
     map_.write_native_word(meters_enabled_, 0U);
     map_.write_native_word(level_finished_, 0U);
@@ -2667,6 +2697,7 @@ void GameSimulation::enter_controls(
     registers.status = 0x24U;
     map_.call_native_routine(
         controls_music_, registers, 20'000'000, true);
+    request_msu_music(msu_track::controls, true);
     // BGM OPS is uploaded over the 65C816/APU handshake before its first
     // track command can be acknowledged. The host copies it atomically, so
     // retain the measured setup interval explicitly. The controller raster is
@@ -2976,6 +3007,11 @@ void GameSimulation::enter_planet_map(
     registers = {};
     registers.status = 0x24U;
     map_.call_native_routine(map_music_, registers, 20'000'000, true);
+    const auto current_planet = map_.read_native_byte(current_planet_);
+    request_msu_music(
+        current_planet == 10U || current_planet == 14U
+            ? msu_track::black_hole_map : msu_track::map,
+        true);
     map_.set_display_brightness(0U);
 
     flow_ticks_ = 0U;
@@ -3366,6 +3402,10 @@ void GameSimulation::present_frame() {
                 planet_zoom_remaining_ = 40U;
                 pepper_brightness_ = 0U;
                 request_music(planet_zoom_is_sphere_ ? 0x0bU : 0x0dU);
+                request_msu_music(
+                    planet_zoom_is_sphere_ ? msu_track::briefing
+                                           : msu_track::briefing_short,
+                    false);
                 frontend_phase_ = FrontendPhase::planet_zoom;
                 frontend_frames_ = 0U;
             }

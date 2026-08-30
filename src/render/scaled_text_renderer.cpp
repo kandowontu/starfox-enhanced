@@ -260,6 +260,45 @@ void ScaledTextRenderer::draw_ascii(
     }
 }
 
+void ScaledTextRenderer::draw_ascii_compact(
+    std::string_view text,
+    std::int32_t x,
+    std::int32_t y,
+    Framebuffer& target,
+    std::uint8_t colour,
+    std::uint8_t colour_index_base) const {
+    constexpr std::int32_t output_height = 9;
+    const auto output_colour = static_cast<std::uint8_t>(
+        colour_index_base + (colour & 0x0fU));
+    for (const auto character : text) {
+        const auto ascii = static_cast<std::uint8_t>(character);
+        if (ascii == '\n') {
+            y += output_height + 1;
+            continue;
+        }
+        if (ascii < 32U) continue;
+        const auto translated = rom_->read8(
+            game_font_translation_ + static_cast<std::uint32_t>(ascii - 32U));
+        const auto width = ascii == 32U ? std::uint8_t{5U}
+            : rom_->read8(game_font_widths_ + translated);
+        if (ascii != 32U && width != 0U) {
+            const auto glyph = game_font_glyphs_
+                + static_cast<std::uint32_t>(translated) * 24U;
+            for (std::int32_t row = 0; row < output_height; ++row) {
+                const auto source_row = row * 11 / (output_height - 1);
+                const auto bits = rom_->read16(
+                    glyph + static_cast<std::uint32_t>(source_row * 2));
+                for (std::int32_t column = 0; column < width; ++column) {
+                    if ((bits & (0x8000U >> column)) != 0U) {
+                        target.set(x + column, y + row, output_colour);
+                    }
+                }
+            }
+        }
+        x += width;
+    }
+}
+
 std::int32_t ScaledTextRenderer::measure_ascii(std::string_view text) const {
     std::int32_t line_width{};
     std::int32_t maximum_width{};

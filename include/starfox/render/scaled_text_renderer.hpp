@@ -57,6 +57,16 @@ public:
         std::uint8_t colour = 14U,
         std::uint8_t colour_index_base = 7U * 16U) const;
 
+    // Preserve the source font's horizontal metrics while reducing its
+    // twelve scanlines to nine for dense host-authored option lists.
+    void draw_ascii_compact(
+        std::string_view text,
+        std::int32_t x,
+        std::int32_t y,
+        Framebuffer& target,
+        std::uint8_t colour = 14U,
+        std::uint8_t colour_index_base = 7U * 16U) const;
+
     [[nodiscard]] std::int32_t measure_ascii(std::string_view text) const;
 
 private:

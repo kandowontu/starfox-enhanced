@@ -4751,9 +4751,9 @@ int main(int argc, char** argv) {
                 for (std::int32_t x = menu_left + viewport_origin;
                      x <= menu_right + viewport_origin; ++x) {
                     framebuffer.set(x, 20, border_colour);
-                    framebuffer.set(x, 203, border_colour);
+                    framebuffer.set(x, 216, border_colour);
                 }
-                for (std::int32_t y = 20; y <= 203; ++y) {
+                for (std::int32_t y = 20; y <= 216; ++y) {
                     framebuffer.set(menu_left + viewport_origin, y, border_colour);
                     framebuffer.set(menu_right + viewport_origin, y, border_colour);
                 }
@@ -4897,7 +4897,7 @@ int main(int argc, char** argv) {
                     draw_centred("A  BIND   Y  DEFAULTS", 158, 13U);
                     draw_centred("B/START/ESC  DONE", 177, 13U);
                 } else {
-                    draw_centred("STAR FOX ENHANCED", 31, 14U);
+                    draw_centred("STAR FOX ENHANCED", 23, 14U);
                     const auto draw_cursor = [&framebuffer, viewport_origin,
                                                   menu_cursor_x](
                                                  std::int32_t y) {
@@ -4933,7 +4933,7 @@ int main(int argc, char** argv) {
 
                     if (game.pregame_page()
                         == starfox::simulation::PregamePage::options) {
-                        draw_centred("OPTIONS", 40, 10U);
+                        draw_centred("OPTIONS", 39, 10U);
                         const auto god_value = game.god_mode()
                             ? std::string_view{"ON"} : std::string_view{"OFF"};
                         const auto fps_value = game.show_fps()
@@ -4953,10 +4953,10 @@ int main(int argc, char** argv) {
                         constexpr std::array<std::int32_t, 5> cursor_y{
                             59, 79, 99, 119, 149};
                         draw_cursor(cursor_y[game.pregame_selection()]);
-                        draw_centred("A/LEFT/RIGHT  CHANGE", 181, 13U);
-                        draw_centred("B  BACK", 191, 13U);
+                        draw_centred("A/LEFT/RIGHT  CHANGE", 180, 13U);
+                        draw_centred("B  BACK", 194, 13U);
                     } else {
-                        draw_centred("PRE-GAME SETUP", 31, 10U);
+                        draw_centred("PRE-GAME SETUP", 37, 10U);
                         const auto timing = game.timing_mode()
                             == starfox::simulation::TimingMode::unlocked_20_fps
                             ? std::string_view{"UNLOCKED 20 HZ"}
@@ -4984,50 +4984,72 @@ int main(int argc, char** argv) {
                             ? std::string_view{"ORIGINAL"}
                             : std::string_view{"STARFOX EX"};
                         constexpr std::array<std::int32_t, 14> row_y{
-                            42, 52, 62, 72, 82, 92, 102,
-                            112, 122, 132, 142, 152, 162, 172};
+                            52, 62, 72, 82, 92, 102, 112,
+                            122, 132, 142, 152, 162, 172, 182};
                         const auto on_off = [](bool enabled) {
                             return enabled ? std::string_view{"ON"}
                                            : std::string_view{"OFF"};
                         };
-                        draw_row("EXPERIENCE", experience, row_y[0],
+                        const auto draw_compact_row =
+                            [&text_renderer, &framebuffer, viewport_origin,
+                                menu_label_x, menu_value_right](
+                                std::string_view label, std::string_view value,
+                                std::int32_t y, bool selected) {
+                                const auto colour = static_cast<std::uint8_t>(
+                                    selected ? 14U : 7U);
+                                text_renderer.draw_ascii_compact(label,
+                                    menu_label_x + viewport_origin,
+                                    y, framebuffer, colour);
+                                if (!value.empty()) {
+                                    text_renderer.draw_ascii_compact(value,
+                                        menu_value_right
+                                            - text_renderer.measure_ascii(value)
+                                            + viewport_origin,
+                                        y, framebuffer, colour);
+                                }
+                            };
+                        draw_compact_row("EXPERIENCE", experience, row_y[0],
                             game.pregame_selection() == 0U);
-                        draw_row("PACE/SPEED", timing, row_y[1],
+                        draw_compact_row("PACE/SPEED", timing, row_y[1],
                             game.pregame_selection() == 1U);
-                        draw_row("RENDER FPS", presentation, row_y[2],
+                        draw_compact_row("RENDER FPS", presentation, row_y[2],
                             game.pregame_selection() == 2U);
-                        draw_row("DISPLAY", display, row_y[3],
+                        draw_compact_row("DISPLAY", display, row_y[3],
                             game.pregame_selection() == 3U);
-                        draw_row("MSU-1 MUSIC", on_off(game.msu1_music()),
+                        draw_compact_row("MSU-1 MUSIC", on_off(game.msu1_music()),
                             row_y[4], game.pregame_selection() == 4U);
-                        draw_row("RUMBLE", on_off(game.rumble()), row_y[5],
+                        draw_compact_row("RUMBLE", on_off(game.rumble()), row_y[5],
                             game.pregame_selection() == 5U);
-                        draw_row("ANTI-ALIASING",
+                        draw_compact_row("ANTI-ALIASING",
                             anti_aliasing_name(game.anti_aliasing_mode()), row_y[6],
                             game.pregame_selection() == 6U);
-                        draw_row("ENHANCED TEXTURES",
+                        draw_compact_row("ENHANCED TEXTURES",
                             on_off(game.enhanced_graphics()), row_y[7],
                             game.pregame_selection() == 7U);
-                        draw_row("SMOOTH POLYS",
+                        draw_compact_row("SMOOTH POLYS",
                             on_off(game.smooth_polys()), row_y[8],
                             game.pregame_selection() == 8U);
-                        draw_row("RTX LIGHTING",
+                        draw_compact_row("RTX LIGHTING",
                             on_off(game.rtx_lighting()), row_y[9],
                             game.pregame_selection() == 9U);
-                        draw_row("VSYNC", on_off(game.vsync()), row_y[10],
+                        draw_compact_row("VSYNC", on_off(game.vsync()), row_y[10],
                             game.pregame_selection() == 10U);
-                        draw_row("CONTROLLER", "A  REMAP", row_y[11],
+                        draw_compact_row("CONTROLLER", "A  REMAP", row_y[11],
                             game.pregame_selection() == 11U);
-                        draw_row("OPTIONS", "A  OPEN", row_y[12],
+                        draw_compact_row("OPTIONS", "A  OPEN", row_y[12],
                             game.pregame_selection() == 12U);
-                        draw_row("START GAME", "", row_y[13],
+                        draw_compact_row("START GAME", "", row_y[13],
                             game.pregame_selection() == 13U);
                         constexpr std::array<std::int32_t, 14> cursor_y{
-                            45, 55, 65, 75, 85, 95, 105,
-                            115, 125, 135, 145, 155, 165, 175};
+                            56, 66, 76, 86, 96, 106, 116,
+                            126, 136, 146, 156, 166, 176, 186};
                         draw_cursor(cursor_y[game.pregame_selection()]);
-                        draw_centred("D-PAD CHOOSE   A SELECT", 190, 13U);
-                        draw_centred("START  BEGIN", 201, 13U);
+                        const auto footer = std::string_view{
+                            "D-PAD/A  CHOOSE    START  BEGIN"};
+                        text_renderer.draw_ascii_compact(footer,
+                            (static_cast<std::int32_t>(framebuffer.width())
+                                - text_renderer.measure_ascii(footer)) / 2,
+                            202, framebuffer, 13U);
                     }
                 }
             }

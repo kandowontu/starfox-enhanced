@@ -37,6 +37,27 @@ void require(bool condition, const char* message) {
     }
 }
 
+bool started_msu_track(
+    std::span<const starfox::simulation::MsuRegisterWrite> writes,
+    std::uint16_t expected_track, bool repeat) {
+    std::uint16_t selected_track{};
+    for (const auto& write : writes) {
+        if (write.address == 0x2004U) {
+            selected_track = static_cast<std::uint16_t>(
+                (selected_track & 0xff00U) | write.value);
+        } else if (write.address == 0x2005U) {
+            selected_track = static_cast<std::uint16_t>(
+                (selected_track & 0x00ffU)
+                | (static_cast<std::uint16_t>(write.value) << 8U));
+        } else if (write.address == 0x2007U
+            && write.value == (repeat ? 3U : 1U)
+            && selected_track == expected_track) {
+            return true;
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1091,6 +1112,48 @@ int main(int argc, char** argv) {
         const auto upstream_symbols = starfox::assets::SymbolMap::load(argv[2]);
         const auto starfox_ex_cartridge =
             !upstream_symbols.find("PLANETSEQ2_L").empty();
+
+        if (!starfox_ex_cartridge) {
+            struct FrontendMsuCase {
+                const char* entry;
+                std::uint16_t track;
+                bool repeat;
+                const char* failure;
+            };
+            constexpr std::array frontend_msu_cases{
+                FrontendMsuCase{"INTROMAP", 1U, false,
+                    "intro did not start the MSU title-demonstration track"},
+                FrontendMsuCase{"TITLEMAP", 2U, true,
+                    "title map did not start its source MSU track"},
+                FrontendMsuCase{"CONTMAP", 3U, true,
+                    "control screen did not start the MSU controls track"},
+                FrontendMsuCase{"PLANETSELECT", 5U, true,
+                    "planet selector did not start the MSU map track"},
+                FrontendMsuCase{"CONTINUE", 41U, true,
+                    "continue screen did not start its MSU track"},
+                FrontendMsuCase{"CREDITSMAP", 49U, false,
+                    "credits did not start the MSU staff-roll track"},
+            };
+            for (const auto& test : frontend_msu_cases) {
+                starfox::simulation::GameSimulation game{
+                    upstream_rom, upstream_symbols, test.entry};
+                auto writes = game.map().take_msu_register_writes();
+                // Background scripts can finish their request on a raster
+                // boundary rather than during the wrapper constructor.
+                for (std::size_t frame = 0U; frame < 20U; ++frame) {
+                    game.present_frame();
+                    if (game.logic_tick_ready()) {
+                        static_cast<void>(game.tick({}));
+                    }
+                    auto frame_writes = game.map().take_msu_register_writes();
+                    writes.insert(writes.end(),
+                        frame_writes.begin(), frame_writes.end());
+                }
+                require(started_msu_track(writes, test.track, test.repeat),
+                    test.failure);
+            }
+        }
+
         const auto trig = starfox::simulation::TrigTables::load(
             upstream_rom, upstream_symbols);
         require(trig.sin8(0) == 0 && trig.sin8(64) == 127

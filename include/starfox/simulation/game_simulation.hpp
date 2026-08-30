@@ -380,6 +380,7 @@ private:
     void draw_selected_planet(bool centred, bool advance_rotation = true);
     void queue_sound_effect(std::uint8_t command);
     void request_music(std::uint8_t command);
+    void request_msu_music(std::uint16_t track, bool repeat);
     void set_player_control(bool enabled);
     [[nodiscard]] std::uint8_t required_video_phases() const noexcept;
     void complete_video_phases_for_tick();
@@ -702,6 +703,7 @@ private:
     std::uint32_t final_total_score_{};
     std::uint32_t credits_music_original_{};
     std::uint32_t credits_music_ex_{};
+    std::uint32_t msu_play_{};
     std::uint32_t previous_view_position_{};
     std::uint32_t view_position_{};
     std::uint32_t view_shake_{};
