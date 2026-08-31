@@ -186,6 +186,20 @@ int main(int argc, char** argv) {
         starfox::render::TilePriorityPass::high);
     require(priority_frame.get(0, 0) == 1U,
             "high-priority BG2 tile was not composited in its own pass");
+    starfox::render::Framebuffer upscaled_priority_frame{8, 8, 10U};
+    upscaled_priority_frame.clear(42U);
+    background_renderer.draw_bg2(priority_ppu, 0, 0,
+        upscaled_priority_frame, starfox::render::TilePriorityPass::high);
+    auto complete_upscaled_background_cell = true;
+    for (std::uint32_t y = 0; y < 10U; ++y) {
+        for (std::uint32_t x = 0; x < 10U; ++x) {
+            complete_upscaled_background_cell =
+                complete_upscaled_background_cell
+                && upscaled_priority_frame.get_stored(x, y) == 1U;
+        }
+    }
+    require(complete_upscaled_background_cell,
+            "10x Render Upscale fragmented a cartridge background pixel");
     starfox::render::Framebuffer centred_background_frame{400, 8};
     centred_background_frame.clear(42U);
     background_renderer.draw_bg2(priority_ppu, 0, 0,
@@ -5573,10 +5587,24 @@ int main(int argc, char** argv) {
                 "pre-game enhanced texture filtering did not enable");
         drive_boot({0, starfox::input::down, 0});
         require(boot_game.pregame_selection() == 9U,
-                "pre-game cursor did not reach UPSCALED POLYS");
+                "pre-game cursor did not reach RENDER UPSCALE");
         drive_boot({0, starfox::input::a, 0});
-        require(boot_game.smooth_polys(),
-                "pre-game polygon smoothing option did not enable");
+        require(boot_game.render_scale()
+                    == starfox::simulation::RenderScale::scale_2x,
+                "Render Upscale did not advance to 2x");
+        drive_boot({0, starfox::input::left, 0});
+        require(boot_game.render_scale()
+                    == starfox::simulation::RenderScale::scale_1x,
+                "Render Upscale did not step back to native");
+        drive_boot({0, starfox::input::left, 0});
+        require(boot_game.render_scale()
+                    == starfox::simulation::RenderScale::scale_10x,
+                "Render Upscale did not wrap backward to 10x");
+        drive_boot({0, starfox::input::right, 0});
+        require(boot_game.render_scale()
+                    == starfox::simulation::RenderScale::scale_1x
+                    && !boot_game.smooth_polys(),
+                "Render Upscale enabled the replaced legacy effect");
         drive_boot({0, starfox::input::down, 0});
         require(boot_game.pregame_selection() == 10U,
                 "pre-game cursor did not reach RTX LIGHTING");
@@ -5632,43 +5660,10 @@ int main(int argc, char** argv) {
                 "crosshair colour selector did not wrap backward");
         drive_boot({0, starfox::input::right, 0});
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 3U
-                    && boot_game.render_scale()
-                        == starfox::simulation::RenderScale::scale_1x,
-                "pre-game cursor did not reach the native render scale");
-        drive_boot({0, starfox::input::right, 0});
-        require(boot_game.render_scale()
-                    == starfox::simulation::RenderScale::scale_2x,
-                "render scale selector did not advance to 2x");
-        drive_boot({0, starfox::input::right, 0});
-        require(boot_game.render_scale()
-                    == starfox::simulation::RenderScale::scale_3x,
-                "render scale selector did not advance to 3x");
-        drive_boot({0, starfox::input::left, 0});
-        require(boot_game.render_scale()
-                    == starfox::simulation::RenderScale::scale_2x,
-                "render scale selector did not step back to 2x");
-        drive_boot({0, starfox::input::left, 0});
-        drive_boot({0, starfox::input::left, 0});
-        require(boot_game.render_scale()
-                    == starfox::simulation::RenderScale::scale_10x,
-                "render scale selector did not wrap backward to 10x");
-        for (std::size_t step = 0;
-             step < starfox::simulation::render_scale_count; ++step) {
-            drive_boot({0, starfox::input::right, 0});
-        }
-        require(boot_game.render_scale()
-                    == starfox::simulation::RenderScale::scale_10x,
-                "render scale selector did not cycle through every scale");
-        drive_boot({0, starfox::input::right, 0});
-        require(boot_game.render_scale()
-                    == starfox::simulation::RenderScale::scale_1x,
-                "render scale selector did not wrap forward to native");
-        drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 4U,
+        require(boot_game.pregame_selection() == 3U,
                 "pre-game cursor did not reach CUSTOMIZE SCREEN");
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 5U,
+        require(boot_game.pregame_selection() == 4U,
                 "pre-game cursor did not reach MUSIC VOLUME");
         require(boot_game.music_volume() == 100U,
                 "pre-game music volume did not default to 100 percent");
@@ -5684,7 +5679,7 @@ int main(int argc, char** argv) {
                 "pre-game music volume did not step right after release");
         drive_boot({0, 0, starfox::input::right});
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 6U
+        require(boot_game.pregame_selection() == 5U
                     && boot_game.sfx_volume() == 100U,
                 "pre-game cursor did not reach default SFX VOLUME");
         drive_boot({0, starfox::input::left, 0});
@@ -5694,7 +5689,7 @@ int main(int argc, char** argv) {
         require(boot_game.sfx_volume() == 100U,
                 "pre-game SFX volume did not step right by 10 percent");
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 7U,
+        require(boot_game.pregame_selection() == 6U,
                 "pre-game cursor did not reach OPTIONS BACK");
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.pregame_page()
@@ -5704,7 +5699,7 @@ int main(int argc, char** argv) {
                     && boot_game.show_fps()
                      && boot_game.anti_aliasing()
                      && boot_game.enhanced_graphics()
-                     && boot_game.smooth_polys()
+                     && !boot_game.smooth_polys()
                      && boot_game.rtx_lighting()
                     && boot_game.vsync()
                     && boot_game.crosshair_colour()

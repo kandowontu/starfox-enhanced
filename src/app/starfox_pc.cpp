@@ -3150,7 +3150,7 @@ int main(int argc, char** argv) {
                 game.show_fps(),
                 static_cast<std::uint8_t>(game.anti_aliasing_mode()),
                 game.enhanced_graphics(),
-                game.smooth_polys(),
+                false,
                 game.rtx_lighting(),
                 game.vsync(),
                 static_cast<std::uint8_t>(game.renderer_mode()),
@@ -3204,7 +3204,9 @@ int main(int argc, char** argv) {
                         : starfox::simulation::AntiAliasingMode::off);
             }
             game.set_enhanced_graphics(saved_pregame.enhanced_graphics);
-            game.set_smooth_polys(saved_pregame.smooth_polys);
+            // SMOOTH_POLYS is retained in the settings file only so older
+            // revisions still load. Render Upscale replaces that effect.
+            game.set_smooth_polys(false);
             game.set_rtx_lighting(saved_pregame.rtx_lighting);
             game.set_vsync(saved_pregame.vsync);
             game.set_renderer_mode(
@@ -3232,10 +3234,6 @@ int main(int argc, char** argv) {
                     "STARFOX_TEST_ENHANCED")) {
                 game.set_enhanced_graphics(std::string_view{forced_enhanced}
                     != "0");
-            }
-            if (const auto* forced_smoothing = std::getenv(
-                    "STARFOX_TEST_SMOOTH_POLYS")) {
-                game.set_smooth_polys(std::string_view{forced_smoothing} != "0");
             }
             if (const auto* forced_lighting = std::getenv(
                     "STARFOX_TEST_RTX_LIGHTING")) {
@@ -3959,8 +3957,8 @@ int main(int argc, char** argv) {
                         == starfox::simulation::PregamePage::options) {
                     constexpr float slider_left = 147.0F;
                     constexpr float slider_right = 235.0F;
-                    constexpr float music_top = 118.0F;
-                    constexpr float sfx_top = 144.0F;
+                    constexpr float music_top = 112.0F;
+                    constexpr float sfx_top = 138.0F;
                     constexpr float slider_bottom_offset = 10.0F;
                     const auto update_volume_slider = [&](float window_x,
                                                           float window_y,
@@ -4238,7 +4236,7 @@ int main(int argc, char** argv) {
             if (!running) break;
             window.set_render_options(game.renderer_mode(),
                 game.anti_aliasing_mode(),
-                game.enhanced_graphics(), game.smooth_polys(),
+                game.enhanced_graphics(), false,
                 game.rtx_lighting(), game.vsync());
             if (toggle_frame_freeze) {
                 frame_frozen = !frame_frozen;
@@ -4518,7 +4516,7 @@ int main(int argc, char** argv) {
                                    == starfox::simulation::GameFlowState::pregame_menu
                                && game.pregame_page()
                                    == starfox::simulation::PregamePage::options
-                               && game.pregame_selection() == 4U
+                               && game.pregame_selection() == 3U
                                && (controls.pressed
                                    & (starfox::input::a
                                       | starfox::input::select)) != 0U) {
@@ -4674,9 +4672,9 @@ int main(int argc, char** argv) {
             superfx_frame.resize(display_width, scene_height);
             // Surface samples parallel the stored 3D raster, so at a high
             // render scale this is the largest per-frame allocation. Only the
-            // three surface-driven effects read it; leave it empty otherwise.
+            // two surface-driven effects read it; leave it empty otherwise.
             const auto surface_effects = game.enhanced_graphics()
-                || game.smooth_polys() || game.rtx_lighting();
+                || game.rtx_lighting();
             superfx_surfaces.resize(
                 surface_effects ? display_width * render_scale : 0U,
                 surface_effects ? scene_height * render_scale : 0U);
@@ -4834,6 +4832,10 @@ int main(int argc, char** argv) {
                 && cartridge_layer_valid
                 && cartridge_layer_cache.width() == framebuffer.width()
                 && cartridge_layer_cache.height() == framebuffer.height()
+                && cartridge_layer_cache.draw_scale()
+                    == framebuffer.draw_scale()
+                && cartridge_layer_cache.pixels().size()
+                    == framebuffer.pixels().size()
                 && cartridge_layer_scene_revision == game.scene_revision()
                 && cartridge_layer_background_id == game.map().background()
                 && cartridge_layer_background_mode == ppu.background_mode
@@ -4921,6 +4923,12 @@ int main(int argc, char** argv) {
                     const auto structural_match = mode2_background_valid
                         && mode2_background_cache.width()
                             == framebuffer.width()
+                        && mode2_background_cache.height()
+                            == framebuffer.height()
+                        && mode2_background_cache.draw_scale()
+                            == framebuffer.draw_scale()
+                        && mode2_background_cache.pixels().size()
+                            == framebuffer.pixels().size()
                         && mode2_background_scene_revision
                             == game.scene_revision()
                         && mode2_background_id == game.map().background()
@@ -4974,6 +4982,8 @@ int main(int argc, char** argv) {
                             background_y, framebuffer,
                             starfox::render::TilePriorityPass::all,
                             viewport_origin, extend_cartridge_scene);
+                        mode2_background_cache.set_draw_scale(
+                            framebuffer.draw_scale());
                         mode2_background_cache.resize(
                             framebuffer.width(), framebuffer.height());
                         mode2_background_cache.pixels() = framebuffer.pixels();
@@ -5105,6 +5115,8 @@ int main(int argc, char** argv) {
             }
             if (cache_complete_cartridge_layer
                 && !reuse_complete_cartridge_layer) {
+                cartridge_layer_cache.set_draw_scale(
+                    framebuffer.draw_scale());
                 cartridge_layer_cache.resize(
                     framebuffer.width(), framebuffer.height());
                 cartridge_layer_cache.pixels() = framebuffer.pixels();
@@ -5493,7 +5505,7 @@ int main(int argc, char** argv) {
                 }
                 renderer.draw(found->second, pose, target, false,
                     &target == &superfx_frame
-                            && (game.enhanced_graphics() || game.smooth_polys()
+                            && (game.enhanced_graphics()
                                 || game.rtx_lighting())
                         ? &superfx_surfaces : nullptr);
             }
@@ -5582,8 +5594,8 @@ int main(int argc, char** argv) {
                                 depth_colours, 0U, pose);
                             renderer.draw(
                                 found->second, pose, superfx_frame, false,
-                                game.enhanced_graphics() || game.smooth_polys()
-                                        || game.rtx_lighting()
+                                game.enhanced_graphics()
+                                    || game.rtx_lighting()
                                     ? &superfx_surfaces : nullptr);
                         }
                     }
@@ -6115,25 +6127,22 @@ int main(int argc, char** argv) {
                             game.crosshair_colour());
                         draw_row("GOD MODE", god_value, 47,
                             game.pregame_selection() == 0U);
-                        draw_row("ON-SCREEN FPS", fps_value, 61,
+                        draw_row("ON-SCREEN FPS", fps_value, 63,
                             game.pregame_selection() == 1U);
-                        draw_row("CROSSHAIR COLOR", crosshair, 75,
+                        draw_row("CROSSHAIR COLOR", crosshair, 79,
                             game.pregame_selection() == 2U);
-                        draw_row("RENDER SCALE",
-                            render_scale_name(game.render_scale()), 89,
+                        draw_row("CUSTOMIZE SCREEN", "A  OPEN", 95,
                             game.pregame_selection() == 3U);
-                        draw_row("CUSTOMIZE SCREEN", "A  OPEN", 103,
-                            game.pregame_selection() == 4U);
                         const auto music_volume =
                             std::to_string(game.music_volume()) + "%";
                         const auto sfx_volume =
                             std::to_string(game.sfx_volume()) + "%";
-                        draw_row("MUSIC VOLUME", music_volume, 117,
+                        draw_row("MUSIC VOLUME", music_volume, 111,
+                            game.pregame_selection() == 4U);
+                        draw_row("SFX VOLUME", sfx_volume, 137,
                             game.pregame_selection() == 5U);
-                        draw_row("SFX VOLUME", sfx_volume, 143,
+                        draw_row("BACK", "", 163,
                             game.pregame_selection() == 6U);
-                        draw_row("BACK", "", 169,
-                            game.pregame_selection() == 7U);
                         const auto draw_volume_bar = [&framebuffer,
                                                          viewport_origin](
                                                          std::int32_t y,
@@ -6167,12 +6176,12 @@ int main(int argc, char** argv) {
                                 }
                             }
                         };
-                        draw_volume_bar(126, game.music_volume(),
+                        draw_volume_bar(120, game.music_volume(),
+                            game.pregame_selection() == 4U);
+                        draw_volume_bar(146, game.sfx_volume(),
                             game.pregame_selection() == 5U);
-                        draw_volume_bar(152, game.sfx_volume(),
-                            game.pregame_selection() == 6U);
-                        constexpr std::array<std::int32_t, 8> cursor_y{
-                            50, 64, 78, 92, 106, 120, 146, 172};
+                        constexpr std::array<std::int32_t, 7> cursor_y{
+                            50, 66, 82, 98, 114, 140, 166};
                         draw_cursor(cursor_y[game.pregame_selection()]);
                         draw_centred("A/LEFT/RIGHT  CHANGE", 190, 13U);
                         draw_centred("B  BACK", 203, 13U);
@@ -6256,8 +6265,8 @@ int main(int argc, char** argv) {
                         draw_compact_row("ENHANCED TEXTURES",
                             on_off(game.enhanced_graphics()), row_y[8],
                             game.pregame_selection() == 8U);
-                        draw_compact_row("UPSCALED POLYS",
-                            on_off(game.smooth_polys()), row_y[9],
+                        draw_compact_row("RENDER UPSCALE",
+                            render_scale_name(game.render_scale()), row_y[9],
                             game.pregame_selection() == 9U);
                         draw_compact_row("RTX LIGHTING",
                             on_off(game.rtx_lighting()), row_y[10],
@@ -6420,8 +6429,8 @@ int main(int argc, char** argv) {
             presentation_effects.planet = planet_presentation;
             presentation_effects.wipe = window_wipe;
             presentation_effects.model_surfaces =
-                game.enhanced_graphics() || game.smooth_polys()
-                        || game.rtx_lighting()
+                game.enhanced_graphics()
+                    || game.rtx_lighting()
                 ? &superfx_surfaces : nullptr;
             presentation_effects.model_surface_y =
                 scene_offset_y * static_cast<std::int32_t>(render_scale);

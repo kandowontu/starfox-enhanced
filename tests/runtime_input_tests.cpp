@@ -151,7 +151,7 @@ int main() {
             "new pre-game settings did not default to Original pace");
     const starfox::app::PregameSettings saved_pregame{
         1U, 90U, 3U, true, true,
-        3U, true, true, true, true, 1U, true, false, 5U, 1U, 70U, 30U, 4U};
+        3U, true, false, true, true, 1U, true, false, 5U, 1U, 70U, 30U, 4U};
     require(starfox::app::save_pregame_settings(
                 pregame_test_path, saved_pregame),
             "pre-game settings could not be saved");

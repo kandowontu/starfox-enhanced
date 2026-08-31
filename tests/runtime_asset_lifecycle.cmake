@@ -40,6 +40,7 @@ function(run_runtime result_var retail_path experience frames)
             "STARFOX_TEST_EXPERIENCE=${experience}"
             "STARFOX_TEST_FRAMES=${frames}"
             "STARFOX_TEST_UNPACED=1"
+            "STARFOX_TEST_RENDER_SCALE=1"
             "${copied_runtime}"
         WORKING_DIRECTORY "${WORK_DIR}"
         RESULT_VARIABLE result

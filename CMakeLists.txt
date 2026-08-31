@@ -684,7 +684,7 @@ if(STARFOX_BUILD_TESTS)
             )
             set_tests_properties(starfox_runtime_smoke PROPERTIES
                 ENVIRONMENT
-                    "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;STARFOX_TEST_FRAMES=6"
+                    "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;STARFOX_TEST_FRAMES=6;STARFOX_TEST_RENDER_SCALE=1"
                 TIMEOUT 10
             )
             if(STARFOX_RUNTIME_ASSETS_EMBEDDED)
@@ -698,7 +698,7 @@ if(STARFOX_BUILD_TESTS)
                     WORKING_DIRECTORY
                         "${CMAKE_CURRENT_BINARY_DIR}/embedded-runtime-smoke"
                     ENVIRONMENT
-                        "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;STARFOX_TEST_FRAMES=6"
+                        "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;STARFOX_TEST_FRAMES=6;STARFOX_TEST_RENDER_SCALE=1"
                     TIMEOUT 10
                 )
                 if(EXISTS "${STARFOX_EX_ROM_FILE}"
@@ -769,7 +769,7 @@ if(STARFOX_BUILD_TESTS)
                 WORKING_DIRECTORY
                     "${CMAKE_CURRENT_BINARY_DIR}/embedded-ex-runtime-smoke"
                 ENVIRONMENT
-                    "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;STARFOX_TEST_EXPERIENCE=EX;STARFOX_TEST_FRAMES=900;STARFOX_TEST_PRESSES=6:0x1000;STARFOX_TEST_UNPACED=1"
+                    "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;STARFOX_TEST_EXPERIENCE=EX;STARFOX_TEST_FRAMES=900;STARFOX_TEST_PRESSES=6:0x1000;STARFOX_TEST_UNPACED=1;STARFOX_TEST_RENDER_SCALE=1"
                 # The embedded EX boot renders 900 full frames. Sanitizer and
                 # busy Windows hosts can exceed 20 seconds without a hang.
                 TIMEOUT 45

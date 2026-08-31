@@ -427,11 +427,7 @@ void BackgroundRenderer::draw_bg2(
         }
         return decoded_tilemap[index];
     };
-    auto& target_pixels = target.pixels();
-
     for (std::uint32_t screen_y = 0; screen_y < target.height(); ++screen_y) {
-        const auto target_row = static_cast<std::size_t>(screen_y)
-            * target.width();
         const auto sample_y = mosaic_coordinate(
             static_cast<std::int32_t>(screen_y), ppu.mosaic, 0x02U);
         const auto row_scroll_x = ppu.bg2_horizontal_offsets_enabled
@@ -473,7 +469,8 @@ void BackgroundRenderer::draw_bg2(
                 if (ground_source_wrapped[column_index]) {
                     const auto ground = last_opaque_ground[column_index];
                     if (ground != 0U) {
-                        target_pixels[target_row + screen_x] = ground;
+                        target.set(static_cast<std::int32_t>(screen_x),
+                            static_cast<std::int32_t>(screen_y), ground);
                     }
                     continue;
                 }
@@ -499,7 +496,8 @@ void BackgroundRenderer::draw_bg2(
                 if (!last_opaque_ground.empty() && screen_y >= 144U) {
                     const auto ground = last_opaque_ground[screen_x - first_x];
                     if (ground != 0U) {
-                        target_pixels[target_row + screen_x] = ground;
+                        target.set(static_cast<std::int32_t>(screen_x),
+                            static_cast<std::int32_t>(screen_y), ground);
                     }
                 }
                 continue;
@@ -512,7 +510,8 @@ void BackgroundRenderer::draw_bg2(
                 && screen_y >= 144U) {
                 const auto ground = last_opaque_ground[screen_x - first_x];
                 if (ground != 0U) {
-                    target_pixels[target_row + screen_x] = ground;
+                    target.set(static_cast<std::int32_t>(screen_x),
+                        static_cast<std::int32_t>(screen_y), ground);
                 }
                 continue;
             }
@@ -526,7 +525,8 @@ void BackgroundRenderer::draw_bg2(
                 if (!last_opaque_ground.empty()) {
                     last_opaque_ground[screen_x - first_x] = indexed_colour;
                 }
-                target_pixels[target_row + screen_x] = indexed_colour;
+                target.set(static_cast<std::int32_t>(screen_x),
+                    static_cast<std::int32_t>(screen_y), indexed_colour);
             }
         }
     }
