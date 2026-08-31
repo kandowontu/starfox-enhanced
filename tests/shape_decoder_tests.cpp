@@ -278,10 +278,6 @@ int main() {
             "scaled polygon surface metadata diverged from its raster");
 
     auto stable_upscale_shape = shape;
-    stable_upscale_shape.bsp_root_address = 0U;
-    for (auto& face : stable_upscale_shape.faces) {
-        face.visibility_index = -1;
-    }
     starfox::render::RenderPose source_endpoint_pose;
     source_endpoint_pose.use_rotation_matrix = true;
     source_endpoint_pose.rotation_matrix = {
@@ -303,6 +299,39 @@ int main() {
     require(source_endpoint_frame.pixels()
                 == interpolated_endpoint_frame.pixels(),
             "Render Upscale snapped polygon edges on a source-frame boundary");
+
+    auto stable_visibility_shape = shape;
+    stable_visibility_shape.bsp_root_address = 0U;
+    auto& stable_visibility_vertices = stable_visibility_shape.frames.empty()
+        ? stable_visibility_shape.vertices
+        : stable_visibility_shape.frames.front().vertices;
+    const auto visibility_vertex = static_cast<std::uint8_t>(
+        stable_visibility_vertices.size());
+    stable_visibility_vertices.insert(stable_visibility_vertices.end(), {
+        {42, -63, -60}, {41, 64, 71}, {42, 5, 11},
+    });
+    stable_visibility_shape.visibilities = {{visibility_vertex,
+        static_cast<std::uint8_t>(visibility_vertex + 1U),
+        static_cast<std::uint8_t>(visibility_vertex + 2U)}};
+    stable_visibility_shape.faces.front().visibility_index = 0;
+    // These auxiliary visibility points straddle a rounding boundary while
+    // the actual triangle remains broad. Before the fix, upscale rasterization
+    // drew the face fractionally but the completed source frame culled it with
+    // a different, integer-projected winding.
+    source_endpoint_pose.rotation_matrix = {
+        32'767, -139, -996,
+        -4, 32'767, -604,
+        -464, -439, 32'767,
+    };
+    scaled_renderer.draw(stable_visibility_shape, source_endpoint_pose,
+        source_endpoint_frame, true);
+    interpolated_endpoint_pose = source_endpoint_pose;
+    interpolated_endpoint_pose.subpixel_projection = true;
+    scaled_renderer.draw(stable_visibility_shape, interpolated_endpoint_pose,
+        interpolated_endpoint_frame, true);
+    require(source_endpoint_frame.pixels()
+                == interpolated_endpoint_frame.pixels(),
+            "Render Upscale changed face visibility on a source-frame boundary");
 
     starfox::render::Framebuffer source_overlay{2U, 2U};
     starfox::render::Framebuffer scaled_composite{2U, 2U, 3U};

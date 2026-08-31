@@ -557,8 +557,7 @@ std::filesystem::path choose_runtime_input() {
 #if defined(__SWITCH__)
     throw std::runtime_error{
         "Starfox-Assets.BIN was not found. Create it on a PC with "
-        "starfox_asset_builder, then copy it to "
-        "sdmc:/switch/StarFoxEnhanced/Starfox-Assets.BIN"};
+        "starfox_asset_builder, then copy it beside StarFoxEnhanced.nro"};
 #else
     RuntimeInputDialogState state;
     constexpr std::array filters{
@@ -733,7 +732,12 @@ RuntimeAssetSet unpack_runtime_assets(
 std::filesystem::path writable_runtime_directory(
     const std::filesystem::path& executable_directory) {
 #if defined(__SWITCH__)
-    return std::filesystem::path{"sdmc:/switch/StarFoxEnhanced"};
+    // Homebrew folders may be renamed, and an NSP forwarder still launches
+    // the NRO from its installed SD path. Store and discover companions beside
+    // the file that was actually launched instead of assuming one folder name.
+    return executable_directory.empty()
+        ? std::filesystem::path{"sdmc:/switch/StarFoxEnhanced"}
+        : executable_directory;
 #elif defined(__APPLE__) || defined(__ANDROID__)
     if (char* preference_path =
             SDL_GetPrefPath("StarFoxEnhanced", "StarFoxEnhanced");
@@ -751,6 +755,13 @@ std::filesystem::path find_msu1_pack(
     auto candidates = std::vector<std::filesystem::path>{
         executable_directory
             / std::filesystem::path{starfox::audio::msu1_pack_filename}};
+#if defined(__SWITCH__)
+    candidates.emplace_back(std::filesystem::path{
+        "sdmc:/switch/StarFoxEnhanced"} / starfox::audio::msu1_pack_filename);
+    candidates.emplace_back(std::filesystem::path{
+        "sdmc:/switch/StarFoxEnhanced-switch"}
+        / starfox::audio::msu1_pack_filename);
+#endif
 #if defined(__APPLE__) && !defined(SDL_PLATFORM_IOS)
     // A macOS bundle keeps the executable in App.app/Contents/MacOS. Also
     // accept the documented companion beside the .app bundle itself.
@@ -830,6 +841,14 @@ RuntimeAssetSet load_or_compile_runtime_assets(
     const auto manifest = embedded_asset_manifest();
     auto companion_candidates =
         std::vector<std::filesystem::path>{companion_path};
+#if defined(__SWITCH__)
+    // Keep the documented path plus the first release archive's outer-folder
+    // name as fallbacks for loaders that omit the NRO path from argv[0].
+    companion_candidates.emplace_back(
+        "sdmc:/switch/StarFoxEnhanced/Starfox-Assets.BIN");
+    companion_candidates.emplace_back(
+        "sdmc:/switch/StarFoxEnhanced-switch/Starfox-Assets.BIN");
+#endif
     if (const auto* documents = SDL_GetUserFolder(SDL_FOLDER_DOCUMENTS);
         documents != nullptr && *documents != '\0') {
         companion_candidates.emplace_back(
@@ -2932,7 +2951,19 @@ CameraPoint world_to_camera(
 // argv[0] is not necessarily an absolute or directly resolvable path when a
 // Linux desktop launches the program through PATH or a shortcut.
 std::filesystem::path executable_path(const char* argv0) {
-#if defined(__linux__) && !defined(__ANDROID__)
+#if defined(__SWITCH__)
+    // libnx paths use a device prefix (sdmc:/). std::filesystem::absolute can
+    // reinterpret that as a relative host path, so preserve argv[0] verbatim.
+    if (argv0 != nullptr && *argv0 != '\0') {
+        const auto launched = std::filesystem::path{argv0};
+        if (launched.has_parent_path()) return launched;
+        std::error_code error;
+        const auto current = std::filesystem::current_path(error);
+        if (!error && !current.empty()) return current / launched;
+    }
+    return std::filesystem::path{
+        "sdmc:/switch/StarFoxEnhanced/StarFoxEnhanced.nro"};
+#elif defined(__linux__) && !defined(__ANDROID__)
     std::error_code error;
     auto resolved = std::filesystem::read_symlink("/proc/self/exe", error);
     if (!error && !resolved.empty()) return resolved;

@@ -5,8 +5,9 @@ The release archive contains the native homebrew application at:
 `switch/StarFoxEnhanced/StarFoxEnhanced.nro`
 
 Copy that folder to the `switch` directory on a homebrew-enabled Switch SD
-card. Before launch, create `Starfox-Assets.BIN` on a PC with the standalone
-asset builder and place it beside the NRO:
+card. You may rename the application folder. Before launch, create
+`Starfox-Assets.BIN` on a PC with the standalone asset builder and place it
+beside the NRO. For the packaged folder, that is:
 
 `sdmc:/switch/StarFoxEnhanced/Starfox-Assets.BIN`
 

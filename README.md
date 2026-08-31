@@ -283,12 +283,13 @@ retail ROM on the PC, transfer the resulting `Starfox-Assets.BIN`, and select
 that BIN from the mobile app. Mobile can still select the retail ROM directly;
 the prebuilt BIN path is an optional convenience.
 
-The Switch archive expects that same BIN at
-`sdmc:/switch/StarFoxEnhanced/Starfox-Assets.BIN`. It includes a local PC
-script for generating an optional NSP forwarder with NTON and keys dumped from
-the user's own console; console keys are never stored in this repository or in
-the public build workflow. See `platform/switch/README.md` for the exact layout
-and the forwarder warning.
+The Switch runtime finds that same BIN beside the launched NRO, even when its
+application folder has been renamed. The packaged default is
+`sdmc:/switch/StarFoxEnhanced/Starfox-Assets.BIN`. It includes a local PC script
+for generating an optional NSP forwarder with NTON and keys dumped from the
+user's own console; console keys are never stored in this repository or in the
+public build workflow. See `platform/switch/README.md` for the exact layout and
+the forwarder warning.
 
 Linux builds SDL from the pinned source archive. Install the distribution's
 SDL build dependencies first; the authoritative Ubuntu/Fedora package lists

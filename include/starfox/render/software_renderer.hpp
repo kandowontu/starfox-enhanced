@@ -90,9 +90,9 @@ struct RenderSettings {
     bool backface_culling{false};
     std::uint8_t background_colour{};
     std::uint8_t colour_index_base{};
-    // Supersampling factor for polygon projection and scan conversion.
-    // Source visibility and BSP ordering remain scale-independent while the
-    // stored raster retains fractional endpoints between source frames.
+    // Supersampling factor for polygon projection and scan conversion. The
+    // fractional geometry shared by rasterization, visibility and BSP order
+    // stays scale-independent and stable across source-frame boundaries.
     std::uint32_t render_scale{1U};
 };
 

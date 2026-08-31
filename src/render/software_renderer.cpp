@@ -1423,9 +1423,11 @@ void SoftwareRenderer::draw(
     // vertices. At a completed 20 Hz source frame the source-exact path
     // quantizes them again; that single-frame snap is hidden by the native
     // raster but becomes visible as flashing polygon edges when supersampled.
-    // Keep the source projection below for visibility and BSP decisions, but
-    // use a continuous fractional copy for high-resolution scan conversion.
-    const auto stable_upscaled_raster = settings_.render_scale > 1U
+    // Use one continuous fractional copy for high-resolution scan conversion,
+    // visibility and BSP ordering. Mixing its edges with the rounded source
+    // copy made whole faces alternate between present and absent on each
+    // completed 20 Hz frame.
+    const auto continuous_upscaled_geometry = settings_.render_scale > 1U
         && !pose.subpixel_projection;
     auto raster_pose = pose;
     if (settings_.render_scale > 1U) {
@@ -1445,6 +1447,7 @@ void SoftwareRenderer::draw(
     std::vector<Vec3> transformed_vertices;
     std::vector<ScreenPoint> projected;
     std::vector<Vec3> upscaled_vertices;
+    std::vector<ScreenPoint> upscaled_projected;
     const auto& vertices = shape.frames.empty()
         ? shape.vertices
         : shape.frames[pose.animation_frame % shape.frames.size()].vertices;
@@ -1469,21 +1472,32 @@ void SoftwareRenderer::draw(
     }
     transformed_vertices.reserve(vertices.size());
     projected.reserve(vertices.size());
-    if (stable_upscaled_raster) upscaled_vertices.reserve(vertices.size());
+    if (continuous_upscaled_geometry) {
+        upscaled_vertices.reserve(vertices.size());
+        upscaled_projected.reserve(vertices.size());
+    }
     for (const auto& point : vertices) {
         const auto transformed = rotate(point, pose, shape.header.shift);
         transformed_vertices.push_back(transformed);
-        if (stable_upscaled_raster) {
-            upscaled_vertices.push_back(
-                rotate(point, raster_pose, shape.header.shift));
+        if (continuous_upscaled_geometry) {
+            const auto upscaled = rotate(
+                point, raster_pose, shape.header.shift);
+            upscaled_vertices.push_back(upscaled);
+            upscaled_projected.push_back(project_point(
+                upscaled, settings_.focal_length,
+                raster_word_exact, raster_pose.vanish_x,
+                raster_pose.vanish_y, raster_pose.subpixel_projection));
         }
         projected.push_back(project_point(
             transformed, settings_.focal_length,
             word_exact, pose.vanish_x, pose.vanish_y,
             pose.subpixel_projection));
     }
-    const auto& raster_vertices = stable_upscaled_raster
+    const auto& raster_vertices = continuous_upscaled_geometry
         ? upscaled_vertices : transformed_vertices;
+    const auto& visibility_vertices = raster_vertices;
+    const auto& visibility_projected = continuous_upscaled_geometry
+        ? upscaled_projected : projected;
 
     // MOBJ.MC enters the face pass with r8 holding the end of M_PROJPNTS,
     // then COLOR WARP's mrand macro uses that register directly instead of
@@ -1624,10 +1638,12 @@ void SoftwareRenderer::draw(
             bool plane_visible = false;
             if (node->second->visibility_index < shape.visibilities.size()) {
                 const auto& visibility = shape.visibilities[node->second->visibility_index];
-                if (visibility.a < projected.size() && visibility.b < projected.size()
-                    && visibility.c < projected.size()) {
+                if (visibility.a < visibility_projected.size()
+                    && visibility.b < visibility_projected.size()
+                    && visibility.c < visibility_projected.size()) {
                     plane_visible = source_visibility(
-                        visibility, projected, transformed_vertices);
+                        visibility, visibility_projected,
+                        visibility_vertices);
                 }
             }
 
@@ -1650,12 +1666,14 @@ void SoftwareRenderer::draw(
             && static_cast<std::size_t>(face.visibility_index) < shape.visibilities.size()) {
             const auto& visibility = shape.visibilities[
                 static_cast<std::size_t>(face.visibility_index)];
-            if (visibility.a >= projected.size() || visibility.b >= projected.size()
-                || visibility.c >= projected.size()) {
+            if (visibility.a >= visibility_projected.size()
+                || visibility.b >= visibility_projected.size()
+                || visibility.c >= visibility_projected.size()) {
                 continue;
             }
             if (!source_visibility(
-                    visibility, projected, transformed_vertices)) {
+                    visibility, visibility_projected,
+                    visibility_vertices)) {
                 continue;
             }
         }
@@ -1666,16 +1684,16 @@ void SoftwareRenderer::draw(
         const auto face_offset = explosion_offset(face, pose);
         if (face.sprite) {
             if (material.texture != nullptr && face.vertex_indices.size() == 1U
-                && face.vertex_indices[0] < projected.size()
-                && projected[face.vertex_indices[0]].visible) {
-                auto centre = transformed_vertices[face.vertex_indices[0]];
+                && face.vertex_indices[0] < visibility_projected.size()
+                && visibility_projected[face.vertex_indices[0]].visible) {
+                auto centre = raster_vertices[face.vertex_indices[0]];
                 centre.x += face_offset.x;
                 centre.y += face_offset.y;
                 centre.z += face_offset.z;
                 draw_textured_sprite(target, project_point(centre,
-                    settings_.focal_length, word_exact,
-                    pose.vanish_x, pose.vanish_y,
-                    pose.subpixel_projection),
+                    settings_.focal_length, raster_word_exact,
+                    raster_pose.vanish_x, raster_pose.vanish_y,
+                    raster_pose.subpixel_projection),
                     *material.texture, settings_.colour_index_base);
             }
             continue;
