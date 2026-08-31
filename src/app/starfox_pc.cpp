@@ -2729,6 +2729,9 @@ int main(int argc, char** argv) {
                 ? starfox::simulation::Experience::starfox_ex
                 : starfox::simulation::Experience::original;
         }
+        const auto persist_pregame_changes =
+            std::getenv("STARFOX_TEST_PRESSES") == nullptr
+            && std::getenv("STARFOX_TEST_DISPLAY_MODE") == nullptr;
         bool restart_runtime = true;
         bool first_runtime = true;
         std::optional<starfox::render::PresentationHistory>
@@ -2744,8 +2747,18 @@ int main(int argc, char** argv) {
             std::exchange(launch_hud_editor_preview, false);
         if (active_experience == starfox::simulation::Experience::starfox_ex
             && !starfox_ex_assets) {
-            throw std::runtime_error{
-                "Star Fox EX runtime assets are not installed in this build"};
+            // The selector persists its choice before requesting this restart,
+            // so failing here would strand every later launch outside the
+            // pre-game screen. Correct the stored choice and stay on Original.
+            std::cerr << "starfox_pc: Star Fox EX runtime assets are not "
+                         "installed in this build; using ORIGINAL\n";
+            active_experience = starfox::simulation::Experience::original;
+            saved_pregame.experience =
+                static_cast<std::uint8_t>(active_experience);
+            if (persist_pregame_changes) {
+                static_cast<void>(starfox::app::save_pregame_settings(
+                    saved_pregame_path, saved_pregame));
+            }
         }
         const auto& assets = active_experience
                 == starfox::simulation::Experience::starfox_ex
@@ -2930,9 +2943,6 @@ int main(int argc, char** argv) {
                 }
             }
         }
-        const auto persist_pregame_changes =
-            std::getenv("STARFOX_TEST_PRESSES") == nullptr
-            && std::getenv("STARFOX_TEST_DISPLAY_MODE") == nullptr;
         const auto save_pregame_settings = [&] {
             saved_pregame = capture_pregame_settings();
             if (persist_pregame_changes) {
