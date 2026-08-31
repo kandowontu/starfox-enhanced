@@ -118,6 +118,14 @@ std::filesystem::path documents_settings_path(std::string_view filename) {
         return std::filesystem::path{profile}
             / "Documents" / "Star Fox Enhanced" / filename;
     }
+#else
+    // Minimal/headless Linux installations often have no XDG user-dirs
+    // database, but the documented settings location remains Documents.
+    if (const auto* home = std::getenv("HOME");
+        home != nullptr && *home != '\0') {
+        return std::filesystem::path{home}
+            / "Documents" / "Star Fox Enhanced" / filename;
+    }
 #endif
     // Android does not currently expose the standard user-folder API. The
     // SDL preference directory is writable on every supported desktop/mobile

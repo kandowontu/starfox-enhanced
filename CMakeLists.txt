@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.24)
+cmake_minimum_required(VERSION 3.22)
 
 project(starfox_enhanced VERSION 0.0.1 LANGUAGES CXX)
 
@@ -234,7 +234,7 @@ if(STARFOX_BUILD_RUNTIME)
             find_package(Git REQUIRED)
             set(STARFOX_SDL3_PATCH_COMMAND
                 PATCH_COMMAND "${GIT_EXECUTABLE}" apply
-                    --whitespace=nowarn -p2
+                    --whitespace=nowarn -p3
                     "${STARFOX_SDL3_SWITCH_PATCH}")
         else()
             set(STARFOX_SDL3_PATCH_COMMAND "")
