@@ -15,8 +15,8 @@ permissions:
   contents: write
 
 jobs:
-  windows-asset-builder:
-    name: Windows x64 standalone asset builder
+  windows-x64:
+    name: Windows x64 runtime and standalone asset builder
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,20 +27,28 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release `
             -DSTARFOX_BUILD_TESTS=OFF `
             -DSTARFOX_PACKAGE_MSU1_MUSIC=OFF
-          cmake --build build/asset-builder --target starfox_asset_builder
-      - name: Package builder
+          cmake --build build/asset-builder --target starfox_pc starfox_asset_builder
+      - name: Package runtime and builder
         shell: pwsh
         run: |
-          $package = 'StarFoxAssetBuilder-0.0.1-alpha-windows-x64'
-          New-Item -ItemType Directory -Force $package | Out-Null
-          Copy-Item build/asset-builder/starfox_asset_builder.exe $package/
-          Copy-Item platform/mobile/ASSET_BUILDER.md $package/README.md
-          Copy-Item THIRD_PARTY_NOTICES.md $package/
-          Compress-Archive -Path "$package/*" -DestinationPath "$package.zip"
+          $runtime = 'StarFoxEnhanced-0.0.2-windows-x64'
+          cmake --install build/asset-builder --prefix $runtime
+          Compress-Archive -Path "$runtime/*" -DestinationPath "$runtime.zip"
+          $builder = 'StarFoxAssetBuilder-0.0.2-windows-x64'
+          New-Item -ItemType Directory -Force $builder | Out-Null
+          Copy-Item build/asset-builder/starfox_asset_builder.exe $builder/
+          Copy-Item platform/mobile/ASSET_BUILDER.md $builder/README.md
+          Copy-Item THIRD_PARTY_NOTICES.md $builder/
+          Compress-Archive -Path "$builder/*" -DestinationPath "$builder.zip"
       - uses: actions/upload-artifact@v4
         with:
-          name: StarFoxAssetBuilder-0.0.1-alpha-windows-x64
-          path: StarFoxAssetBuilder-0.0.1-alpha-windows-x64.zip
+          name: StarFoxEnhanced-0.0.2-windows-x64
+          path: StarFoxEnhanced-0.0.2-windows-x64.zip
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StarFoxAssetBuilder-0.0.2-windows-x64
+          path: StarFoxAssetBuilder-0.0.2-windows-x64.zip
           if-no-files-found: error
       - name: Add to GitHub release
         if: github.event_name == 'push' || inputs.release_tag != ''
@@ -51,7 +59,63 @@ jobs:
         run: |
           tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
           gh release upload "${tag}" \
-            StarFoxAssetBuilder-0.0.1-alpha-windows-x64.zip --clobber
+            StarFoxEnhanced-0.0.2-windows-x64.zip \
+            StarFoxAssetBuilder-0.0.2-windows-x64.zip --clobber
+
+  windows-x86:
+    name: Windows x86 runtime
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned LLVM-MinGW toolchain
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'llvm-mingw.zip'
+          $directory = Join-Path $env:RUNNER_TEMP 'llvm-mingw'
+          Invoke-WebRequest `
+            'https://github.com/mstorsjo/llvm-mingw/releases/download/20260826/llvm-mingw-20260826-ucrt-x86_64.zip' `
+            -OutFile $archive
+          Expand-Archive -LiteralPath $archive -DestinationPath $directory
+          $root = (Get-ChildItem -LiteralPath $directory -Directory |
+            Select-Object -First 1).FullName
+          "LLVM_MINGW_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Build and install
+        shell: pwsh
+        run: |
+          ./tools/build_windows_x86.ps1 `
+            -LlvmMingwRoot $env:LLVM_MINGW_ROOT `
+            -BuildDirectory build/windows-x86-release `
+            -InstallDirectory dist/StarFoxEnhanced-windows-x86
+      - name: Verify and package runtime
+        shell: pwsh
+        run: |
+          $binary = 'dist/StarFoxEnhanced-windows-x86/starfox_pc.exe'
+          if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {
+            throw 'x86 runtime was not installed'
+          }
+          $readobj = Join-Path $env:LLVM_MINGW_ROOT 'bin/llvm-readobj.exe'
+          $headers = & $readobj --file-headers $binary | Out-String
+          if ($headers -notmatch 'IMAGE_FILE_MACHINE_I386') {
+            throw 'packaged runtime is not a 32-bit x86 PE image'
+          }
+          $package = 'StarFoxEnhanced-0.0.2-windows-x86'
+          Move-Item dist/StarFoxEnhanced-windows-x86 $package
+          Compress-Archive -Path "$package/*" -DestinationPath "$package.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StarFoxEnhanced-0.0.2-windows-x86
+          path: StarFoxEnhanced-0.0.2-windows-x86.zip
+          if-no-files-found: error
+      - name: Add to GitHub release
+        if: github.event_name == 'push' || inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
+          gh release upload "${tag}" \
+            StarFoxEnhanced-0.0.2-windows-x86.zip --clobber
 
   linux-x64:
     name: Linux x64 native runtime
@@ -84,12 +148,12 @@ jobs:
           test -x dist/StarFoxEnhanced-linux-x64/starfox_asset_builder
           file "${binary}" | grep -q 'ELF 64-bit.*x86-64'
           ! ldd "${binary}" | grep -q 'not found'
-          cmake -E tar cf StarFoxEnhanced-0.0.1-alpha-linux-x64.zip \
+          cmake -E tar cf StarFoxEnhanced-0.0.2-linux-x64.zip \
             --format=zip dist/StarFoxEnhanced-linux-x64
       - uses: actions/upload-artifact@v4
         with:
-          name: StarFoxEnhanced-0.0.1-alpha-linux-x64
-          path: StarFoxEnhanced-0.0.1-alpha-linux-x64.zip
+          name: StarFoxEnhanced-0.0.2-linux-x64
+          path: StarFoxEnhanced-0.0.2-linux-x64.zip
           if-no-files-found: error
       - name: Add to GitHub release
         if: github.event_name == 'push' || inputs.release_tag != ''
@@ -100,7 +164,7 @@ jobs:
         run: |
           tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
           gh release upload "${tag}" \
-            StarFoxEnhanced-0.0.1-alpha-linux-x64.zip --clobber
+            StarFoxEnhanced-0.0.2-linux-x64.zip --clobber
 
   macos-universal:
     name: macOS universal (unsigned)
@@ -123,7 +187,7 @@ jobs:
           archs="$(lipo -archs "${binary}")"
           [[ " ${archs} " == *" arm64 "* ]]
           [[ " ${archs} " == *" x86_64 "* ]]
-          package="StarFoxEnhanced-0.0.1-alpha-macos-universal"
+          package="StarFoxEnhanced-0.0.2-macos-universal"
           mkdir -p "${package}"
           cp -R "${app}" "${package}/"
           cp build/macos-universal/Release/starfox_asset_builder "${package}/"
@@ -132,8 +196,8 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent "${package}" "${package}.zip"
       - uses: actions/upload-artifact@v4
         with:
-          name: StarFoxEnhanced-0.0.1-alpha-macos-universal
-          path: StarFoxEnhanced-0.0.1-alpha-macos-universal.zip
+          name: StarFoxEnhanced-0.0.2-macos-universal
+          path: StarFoxEnhanced-0.0.2-macos-universal.zip
           if-no-files-found: error
       - name: Add to GitHub release
         if: github.event_name == 'push' || inputs.release_tag != ''
@@ -144,7 +208,7 @@ jobs:
         run: |
           tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
           gh release upload "${tag}" \
-            StarFoxEnhanced-0.0.1-alpha-macos-universal.zip --clobber
+            StarFoxEnhanced-0.0.2-macos-universal.zip --clobber
 
   ios-device:
     name: iOS arm64 device (unsigned)
@@ -165,15 +229,15 @@ jobs:
           test -f "${binary}"
           plutil -lint "${app}/Info.plist"
           [[ " $(lipo -archs "${binary}") " == *" arm64 "* ]]
-          package="StarFoxEnhanced-0.0.1-alpha-ios-arm64-unsigned"
+          package="StarFoxEnhanced-0.0.2-ios-arm64-unsigned"
           mkdir -p "${package}/Payload"
           cp -R "${app}" "${package}/Payload/"
           cp platform/apple/IOS_INSTALL.md "${package}/README.md"
           ditto -c -k --sequesterRsrc --keepParent "${package}" "${package}.zip"
       - uses: actions/upload-artifact@v4
         with:
-          name: StarFoxEnhanced-0.0.1-alpha-ios-arm64-unsigned
-          path: StarFoxEnhanced-0.0.1-alpha-ios-arm64-unsigned.zip
+          name: StarFoxEnhanced-0.0.2-ios-arm64-unsigned
+          path: StarFoxEnhanced-0.0.2-ios-arm64-unsigned.zip
           if-no-files-found: error
       - name: Add to GitHub release
         if: github.event_name == 'push' || inputs.release_tag != ''
@@ -184,7 +248,7 @@ jobs:
         run: |
           tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
           gh release upload "${tag}" \
-            StarFoxEnhanced-0.0.1-alpha-ios-arm64-unsigned.zip --clobber
+            StarFoxEnhanced-0.0.2-ios-arm64-unsigned.zip --clobber
 
   android-arm64:
     name: Android arm64 development APK
@@ -215,10 +279,11 @@ jobs:
           "${ANDROID_HOME}/build-tools/35.0.0/aapt" dump badging "${apk}"
           unzip -l "${apk}" | grep -q 'lib/arm64-v8a/libmain.so'
           unzip -l "${apk}" | grep -q 'lib/arm64-v8a/libSDL3.so'
+          cp "${apk}" StarFoxEnhanced-0.0.2-android-arm64.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: StarFoxEnhanced-0.0.1-alpha-android-arm64
-          path: dist/StarFoxEnhanced-android-arm64.apk
+          name: StarFoxEnhanced-0.0.2-android-arm64
+          path: StarFoxEnhanced-0.0.2-android-arm64.apk
           if-no-files-found: error
       - name: Add to GitHub release
         if: github.event_name == 'push' || inputs.release_tag != ''
@@ -229,7 +294,7 @@ jobs:
         run: |
           tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
           gh release upload "${tag}" \
-            dist/StarFoxEnhanced-android-arm64.apk --clobber
+            StarFoxEnhanced-0.0.2-android-arm64.apk --clobber
 
   switch-homebrew:
     name: Nintendo Switch homebrew NRO
@@ -250,16 +315,16 @@ jobs:
           test -s "${nro}"
           test -f dist/StarFoxEnhanced-switch/package_switch_nsp.ps1
           cmake -E tar cf \
-            StarFoxEnhanced-0.0.1-alpha-switch-homebrew.zip \
+            StarFoxEnhanced-0.0.2-switch-homebrew.zip \
             --format=zip dist/StarFoxEnhanced-switch
       - uses: actions/upload-artifact@v4
         with:
-          name: StarFoxEnhanced-0.0.1-alpha-switch-homebrew
-          path: StarFoxEnhanced-0.0.1-alpha-switch-homebrew.zip
+          name: StarFoxEnhanced-0.0.2-switch-homebrew
+          path: StarFoxEnhanced-0.0.2-switch-homebrew.zip
           if-no-files-found: error
       - name: Add to GitHub release
         if: github.event_name == 'push' || inputs.release_tag != ''
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.release_tag || github.ref_name }}
-          files: StarFoxEnhanced-0.0.1-alpha-switch-homebrew.zip
+          files: StarFoxEnhanced-0.0.2-switch-homebrew.zip

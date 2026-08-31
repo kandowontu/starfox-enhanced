@@ -57,17 +57,20 @@ std::string text_resource(int identifier) {
 }
 
 std::uint32_t asset_manifest() {
-    std::vector<std::uint8_t> bytes;
-    for (const auto identifier : {
-             101, 102, 108, 109, 120, 121, 122, 123, 124, 125, 126}) {
-        const auto payload = resource(identifier);
-        const auto size = static_cast<std::uint32_t>(payload.size());
-        for (std::uint32_t shift = 0; shift < 32U; shift += 8U) {
-            bytes.push_back(static_cast<std::uint8_t>(size >> shift));
-        }
-        bytes.insert(bytes.end(), payload.begin(), payload.end());
-    }
-    return starfox::assets::crc32(bytes);
+    const std::array resources{
+        starfox::assets::RuntimeManifestResource{resource(101)},
+        starfox::assets::RuntimeManifestResource{resource(102), true},
+        starfox::assets::RuntimeManifestResource{resource(108)},
+        starfox::assets::RuntimeManifestResource{resource(109), true},
+        starfox::assets::RuntimeManifestResource{resource(120)},
+        starfox::assets::RuntimeManifestResource{resource(121)},
+        starfox::assets::RuntimeManifestResource{resource(122)},
+        starfox::assets::RuntimeManifestResource{resource(123)},
+        starfox::assets::RuntimeManifestResource{resource(124)},
+        starfox::assets::RuntimeManifestResource{resource(125)},
+        starfox::assets::RuntimeManifestResource{resource(126)},
+    };
+    return starfox::assets::runtime_asset_manifest(resources);
 }
 
 std::pair<std::string_view, std::vector<std::uint8_t>> canonicalize_retail(

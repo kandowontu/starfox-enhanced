@@ -665,18 +665,22 @@ find_required_retail(const std::filesystem::path& executable_directory) {
 }
 
 std::uint32_t embedded_asset_manifest() {
-    std::vector<std::uint8_t> manifest_bytes;
-    for (const auto identifier : {
-             101, 102, 108, 109, 120, 121, 122, 123, 124, 125, 126}) {
-        const auto resource = embedded_resource(identifier);
-        const auto size = static_cast<std::uint32_t>(resource.size());
-        for (std::uint32_t shift = 0; shift < 32U; shift += 8U) {
-            manifest_bytes.push_back(static_cast<std::uint8_t>(size >> shift));
-        }
-        manifest_bytes.insert(
-            manifest_bytes.end(), resource.begin(), resource.end());
-    }
-    return starfox::assets::crc32(manifest_bytes);
+    const std::array resources{
+        starfox::assets::RuntimeManifestResource{embedded_resource(101)},
+        starfox::assets::RuntimeManifestResource{
+            embedded_resource(102), true},
+        starfox::assets::RuntimeManifestResource{embedded_resource(108)},
+        starfox::assets::RuntimeManifestResource{
+            embedded_resource(109), true},
+        starfox::assets::RuntimeManifestResource{embedded_resource(120)},
+        starfox::assets::RuntimeManifestResource{embedded_resource(121)},
+        starfox::assets::RuntimeManifestResource{embedded_resource(122)},
+        starfox::assets::RuntimeManifestResource{embedded_resource(123)},
+        starfox::assets::RuntimeManifestResource{embedded_resource(124)},
+        starfox::assets::RuntimeManifestResource{embedded_resource(125)},
+        starfox::assets::RuntimeManifestResource{embedded_resource(126)},
+    };
+    return starfox::assets::runtime_asset_manifest(resources);
 }
 
 std::string embedded_text_resource(int identifier) {

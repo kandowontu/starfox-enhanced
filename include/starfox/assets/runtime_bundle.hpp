@@ -14,6 +14,17 @@ struct RuntimeBundlePayload {
     std::string starfox_ex_symbols;
 };
 
+struct RuntimeManifestResource {
+    std::span<const std::uint8_t> bytes;
+    bool normalize_line_endings = false;
+};
+
+// Produces a platform-independent fingerprint for the embedded patches and
+// symbol tables used to build Starfox-Assets.BIN. Text resources are
+// normalized so Windows CRLF and Unix LF checkouts remain compatible.
+[[nodiscard]] std::uint32_t runtime_asset_manifest(
+    std::span<const RuntimeManifestResource> resources);
+
 // Starfox-Assets.BIN is generated locally from the user's retail v1.2 ROM.
 // The manifest binds it to the precise embedded patches/symbol tables in the
 // executable, so stale companions cannot silently mix incompatible code/data.

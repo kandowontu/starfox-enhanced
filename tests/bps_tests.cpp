@@ -3,6 +3,7 @@
 #include "starfox/assets/runtime_bundle.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -127,6 +128,30 @@ int main(int argc, char** argv) {
         }
         require(rejected_corrupt_bundle,
             "corrupt runtime asset bundle was not rejected");
+
+        const std::vector<std::uint8_t> binary_resource{0U, '\r', '\n', 1U};
+        const std::string lf_symbols{"ONE\nTWO\nTHREE\n"};
+        const std::string crlf_symbols{"ONE\r\nTWO\r\nTHREE\r\n"};
+        const auto symbol_bytes = [](const std::string& text) {
+            return std::span<const std::uint8_t>{
+                reinterpret_cast<const std::uint8_t*>(text.data()),
+                text.size()};
+        };
+        const std::array lf_manifest_resources{
+            starfox::assets::RuntimeManifestResource{binary_resource},
+            starfox::assets::RuntimeManifestResource{
+                symbol_bytes(lf_symbols), true},
+        };
+        const std::array crlf_manifest_resources{
+            starfox::assets::RuntimeManifestResource{binary_resource},
+            starfox::assets::RuntimeManifestResource{
+                symbol_bytes(crlf_symbols), true},
+        };
+        require(starfox::assets::runtime_asset_manifest(
+                    lf_manifest_resources)
+                == starfox::assets::runtime_asset_manifest(
+                    crlf_manifest_resources),
+            "runtime asset manifest changed across LF and CRLF checkouts");
 
         if (argc == 7 && std::string_view{argv[1]} == "--verify-bundle") {
             const auto encoded = load_bytes(argv[2]);

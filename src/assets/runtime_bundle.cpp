@@ -56,6 +56,43 @@ std::span<const std::uint8_t> string_bytes(const std::string& text) {
 
 } // namespace
 
+std::uint32_t runtime_asset_manifest(
+    std::span<const RuntimeManifestResource> resources) {
+    std::vector<std::uint8_t> bytes;
+    for (const auto& resource : resources) {
+        auto normalized_size = resource.bytes.size();
+        if (resource.normalize_line_endings) {
+            normalized_size = 0U;
+            for (std::size_t index = 0; index < resource.bytes.size();
+                 ++index) {
+                ++normalized_size;
+                if (resource.bytes[index] == '\r'
+                    && index + 1U < resource.bytes.size()
+                    && resource.bytes[index + 1U] == '\n') {
+                    ++index;
+                }
+            }
+        }
+        append_u32(bytes, checked_size(normalized_size));
+        if (!resource.normalize_line_endings) {
+            append_bytes(bytes, resource.bytes);
+            continue;
+        }
+        for (std::size_t index = 0; index < resource.bytes.size(); ++index) {
+            auto byte = resource.bytes[index];
+            if (byte == '\r') {
+                byte = '\n';
+                if (index + 1U < resource.bytes.size()
+                    && resource.bytes[index + 1U] == '\n') {
+                    ++index;
+                }
+            }
+            bytes.push_back(byte);
+        }
+    }
+    return crc32(bytes);
+}
+
 std::vector<std::uint8_t> encode_runtime_bundle(
     const RuntimeBundlePayload& payload,
     std::uint32_t manifest) {

@@ -22,13 +22,11 @@ $configureArguments = @(
     "-DSTARFOX_BUILD_TESTS=OFF",
     "-DSTARFOX_BUILD_RUNTIME=ON",
     "-DSTARFOX_EMBED_RUNTIME_ASSETS=ON",
-    "-DSTARFOX_PACKAGE_MSU1_MUSIC=OFF",
-    "-DSTARFOX_EX_ROM_FILE=$sourceRoot/tmp/runtime-inputs/starfox-ex/SFES.SFC",
-    "-DSTARFOX_EX_SYMBOLS_FILE=$sourceRoot/tmp/runtime-inputs/starfox-ex/SYMBOLS.TXT"
+    "-DSTARFOX_PACKAGE_MSU1_MUSIC=OFF"
 )
 & cmake @configureArguments
 if ($LASTEXITCODE -ne 0) { throw "x86 CMake configure failed" }
-& cmake --build $buildPath --target starfox_pc
+& cmake --build $buildPath --target starfox_pc starfox_asset_builder
 if ($LASTEXITCODE -ne 0) { throw "x86 build failed" }
 & cmake --install $buildPath --prefix $installPath
 if ($LASTEXITCODE -ne 0) { throw "x86 install failed" }
