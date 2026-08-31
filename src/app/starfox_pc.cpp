@@ -2620,13 +2620,23 @@ struct ExMouseInputLatch {
 
 class TouchControls {
 public:
-    TouchControls() noexcept {
-#if defined(__ANDROID__) || defined(__IPHONEOS__) || defined(__SWITCH__)
-        visible_ = true;
+    static constexpr bool enabled =
+#if defined(__ANDROID__) || defined(SDL_PLATFORM_IOS) \
+    || defined(__IPHONEOS__)
+        true;
+#else
+        false;
 #endif
-    }
+
+    TouchControls() noexcept : visible_{enabled} {}
 
     void update(SDL_FingerID finger, float x, float y) {
+        if constexpr (!enabled) {
+            static_cast<void>(finger);
+            static_cast<void>(x);
+            static_cast<void>(y);
+            return;
+        }
         visible_ = true;
         fingers_[finger] = hit_test(x, y);
     }
