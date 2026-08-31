@@ -48,6 +48,10 @@ struct RenderPose {
     std::uint8_t explosion_progress{};
     std::array<std::int16_t, 9> rotation_matrix{};
     bool use_rotation_matrix{};
+    // Generated presentation frames may retain fractional transformed
+    // coordinates. Completed source frames leave this disabled and continue
+    // through the bit-exact Super FX word path.
+    bool subpixel_projection{};
     std::array<std::int16_t, 3> depth_thresholds{2'560, 3'328, 3'840};
     std::array<std::array<std::uint8_t, 32>, 4> depth_colour_tables{};
     bool has_depth_colour_tables{};

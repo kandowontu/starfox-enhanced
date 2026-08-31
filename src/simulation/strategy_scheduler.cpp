@@ -4,6 +4,7 @@
 #include <sstream>
 #include <string>
 #include <algorithm>
+#include <iostream>
 
 namespace starfox::simulation {
 namespace {
@@ -31,14 +32,23 @@ std::uint32_t ram_symbol(const assets::SymbolMap& symbols, const std::string& na
 NativeStrategyScheduler::NativeStrategyScheduler(
     const assets::SymbolMap& symbols,
     ObjectPool& objects,
-    MapVm& native_state)
+    MapVm& native_state,
+    std::size_t object_instruction_limit)
     : objects_(&objects),
       native_state_(&native_state),
       do_strategy_(rom_symbol(symbols, "DO_STRAT_L")),
       initialize_strategies_(rom_symbol(symbols, "INIT_STRATS_L")),
       remove_dead_(rom_symbol(symbols, "REMOVEDEADAL_L")),
+      path_strategy_begin_(rom_symbol(symbols, "PATHDHA_ISTRAT")),
+      path_data_begin_(rom_symbol(symbols, "PATHS")),
       alien_dead_(ram_symbol(symbols, "ALDEAD")),
-      game_frame_(ram_symbol(symbols, "GAMEFRAME")) {}
+      game_frame_(ram_symbol(symbols, "GAMEFRAME")),
+      object_instruction_limit_(object_instruction_limit) {
+    if (object_instruction_limit_ == 0U) {
+        throw std::invalid_argument{
+            "native object instruction limit cannot be zero"};
+    }
+}
 
 std::size_t NativeStrategyScheduler::begin_tick() {
     native_state_->write_native_word(
@@ -52,7 +62,9 @@ std::size_t NativeStrategyScheduler::begin_tick() {
 std::size_t NativeStrategyScheduler::tick_object(ObjectHandle object) {
     native_state_->write_native_byte(alien_dead_, 0);
     try {
-        return native_state_->call_native_object_routine(do_strategy_, object);
+        return native_state_->call_native_object_routine(
+            do_strategy_, object, 0x7eU, 0x24U,
+            object_instruction_limit_);
     } catch (const std::exception& error) {
         std::ostringstream message;
         const auto& state = objects_->at(object);
@@ -79,6 +91,32 @@ std::size_t NativeStrategyScheduler::tick_object(ObjectHandle object) {
         }
         message
                 << ": " << error.what();
+
+        // A damaged path trigger stack can return through an invalid bank.
+        // This is isolated to one ordinary path-controlled object; ending the
+        // entire native runtime is both harsher than the cartridge and makes
+        // a long playthrough unrecoverable. Run the source removal routine so
+        // its trigger heap and linked-list allocation are released normally.
+        const auto* execution_error =
+            dynamic_cast<const Wdc65816ExecutionError*>(&error);
+        const auto path_controlled = state.strategy_address
+                >= path_strategy_begin_
+            && state.strategy_address < path_data_begin_;
+        if (execution_error != nullptr && path_controlled) {
+            std::cerr << "warning: recovered failed path object: "
+                      << message.str() << '\n';
+            try {
+                return native_state_->call_native_object_routine(
+                    remove_dead_, object, 0x7eU, 0x24U,
+                    1'000'000U);
+            } catch (const std::exception& cleanup_error) {
+                std::cerr << "warning: native path cleanup failed; "
+                          << "dropping host object " << object << ": "
+                          << cleanup_error.what() << '\n';
+                static_cast<void>(objects_->remove(object));
+                return 0U;
+            }
+        }
         throw std::runtime_error{message.str()};
     }
 }

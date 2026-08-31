@@ -117,7 +117,7 @@ bool Msu1Audio::load_selected_track() {
 std::span<const std::int16_t> Msu1Audio::render(
     std::size_t output_frames, std::uint32_t output_sample_rate) {
     output_.assign(output_frames * 2U, 0);
-    if (!enabled_ || !playing_ || decoded_.empty()
+    if (!enabled_ || paused_ || !playing_ || decoded_.empty()
         || output_sample_rate == 0U) return output_;
     const auto step = static_cast<double>(source_sample_rate_)
         / static_cast<double>(output_sample_rate);

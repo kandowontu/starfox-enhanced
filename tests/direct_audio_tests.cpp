@@ -228,4 +228,22 @@ int main(int argc, char** argv) {
         "direct-level laser did not produce an isolated SPC effect stem");
     require(music_is_isolated,
         "sound effect command modified or consumed a music-channel sample");
+
+    // PAUSESND is carried over the nominal SFX port, but $01/$02 are global
+    // controls in Nintendo's driver. The two host SPC stems must therefore
+    // diverge when only one receives PAUSE ON; ordinary SFX above must not.
+    constexpr std::array pause_on{
+        starfox::simulation::ApuPortWrite{3U, 0x02U, 0U}};
+    auto pause_changed_music = false;
+    static_cast<void>(effect_audio.render_logic_tick(pause_on));
+    static_cast<void>(control_audio.render_logic_tick({}));
+    for (std::size_t tick = 0U; tick < 8U; ++tick) {
+        static_cast<void>(effect_audio.render_logic_tick({}));
+        static_cast<void>(control_audio.render_logic_tick({}));
+        pause_changed_music = pause_changed_music || pcm_difference(
+            effect_audio.last_music_samples(),
+            control_audio.last_music_samples()) != 0U;
+    }
+    require(pause_changed_music,
+        "global PAUSE ON command did not reach the isolated music driver");
 }

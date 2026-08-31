@@ -12,6 +12,15 @@ namespace starfox::timing {
 inline constexpr std::uint32_t kSimulationHz = 20;
 inline constexpr std::uint32_t kPresentationHz = 60;
 
+// Frame debugging must never collapse a keypress into a low-rate 20/30 FPS
+// output interval (three/two cartridge rasters). Above the native raster rate,
+// retain the selected interpolation cadence so every generated output frame
+// remains individually inspectable.
+[[nodiscard]] constexpr std::uint32_t frame_debug_presentation_hz(
+    std::uint32_t selected_hz) noexcept {
+    return selected_hz < kPresentationHz ? kPresentationHz : selected_hz;
+}
+
 struct RasterPhaseBatch {
     std::uint32_t video_phases{};
     double phase_fraction{};

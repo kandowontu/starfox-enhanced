@@ -226,10 +226,17 @@ struct Spc700Audio::Impl {
                 // music/control and port 3 for its effect queue. Keep those
                 // buses on independent SPC instances so the effect driver's
                 // voice allocator can never key-off a music voice.
+                // Star Fox normally reserves port 3 for effects, but its
+                // $01/$02 PAUSESND commands are global driver controls. The
+                // PC port deliberately runs music and effects on independent
+                // SPC instances, so deliver those two controls to both stems;
+                // otherwise gameplay pauses silence neither music driver.
+                const auto global_pause_command = write.port == 3U
+                    && (write.value == 0x01U || write.value == 0x02U);
                 const auto accepts_command = command_stream
                         == CommandStream::effects
                     ? write.port == 3U
-                    : write.port != 3U;
+                    : write.port != 3U || global_pause_command;
                 if (!accepts_command) continue;
                 const auto clock = std::clamp(
                     static_cast<int>(write.clock_offset), last_clock,

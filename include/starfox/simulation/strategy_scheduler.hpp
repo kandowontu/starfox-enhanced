@@ -25,7 +25,8 @@ public:
     NativeStrategyScheduler(
         const assets::SymbolMap& symbols,
         ObjectPool& objects,
-        MapVm& native_state);
+        MapVm& native_state,
+        std::size_t object_instruction_limit = 1'000'000U);
 
     [[nodiscard]] StrategyTickStats tick_all();
     [[nodiscard]] StrategyTickStats tick_all_no_objects(
@@ -39,8 +40,11 @@ private:
     std::uint32_t do_strategy_{};
     std::uint32_t initialize_strategies_{};
     std::uint32_t remove_dead_{};
+    std::uint32_t path_strategy_begin_{};
+    std::uint32_t path_data_begin_{};
     std::uint32_t alien_dead_{};
     std::uint32_t game_frame_{};
+    std::size_t object_instruction_limit_{};
 };
 
 } // namespace starfox::simulation

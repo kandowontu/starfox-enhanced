@@ -6,6 +6,8 @@
 /upstream-snes-spc/
 Starfox-Assets.BIN
 /dist/StarFoxEnhanced/starfox_pc.exe
+/dist/StarFoxEnhanced-windows-x86/
+/dist/StarFoxEnhanced-linux-x64/
 /assets/hud_editor/*.bmp
 /tmp/
 __pycache__/

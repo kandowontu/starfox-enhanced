@@ -21,7 +21,9 @@ public:
     explicit Msu1Audio(TrackLoader loader = {});
 
     void set_enabled(bool enabled) noexcept;
+    void set_paused(bool paused) noexcept { paused_ = paused; }
     [[nodiscard]] bool enabled() const noexcept { return enabled_; }
+    [[nodiscard]] bool paused() const noexcept { return paused_; }
     [[nodiscard]] bool playing() const noexcept { return playing_; }
     [[nodiscard]] std::uint16_t selected_track() const noexcept {
         return selected_track_;
@@ -48,6 +50,7 @@ private:
     std::uint16_t loaded_track_{};
     std::uint8_t volume_{255U};
     bool enabled_{};
+    bool paused_{};
     bool playing_{};
     bool repeat_{};
 };

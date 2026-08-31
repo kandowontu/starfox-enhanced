@@ -89,12 +89,23 @@ void expand_rgba(
     const auto byte_count = source.pixels().size() * 4U;
     destination.resize(byte_count);
     auto output = destination.begin();
-    for (const auto pixel : source.pixels()) {
-        const auto colour = palette[std::min<std::size_t>(pixel, palette.size() - 1U)];
-        *output++ = colour.r;
-        *output++ = colour.g;
-        *output++ = colour.b;
-        *output++ = colour.a;
+    if (palette.size() >= 256U) {
+        for (const auto pixel : source.pixels()) {
+            const auto& colour = palette[pixel];
+            *output++ = colour.r;
+            *output++ = colour.g;
+            *output++ = colour.b;
+            *output++ = colour.a;
+        }
+    } else {
+        for (const auto pixel : source.pixels()) {
+            const auto& colour = palette[std::min<std::size_t>(
+                pixel, palette.size() - 1U)];
+            *output++ = colour.r;
+            *output++ = colour.g;
+            *output++ = colour.b;
+            *output++ = colour.a;
+        }
     }
 }
 

@@ -1,5 +1,6 @@
 param(
     [string]$Executable = "build/current/starfox_pc.exe",
+    [string]$Map = "LEVEL1_1",
     [double]$SampleSeconds = 0.6,
     [double]$MinimumRatio = 0.70
 )
@@ -9,14 +10,17 @@ $resolvedExecutable = (Resolve-Path -LiteralPath $Executable).Path
 $rates = @(20, 30, 60, 90, 120, 240, 360, 480)
 $displays = 0..4
 $paces = @("UNLOCKED", "ORIGINAL")
+$experiences = @("ORIGINAL", "EX")
 $results = @()
 
-foreach ($display in $displays) {
+foreach ($experience in $experiences) {
+  foreach ($display in $displays) {
     foreach ($rate in $rates) {
-        foreach ($pace in $paces) {
+      foreach ($pace in $paces) {
             $frames = [Math]::Max(12, [Math]::Ceiling($rate * $SampleSeconds))
             $start = [System.Diagnostics.ProcessStartInfo]::new()
             $start.FileName = $resolvedExecutable
+            $start.ArgumentList.Add($Map)
             $start.UseShellExecute = $false
             $start.RedirectStandardError = $true
             $start.CreateNoWindow = $true
@@ -25,6 +29,12 @@ foreach ($display in $displays) {
             $start.Environment["STARFOX_TEST_PRESENTATION_FPS"] = "$rate"
             $start.Environment["STARFOX_TEST_DISPLAY_MODE"] = "$display"
             $start.Environment["STARFOX_TEST_TIMING_MODE"] = $pace
+            $start.Environment["STARFOX_TEST_EXPERIENCE"] = $experience
+            $start.Environment["STARFOX_TEST_RENDERER"] = "GPU"
+            $start.Environment["STARFOX_TEST_ANTI_ALIASING"] = "OFF"
+            $start.Environment["STARFOX_TEST_ENHANCED"] = "0"
+            $start.Environment["STARFOX_TEST_SMOOTH_POLYS"] = "0"
+            $start.Environment["STARFOX_TEST_RTX_LIGHTING"] = "0"
             $start.Environment["STARFOX_TRACE_FPS"] = "1"
             $process = [System.Diagnostics.Process]::Start($start)
             $errorText = $process.StandardError.ReadToEnd()
@@ -42,12 +52,14 @@ foreach ($display in $displays) {
                 Display = $display
                 FPS = $rate
                 Pace = $pace
+                Experience = $experience
                 Measured = $measured
                 Ratio = [Math]::Round($ratio, 3)
                 Pass = $measured -gt 0 -and $ratio -ge $MinimumRatio
             }
-        }
+      }
     }
+  }
 }
 
 $results | Format-Table -AutoSize

@@ -151,7 +151,7 @@ int main() {
             "new pre-game settings did not default to Original pace");
     const starfox::app::PregameSettings saved_pregame{
         1U, 90U, 3U, true, true,
-        3U, true, true, true, true, true, false, 5U, 1U};
+        3U, true, true, true, true, 1U, true, false, 5U, 1U, 70U, 30U};
     require(starfox::app::save_pregame_settings(
                 pregame_test_path, saved_pregame),
             "pre-game settings could not be saved");
@@ -172,8 +172,12 @@ int main() {
     loaded_pregame = {};
     require(starfox::app::load_pregame_settings(
                 pregame_test_path, loaded_pregame)
-                && loaded_pregame.anti_aliasing == 2U,
+        && loaded_pregame.anti_aliasing == 2U,
             "legacy enabled FXAA was not migrated to medium strength");
+    require(loaded_pregame.music_volume == 100U
+                && loaded_pregame.sfx_volume == 100U
+                && loaded_pregame.renderer_mode == 0U,
+            "legacy settings did not migrate to full audio/GPU defaults");
     std::error_code pregame_remove_error;
     std::filesystem::remove(pregame_test_path, pregame_remove_error);
     require(!pregame_remove_error,

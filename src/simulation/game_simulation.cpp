@@ -957,6 +957,8 @@ void GameSimulation::enter_pregame_menu() {
     vsync_ = false;
     msu1_music_ = false;
     rumble_ = true;
+    music_volume_ = 100U;
+    sfx_volume_ = 100U;
     crosshair_colour_ = CrosshairColour::green;
     armed_god_nukes_.clear();
     flow_ticks_ = 0U;
@@ -986,41 +988,53 @@ GameTickResult GameSimulation::tick_pregame_menu(
         return result;
     }
 
+    auto menu_input = input;
+    constexpr auto horizontal = static_cast<starfox::input::ButtonMask>(
+        starfox::input::left | starfox::input::right);
+    if (pregame_horizontal_blocked_) {
+        menu_input.pressed = static_cast<starfox::input::ButtonMask>(
+            menu_input.pressed & ~horizontal);
+    }
+    // A direction must return to neutral before it can change another value.
+    // This also absorbs noisy controller axis re-presses while the stick or
+    // D-pad is physically held, while still allowing one immediate tap.
+    pregame_horizontal_blocked_ = (input.held & horizontal) != 0U;
+
     const auto previous_selection = pregame_selection_;
     const auto selection_count = pregame_page_ == PregamePage::main
-        ? std::uint8_t{14U} : std::uint8_t{5U};
-    if ((input.pressed & starfox::input::up) != 0U) {
+        ? std::uint8_t{15U} : std::uint8_t{7U};
+    if ((menu_input.pressed & starfox::input::up) != 0U) {
         pregame_selection_ = static_cast<std::uint8_t>(
             (pregame_selection_ + selection_count - 1U) % selection_count);
-    } else if ((input.pressed & starfox::input::down) != 0U) {
+    } else if ((menu_input.pressed & starfox::input::down) != 0U) {
         pregame_selection_ = static_cast<std::uint8_t>(
             (pregame_selection_ + 1U) % selection_count);
     }
     if (pregame_selection_ != previous_selection) queue_sound_effect(0x11U);
 
     if (pregame_page_ == PregamePage::options) {
-        const auto go_back = (input.pressed & starfox::input::b) != 0U
-            || (pregame_selection_ == 4U
-                && (input.pressed & (starfox::input::a
+        const auto go_back = (menu_input.pressed & starfox::input::b) != 0U
+            || (pregame_selection_ == 6U
+                && (menu_input.pressed & (starfox::input::a
                     | starfox::input::select)) != 0U);
         if (go_back) {
             pregame_page_ = PregamePage::main;
-            pregame_selection_ = 12U;
+            pregame_selection_ = 13U;
             queue_sound_effect(0x11U);
         } else if (pregame_selection_ == 0U
-                   && (input.pressed & (starfox::input::left
+                   && (menu_input.pressed & (starfox::input::left
                        | starfox::input::right | starfox::input::select
                        | starfox::input::a)) != 0U) {
             god_mode_ = !god_mode_;
             queue_sound_effect(0x11U);
         } else if (pregame_selection_ == 1U
-                   && (input.pressed & (starfox::input::left
+                   && (menu_input.pressed & (starfox::input::left
                        | starfox::input::right | starfox::input::select
                        | starfox::input::a)) != 0U) {
             show_fps_ = !show_fps_;
             queue_sound_effect(0x11U);
         } else if (pregame_selection_ == 2U
-                   && (input.pressed & (starfox::input::left
+                   && (menu_input.pressed & (starfox::input::left
                        | starfox::input::right | starfox::input::select
                        | starfox::input::a)) != 0U) {
             const auto found = std::find(
@@ -1030,7 +1044,7 @@ GameTickResult GameSimulation::tick_pregame_menu(
                 ? std::size_t{}
                 : static_cast<std::size_t>(
                     std::distance(kCrosshairColours.begin(), found));
-            if ((input.pressed & starfox::input::left) != 0U) {
+            if ((menu_input.pressed & starfox::input::left) != 0U) {
                 index = (index + kCrosshairColours.size() - 1U)
                     % kCrosshairColours.size();
             } else {
@@ -1038,13 +1052,27 @@ GameTickResult GameSimulation::tick_pregame_menu(
             }
             crosshair_colour_ = kCrosshairColours[index];
             queue_sound_effect(0x11U);
+        } else if ((pregame_selection_ == 4U || pregame_selection_ == 5U)
+                   && (menu_input.pressed & (starfox::input::left
+                       | starfox::input::right | starfox::input::select
+                       | starfox::input::a)) != 0U) {
+            auto& volume = pregame_selection_ == 4U
+                ? music_volume_ : sfx_volume_;
+            if ((menu_input.pressed & starfox::input::left) != 0U) {
+                volume = volume >= 10U
+                    ? static_cast<std::uint8_t>(volume - 10U) : 0U;
+            } else {
+                volume = static_cast<std::uint8_t>(
+                    std::min<unsigned>(100U, volume + 10U));
+            }
+            queue_sound_effect(0x11U);
         }
         result.audio_port_writes = map_.take_apu_port_writes();
         return result;
     }
 
     const auto change_experience = pregame_selection_ == 0U
-        && (input.pressed & (starfox::input::left | starfox::input::right
+        && (menu_input.pressed & (starfox::input::left | starfox::input::right
             | starfox::input::select | starfox::input::a
             | starfox::input::b)) != 0U;
     if (change_experience) {
@@ -1054,7 +1082,7 @@ GameTickResult GameSimulation::tick_pregame_menu(
     }
 
     const auto change_timing = pregame_selection_ == 1U
-        && (input.pressed & (starfox::input::left | starfox::input::right
+        && (menu_input.pressed & (starfox::input::left | starfox::input::right
             | starfox::input::select | starfox::input::a
             | starfox::input::b)) != 0U;
     if (change_timing) {
@@ -1064,7 +1092,7 @@ GameTickResult GameSimulation::tick_pregame_menu(
     }
 
     const auto change_presentation = pregame_selection_ == 2U
-        && (input.pressed & (starfox::input::left | starfox::input::right
+        && (menu_input.pressed & (starfox::input::left | starfox::input::right
             | starfox::input::select | starfox::input::a
             | starfox::input::b)) != 0U;
     if (change_presentation) {
@@ -1075,7 +1103,7 @@ GameTickResult GameSimulation::tick_pregame_menu(
             ? std::size_t{2U}
             : static_cast<std::size_t>(
                 std::distance(kPresentationRates.begin(), found));
-        if ((input.pressed & starfox::input::left) != 0U) {
+        if ((menu_input.pressed & starfox::input::left) != 0U) {
             index = (index + kPresentationRates.size() - 1U)
                 % kPresentationRates.size();
         } else {
@@ -1086,7 +1114,7 @@ GameTickResult GameSimulation::tick_pregame_menu(
     }
 
     const auto change_display = pregame_selection_ == 3U
-        && (input.pressed & (starfox::input::left | starfox::input::right
+        && (menu_input.pressed & (starfox::input::left | starfox::input::right
             | starfox::input::select | starfox::input::a
             | starfox::input::b)) != 0U;
     if (change_display) {
@@ -1096,7 +1124,7 @@ GameTickResult GameSimulation::tick_pregame_menu(
             ? std::size_t{}
             : static_cast<std::size_t>(
                 std::distance(kDisplayModes.begin(), found));
-        if ((input.pressed & starfox::input::left) != 0U) {
+        if ((menu_input.pressed & starfox::input::left) != 0U) {
             index = (index + kDisplayModes.size() - 1U)
                 % kDisplayModes.size();
         } else {
@@ -1106,20 +1134,30 @@ GameTickResult GameSimulation::tick_pregame_menu(
         queue_sound_effect(0x11U);
     }
 
+    const auto change_renderer = pregame_selection_ == 4U
+        && (menu_input.pressed & (starfox::input::left
+            | starfox::input::right | starfox::input::select
+            | starfox::input::a | starfox::input::b)) != 0U;
+    if (change_renderer) {
+        renderer_mode_ = renderer_mode_ == RendererMode::gpu
+            ? RendererMode::software : RendererMode::gpu;
+        queue_sound_effect(0x11U);
+    }
+
     const auto toggle_render_option =
-        (input.pressed & (starfox::input::left | starfox::input::right
+        (menu_input.pressed & (starfox::input::left | starfox::input::right
             | starfox::input::select | starfox::input::a
             | starfox::input::b)) != 0U;
-    if (toggle_render_option && pregame_selection_ >= 4U
-        && pregame_selection_ <= 10U) {
+    if (toggle_render_option && pregame_selection_ >= 5U
+        && pregame_selection_ <= 11U) {
         switch (pregame_selection_) {
-        case 4U:
+        case 5U:
             if (msu1_available_) msu1_music_ = !msu1_music_;
             break;
-        case 5U: rumble_ = !rumble_; break;
-        case 6U: {
+        case 6U: rumble_ = !rumble_; break;
+        case 7U: {
             auto mode = static_cast<std::uint8_t>(anti_aliasing_mode_);
-            if ((input.pressed & starfox::input::left) != 0U) {
+            if ((menu_input.pressed & starfox::input::left) != 0U) {
                 mode = static_cast<std::uint8_t>((mode + 3U) % 4U);
             } else {
                 mode = static_cast<std::uint8_t>((mode + 1U) % 4U);
@@ -1127,17 +1165,17 @@ GameTickResult GameSimulation::tick_pregame_menu(
             anti_aliasing_mode_ = static_cast<AntiAliasingMode>(mode);
             break;
         }
-        case 7U: enhanced_graphics_ = !enhanced_graphics_; break;
-        case 8U: smooth_polys_ = !smooth_polys_; break;
-        case 9U: rtx_lighting_ = !rtx_lighting_; break;
-        case 10U: vsync_ = !vsync_; break;
+        case 8U: enhanced_graphics_ = !enhanced_graphics_; break;
+        case 9U: smooth_polys_ = !smooth_polys_; break;
+        case 10U: rtx_lighting_ = !rtx_lighting_; break;
+        case 11U: vsync_ = !vsync_; break;
         default: break;
         }
         queue_sound_effect(0x11U);
     }
 
-    const auto open_options = pregame_selection_ == 12U
-        && (input.pressed & (starfox::input::a | starfox::input::b)) != 0U;
+    const auto open_options = pregame_selection_ == 13U
+        && (menu_input.pressed & (starfox::input::a | starfox::input::b)) != 0U;
     if (open_options) {
         pregame_page_ = PregamePage::options;
         pregame_selection_ = 0U;
@@ -1146,9 +1184,9 @@ GameTickResult GameSimulation::tick_pregame_menu(
         return result;
     }
 
-    const auto start_pressed = (input.pressed & starfox::input::start) != 0U;
-    const auto confirm_start = pregame_selection_ == 13U
-        && (input.pressed & (starfox::input::a | starfox::input::b)) != 0U;
+    const auto start_pressed = (menu_input.pressed & starfox::input::start) != 0U;
+    const auto confirm_start = pregame_selection_ == 14U
+        && (menu_input.pressed & (starfox::input::a | starfox::input::b)) != 0U;
     if (start_pressed || confirm_start) {
         queue_sound_effect(0x10U);
         map_.start_display_fade(-1);
@@ -1824,12 +1862,22 @@ void GameSimulation::request_msu_music(std::uint16_t track, bool repeat) {
     // native runtime reconstructs several of those wrappers around their
     // source maps, so execute the source driver explicitly at the same scene
     // boundary. Star Fox EX has its own SPC-only music flow.
+    deferred_msu_track_.reset();
+    deferred_msu_frames_ = 0U;
     if (starfox_ex_cartridge_ || msu_play_ == 0U) return;
     Wdc65816Registers registers;
     registers.a = repeat ? 3U : 1U;
     registers.x = track;
     registers.status = 0x24U;
     map_.call_native_routine(msu_play_, registers, 5'000'000U, true);
+}
+
+void GameSimulation::defer_msu_music(
+    std::uint16_t track, bool repeat, std::uint16_t presentation_frames) {
+    if (starfox_ex_cartridge_ || msu_play_ == 0U) return;
+    deferred_msu_track_ = track;
+    deferred_msu_repeat_ = repeat;
+    deferred_msu_frames_ = presentation_frames;
 }
 
 void GameSimulation::set_player_control(bool enabled) {
@@ -2699,7 +2747,10 @@ void GameSimulation::enter_controls(
     registers.status = 0x24U;
     map_.call_native_routine(
         controls_music_, registers, 20'000'000, true);
-    request_msu_music(msu_track::controls, true);
+    // The host preserves CONTMAP's otherwise-atomic 90-raster hidden setup.
+    // Start the companion at the same boundary as the delayed OPS/SPC track,
+    // not while the previous screen is still fading under forced black.
+    defer_msu_music(msu_track::controls, true, 90U);
     // BGM OPS is uploaded over the 65C816/APU handshake before its first
     // track command can be acknowledged. The host copies it atomically, so
     // retain the measured setup interval explicitly. The controller raster is
@@ -2833,6 +2884,38 @@ void GameSimulation::redraw_planet_route(bool complete_route) {
     Wdc65816Registers registers;
     registers.status = 0x24U;
     map_.call_native_near_routine(draw_route_name_, registers, 2'000'000, true);
+    map_.upload_oam(sprite_block_, 544U);
+}
+
+void GameSimulation::redraw_post_level_route() {
+    // PLANETS.ASM PLANETSEQ draws the newly unlocked segment at the current
+    // STAGE, then temporarily decrements STAGE and draws the completed path
+    // beneath it. Preserve CURRENTPLANET across the older-segment draw just
+    // as the source does; DRAWPLANETLINES uses that byte as scratch while it
+    // walks the route table.
+    set_planet_route_lines(false, false);
+    const auto saved_stage = map_.read_native_word(stage_);
+    const auto saved_planet = map_.read_native_word(current_planet_);
+    Wdc65816Registers registers;
+    registers.status = 0x24U;
+    map_.call_native_routine(
+        draw_planet_lines_, registers, 5'000'000, true);
+    if (saved_stage != 0U) {
+        map_.write_native_word(stage_,
+            static_cast<std::uint16_t>(saved_stage - 1U));
+        registers = {};
+        registers.status = 0x24U;
+        map_.call_native_routine(
+            draw_planet_lines_, registers, 5'000'000, true);
+    }
+    map_.write_native_word(current_planet_, saved_planet);
+    map_.write_native_word(stage_, saved_stage);
+    planet_route_blink_frames_ = 0U;
+    planet_route_lines_visible_ = true;
+    registers = {};
+    registers.status = 0x24U;
+    map_.call_native_near_routine(
+        draw_route_name_, registers, 2'000'000, true);
     map_.upload_oam(sprite_block_, 544U);
 }
 
@@ -3010,10 +3093,10 @@ void GameSimulation::enter_planet_map(
     registers.status = 0x24U;
     map_.call_native_routine(map_music_, registers, 20'000'000, true);
     const auto current_planet = map_.read_native_byte(current_planet_);
-    request_msu_music(
+    defer_msu_music(
         current_planet == 10U || current_planet == 14U
             ? msu_track::black_hole_map : msu_track::map,
-        true);
+        true, 1U);
     map_.set_display_brightness(0U);
 
     flow_ticks_ = 0U;
@@ -3021,7 +3104,8 @@ void GameSimulation::enter_planet_map(
     frontend_phase_ = FrontendPhase::planet_fade_in;
     flow_state_ = selecting_route
         ? GameFlowState::planet_select : GameFlowState::planet_travel;
-    redraw_planet_route(selecting_route);
+    if (selecting_route) redraw_planet_route(true);
+    else redraw_post_level_route();
     if (pending_map_ != 0U) {
         map_.write_native_byte(new_map_, static_cast<std::uint8_t>(pending_map_));
         map_.write_native_byte(new_map_ + 1U,
@@ -3251,6 +3335,15 @@ void GameSimulation::begin_planet_selection_sequence() {
 
 void GameSimulation::present_frame() {
     map_.tick_video_phase();
+    if (deferred_msu_track_) {
+        if (deferred_msu_frames_ != 0U) --deferred_msu_frames_;
+        if (deferred_msu_frames_ == 0U) {
+            const auto track = *deferred_msu_track_;
+            const auto repeat = deferred_msu_repeat_;
+            deferred_msu_track_.reset();
+            request_msu_music(track, repeat);
+        }
+    }
     if (video_phases_since_tick_ != 0xffU) ++video_phases_since_tick_;
     if (flow_state_ == GameFlowState::game_over
         && frontend_phase_ == FrontendPhase::none
@@ -3628,7 +3721,10 @@ GameTickResult GameSimulation::tick_planet_map(const input::TickInput& input) {
             begin_planet_selection_sequence();
         }
     } else if (frontend_phase_ == FrontendPhase::planet_route) {
-        const auto arrived = planet_travel_complete_ || flow_ticks_ >= 240U;
+        // The source remains in .switchonloop until MOVESHIPALONGPATH returns
+        // carry. A host timeout used to accept input with a half-advanced ship
+        // and then enter briefing with corrupt planet/path state.
+        const auto arrived = planet_travel_complete_;
         const auto confirmed = !planet_arrival_confirmation_required_
             || (input.pressed & starfox::input::a) != 0U;
         if (arrived && confirmed) {
@@ -3939,6 +4035,19 @@ void GameSimulation::service_transfer_request() {
     // transswap clears all three request bits together after servicing them.
     map_.write_native_byte(background_flags_, static_cast<std::uint8_t>(
         map_.read_native_byte(background_flags_) & ~static_cast<std::uint8_t>(13U)));
+    if (restarted && gameplay_palette_before_death_valid_) {
+        // RESTART_L can queue a background-info request whose palette upload
+        // runs later in this same TRANS boundary. Restore after all three
+        // restart/background request bits are serviced so that upload cannot
+        // replace the pre-death colours with the stale red/restart row.
+        for (std::size_t index = 0U;
+             index < gameplay_palette_before_death_.size(); ++index) {
+            map_.write_native_word(
+                ppu_palette_ + static_cast<std::uint32_t>(index * 2U),
+                gameplay_palette_before_death_[index]);
+        }
+        map_.write_cgram(0U, gameplay_palette_before_death_);
+    }
     if (restarted && boss_music_before_death_) {
         // Player death replaces the active boss track with the short death
         // drumroll. The map interpreter resumes inside its boss wait and does
@@ -4172,6 +4281,20 @@ std::size_t GameSimulation::update_view_flags_and_cull() {
 
 GameTickResult GameSimulation::tick(const input::TickInput& input) {
     if (flow_state_ == GameFlowState::finished) return {};
+    // FADERED_L destructively transforms all eight gameplay palette rows.
+    // RESTART_L rebuilds the same encounter from its map checkpoint, so keep
+    // the last pre-death source palette and restore that exact state at the
+    // restart boundary. Capture before strategies can set FADETORED and tint
+    // this frame.
+    if (map_.read_native_byte(fade_to_red_) == 0U
+        && (map_.read_native_byte(game_flags_) & 0x42U) == 0U) {
+        for (std::size_t index = 0U;
+             index < gameplay_palette_before_death_.size(); ++index) {
+            gameplay_palette_before_death_[index] = map_.read_native_word(
+                ppu_palette_ + static_cast<std::uint32_t>(index * 2U));
+        }
+        gameplay_palette_before_death_valid_ = true;
+    }
     // Snapshot the live encounter track before SETBLACK/background setup or
     // either cartridge's strategies can clear the last boss-health marker.
     // EX does that earlier in its transfer than retail; taking this sample

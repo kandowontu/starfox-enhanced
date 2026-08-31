@@ -8,9 +8,39 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <stdexcept>
+#include <string>
+#include <utility>
 #include <vector>
 
 namespace starfox::simulation {
+
+class Wdc65816ExecutionError : public std::runtime_error {
+public:
+    Wdc65816ExecutionError(std::string message,
+        std::uint32_t entry_address,
+        std::uint32_t program_address,
+        std::size_t instructions)
+        : std::runtime_error{std::move(message)},
+          entry_address_(entry_address),
+          program_address_(program_address),
+          instructions_(instructions) {}
+
+    [[nodiscard]] std::uint32_t entry_address() const noexcept {
+        return entry_address_;
+    }
+    [[nodiscard]] std::uint32_t program_address() const noexcept {
+        return program_address_;
+    }
+    [[nodiscard]] std::size_t instructions() const noexcept {
+        return instructions_;
+    }
+
+private:
+    std::uint32_t entry_address_{};
+    std::uint32_t program_address_{};
+    std::size_t instructions_{};
+};
 
 struct Wdc65816Registers {
     std::uint16_t a{};

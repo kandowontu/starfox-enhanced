@@ -82,6 +82,7 @@ struct Wdc65816::Impl {
     const assets::RomImage* rom{};
     SystemBus bus{};
     std::vector<Page> pages{static_cast<std::size_t>(kPageCount)};
+    std::uint32_t rom_bank_count{};
     std::vector<std::uint8_t> wram = std::vector<std::uint8_t>(0x20000U);
     std::array<std::uint8_t, 8> controller{};
     std::array<std::uint8_t, 4> apu_ports{0xaaU, 0xbbU, 0U, 0U};
@@ -658,6 +659,7 @@ struct Wdc65816::Impl {
 
         auto* rom_bytes = const_cast<std::uint8_t*>(rom_image.bytes().data());
         const auto banks = static_cast<std::uint32_t>(rom_image.size() / 0x8000U);
+        rom_bank_count = std::min<std::uint32_t>(banks, 0x7eU);
         for (std::uint32_t bank = 0; bank < banks && bank < 0x7eU; ++bank) {
             auto* bank_data = rom_bytes + bank * 0x8000U;
             bus.Map((bank << 16U) | 0x8000U, bank_data, 0x8000U, true);
@@ -2598,6 +2600,18 @@ std::size_t Wdc65816::call(
             impl_->service_transfer();
         }
         if (service_transfer_flag) impl_->service_planet_transfer();
+        const auto execution_address = cpu.program_address();
+        const auto execution_bank = static_cast<std::uint8_t>(
+            execution_address >> 16U);
+        if ((execution_address & 0xffffU) >= 0x8000U
+            && (execution_bank & 0x7fU) >= impl_->rom_bank_count) {
+            std::ostringstream message;
+            message << "65C816 subroutine at $" << std::hex << address
+                    << " escaped into unmapped ROM at $"
+                    << execution_address;
+            throw Wdc65816ExecutionError{message.str(), address,
+                execution_address, instructions};
+        }
         if (instructions == instruction_limit) {
             std::ostringstream message;
             message << "65C816 subroutine at $" << std::hex << address
@@ -2616,7 +2630,8 @@ std::size_t Wdc65816::call(
                     message << " $" << pc;
                 }
             }
-            throw std::runtime_error{message.str()};
+            throw Wdc65816ExecutionError{message.str(), address,
+                cpu.program_address(), instructions};
         }
         const auto pc = cpu.program_address();
         if (impl_->service_zero_projection(pc)) continue;
@@ -2737,6 +2752,16 @@ Wdc65816TaskResult Wdc65816::run_task(
             impl_->service_transfer();
         }
         if (service_transfer_flag) impl_->service_planet_transfer();
+        const auto execution_bank = static_cast<std::uint8_t>(pc >> 16U);
+        if ((pc & 0xffffU) >= 0x8000U
+            && (execution_bank & 0x7fU) >= impl_->rom_bank_count) {
+            std::ostringstream message;
+            message << "65C816 task at $" << std::hex << impl_->task_entry
+                    << " escaped into unmapped ROM at $" << pc;
+            impl_->task_active = false;
+            throw Wdc65816ExecutionError{message.str(), impl_->task_entry,
+                pc, result.instructions};
+        }
         if (result.instructions == instruction_limit) {
             std::ostringstream message;
             message << "65C816 task at $" << std::hex << impl_->task_entry
@@ -2760,7 +2785,8 @@ Wdc65816TaskResult Wdc65816::run_task(
             }
             message << ')';
             impl_->task_active = false;
-            throw std::runtime_error{message.str()};
+            throw Wdc65816ExecutionError{message.str(), impl_->task_entry,
+                pc, result.instructions};
         }
         recent_program_counters[
             result.instructions % recent_program_counters.size()] = pc;

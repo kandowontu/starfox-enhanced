@@ -6,7 +6,9 @@ presents at a selectable 20, 30, 60, 90, 120, 240, 360, or 480 frames per
 second while preserving the original game's intended NTSC simulation speed
 and assembled model data. The default is 60 FPS.
 
-# NOTE: YOU DO NOT HAVE TO BUILD THIS, THE NIGHTLY IS IN THE REPO AT dist/StarFoxEnhanced
+> You do not need to build this yourself. Prebuilt alpha downloads are
+> available under GitHub Releases, and the current Windows x64 nightly is also
+> kept in `dist/StarFoxEnhanced`.
 
 This repository is an early playable fidelity pass. It does not track a game
 executable, retail ROM, reconstructed ROM, or generated asset companion. The
@@ -17,7 +19,7 @@ first launch it validates the user's own unmodified Star Fox USA v1.2 (Rev 2)
 ROM, reconstructs the Original and Star Fox EX runtime data locally, and writes
 one version-bound `Starfox-Assets.BIN` companion beside the executable. Later
 launches use that validated companion without requiring the retail ROM to stay
-present. No GitHub release has been published yet.
+present. `v0.0.1-alpha` is the first public alpha release.
 
 ## What is preserved
 
@@ -44,14 +46,19 @@ defaults, loading, START GAME commit, and L+R+DOWN+B intro reset paths all run
 unchanged.
 
 The setup also independently selects game pace, render FPS, display mode,
-MSU-1 music, rumble, controller remapping, and a separate Options page.
+presentation renderer, MSU-1 music, rumble, controller remapping, and a
+separate Options page. `RENDERER` defaults to GPU and can be changed to
+SOFTWARE to use SDL's portable CPU presentation backend; this is an actual
+backend switch and is saved with the other setup choices.
 MSU-1 music is off by default and, when enabled for Original, replaces the
 SPC music stem with the companion orchestral set while leaving sound effects
 on their own channel. If `Starfox-MSU1.PAK` is not beside the executable, the
 option reads `NOT FOUND` and cannot be enabled. Rumble is on by default for
 Original and plays the authored
 UltraStarFox sequences on compatible SDL, XInput, and Steam Input controllers.
-The Options page's first option is the
+The Options page also provides independent MUSIC and SFX volume controls.
+Left/right changes them in 10% steps; the mouse can drag either bar to any
+whole percentage from 0 through 100. The first option is the
 Star Fox EX-style God Mode: player collision is disabled,
 regular Nova Bombs remain infinite, and holding R while pressing A fires a
 God Nuke. The Options page can also enable a live on-screen FPS counter which
@@ -68,8 +75,9 @@ current display mode's defaults. Layouts are independent for 4:3,
 16:9, 16:10, 21:9, and 32:9, with separate Original and Star Fox EX layouts
 for every size. They save automatically to
 `Documents/Star Fox Enhanced/hud-layout.cfg`.
-Game pace, render FPS, display mode, MSU-1 music, rumble, God Mode, the FPS
-counter, and crosshair colour also persist in
+Game pace, render FPS, display mode, renderer, graphics choices, MSU-1 music,
+rumble, music/SFX volumes, God Mode, the FPS counter, and crosshair colour
+also persist in
 `Documents/Star Fox Enhanced/pregame.cfg`. Keyboard and
 controller remaps are saved automatically when the remapping screen closes.
 Standard display uses the complete 256x224 raster; Widescreen 16:9,
@@ -201,12 +209,48 @@ build/release/starfox_pc.exe path/to/SF.SFC path/to/SYMBOLS.TXT TITLEMAP
 Escape opens an exit-confirmation dialog. Select+Start remains available to
 the game and never exits the PC runtime.
 
-F5 toggles the presentation debugger. While frozen, F6 advances one selected
-render frame and F7 walks backward through the retained final-frame history.
+Rewind history is disabled at launch, so it costs no background CPU time or
+memory during normal play. Press F12 on the first setup page to opt in for the
+current run; a two-second title-bar message confirms the change without adding
+another permanent menu item. F12 there can disable it again.
+
+F5 toggles the presentation debugger. While frozen, F6 advances exactly one
+render frame. With history enabled, F7 walks backward through the retained
+final-frame history; with history disabled it has no stored frame to visit.
+The debugger uses the native 60 Hz raster as its minimum cadence, so a 20 or
+30 FPS output choice never skips cartridge frames. At 90 FPS and above it also
+retains every interpolated output frame. Hold F6 or F7 for 450 ms to begin a
+slow eight-frame-per-second repeat.
+
 After stepping backward, F6 first walks forward through those exact captured
 presentations; at the live edge it advances simulation again. F5 resumes from
-the newest live state. Audio is paused while frozen and stepped audio is
-discarded rather than playing as a backlog afterward.
+the newest live state. When explicitly enabled, the lossless compressed
+history holds up to 3,600
+presentations within a 128 MiB budget. Audio is paused while frozen and stepped
+audio is discarded rather than playing as a backlog afterward.
+
+## Native platform targets
+
+The Windows x64 executable remains the primary release. The same portable SDL3
+runtime now also has build targets for Windows x86 and Linux x64, plus source
+targets for universal macOS, iOS, Android arm64, and Nintendo Switch. Android,
+iOS, and Switch automatically expose translucent multi-touch controls; physical
+SDL-compatible controllers continue to work normally.
+
+```powershell
+.\tools\build_windows_x86.ps1 -LlvmMingwRoot C:\path\to\llvm-mingw
+```
+
+```bash
+tools/build_linux.sh
+tools/build_apple.sh . macos
+tools/build_apple.sh . ios
+ANDROID_NDK_HOME=/path/to/ndk tools/build_android.sh
+DEVKITPRO=/opt/devkitpro tools/build_switch.sh
+```
+
+Apple targets require Xcode on macOS, Android requires its SDK/NDK, and Switch
+requires the devkitPro Switch toolchain. These platform SDKs are not vendored.
 
 Xbox/XInput controllers, Steam Input virtual controllers, and the Steam Deck's
 built-in controls are detected automatically. Both the D-pad and left stick

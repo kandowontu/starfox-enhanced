@@ -19,6 +19,7 @@ public:
     [[nodiscard]] std::uint32_t width() const noexcept { return width_; }
     [[nodiscard]] std::uint32_t height() const noexcept { return height_; }
     [[nodiscard]] const std::vector<std::uint8_t>& pixels() const noexcept { return pixels_; }
+    [[nodiscard]] std::vector<std::uint8_t>& pixels() noexcept { return pixels_; }
 
     void resize(std::uint32_t width, std::uint32_t height) {
         if (width == width_ && height == height_) return;

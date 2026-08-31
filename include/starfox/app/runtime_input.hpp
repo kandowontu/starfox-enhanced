@@ -89,10 +89,14 @@ struct PregameSettings {
     bool smooth_polys{};
     bool rtx_lighting{};
     bool vsync{};
+    // 0=GPU (default), 1=SDL's portable software rasterizer.
+    std::uint8_t renderer_mode{};
     bool msu1_music{};
     bool rumble{true};
     std::uint8_t crosshair_colour{};
     std::uint8_t experience{};
+    std::uint8_t music_volume{100U};
+    std::uint8_t sfx_volume{100U};
 
     [[nodiscard]] bool operator==(const PregameSettings&) const = default;
 };

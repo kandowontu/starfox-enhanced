@@ -33,6 +33,54 @@ void composite_transparent_layer(const Framebuffer& source,
         && (settings.mosaic & settings.mosaic_layer_mask) != 0U;
     const auto mosaic_size = static_cast<std::int32_t>(
         (settings.mosaic >> 4U) + 1U);
+    if (!mosaic_enabled) {
+        // The normal gameplay layers are already aligned pixel-for-pixel.
+        // Walk their contiguous storage directly instead of paying two
+        // bounds checks and four coordinate multiplications for every one of
+        // the hundreds of thousands of transparent pixels at wide outputs.
+        auto source_left = std::max(0, -settings.offset_x);
+        auto source_top = std::max(0, -settings.offset_y);
+        auto source_right = std::min(
+            static_cast<std::int32_t>(source.width()),
+            static_cast<std::int32_t>(destination.width())
+                - settings.offset_x);
+        auto source_bottom = std::min(
+            static_cast<std::int32_t>(source.height()),
+            static_cast<std::int32_t>(destination.height())
+                - settings.offset_y);
+        if (settings.clip_left != std::numeric_limits<std::int32_t>::min()) {
+            source_left = std::max(
+                source_left, settings.clip_left - settings.offset_x);
+        }
+        if (settings.clip_top != std::numeric_limits<std::int32_t>::min()) {
+            source_top = std::max(
+                source_top, settings.clip_top - settings.offset_y);
+        }
+        if (settings.clip_right != std::numeric_limits<std::int32_t>::max()) {
+            source_right = std::min(
+                source_right, settings.clip_right - settings.offset_x);
+        }
+        if (settings.clip_bottom != std::numeric_limits<std::int32_t>::max()) {
+            source_bottom = std::min(
+                source_bottom, settings.clip_bottom - settings.offset_y);
+        }
+        if (source_left >= source_right || source_top >= source_bottom) return;
+        const auto& source_pixels = source.pixels();
+        auto& destination_pixels = destination.pixels();
+        for (auto y = source_top; y < source_bottom; ++y) {
+            auto source_index = static_cast<std::size_t>(y) * source.width()
+                + static_cast<std::size_t>(source_left);
+            auto destination_index = static_cast<std::size_t>(
+                y + settings.offset_y) * destination.width()
+                + static_cast<std::size_t>(source_left + settings.offset_x);
+            for (auto x = source_left; x < source_right; ++x) {
+                const auto colour = source_pixels[source_index++];
+                if (colour != 0U) destination_pixels[destination_index] = colour;
+                ++destination_index;
+            }
+        }
+        return;
+    }
     for (std::uint32_t y = 0; y < source.height(); ++y) {
         for (std::uint32_t x = 0; x < source.width(); ++x) {
             const auto destination_x = static_cast<std::int32_t>(x)

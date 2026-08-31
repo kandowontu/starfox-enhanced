@@ -162,7 +162,8 @@ ScreenPoint project_point(
     double focal_length,
     bool word_exact,
     double vanish_x,
-    double vanish_y) {
+    double vanish_y,
+    bool subpixel = false) {
     if (word_exact && focal_length == 256.0) {
         const auto original_z = rounded_word(point.z);
         auto z = original_z;
@@ -223,11 +224,11 @@ ScreenPoint project_point(
             static_cast<double>(projected_y_word), point.z, original_z >= 0};
     }
     const auto projection_z = point.z == 0.0 ? 1.0 : point.z;
+    const auto projected_x = point.x * focal_length / projection_z;
+    const auto projected_y = point.y * focal_length / projection_z;
     return {
-        vanish_x
-            + std::trunc(point.x * focal_length / projection_z),
-        vanish_y
-            + std::trunc(point.y * focal_length / projection_z),
+        vanish_x + (subpixel ? projected_x : std::trunc(projected_x)),
+        vanish_y + (subpixel ? projected_y : std::trunc(projected_y)),
         point.z,
         point.z >= 0.0,
     };
@@ -530,6 +531,19 @@ Vec3 rotate(const assets::Vec3i& point, const RenderPose& pose, std::uint8_t shi
     const auto factor = pose.scale * static_cast<double>(std::uint32_t{1} << shift);
     Vec3 value{point.x * factor, point.y * factor, point.z * factor};
     if (pose.use_rotation_matrix) {
+        if (pose.subpixel_projection) {
+            constexpr auto q15 = 32'768.0;
+            const auto transform = [&pose, &value](std::size_t column) {
+                return value.x * pose.rotation_matrix[column] / q15
+                    + value.y * pose.rotation_matrix[3U + column] / q15
+                    + value.z * pose.rotation_matrix[6U + column] / q15;
+            };
+            value = {transform(0), transform(1), transform(2)};
+            value.x += pose.x;
+            value.y += pose.y;
+            value.z += pose.z;
+            return value;
+        }
         const auto transform = [&pose, &value](std::size_t column) {
             const auto x = starfox::simulation::wrap16(
                 static_cast<std::int64_t>(std::lround(value.x)));
@@ -1379,6 +1393,8 @@ void SoftwareRenderer::draw(
         target.clear(settings_.background_colour);
         if (surfaces != nullptr) surfaces->clear();
     }
+    const auto word_exact = pose.use_rotation_matrix
+        && !pose.subpixel_projection;
     if (pose.simple_scaled_sprite) {
         const auto* texture = texture_for_colour(
             shape, pose.simple_sprite_colour, pose.colour_frame);
@@ -1419,7 +1435,8 @@ void SoftwareRenderer::draw(
         transformed_vertices.push_back(transformed);
         projected.push_back(project_point(
             transformed, settings_.focal_length,
-            pose.use_rotation_matrix, pose.vanish_x, pose.vanish_y));
+            word_exact, pose.vanish_x, pose.vanish_y,
+            pose.subpixel_projection));
     }
 
     // MOBJ.MC enters the face pass with r8 holding the end of M_PROJPNTS,
@@ -1488,13 +1505,15 @@ void SoftwareRenderer::draw(
             far_axis.x /= static_cast<double>(far_count);
             far_axis.y /= static_cast<double>(far_count);
             far_axis.z /= static_cast<double>(far_count);
-            if (clip_near_line(near_axis, far_axis, pose.use_rotation_matrix)) {
+            if (clip_near_line(near_axis, far_axis, word_exact)) {
                 auto near_screen = project_point(near_axis, settings_.focal_length,
-                    pose.use_rotation_matrix, pose.vanish_x, pose.vanish_y);
+                    word_exact, pose.vanish_x, pose.vanish_y,
+                    pose.subpixel_projection);
                 auto far_screen = project_point(far_axis, settings_.focal_length,
-                    pose.use_rotation_matrix, pose.vanish_x, pose.vanish_y);
+                    word_exact, pose.vanish_x, pose.vanish_y,
+                    pose.subpixel_projection);
                 if (clip_screen_line(near_screen, far_screen, target,
-                        pose.use_rotation_matrix)) {
+                        word_exact)) {
                     const auto material = face_material(shape, shape.faces.front(),
                         pose.colour_frame, depth_band, light, pose,
                         next_colour_warp_word());
@@ -1604,8 +1623,9 @@ void SoftwareRenderer::draw(
                 centre.y += face_offset.y;
                 centre.z += face_offset.z;
                 draw_textured_sprite(target, project_point(centre,
-                    settings_.focal_length, pose.use_rotation_matrix,
-                    pose.vanish_x, pose.vanish_y),
+                    settings_.focal_length, word_exact,
+                    pose.vanish_x, pose.vanish_y,
+                    pose.subpixel_projection),
                     *material.texture, settings_.colour_index_base);
             }
             continue;
@@ -1663,12 +1683,12 @@ void SoftwareRenderer::draw(
 
         if (camera_polygon.size() == 2U) {
             if (!clip_near_line(
-                    camera_polygon[0], camera_polygon[1], pose.use_rotation_matrix)) {
+                    camera_polygon[0], camera_polygon[1], word_exact)) {
                 continue;
             }
         } else if (any_behind) {
             camera_polygon = clip_near_polygon(
-                camera_polygon, pose.use_rotation_matrix);
+                camera_polygon, word_exact);
             if (camera_polygon.size() < 3U) continue;
         }
 
@@ -1677,12 +1697,13 @@ void SoftwareRenderer::draw(
         for (const auto& point : camera_polygon) {
             polygon.push_back(project_point(
                 point, settings_.focal_length,
-                pose.use_rotation_matrix, pose.vanish_x, pose.vanish_y));
+                word_exact, pose.vanish_x, pose.vanish_y,
+                pose.subpixel_projection));
         }
 
         if (polygon.size() == 2) {
             if (!clip_screen_line(
-                    polygon[0], polygon[1], target, pose.use_rotation_matrix)) {
+                    polygon[0], polygon[1], target, word_exact)) {
                 continue;
             }
             draw_line(target, polygon[0], polygon[1], material.colour,
@@ -1712,7 +1733,7 @@ void SoftwareRenderer::draw(
             raster_polygon.push_back({polygon[index], texture});
         }
         raster_polygon = clip_screen_polygon(
-            std::move(raster_polygon), target, pose.use_rotation_matrix);
+            std::move(raster_polygon), target, word_exact);
         if (raster_polygon.size() < 3U) continue;
         if (material.texture == nullptr) {
             fill_source_polygon(target, raster_polygon, material.colour,

@@ -138,7 +138,10 @@ MapVm::MapVm(
         throw std::runtime_error{"unsupported native object record size"};
     }
     if (object_count_ != objects_->capacity()) {
-        throw std::runtime_error{"native object count does not match host object pool"};
+        throw std::runtime_error{"native object count "
+            + std::to_string(object_count_)
+            + " does not match host object pool capacity "
+            + std::to_string(objects_->capacity())};
     }
     if (symbols != nullptr) {
         constexpr std::array names{

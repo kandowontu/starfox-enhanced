@@ -254,9 +254,10 @@ int main(int argc, char** argv) {
     title_priority_ppu.cgram[1U] = 0U;
     title_priority_frame.clear(42U);
     background_renderer.draw_title_foreground(
-        title_priority_ppu, 0, 0, title_priority_frame, 0, false);
-    require(title_priority_frame.get(24, 0) == 42U,
-            "indexed-black title priority tile cut through a Super FX model");
+        title_priority_ppu, 0, 0, title_priority_frame);
+    require(title_priority_frame.get(16, 0) == 42U
+                && title_priority_frame.get(24, 0) == 42U,
+            "indexed-black title BG1/BG2 tile cut through a Super FX model");
 
     starfox::simulation::SnesPpuState unwrapped_title_ppu;
     unwrapped_title_ppu.background_mode = 1U;
@@ -1138,9 +1139,17 @@ int main(int argc, char** argv) {
                 starfox::simulation::GameSimulation game{
                     upstream_rom, upstream_symbols, test.entry};
                 auto writes = game.map().take_msu_register_writes();
+                const auto deferred_frontend_track =
+                    std::string_view{test.entry} == "CONTMAP"
+                    || std::string_view{test.entry} == "PLANETSELECT";
+                if (deferred_frontend_track) {
+                    require(!started_msu_track(writes, test.track, test.repeat),
+                        "MSU frontend track began during hidden scene setup");
+                }
+                std::optional<std::size_t> first_started_frame;
                 // Background scripts can finish their request on a raster
                 // boundary rather than during the wrapper constructor.
-                for (std::size_t frame = 0U; frame < 20U; ++frame) {
+                for (std::size_t frame = 0U; frame < 120U; ++frame) {
                     game.present_frame();
                     if (game.logic_tick_ready()) {
                         static_cast<void>(game.tick({}));
@@ -1148,9 +1157,21 @@ int main(int argc, char** argv) {
                     auto frame_writes = game.map().take_msu_register_writes();
                     writes.insert(writes.end(),
                         frame_writes.begin(), frame_writes.end());
+                    if (!first_started_frame
+                        && started_msu_track(writes, test.track, test.repeat)) {
+                        first_started_frame = frame;
+                    }
                 }
                 require(started_msu_track(writes, test.track, test.repeat),
                     test.failure);
+                if (std::string_view{test.entry} == "CONTMAP") {
+                    require(first_started_frame && *first_started_frame >= 89U,
+                        "MSU controls track began before CONTMAP reveal");
+                }
+                if (std::string_view{test.entry} == "PLANETSELECT") {
+                    require(first_started_frame && *first_started_frame == 0U,
+                        "MSU map track did not begin on its first fade raster");
+                }
             }
         }
 
@@ -1182,8 +1203,13 @@ int main(int argc, char** argv) {
                     upstream_rom, &upstream_symbols};
                 starfox::simulation::Wdc65816Registers registers;
                 registers.status = 0x24U;
-                mode2sp_cpu.call_long(
-                    upstream_symbols.find("BG_6_2_1").front(), registers,
+                // BG_6_2_1 is a background task, not a callable routine: it
+                // consumes inline records and eventually tail-dispatches
+                // through the map scheduler instead of RTL. Exercise the
+                // actual transfer request it uses so this check cannot run
+                // off that task into an uninitialised scheduler continuation.
+                mode2sp_cpu.call_near(
+                    upstream_symbols.find("INITMODE2SP").front(), registers,
                     50'000'000U, true);
                 require(mode2sp_cpu.ppu_state().background_mode == 2U
                             && mode2sp_cpu.ppu_state().bg2_tile_size_16,
@@ -1762,12 +1788,18 @@ int main(int argc, char** argv) {
 
         const auto map_addresses = upstream_symbols.find("MAP1_1A");
         require(!map_addresses.empty(), "MAP1_1A symbol is missing");
-        starfox::simulation::ObjectPool upstream_objects;
+        starfox::simulation::ObjectPool upstream_objects{
+            static_cast<std::size_t>(
+                upstream_symbols.find("NUMBER_AL").front()),
+            starfox_ex_cartridge
+                ? starfox::simulation::ObjectMemoryLayout::starfox_ex
+                : starfox::simulation::ObjectMemoryLayout::original};
         const auto upstream_player = upstream_objects.allocate_after();
         starfox::simulation::MapVm upstream_map{
             upstream_rom,
             starfox::simulation::MapDatabase{upstream_rom, upstream_symbols},
-            upstream_objects};
+            upstream_objects,
+            &upstream_symbols};
         upstream_map.start(map_addresses.front(), upstream_player);
         upstream_map.advance_distance(1);
         require(upstream_objects.active_count() > 1,
@@ -1782,16 +1814,62 @@ int main(int argc, char** argv) {
         require(strategy_stats.objects_run > 1 && strategy_stats.instructions > 0,
                 "real Corneria native strategies did not execute");
 
+        // Field report captured this exact retail PATH_ISTRAT state before a
+        // corrupted long return escaped into the mirrored $FF ROM bank. Keep
+        // it as a direct native-dispatch fixture so the compatibility core
+        // cannot regress into an instruction-limit crash here again.
+        if (!starfox_ex_cartridge) {
+            starfox::simulation::ObjectPool reported_crash_objects;
+            starfox::simulation::ObjectHandle reported_object{};
+            for (std::size_t index = 0; index < 7U; ++index) {
+                reported_object = reported_crash_objects.allocate_after();
+            }
+            auto& reported_state = reported_crash_objects.at(reported_object);
+            reported_state.shape = 0xcb07U;
+            reported_state.strategy_address = 0x04805bU;
+            reported_state.scratch_words[1] = 0x0594;
+            reported_state.rotation_y = 20U;
+            reported_state.strategy_flags = {0x0bU, 0x10U, 0x08U, 0x00U};
+            reported_state.extended[48] = 0xdaU;
+            reported_state.extended[49] = 0x4fU;
+            starfox::simulation::MapVm reported_crash_map{
+                upstream_rom,
+                starfox::simulation::MapDatabase{upstream_rom, upstream_symbols},
+                reported_crash_objects,
+                &upstream_symbols};
+            constexpr std::array<std::uint8_t, 16> reported_heap{
+                0x03U, 0x04U, 0x0eU, 0x05U, 0x09U, 0x90U, 0x05U, 0x0cU,
+                0x97U, 0x05U, 0x0cU, 0x00U, 0x00U, 0x00U, 0x01U, 0x1fU};
+            for (std::size_t index = 0; index < reported_heap.size(); ++index) {
+                reported_crash_map.write_native_byte(
+                    0x7ea12fU + 0x4fdaU + static_cast<std::uint32_t>(index),
+                    reported_heap[index]);
+            }
+            starfox::simulation::NativeStrategyScheduler reported_crash_scheduler{
+                upstream_symbols, reported_crash_objects,
+                reported_crash_map, 1U};
+            static_cast<void>(
+                reported_crash_scheduler.tick_object(reported_object));
+            require(!reported_crash_objects.is_active(reported_object),
+                    "failed PATH_ISTRAT object was not recovered and removed");
+        }
+
         const auto map1_1b = upstream_symbols.find("MAP1_1B");
         const auto boss_ptr = upstream_symbols.find("BOSS_PTR");
         require(!map1_1b.empty() && !boss_ptr.empty(),
                 "boss-map CPU integration symbols are missing");
-        starfox::simulation::ObjectPool boss_objects;
+        starfox::simulation::ObjectPool boss_objects{
+            static_cast<std::size_t>(
+                upstream_symbols.find("NUMBER_AL").front()),
+            starfox_ex_cartridge
+                ? starfox::simulation::ObjectMemoryLayout::starfox_ex
+                : starfox::simulation::ObjectMemoryLayout::original};
         const auto boss_player = boss_objects.allocate_after();
         starfox::simulation::MapVm boss_map{
             upstream_rom,
             starfox::simulation::MapDatabase{upstream_rom, upstream_symbols},
-            boss_objects};
+            boss_objects,
+            &upstream_symbols};
         boss_map.set_unknown_condition_result(true);
         boss_map.start(map1_1b.front(), boss_player);
         for (std::size_t waits = 0; !boss_map.ended() && waits < 100; ++waits) {
@@ -5345,15 +5423,17 @@ int main(int argc, char** argv) {
                      && !boot_game.anti_aliasing()
                      && !boot_game.enhanced_graphics()
                      && !boot_game.smooth_polys()
-                     && !boot_game.rtx_lighting()
+                    && !boot_game.rtx_lighting()
                     && !boot_game.vsync()
+                    && boot_game.renderer_mode()
+                        == starfox::simulation::RendererMode::gpu
                     && boot_game.crosshair_colour()
                         == starfox::simulation::CrosshairColour::green,
                 "cold boot did not begin with the default pre-game settings");
         starfox::simulation::GameSimulation missing_msu_game{
             upstream_rom, upstream_symbols, "BOOT"};
         missing_msu_game.set_msu1_available(false);
-        for (std::size_t row = 0U; row < 4U; ++row) {
+        for (std::size_t row = 0U; row < 5U; ++row) {
             static_cast<void>(missing_msu_game.tick(
                 {0, starfox::input::down, 0}));
         }
@@ -5437,12 +5517,23 @@ int main(int argc, char** argv) {
                 "pre-game display selector did not step backward to 32:9");
         drive_boot({0, starfox::input::down, 0});
         require(boot_game.pregame_selection() == 4U,
+                "pre-game cursor did not reach RENDERER");
+        drive_boot({0, starfox::input::a, 0});
+        require(boot_game.renderer_mode()
+                    == starfox::simulation::RendererMode::software,
+                "pre-game renderer option did not select software");
+        drive_boot({0, starfox::input::left, 0});
+        require(boot_game.renderer_mode()
+                    == starfox::simulation::RendererMode::gpu,
+                "pre-game renderer option did not return to GPU");
+        drive_boot({0, starfox::input::down, 0});
+        require(boot_game.pregame_selection() == 5U,
                 "pre-game cursor did not reach MSU-1 MUSIC");
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.msu1_music(),
                 "pre-game MSU-1 music option did not enable");
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 5U,
+        require(boot_game.pregame_selection() == 6U,
                 "pre-game cursor did not reach RUMBLE");
         require(boot_game.rumble(),
                 "pre-game rumble option did not default on");
@@ -5453,7 +5544,7 @@ int main(int argc, char** argv) {
         require(boot_game.rumble(),
                 "pre-game rumble option did not re-enable");
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 6U,
+        require(boot_game.pregame_selection() == 7U,
                 "pre-game cursor did not reach ANTI-ALIASING");
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.anti_aliasing_mode()
@@ -5475,38 +5566,38 @@ int main(int argc, char** argv) {
                     == starfox::simulation::AntiAliasingMode::heavy,
                 "pre-game Anti-Aliasing choices did not step backward");
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 7U,
+        require(boot_game.pregame_selection() == 8U,
                 "pre-game cursor did not reach ENHANCED TEXTURES");
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.enhanced_graphics(),
                 "pre-game enhanced texture filtering did not enable");
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 8U,
-                "pre-game cursor did not reach SMOOTH POLYS");
+        require(boot_game.pregame_selection() == 9U,
+                "pre-game cursor did not reach UPSCALED POLYS");
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.smooth_polys(),
                 "pre-game polygon smoothing option did not enable");
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 9U,
+        require(boot_game.pregame_selection() == 10U,
                 "pre-game cursor did not reach RTX LIGHTING");
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.rtx_lighting(),
                 "pre-game RTX lighting option did not enable");
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 10U,
+        require(boot_game.pregame_selection() == 11U,
                 "pre-game cursor did not reach VSYNC");
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.vsync(),
                 "pre-game VSync option did not enable");
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 11U,
+        require(boot_game.pregame_selection() == 12U,
                 "pre-game cursor did not reach CONTROLLER");
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.flow_state()
                     == starfox::simulation::GameFlowState::pregame_menu,
                 "CONTROLLER selection incorrectly started the game");
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 12U,
+        require(boot_game.pregame_selection() == 13U,
                 "pre-game cursor did not reach OPTIONS");
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.pregame_page()
@@ -5545,11 +5636,37 @@ int main(int argc, char** argv) {
                 "pre-game cursor did not reach CUSTOMIZE SCREEN");
         drive_boot({0, starfox::input::down, 0});
         require(boot_game.pregame_selection() == 4U,
+                "pre-game cursor did not reach MUSIC VOLUME");
+        require(boot_game.music_volume() == 100U,
+                "pre-game music volume did not default to 100 percent");
+        drive_boot({starfox::input::left, starfox::input::left, 0});
+        require(boot_game.music_volume() == 90U,
+                "pre-game music volume did not step left by 10 percent");
+        drive_boot({starfox::input::left, starfox::input::left, 0});
+        require(boot_game.music_volume() == 90U,
+                "held pre-game direction changed an option more than once");
+        drive_boot({0, 0, starfox::input::left});
+        drive_boot({starfox::input::right, starfox::input::right, 0});
+        require(boot_game.music_volume() == 100U,
+                "pre-game music volume did not step right after release");
+        drive_boot({0, 0, starfox::input::right});
+        drive_boot({0, starfox::input::down, 0});
+        require(boot_game.pregame_selection() == 5U
+                    && boot_game.sfx_volume() == 100U,
+                "pre-game cursor did not reach default SFX VOLUME");
+        drive_boot({0, starfox::input::left, 0});
+        require(boot_game.sfx_volume() == 90U,
+                "pre-game SFX volume did not step left by 10 percent");
+        drive_boot({0, starfox::input::right, 0});
+        require(boot_game.sfx_volume() == 100U,
+                "pre-game SFX volume did not step right by 10 percent");
+        drive_boot({0, starfox::input::down, 0});
+        require(boot_game.pregame_selection() == 6U,
                 "pre-game cursor did not reach OPTIONS BACK");
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.pregame_page()
                      == starfox::simulation::PregamePage::main
-                     && boot_game.pregame_selection() == 12U
+                     && boot_game.pregame_selection() == 13U
                     && boot_game.god_mode()
                     && boot_game.show_fps()
                      && boot_game.anti_aliasing()
@@ -5561,7 +5678,7 @@ int main(int argc, char** argv) {
                         == starfox::simulation::CrosshairColour::green,
                 "OPTIONS did not retain its toggles when returning to setup");
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 13U,
+        require(boot_game.pregame_selection() == 14U,
                 "pre-game cursor did not reach START GAME");
         drive_boot({0, starfox::input::start, 0});
         require(boot_game.flow_state()
@@ -5667,6 +5784,24 @@ int main(int argc, char** argv) {
                 "post-boss dialogue did not retain its original 20 Hz cadence");
         restart_game.set_timing_mode(
             starfox::simulation::TimingMode::unlocked_20_fps);
+        const auto restart_ppu_palette =
+            upstream_symbols.find("PAL0PALETTE").front();
+        restart_game.map().write_native_byte(game_flags,
+            static_cast<std::uint8_t>(
+                restart_game.map().read_native_byte(game_flags) & ~0x42U));
+        restart_game.map().write_native_byte(fade_to_red, 0U);
+        std::array<std::uint16_t, 8U * 16U> pre_death_palette{};
+        for (std::size_t index = 0U; index < pre_death_palette.size(); ++index) {
+            pre_death_palette[index] = static_cast<std::uint16_t>(
+                (index * 0x0081U) & 0x7fffU);
+            restart_game.map().write_native_word(
+                restart_ppu_palette + static_cast<std::uint32_t>(index * 2U),
+                pre_death_palette[index]);
+        }
+        restart_game.map().write_cgram(0U, pre_death_palette);
+        // A healthy gameplay boundary owns the palette snapshot. The next
+        // tick simulates FADERED having destructively replaced every row.
+        static_cast<void>(restart_game.tick({}));
         restart_game.map().write_native_byte(game_flags,
             static_cast<std::uint8_t>(
                 restart_game.map().read_native_byte(game_flags) | 0x42U));
@@ -5678,6 +5813,17 @@ int main(int argc, char** argv) {
                 restart_game.map().read_native_byte(background_flags) | 1U));
         restart_game.map().write_native_byte(fade_to_red, 1U);
         restart_game.map().write_native_byte(background_music, 0x11U);
+        const std::array<std::uint16_t, 8U * 16U> death_red_palette = [] {
+            std::array<std::uint16_t, 8U * 16U> palette{};
+            palette.fill(0x001fU);
+            return palette;
+        }();
+        for (std::size_t index = 0U; index < death_red_palette.size(); ++index) {
+            restart_game.map().write_native_word(
+                restart_ppu_palette + static_cast<std::uint32_t>(index * 2U),
+                death_red_palette[index]);
+        }
+        restart_game.map().write_cgram(0U, death_red_palette);
         require(restart_game.map().read_native_word(restart_pointer) != 0U,
                 "Corneria did not establish its native death checkpoint");
         auto restart_tick = restart_game.tick({});
@@ -5691,6 +5837,27 @@ int main(int argc, char** argv) {
                         & 0x42U) == 0U
                     && restart_game.map().read_native_byte(fade_to_red) == 0U,
                 "death restart did not restore control and palette ownership");
+        auto palette_was_restored = true;
+        for (std::size_t index = 0U; index < pre_death_palette.size(); ++index) {
+            const auto restored_ram = restart_game.map().read_native_word(
+                    restart_ppu_palette
+                        + static_cast<std::uint32_t>(index * 2U));
+            const auto restored_cgram =
+                restart_game.map().ppu_state().cgram[index];
+            if (restored_ram != pre_death_palette[index]
+                || restored_cgram != pre_death_palette[index]) {
+                if (palette_was_restored) {
+                    std::cerr << "death palette mismatch index=" << index
+                              << " expected=$" << std::hex
+                              << pre_death_palette[index] << " ram=$"
+                              << restored_ram << " cgram=$" << restored_cgram
+                              << std::dec << '\n';
+                }
+                palette_was_restored = false;
+            }
+        }
+        require(palette_was_restored,
+            "death restart retained the red death palette");
         require(restart_game.map().read_native_byte(background_music) == 0x66U
                     && restart_game.map().read_native_byte(
                         background_music_count) == 0U,

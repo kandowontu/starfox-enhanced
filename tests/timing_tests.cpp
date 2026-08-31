@@ -112,6 +112,20 @@ void test_frame_step_clock_synchronizes_fractional_phase() {
             "frame-step synchronization wrapped a near-complete raster phase");
 }
 
+void test_frame_debug_never_steps_multiple_native_rasters() {
+    require(starfox::timing::frame_debug_presentation_hz(20U) == 60U
+            && starfox::timing::frame_debug_presentation_hz(30U) == 60U,
+            "low output rate was allowed to skip native debugger frames");
+    require(starfox::timing::frame_debug_presentation_hz(120U) == 120U,
+            "high-rate debugger discarded interpolated presentation frames");
+
+    starfox::timing::RasterPhaseClock clock;
+    const auto low_rate_step = clock.advance(
+        starfox::timing::frame_debug_presentation_hz(20U));
+    require(low_rate_step.video_phases == 1U,
+            "20 FPS debugger press advanced a complete 20 Hz logic interval");
+}
+
 void test_presentation_history_walks_without_changing_live_edge() {
     starfox::render::PresentationHistory history{24U};
     const std::array<std::uint8_t, 8> first{
@@ -139,6 +153,47 @@ void test_presentation_history_walks_without_changing_live_edge() {
     history.record(3U, 1U, resized);
     require(history.frame_count() == 1U && history.current()->width == 3U,
             "display-size change did not reset incompatible frame history");
+}
+
+void test_presentation_history_compresses_and_rewinds_many_frames() {
+    // A moving low-colour scene changes a small number of RGBA pixels per
+    // presentation. It should retain far more than the old full-frame ring
+    // could fit in the same memory budget while remaining exactly reversible.
+    starfox::render::PresentationHistory history{4'096U, 512U};
+    std::array<std::uint8_t, 256> frame{};
+    for (std::uint16_t index = 0U; index < 256U; ++index) {
+        frame[index] = static_cast<std::uint8_t>(index);
+        history.record(8U, 8U, frame);
+    }
+    require(history.frame_count() == 256U,
+            "compressed debugger history did not retain a useful rewind span");
+    for (std::uint16_t index = 255U; index != 0U; --index) {
+        require(history.current()->rgba[index] == static_cast<std::uint8_t>(index),
+                "rewind history current frame was corrupted");
+        require(history.step_back(),
+                "rewind history ended before the retained frame floor");
+        require(history.current()->rgba[index] == 0U,
+                "reverse delta did not restore the exact previous frame");
+    }
+    history.to_live();
+    require(history.at_live() && history.current()->rgba[255U] == 255U,
+            "rewind history could not restore its exact live edge");
+
+    std::array<std::uint8_t, 256> uniform_a{};
+    std::array<std::uint8_t, 256> uniform_b{};
+    uniform_a.fill(0x31U);
+    uniform_b.fill(0xc7U);
+    starfox::render::PresentationHistory repeated_delta{64U, 8U};
+    repeated_delta.record(8U, 8U, uniform_a);
+    repeated_delta.record(8U, 8U, uniform_b);
+    require(repeated_delta.step_back()
+                && std::equal(repeated_delta.current()->rgba.begin(),
+                    repeated_delta.current()->rgba.end(), uniform_a.begin()),
+            "repeated-pixel reverse delta did not restore an exact frame");
+    require(repeated_delta.step_forward()
+                && std::equal(repeated_delta.current()->rgba.begin(),
+                    repeated_delta.current()->rgba.end(), uniform_b.begin()),
+            "repeated-pixel forward delta did not restore an exact frame");
 }
 
 void test_missed_render_target_preserves_realtime_raster_pace() {
@@ -294,7 +349,9 @@ int main() {
     test_selectable_presentation_rates_preserve_raster_pace();
     test_fast_forward_exactly_doubles_raster_pace();
     test_frame_step_clock_synchronizes_fractional_phase();
+    test_frame_debug_never_steps_multiple_native_rasters();
     test_presentation_history_walks_without_changing_live_edge();
+    test_presentation_history_compresses_and_rewinds_many_frames();
     test_missed_render_target_preserves_realtime_raster_pace();
     test_live_fps_counter_reports_actual_output_and_lag();
     test_stall_is_bounded();

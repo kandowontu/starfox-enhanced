@@ -133,7 +133,8 @@ void BackgroundRenderer::draw_bg1(
     TilePriorityPass priority,
     std::int32_t horizontal_origin,
     bool extend_horizontal,
-    std::uint32_t horizontal_inset) const noexcept {
+    std::uint32_t horizontal_inset,
+    bool transparent_cgram_black) const noexcept {
     if ((ppu.main_screen & 0x01U) == 0U
         || (ppu.background_mode != 1U && ppu.background_mode != 2U
             && ppu.background_mode != 3U)) return;
@@ -183,11 +184,15 @@ void BackgroundRenderer::draw_bg1(
                 : tile_pixel_4bpp(ppu, ppu.bg1_character_base, sample.tile,
                     sample.x, sample.y);
             if (colour != 0U) {
+                const auto indexed_colour = ppu.background_mode == 3U ? colour
+                    : static_cast<std::uint8_t>(
+                        ((tile >> 10U) & 7U) * 16U + colour);
+                if (transparent_cgram_black
+                    && (ppu.cgram[indexed_colour] & 0x7fffU) == 0U) {
+                    continue;
+                }
                 target.set(static_cast<std::int32_t>(screen_x),
-                    static_cast<std::int32_t>(screen_y),
-                    ppu.background_mode == 3U ? colour
-                        : static_cast<std::uint8_t>(
-                            ((tile >> 10U) & 7U) * 16U + colour));
+                    static_cast<std::int32_t>(screen_y), indexed_colour);
             }
         }
     }
@@ -367,7 +372,7 @@ void BackgroundRenderer::draw_bg2(
     }
     std::vector<std::uint8_t> last_opaque_ground;
     std::vector<std::int32_t> previous_ground_source_y;
-    std::vector<bool> ground_source_wrapped;
+    std::vector<std::uint8_t> ground_source_wrapped;
     if (extend_ground_down) {
         // Rolled Corneria ground can live in either BG2 priority pass. Keep a
         // continuation colour for both; tracking only the low pass left the
@@ -378,7 +383,55 @@ void BackgroundRenderer::draw_bg2(
         ground_source_wrapped.resize(final_x - first_x, false);
     }
 
+    // Decode each referenced 8x8 character and tilemap entry once per pass.
+    // Wide Mode 2 otherwise reread four planar VRAM bytes and reconstructed
+    // the same nibble for every output pixel—well over 170,000 times per
+    // 32:9 frame. Animated VRAM remains exact because this cache lives only
+    // for the duration of the current PPU snapshot.
+    std::array<std::uint8_t, 1024U * 64U> decoded_characters;
+    std::array<std::uint8_t, 1024U> decoded_character_valid{};
+    const auto cached_character_pixel = [&ppu, &decoded_characters,
+                                             &decoded_character_valid,
+                                             character_base =
+                                                 ppu.bg2_character_base](
+                                            const TileSample& sample) {
+        const auto character = static_cast<std::size_t>(sample.tile & 0x03ffU);
+        const auto character_offset = character * 64U;
+        if (decoded_character_valid[character] == 0U) {
+            for (std::uint32_t y = 0U; y < 8U; ++y) {
+                for (std::uint32_t x = 0U; x < 8U; ++x) {
+                    decoded_characters[character_offset + y * 8U + x] =
+                        tile_pixel_4bpp(ppu, character_base,
+                            static_cast<std::uint16_t>(character), x, y);
+                }
+            }
+            decoded_character_valid[character] = 1U;
+        }
+        auto x = sample.x;
+        auto y = sample.y;
+        if ((sample.tile & 0x4000U) != 0U) x = 7U - x;
+        if ((sample.tile & 0x8000U) != 0U) y = 7U - y;
+        return decoded_characters[character_offset + y * 8U + x];
+    };
+    std::array<std::uint16_t, 4096U> decoded_tilemap;
+    std::array<std::uint8_t, 4096U> decoded_tilemap_valid{};
+    const auto cached_tilemap_word = [&ppu, &decoded_tilemap,
+                                         &decoded_tilemap_valid,
+                                         screen_base = ppu.bg2_screen_base](
+                                        std::uint32_t entry) {
+        const auto index = static_cast<std::size_t>(entry & 0x0fffU);
+        if (decoded_tilemap_valid[index] == 0U) {
+            decoded_tilemap[index] = vram_word(ppu,
+                static_cast<std::uint32_t>(screen_base) + entry);
+            decoded_tilemap_valid[index] = 1U;
+        }
+        return decoded_tilemap[index];
+    };
+    auto& target_pixels = target.pixels();
+
     for (std::uint32_t screen_y = 0; screen_y < target.height(); ++screen_y) {
+        const auto target_row = static_cast<std::size_t>(screen_y)
+            * target.width();
         const auto sample_y = mosaic_coordinate(
             static_cast<std::int32_t>(screen_y), ppu.mosaic, 0x02U);
         const auto row_scroll_x = ppu.bg2_horizontal_offsets_enabled
@@ -420,8 +473,7 @@ void BackgroundRenderer::draw_bg2(
                 if (ground_source_wrapped[column_index]) {
                     const auto ground = last_opaque_ground[column_index];
                     if (ground != 0U) {
-                        target.set(static_cast<std::int32_t>(screen_x),
-                            static_cast<std::int32_t>(screen_y), ground);
+                        target_pixels[target_row + screen_x] = ground;
                     }
                     continue;
                 }
@@ -442,29 +494,25 @@ void BackgroundRenderer::draw_bg2(
             const auto page = (tile_x >> 5U) + (tile_y >> 5U) * pages_wide;
             const auto entry = page * 0x400U
                 + (tile_y & 31U) * 32U + (tile_x & 31U);
-            const auto tile = vram_word(ppu,
-                static_cast<std::uint32_t>(ppu.bg2_screen_base) + entry);
+            const auto tile = cached_tilemap_word(entry);
             if (!selected_priority(tile, priority)) {
                 if (!last_opaque_ground.empty() && screen_y >= 144U) {
                     const auto ground = last_opaque_ground[screen_x - first_x];
                     if (ground != 0U) {
-                        target.set(static_cast<std::int32_t>(screen_x),
-                            static_cast<std::int32_t>(screen_y), ground);
+                        target_pixels[target_row + screen_x] = ground;
                     }
                 }
                 continue;
             }
             const auto sample = tile_sample(
                 tile, source_x, source_y, ppu.bg2_tile_size_16);
-            auto colour = tile_pixel_4bpp(ppu, ppu.bg2_character_base,
-                sample.tile, sample.x, sample.y);
+            auto colour = cached_character_pixel(sample);
             auto palette = static_cast<std::uint8_t>((tile >> 10U) & 7U);
             if (colour == 0U && !last_opaque_ground.empty()
                 && screen_y >= 144U) {
                 const auto ground = last_opaque_ground[screen_x - first_x];
                 if (ground != 0U) {
-                    target.set(static_cast<std::int32_t>(screen_x),
-                        static_cast<std::int32_t>(screen_y), ground);
+                    target_pixels[target_row + screen_x] = ground;
                 }
                 continue;
             }
@@ -478,8 +526,7 @@ void BackgroundRenderer::draw_bg2(
                 if (!last_opaque_ground.empty()) {
                     last_opaque_ground[screen_x - first_x] = indexed_colour;
                 }
-                target.set(static_cast<std::int32_t>(screen_x),
-                    static_cast<std::int32_t>(screen_y), indexed_colour);
+                target_pixels[target_row + screen_x] = indexed_colour;
             }
         }
     }
@@ -560,7 +607,7 @@ void BackgroundRenderer::draw_title_foreground(
         !extend_bg2_unwrapped, true);
     if (include_bg1_overlay) {
         draw_bg1(ppu, target, TilePriorityPass::all,
-            horizontal_origin, false);
+            horizontal_origin, false, 0U, true);
     }
     draw_bg3(ppu, target, TilePriorityPass::high,
         horizontal_origin, false);

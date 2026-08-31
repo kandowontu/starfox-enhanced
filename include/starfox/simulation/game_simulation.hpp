@@ -11,6 +11,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <algorithm>
 #include <array>
 #include <optional>
 #include <span>
@@ -60,6 +61,11 @@ enum class DisplayMode {
     widescreen_16_10,
     ultrawide_21_9,
     super_ultrawide_32_9,
+};
+
+enum class RendererMode : std::uint8_t {
+    gpu,
+    software,
 };
 
 enum class PregamePage {
@@ -259,6 +265,12 @@ public:
     }
     [[nodiscard]] bool vsync() const noexcept { return vsync_; }
     void set_vsync(bool enabled) noexcept { vsync_ = enabled; }
+    [[nodiscard]] RendererMode renderer_mode() const noexcept {
+        return renderer_mode_;
+    }
+    void set_renderer_mode(RendererMode mode) noexcept {
+        renderer_mode_ = mode;
+    }
     [[nodiscard]] bool msu1_music() const noexcept { return msu1_music_; }
     void set_msu1_music(bool enabled) noexcept {
         msu1_music_ = enabled && msu1_available_;
@@ -272,6 +284,18 @@ public:
     }
     [[nodiscard]] bool rumble() const noexcept { return rumble_; }
     void set_rumble(bool enabled) noexcept { rumble_ = enabled; }
+    [[nodiscard]] std::uint8_t music_volume() const noexcept {
+        return music_volume_;
+    }
+    void set_music_volume(std::uint8_t volume) noexcept {
+        music_volume_ = std::min<std::uint8_t>(volume, 100U);
+    }
+    [[nodiscard]] std::uint8_t sfx_volume() const noexcept {
+        return sfx_volume_;
+    }
+    void set_sfx_volume(std::uint8_t volume) noexcept {
+        sfx_volume_ = std::min<std::uint8_t>(volume, 100U);
+    }
     [[nodiscard]] CrosshairColour crosshair_colour() const noexcept {
         return crosshair_colour_;
     }
@@ -372,6 +396,7 @@ private:
     void animate_planet_frame(bool advance_rotation = true);
     void advance_planet_rotation();
     void redraw_planet_route(bool complete_route);
+    void redraw_post_level_route();
     void set_planet_route_lines(bool visible, bool complete_route);
     void update_planet_ship_sprite();
     void launch_pending_stage();
@@ -390,6 +415,8 @@ private:
     void queue_sound_effect(std::uint8_t command);
     void request_music(std::uint8_t command);
     void request_msu_music(std::uint16_t track, bool repeat);
+    void defer_msu_music(
+        std::uint16_t track, bool repeat, std::uint16_t presentation_frames);
     void set_player_control(bool enabled);
     [[nodiscard]] std::uint8_t required_video_phases() const noexcept;
     void complete_video_phases_for_tick();
@@ -832,9 +859,13 @@ private:
     bool smooth_polys_{};
     bool rtx_lighting_{};
     bool vsync_{};
+    RendererMode renderer_mode_{RendererMode::gpu};
     bool msu1_music_{};
     bool msu1_available_{true};
     bool rumble_{true};
+    std::uint8_t music_volume_{100U};
+    std::uint8_t sfx_volume_{100U};
+    bool pregame_horizontal_blocked_{};
     CrosshairColour crosshair_colour_{CrosshairColour::green};
     bool planet_travel_complete_{};
     bool planet_arrival_confirmation_required_{};
@@ -866,6 +897,11 @@ private:
     std::uint8_t background_music_start_delay_phases_{};
     std::uint8_t background_music_upload_delay_override_{};
     bool background_music_start_pending_{};
+    std::optional<std::uint16_t> deferred_msu_track_{};
+    std::uint16_t deferred_msu_frames_{};
+    bool deferred_msu_repeat_{};
+    std::array<std::uint16_t, 8U * 16U> gameplay_palette_before_death_{};
+    bool gameplay_palette_before_death_valid_{};
     std::optional<std::uint8_t> boss_music_before_death_{};
     bool post_boss_dialogue_active_{};
     std::uint64_t observed_apu_upload_generation_{};

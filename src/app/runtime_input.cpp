@@ -452,11 +452,18 @@ bool load_pregame_settings(
             && version != "SFE_PREGAME_V3"
             && version != "SFE_PREGAME_V4"
             && version != "SFE_PREGAME_V5"
-            && version != "SFE_PREGAME_V6")) {
+            && version != "SFE_PREGAME_V6"
+            && version != "SFE_PREGAME_V7"
+            && version != "SFE_PREGAME_V8")) {
         return false;
     }
     auto loaded = PregameSettings{};
-    std::array<bool, 14> found{};
+    std::array<bool, 17> found{};
+    if (version != "SFE_PREGAME_V8") found[16] = true;
+    if (version != "SFE_PREGAME_V7" && version != "SFE_PREGAME_V8") {
+        found[14] = true;
+        found[15] = true;
+    }
     if (version != "SFE_PREGAME_V6") {
         found[12] = true;
         found[13] = true;
@@ -493,6 +500,8 @@ bool load_pregame_settings(
             loaded.anti_aliasing = static_cast<std::uint8_t>(value);
             found[7] = value >= 0 && value <= (
                 version == "SFE_PREGAME_V5" || version == "SFE_PREGAME_V6"
+                    || version == "SFE_PREGAME_V7"
+                    || version == "SFE_PREGAME_V8"
                 ? 3 : 1);
         } else if (name == "ENHANCED_GRAPHICS") {
             loaded.enhanced_graphics = value != 0;
@@ -506,6 +515,9 @@ bool load_pregame_settings(
         } else if (name == "VSYNC") {
             loaded.vsync = value != 0;
             found[11] = value == 0 || value == 1;
+        } else if (name == "RENDERER_MODE") {
+            loaded.renderer_mode = static_cast<std::uint8_t>(value);
+            found[16] = value >= 0 && value <= 1;
         } else if (name == "MSU1_MUSIC") {
             loaded.msu1_music = value != 0;
             found[12] = value == 0 || value == 1;
@@ -518,6 +530,12 @@ bool load_pregame_settings(
         } else if (name == "EXPERIENCE") {
             loaded.experience = static_cast<std::uint8_t>(value);
             found[6] = value >= 0 && value <= 1;
+        } else if (name == "MUSIC_VOLUME") {
+            loaded.music_volume = static_cast<std::uint8_t>(value);
+            found[14] = value >= 0 && value <= 100;
+        } else if (name == "SFX_VOLUME") {
+            loaded.sfx_volume = static_cast<std::uint8_t>(value);
+            found[15] = value >= 0 && value <= 100;
         }
     }
     if (!std::all_of(found.begin(), found.end(),
@@ -526,6 +544,7 @@ bool load_pregame_settings(
         loaded.smooth_polys = loaded.enhanced_graphics;
     }
     if (version != "SFE_PREGAME_V5" && version != "SFE_PREGAME_V6"
+        && version != "SFE_PREGAME_V7" && version != "SFE_PREGAME_V8"
         && loaded.anti_aliasing != 0U) {
         // The original ON setting used what is now the medium FXAA kernel.
         loaded.anti_aliasing = 2U;
@@ -540,7 +559,9 @@ bool save_pregame_settings(
     if (path.empty() || settings.timing_mode > 1U
         || settings.display_mode > 4U || settings.crosshair_colour > 7U
         || settings.anti_aliasing > 3U
-        || settings.experience > 1U) {
+        || settings.renderer_mode > 1U
+        || settings.experience > 1U || settings.music_volume > 100U
+        || settings.sfx_volume > 100U) {
         return false;
     }
     constexpr std::array<std::uint16_t, 8> valid_fps{
@@ -552,7 +573,7 @@ bool save_pregame_settings(
     if (error) return false;
     std::ofstream output{path, std::ios::trunc};
     if (!output) return false;
-    output << "SFE_PREGAME_V6\n"
+    output << "SFE_PREGAME_V8\n"
            << "EXPERIENCE " << static_cast<unsigned>(settings.experience) << '\n'
            << "TIMING_MODE " << static_cast<unsigned>(settings.timing_mode) << '\n'
            << "PRESENTATION_FPS " << settings.presentation_fps << '\n'
@@ -568,11 +589,17 @@ bool save_pregame_settings(
            << "RTX_LIGHTING "
            << static_cast<unsigned>(settings.rtx_lighting) << '\n'
            << "VSYNC " << static_cast<unsigned>(settings.vsync) << '\n'
+           << "RENDERER_MODE "
+           << static_cast<unsigned>(settings.renderer_mode) << '\n'
            << "MSU1_MUSIC "
            << static_cast<unsigned>(settings.msu1_music) << '\n'
            << "RUMBLE " << static_cast<unsigned>(settings.rumble) << '\n'
            << "CROSSHAIR_COLOUR "
-           << static_cast<unsigned>(settings.crosshair_colour) << '\n';
+           << static_cast<unsigned>(settings.crosshair_colour) << '\n'
+           << "MUSIC_VOLUME "
+           << static_cast<unsigned>(settings.music_volume) << '\n'
+           << "SFX_VOLUME "
+           << static_cast<unsigned>(settings.sfx_volume) << '\n';
     return static_cast<bool>(output);
 }
 
