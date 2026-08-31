@@ -170,10 +170,16 @@ int main(int argc, char** argv) {
             trigonometry, camera_pitch, camera_yaw, camera_roll);
         const auto game_frame = static_cast<std::uint8_t>(
             game.map().read_native_byte(ram_symbol("GAMEFRAME")) & 0x7fU);
-        const auto background_x = static_cast<std::int16_t>(
+        auto background_x = static_cast<std::int16_t>(
             game.map().read_native_word(ram_symbol("BG2XSCROLL")));
-        const auto background_y = static_cast<std::int16_t>(
+        auto background_y = static_cast<std::int16_t>(
             game.map().read_native_word(ram_symbol("BG2SCROLL")));
+        // Mode 3 map/briefing screens scroll through the PPU registers, not
+        // the gameplay background work words retained from the prior level.
+        if (game.map().ppu_state().background_mode == 3U) {
+            background_x = game.map().ppu_state().bg2_scroll_x;
+            background_y = game.map().ppu_state().bg2_scroll_y;
+        }
         const auto depth_colours = game.map().read_native_word(
             mario_symbol("M_DEPTHSTAB"));
         const auto depth_thresholds = game.map().read_native_word(

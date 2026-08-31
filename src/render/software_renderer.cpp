@@ -1419,6 +1419,20 @@ void SoftwareRenderer::draw(
     }
     const auto word_exact = pose.use_rotation_matrix
         && !pose.subpixel_projection;
+    // Interpolated presentation frames already keep fractional transformed
+    // vertices. At a completed 20 Hz source frame the source-exact path
+    // quantizes them again; that single-frame snap is hidden by the native
+    // raster but becomes visible as flashing polygon edges when supersampled.
+    // Keep the source projection below for visibility and BSP decisions, but
+    // use a continuous fractional copy for high-resolution scan conversion.
+    const auto stable_upscaled_raster = settings_.render_scale > 1U
+        && !pose.subpixel_projection;
+    auto raster_pose = pose;
+    if (settings_.render_scale > 1U) {
+        raster_pose.subpixel_projection = true;
+    }
+    const auto raster_word_exact = raster_pose.use_rotation_matrix
+        && !raster_pose.subpixel_projection;
     if (pose.simple_scaled_sprite) {
         const auto* texture = texture_for_colour(
             shape, pose.simple_sprite_colour, pose.colour_frame);
@@ -1430,6 +1444,7 @@ void SoftwareRenderer::draw(
     }
     std::vector<Vec3> transformed_vertices;
     std::vector<ScreenPoint> projected;
+    std::vector<Vec3> upscaled_vertices;
     const auto& vertices = shape.frames.empty()
         ? shape.vertices
         : shape.frames[pose.animation_frame % shape.frames.size()].vertices;
@@ -1454,14 +1469,21 @@ void SoftwareRenderer::draw(
     }
     transformed_vertices.reserve(vertices.size());
     projected.reserve(vertices.size());
+    if (stable_upscaled_raster) upscaled_vertices.reserve(vertices.size());
     for (const auto& point : vertices) {
         const auto transformed = rotate(point, pose, shape.header.shift);
         transformed_vertices.push_back(transformed);
+        if (stable_upscaled_raster) {
+            upscaled_vertices.push_back(
+                rotate(point, raster_pose, shape.header.shift));
+        }
         projected.push_back(project_point(
             transformed, settings_.focal_length,
             word_exact, pose.vanish_x, pose.vanish_y,
             pose.subpixel_projection));
     }
+    const auto& raster_vertices = stable_upscaled_raster
+        ? upscaled_vertices : transformed_vertices;
 
     // MOBJ.MC enters the face pass with r8 holding the end of M_PROJPNTS,
     // then COLOR WARP's mrand macro uses that register directly instead of
@@ -1510,15 +1532,15 @@ void SoftwareRenderer::draw(
         std::size_t far_count{};
         for (std::size_t index = 0; index < vertices.size(); ++index) {
             if (vertices[index].z == maximum->z) {
-                near_axis.x += transformed_vertices[index].x;
-                near_axis.y += transformed_vertices[index].y;
-                near_axis.z += transformed_vertices[index].z;
+                near_axis.x += raster_vertices[index].x;
+                near_axis.y += raster_vertices[index].y;
+                near_axis.z += raster_vertices[index].z;
                 ++near_count;
             }
             if (vertices[index].z == minimum->z) {
-                far_axis.x += transformed_vertices[index].x;
-                far_axis.y += transformed_vertices[index].y;
-                far_axis.z += transformed_vertices[index].z;
+                far_axis.x += raster_vertices[index].x;
+                far_axis.y += raster_vertices[index].y;
+                far_axis.z += raster_vertices[index].z;
                 ++far_count;
             }
         }
@@ -1529,15 +1551,15 @@ void SoftwareRenderer::draw(
             far_axis.x /= static_cast<double>(far_count);
             far_axis.y /= static_cast<double>(far_count);
             far_axis.z /= static_cast<double>(far_count);
-            if (clip_near_line(near_axis, far_axis, word_exact)) {
+            if (clip_near_line(near_axis, far_axis, raster_word_exact)) {
                 auto near_screen = project_point(near_axis, settings_.focal_length,
-                    word_exact, pose.vanish_x, pose.vanish_y,
-                    pose.subpixel_projection);
+                    raster_word_exact, raster_pose.vanish_x,
+                    raster_pose.vanish_y, raster_pose.subpixel_projection);
                 auto far_screen = project_point(far_axis, settings_.focal_length,
-                    word_exact, pose.vanish_x, pose.vanish_y,
-                    pose.subpixel_projection);
+                    raster_word_exact, raster_pose.vanish_x,
+                    raster_pose.vanish_y, raster_pose.subpixel_projection);
                 if (clip_screen_line(near_screen, far_screen, target,
-                        word_exact)) {
+                        raster_word_exact)) {
                     const auto material = face_material(shape, shape.faces.front(),
                         pose.colour_frame, depth_band, light, pose,
                         next_colour_warp_word());
@@ -1667,7 +1689,7 @@ void SoftwareRenderer::draw(
                 valid = false;
                 break;
             }
-            auto point = transformed_vertices[index];
+            auto point = raster_vertices[index];
             point.x += face_offset.x;
             point.y += face_offset.y;
             point.z += face_offset.z;
@@ -1711,12 +1733,13 @@ void SoftwareRenderer::draw(
 
         if (camera_polygon.size() == 2U) {
             if (!clip_near_line(
-                    camera_polygon[0], camera_polygon[1], word_exact)) {
+                    camera_polygon[0], camera_polygon[1],
+                    raster_word_exact)) {
                 continue;
             }
         } else if (any_behind) {
             camera_polygon = clip_near_polygon(
-                camera_polygon, word_exact);
+                camera_polygon, raster_word_exact);
             if (camera_polygon.size() < 3U) continue;
         }
 
@@ -1725,13 +1748,14 @@ void SoftwareRenderer::draw(
         for (const auto& point : camera_polygon) {
             polygon.push_back(project_point(
                 point, settings_.focal_length,
-                word_exact, pose.vanish_x, pose.vanish_y,
-                pose.subpixel_projection));
+                raster_word_exact, raster_pose.vanish_x,
+                raster_pose.vanish_y, raster_pose.subpixel_projection));
         }
 
         if (polygon.size() == 2) {
             if (!clip_screen_line(
-                    polygon[0], polygon[1], target, word_exact)) {
+                    polygon[0], polygon[1], target,
+                    raster_word_exact)) {
                 continue;
             }
             const StoredRasterScope raster{target, settings_.render_scale};
@@ -1764,7 +1788,7 @@ void SoftwareRenderer::draw(
             raster_polygon.push_back({polygon[index], texture});
         }
         raster_polygon = clip_screen_polygon(
-            std::move(raster_polygon), target, word_exact);
+            std::move(raster_polygon), target, raster_word_exact);
         if (raster_polygon.size() < 3U) continue;
         const StoredRasterScope raster{target, settings_.render_scale};
         for (auto& vertex : raster_polygon) {

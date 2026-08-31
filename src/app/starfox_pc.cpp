@@ -4702,16 +4702,26 @@ int main(int argc, char** argv) {
             };
             const auto ex_native_menu = game.flow_state()
                 == starfox::simulation::GameFlowState::ex_pregame_menu;
+            // Gameplay's Mode 1/2 landscape follows the host-interpolated
+            // BG2XSCROLL/BG2SCROLL work variables. Mode 3 front ends do not:
+            // PLANETSEQ clears and owns the actual PPU BG2 scroll registers
+            // while those gameplay scratch words retain the just-finished
+            // level's arbitrary offsets. Feeding the stale gameplay words to
+            // the post-level map wrapped each tilemap row through unrelated
+            // regions, scattering its boxes, labels and score panel. Native
+            // EX menus have the same register-owned contract.
+            const auto use_ppu_bg2_scroll = ex_native_menu
+                || current_raster_motion.background_mode == 3U;
             const auto background_x = interpolate_raster_word(
-                ex_native_menu ? previous_raster_motion.bg2_scroll_x
-                               : previous_raster_motion.background_x,
-                ex_native_menu ? current_raster_motion.bg2_scroll_x
-                               : current_raster_motion.background_x);
+                use_ppu_bg2_scroll ? previous_raster_motion.bg2_scroll_x
+                                   : previous_raster_motion.background_x,
+                use_ppu_bg2_scroll ? current_raster_motion.bg2_scroll_x
+                                   : current_raster_motion.background_x);
             const auto background_y = interpolate_raster_word(
-                ex_native_menu ? previous_raster_motion.bg2_scroll_y
-                               : previous_raster_motion.background_y,
-                ex_native_menu ? current_raster_motion.bg2_scroll_y
-                               : current_raster_motion.background_y);
+                use_ppu_bg2_scroll ? previous_raster_motion.bg2_scroll_y
+                                   : previous_raster_motion.background_y,
+                use_ppu_bg2_scroll ? current_raster_motion.bg2_scroll_y
+                                   : current_raster_motion.background_y);
             auto ppu = game.map().ppu_state();
             starfox::render::interpolate_crosshair_oam(
                 previous_oam, interpolation_alpha, ppu);

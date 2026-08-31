@@ -90,9 +90,9 @@ struct RenderSettings {
     bool backface_culling{false};
     std::uint8_t background_colour{};
     std::uint8_t colour_index_base{};
-    // Supersampling factor applied to scan conversion only. Projection,
-    // visibility and clipping stay on the source raster at every setting, so
-    // the geometry drawn is identical and scale-independent.
+    // Supersampling factor for polygon projection and scan conversion.
+    // Source visibility and BSP ordering remain scale-independent while the
+    // stored raster retains fractional endpoints between source frames.
     std::uint32_t render_scale{1U};
 };
 

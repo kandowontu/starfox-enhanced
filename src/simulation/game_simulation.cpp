@@ -4402,8 +4402,48 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
     if (flow_state_ == GameFlowState::continue_choice) {
         return tick_continue_screen(input);
     }
-    if (flow_state_ == GameFlowState::stage_results) {
+    const auto live_retail_stage_results =
+        flow_state_ == GameFlowState::stage_results
+        && !starfox_ex_cartridge_;
+    if (flow_state_ == GameFlowState::stage_results
+        && !live_retail_stage_results) {
         return tick_stage_results(input);
+    }
+    if (live_retail_stage_results) {
+        // Retail END_LEVEL_SEQ calls TRANSFER_L at the head of every tally
+        // iteration. The old host path returned from tick_stage_results here,
+        // freezing the complete encounter beneath the percentage counter.
+        // Advance only the tally state here, then fall through to the normal
+        // translated transfer below so objects, effects, background and audio
+        // continue exactly as they do in the cartridge loop.
+        if (pending_end_game_
+            || (frontend_phase_
+                    == FrontendPhase::stage_results_fade_to_map
+                && map_.fade_direction() == 0
+                && map_.display_brightness() == 0U)) {
+            return tick_stage_results(input);
+        }
+        ++flow_ticks_;
+        if (frontend_phase_ != FrontendPhase::stage_results_fade_to_map) {
+            if (displayed_stage_percentage_ < stage_percentage_) {
+                displayed_stage_percentage_ = static_cast<std::uint8_t>(
+                    std::min<std::uint16_t>(stage_percentage_,
+                        static_cast<std::uint16_t>(
+                            displayed_stage_percentage_) + 3U));
+            }
+            const auto count_ticks = static_cast<std::uint32_t>(
+                (static_cast<std::uint16_t>(stage_percentage_) + 2U) / 3U);
+            if (displayed_stage_percentage_ == stage_percentage_
+                && ((flow_ticks_ >= 20U
+                        && (input.pressed
+                            & (starfox::input::a | starfox::input::b
+                                | starfox::input::start)) != 0U)
+                    || flow_ticks_ >= count_ticks + 60U)) {
+                map_.start_display_fade(-1);
+                frontend_phase_ =
+                    FrontendPhase::stage_results_fade_to_map;
+            }
+        }
     }
     constexpr std::uint32_t spc_clocks_per_tick = 1'024'000U / 20U;
     const auto video_phases_per_tick = current_tick_video_phases_;

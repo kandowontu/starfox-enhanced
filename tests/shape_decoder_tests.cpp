@@ -277,6 +277,33 @@ int main() {
     require(scaled_surface_pixels == scaled_coloured_pixels,
             "scaled polygon surface metadata diverged from its raster");
 
+    auto stable_upscale_shape = shape;
+    stable_upscale_shape.bsp_root_address = 0U;
+    for (auto& face : stable_upscale_shape.faces) {
+        face.visibility_index = -1;
+    }
+    starfox::render::RenderPose source_endpoint_pose;
+    source_endpoint_pose.use_rotation_matrix = true;
+    source_endpoint_pose.rotation_matrix = {
+        32'760, 257, 0,
+        -257, 32'760, 0,
+        0, 0, 32'767,
+    };
+    source_endpoint_pose.z = 512.0;
+    starfox::render::Framebuffer source_endpoint_frame{
+        224, 192, test_render_scale};
+    scaled_renderer.draw(stable_upscale_shape, source_endpoint_pose,
+        source_endpoint_frame, true);
+    auto interpolated_endpoint_pose = source_endpoint_pose;
+    interpolated_endpoint_pose.subpixel_projection = true;
+    starfox::render::Framebuffer interpolated_endpoint_frame{
+        224, 192, test_render_scale};
+    scaled_renderer.draw(stable_upscale_shape, interpolated_endpoint_pose,
+        interpolated_endpoint_frame, true);
+    require(source_endpoint_frame.pixels()
+                == interpolated_endpoint_frame.pixels(),
+            "Render Upscale snapped polygon edges on a source-frame boundary");
+
     starfox::render::Framebuffer source_overlay{2U, 2U};
     starfox::render::Framebuffer scaled_composite{2U, 2U, 3U};
     source_overlay.set(1, 1, 9U);

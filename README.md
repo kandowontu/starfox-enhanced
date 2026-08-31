@@ -69,14 +69,13 @@ OBJ reticle and its Super FX cockpit triangles while damaged-wing indicators
 remain red.
 
 `RENDER UPSCALE` replaces the old Upscaled Polys option and rasterizes the
-Super FX world layer from 1x up to 10x the source raster. Projection, face
-visibility, screen clipping, and BSP order are all
-computed on the original grid at every setting, so the geometry drawn is
-identical and scale-independent; only scan conversion follows the scale,
-resolving the same polygon edges and lines with finer steps. Cartridge HUD,
-sprites, backgrounds, and text keep their authored resolution. Scan conversion
-and presentation run on the CPU, so higher scales cost frame time and memory
-and the usable ceiling depends on the machine.
+Super FX world layer from 1x up to 10x the source raster. Face visibility and
+BSP order remain tied to the original grid while high-resolution projection
+retains fractional endpoints across interpolated and completed source frames.
+This resolves polygon edges and lines with finer, temporally stable steps.
+Cartridge HUD, sprites, backgrounds, and text keep their authored resolution.
+Scan conversion and presentation run on the CPU, so higher scales cost frame
+time and memory and the usable ceiling depends on the machine.
 
 `ANTI-ALIASING` and the surface-driven effects (`ENHANCED TEXTURES` and
 `RTX LIGHTING`) run on the scaled raster as well, so they

@@ -3846,6 +3846,8 @@ int main(int argc, char** argv) {
         const auto result_pointer_before = game.map().read_native_word(
             result_pointer_address.front());
         auto saw_results_fade = false;
+        auto saw_live_results_transfer = false;
+        const auto results_game_frame = upstream_symbols.find("GAMEFRAME").front();
         for (std::size_t tick = 0;
              tick < 200U
                   && game.flow_state()
@@ -3868,7 +3870,12 @@ int main(int argc, char** argv) {
             saw_results_fade = saw_results_fade
                 || (game.map().display_brightness() > 0U
                     && game.map().display_brightness() < 15U);
+            const auto game_frame_before =
+                game.map().read_native_byte(results_game_frame);
             static_cast<void>(game.tick({}));
+            saw_live_results_transfer = saw_live_results_transfer
+                || game.map().read_native_byte(results_game_frame)
+                    != game_frame_before;
         }
         const auto selected_map = static_cast<std::uint32_t>(
             game.map().read_native_byte(new_map_address.front()))
@@ -3888,6 +3895,13 @@ int main(int argc, char** argv) {
                 "results-to-route transition did not enable both map backgrounds");
         require(saw_results_fade,
                 "results-to-route transition skipped the source fade");
+        require(saw_live_results_transfer,
+                "mission tally froze instead of running its source transfer loop");
+        require(game.map().ppu_state().bg1_scroll_x == 0
+                    && game.map().ppu_state().bg1_scroll_y == 0
+                    && game.map().ppu_state().bg2_scroll_x == 0
+                    && game.map().ppu_state().bg2_scroll_y == 0,
+                "post-level map retained gameplay PPU scroll offsets");
         for (const auto launch : game.map().unknown_superfx_launches()) {
             std::cerr << "  result-screen GSU launch $" << std::hex << launch
                       << std::dec << '\n';
