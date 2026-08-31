@@ -23,7 +23,7 @@
 #include "starfox/timing/fixed_step.hpp"
 
 #include <SDL3/SDL.h>
-#if defined(__ANDROID__) || defined(SDL_PLATFORM_IOS) || defined(__SWITCH__)
+#if defined(__ANDROID__) || defined(SDL_PLATFORM_IOS)
 #include <SDL3/SDL_main.h>
 #ifdef main
 #undef main
@@ -2783,7 +2783,7 @@ std::filesystem::path executable_path(const char* argv0) {
 
 } // namespace
 
-#if defined(__ANDROID__) || defined(SDL_PLATFORM_IOS) || defined(__SWITCH__)
+#if defined(__ANDROID__) || defined(SDL_PLATFORM_IOS)
 int SDL_main(int argc, char** argv) {
 #else
 int main(int argc, char** argv) {
