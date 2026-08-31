@@ -3873,6 +3873,10 @@ int main(int argc, char** argv) {
         const auto result_pointer_address = upstream_symbols.find("SPECPTR");
         require(!result_pointer_address.empty(),
                 "stage-result percentage pointer is missing");
+        const auto doing_wipe_address = upstream_symbols.find("DOINGWIPE");
+        const auto do_a_wipe_address = upstream_symbols.find("DOAWIPE");
+        require(!doing_wipe_address.empty() && !do_a_wipe_address.empty(),
+                "stage-result wipe symbols are missing");
         const auto result_pointer_before = game.map().read_native_word(
             result_pointer_address.front());
         auto saw_results_fade = false;
@@ -3894,6 +3898,11 @@ int main(int argc, char** argv) {
                 // signal only after END_LEVEL_SEQ has recorded its result.
                 game.map().write_native_byte(
                     upstream_symbols.find("CLB2").front(), 1U);
+                // mapendwipe leaves its native control bytes live at the
+                // direct MAIN.ASM -> PLANETSEQ handoff even though the new
+                // Mode 3 setup disables every PPU window register.
+                game.map().write_native_byte(doing_wipe_address.front(), 1U);
+                game.map().write_native_byte(do_a_wipe_address.front(), 1U);
                 if (!starfox_ex_cartridge) {
                     game.map().write_native_byte(
                         upstream_symbols.find("DONEACIRCLE").front(), 1U);
@@ -3940,6 +3949,10 @@ int main(int argc, char** argv) {
         require(!game.map().ppu_state().bg2_horizontal_offsets_enabled
                     && !game.map().ppu_state().bg2_vertical_offsets_enabled,
                 "post-level map retained gameplay per-line offset tables");
+        require(!game.window_wipe_state().active
+                    && game.map().read_native_byte(doing_wipe_address.front()) == 0U
+                    && game.map().read_native_byte(do_a_wipe_address.front()) == 0U,
+                "post-level map retained the completed stage's black window wipe");
         for (const auto launch : game.map().unknown_superfx_launches()) {
             std::cerr << "  result-screen GSU launch $" << std::hex << launch
                       << std::dec << '\n';
@@ -5179,43 +5192,31 @@ int main(int argc, char** argv) {
                 "controller type did not remap gameplay buttons");
         }
 
-        // SET_C_TYPE selects one of four 256x256 BG2 quadrants. CONT.ASM's
-        // SEQSCROLL moves the displayed controller diagram toward that page
-        // at two horizontal pixels and one vertical pixel per raster.
-        title_game.map().write_native_byte(control_type, 0U);
-        static_cast<void>(title_game.tick({}));
-        for (std::size_t frame = 0U; frame < 260U; ++frame) {
-            title_game.present_frame();
-        }
-        require(title_game.map().ppu_state().bg2_scroll_x == 0
-                    && title_game.map().ppu_state().bg2_scroll_y == 0,
-            "controller type A did not settle on its artwork page");
-        title_game.map().write_native_byte(control_type, 1U);
-        static_cast<void>(title_game.tick({}));
-        title_game.present_frame();
-        title_game.present_frame();
-        require(title_game.map().ppu_state().bg2_scroll_x == 2
-                    && title_game.map().ppu_state().bg2_scroll_y == 0,
-            "controller type B did not scroll to its artwork page");
-        for (std::uint8_t type = 1U; type < 4U; ++type) {
+        // CONTROLLER's IRQ applies SET_C_TYPE's requested 256x256 quadrant
+        // directly. Every A/B/C/D page must therefore appear on the same
+        // logic tick, without an animated transition between diagrams.
+        for (std::uint8_t type = 0U; type < 4U; ++type) {
             title_game.map().write_native_byte(control_type, type);
             static_cast<void>(title_game.tick({}));
-            for (std::size_t frame = 0U; frame < 260U; ++frame) {
-                title_game.present_frame();
-            }
             require(title_game.map().ppu_state().bg2_scroll_x
                             == ((type & 1U) != 0U ? 256 : 0)
                         && title_game.map().ppu_state().bg2_scroll_y
                             == ((type & 2U) != 0U ? 256 : 0),
-                "controller type did not settle on its A/B/C/D artwork page");
+                "controller type did not switch instantly to its A/B/C/D artwork page");
         }
 
         const auto old_control_type = title_game.map().read_native_byte(control_type);
         static_cast<void>(title_game.tick(
             {0, starfox::input::select, 0}));
+        const auto selected_control_type = static_cast<std::uint8_t>(
+            (old_control_type + 1U) & 3U);
         require(title_game.map().read_native_byte(control_type)
-                    == static_cast<std::uint8_t>((old_control_type + 1U) & 3U),
-                "controller screen SELECT did not cycle the source control type");
+                        == selected_control_type
+                    && title_game.map().ppu_state().bg2_scroll_x
+                        == ((selected_control_type & 1U) != 0U ? 256 : 0)
+                    && title_game.map().ppu_state().bg2_scroll_y
+                        == ((selected_control_type & 2U) != 0U ? 256 : 0),
+                "controller screen SELECT did not instantly cycle the source control type");
         for (std::size_t tick = 1; tick < 16; ++tick) {
             static_cast<void>(title_game.tick({}));
         }

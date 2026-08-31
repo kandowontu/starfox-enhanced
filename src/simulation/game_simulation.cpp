@@ -222,8 +222,6 @@ GameSimulation::GameSimulation(
       control_type_(ram_symbol("C_TYPE")),
       control_bg2_horizontal_request_(ram_symbol("BG2HOFSREQ")),
       control_bg2_vertical_request_(ram_symbol("BG2VOFSREQ")),
-      control_bg2_horizontal_backup_(ram_symbol("BG2HOFSBAK")),
-      control_bg2_vertical_backup_(ram_symbol("BG2VOFSBAK")),
       default_training_(ram_symbol("DEFAULTTRAIN")),
       lives_(ram_symbol("LIVES")),
       sprite_position_(ram_symbol("SPRITESPOS")),
@@ -2808,39 +2806,14 @@ void GameSimulation::apply_control_type() {
     Wdc65816Registers registers;
     registers.status = 0x24U;
     map_.call_native_near_routine(set_control_type_, registers);
-}
-
-void GameSimulation::advance_control_type_scroll() {
+    // CONTROLLER's IRQ copies SET_C_TYPE's requested quadrant directly to
+    // BG2. There is no page-scroll animation: SELECT snaps immediately to
+    // the next A/B/C/D diagram while that diagram's selected row blinks.
     const auto horizontal = signed_word(map_.read_native_word(
-        control_bg2_horizontal_backup_));
-    const auto vertical = signed_word(map_.read_native_word(
-        control_bg2_vertical_backup_));
-    // SEQSCROLL writes the current backups to the PPU before RAMCHASE moves
-    // them toward SET_C_TYPE's requested 256x256 tilemap quadrant. This is
-    // the smooth A/B/C/D page movement visible on the cartridge.
-    map_.set_bg2_scroll(horizontal, vertical);
-    const auto chase = [](std::int16_t current, std::int16_t target,
-                          std::int16_t speed) {
-        if (current < target) {
-            return static_cast<std::int16_t>(
-                std::min<std::int32_t>(current + speed, target));
-        }
-        if (current > target) {
-            return static_cast<std::int16_t>(
-                std::max<std::int32_t>(current - speed, target));
-        }
-        return current;
-    };
-    const auto requested_horizontal = signed_word(map_.read_native_word(
         control_bg2_horizontal_request_));
-    const auto requested_vertical = signed_word(map_.read_native_word(
+    const auto vertical = signed_word(map_.read_native_word(
         control_bg2_vertical_request_));
-    map_.write_native_word(control_bg2_horizontal_backup_,
-        std::bit_cast<std::uint16_t>(
-            chase(horizontal, requested_horizontal, 2)));
-    map_.write_native_word(control_bg2_vertical_backup_,
-        std::bit_cast<std::uint16_t>(
-            chase(vertical, requested_vertical, 1)));
+    map_.set_bg2_scroll(horizontal, vertical);
 }
 
 void GameSimulation::enter_controls(
@@ -3120,6 +3093,15 @@ void GameSimulation::enter_planet_map(
     bool wait_for_arrival_confirmation) {
     paused_ = false;
     circle_effect_ = {};
+    // SETUP_PLANETS_L zeros W12SEL/W34SEL/WOBJSEL and all of the window
+    // logic/mask registers. The native variables can still contain the last
+    // mapendwipe state because PLANETSEQ no longer calls TRANSFER_L, but on
+    // hardware that stale state is no longer visible. Clear the host-facing
+    // latches too so the completed stage's circular wipe cannot be composed
+    // over the freshly initialized planet map.
+    map_.write_native_byte(do_a_wipe_, 0U);
+    map_.write_native_byte(doing_wipe_, 0U);
+    wipe_logic_snapshot_ = 0U;
     if (!route_display_order_) {
         auto route = map_.read_native_byte(which_route_);
         if (route < 2U) {
@@ -3442,10 +3424,6 @@ void GameSimulation::begin_planet_selection_sequence() {
 
 void GameSimulation::present_frame() {
     map_.tick_video_phase();
-    if (flow_state_ == GameFlowState::controls_type
-        || flow_state_ == GameFlowState::controls_choice) {
-        advance_control_type_scroll();
-    }
     if (deferred_msu_track_) {
         if (deferred_msu_frames_ != 0U) --deferred_msu_frames_;
         if (deferred_msu_frames_ == 0U) {
