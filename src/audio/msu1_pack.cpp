@@ -3,9 +3,11 @@
 #include "starfox/assets/bps.hpp"
 
 #include <array>
+#include <cctype>
 #include <fstream>
 #include <limits>
 #include <span>
+#include <string>
 
 namespace starfox::audio {
 namespace {
@@ -31,10 +33,43 @@ std::uint64_t read_u64(std::span<const std::uint8_t> bytes) noexcept {
     return value;
 }
 
+bool filename_equal_case_insensitive(
+    const std::filesystem::path& left,
+    const std::filesystem::path& right) {
+    const auto left_name = left.filename().string();
+    const auto right_name = right.filename().string();
+    if (left_name.size() != right_name.size()) return false;
+    return std::equal(left_name.begin(), left_name.end(), right_name.begin(),
+        [](unsigned char a, unsigned char b) {
+            return std::tolower(a) == std::tolower(b);
+        });
+}
+
+std::filesystem::path resolve_companion_case(
+    const std::filesystem::path& requested) {
+    std::error_code error;
+    if (std::filesystem::is_regular_file(requested, error)) return requested;
+    error.clear();
+    auto directory = requested.parent_path();
+    if (directory.empty()) directory = ".";
+    for (std::filesystem::directory_iterator entries{directory, error}, end;
+         !error && entries != end; entries.increment(error)) {
+        if (!entries->is_regular_file(error)) {
+            error.clear();
+            continue;
+        }
+        if (filename_equal_case_insensitive(
+                entries->path(), requested.filename())) {
+            return entries->path();
+        }
+    }
+    return requested;
+}
+
 } // namespace
 
 Msu1Pack::Msu1Pack(std::filesystem::path path) noexcept
-    : path_(std::move(path)) {
+    : path_(resolve_companion_case(path)) {
     try {
         std::ifstream input{path_, std::ios::binary | std::ios::ate};
         if (!input) return;

@@ -83,6 +83,12 @@ int main() {
             && pack.load_track(53U).empty(),
         "MSU-1 companion accepted an invalid track number");
 
+    const auto case_variant_path = path.parent_path()
+        / "STARFOX-ENHANCED-MSU1-PACK-TEST.PAK";
+    const starfox::audio::Msu1Pack case_variant_pack{case_variant_path};
+    require(case_variant_pack.available(),
+        "case-sensitive host did not discover the MSU-1 companion by name");
+
     auto corrupt = bytes;
     corrupt.back() ^= 0xffU;
     {

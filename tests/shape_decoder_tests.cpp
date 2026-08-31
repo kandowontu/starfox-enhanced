@@ -367,6 +367,36 @@ int main() {
                 == interpolated_endpoint_frame.pixels(),
             "Render Upscale changed face visibility on a source-frame boundary");
 
+    auto tangent_visibility_shape = shape;
+    tangent_visibility_shape.bsp_root_address = 0U;
+    auto& tangent_vertices = tangent_visibility_shape.frames.empty()
+        ? tangent_visibility_shape.vertices
+        : tangent_visibility_shape.frames.front().vertices;
+    const auto tangent_vertex = static_cast<std::uint8_t>(
+        tangent_vertices.size());
+    tangent_vertices.insert(tangent_vertices.end(), {
+        {-10, -10, -512}, {10, -10, -512}, {0, 10, -512},
+    });
+    tangent_visibility_shape.visibilities = {{tangent_vertex,
+        static_cast<std::uint8_t>(tangent_vertex + 1U),
+        static_cast<std::uint8_t>(tangent_vertex + 2U)}};
+    tangent_visibility_shape.faces.front().visibility_index = 0;
+    auto tangent_pose = source_endpoint_pose;
+    tangent_pose.rotation_matrix = {
+        32'767, 0, 0,
+        0, 32'767, 0,
+        0, 0, 32'767,
+    };
+    tangent_pose.z = 512.0 * 32'767.0 / 32'768.0;
+    starfox::render::Framebuffer tangent_frame{
+        224, 192, test_render_scale};
+    scaled_renderer.draw(tangent_visibility_shape, tangent_pose,
+        tangent_frame, true);
+    require(std::any_of(tangent_frame.pixels().begin(),
+                tangent_frame.pixels().end(),
+                [](auto pixel) { return pixel != 0U; }),
+        "Render Upscale dropped a face at a camera-plane tangent");
+
     starfox::render::Framebuffer source_overlay{2U, 2U};
     starfox::render::Framebuffer scaled_composite{2U, 2U, 3U};
     source_overlay.set(1, 1, 9U);

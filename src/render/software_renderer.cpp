@@ -269,6 +269,37 @@ bool source_visibility(
     return (signed_area < 0) != odd_behind;
 }
 
+bool continuous_visibility(
+    const assets::Visibility& visibility,
+    const std::vector<Vec3>& transformed) {
+    if (visibility.a >= transformed.size()
+        || visibility.b >= transformed.size()
+        || visibility.c >= transformed.size()) {
+        return false;
+    }
+    const auto& a = transformed[visibility.a];
+    const auto& b = transformed[visibility.b];
+    const auto& c = transformed[visibility.c];
+    // The signed projected area, after source_visibility's odd-behind
+    // correction, has the same sign as this camera-space determinant. Use
+    // that equivalent form for Render Upscale so a visibility triple close
+    // to z=0 cannot wrap or quantize through a different facing for one host
+    // presentation. At the exact tangent the projected source area is
+    // undefined/zero; retaining the face prevents a one-frame hole between
+    // the two otherwise-visible neighbouring poses.
+    const auto determinant =
+        a.x * (b.y * c.z - b.z * c.y)
+        - a.y * (b.x * c.z - b.z * c.x)
+        + a.z * (b.x * c.y - b.y * c.x);
+    const auto coordinate_scale = std::max({
+        std::abs(a.x), std::abs(a.y), std::abs(a.z),
+        std::abs(b.x), std::abs(b.y), std::abs(b.z),
+        std::abs(c.x), std::abs(c.y), std::abs(c.z), 1.0});
+    const auto tangent_tolerance = coordinate_scale * coordinate_scale
+        * coordinate_scale * 1.0e-12;
+    return determinant <= tangent_tolerance;
+}
+
 RasterVertex interpolate_at(
     const RasterVertex& a, const RasterVertex& b, double amount) {
     return {
@@ -1523,6 +1554,12 @@ void SoftwareRenderer::draw(
     const auto& visibility_vertices = raster_vertices;
     const auto& visibility_projected = continuous_upscaled_geometry
         ? upscaled_projected : projected;
+    const auto face_visible = [&](const assets::Visibility& visibility) {
+        return settings_.render_scale > 1U
+            ? continuous_visibility(visibility, visibility_vertices)
+            : source_visibility(
+                visibility, visibility_projected, visibility_vertices);
+    };
 
     // MOBJ.MC enters the face pass with r8 holding the end of M_PROJPNTS,
     // then COLOR WARP's mrand macro uses that register directly instead of
@@ -1666,9 +1703,7 @@ void SoftwareRenderer::draw(
                 if (visibility.a < visibility_projected.size()
                     && visibility.b < visibility_projected.size()
                     && visibility.c < visibility_projected.size()) {
-                    plane_visible = source_visibility(
-                        visibility, visibility_projected,
-                        visibility_vertices);
+                    plane_visible = face_visible(visibility);
                 }
             }
 
@@ -1696,9 +1731,7 @@ void SoftwareRenderer::draw(
                 || visibility.c >= visibility_projected.size()) {
                 continue;
             }
-            if (!source_visibility(
-                    visibility, visibility_projected,
-                    visibility_vertices)) {
+            if (!face_visible(visibility)) {
                 continue;
             }
         }
