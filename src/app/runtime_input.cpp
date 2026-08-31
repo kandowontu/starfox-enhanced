@@ -187,6 +187,16 @@ bool is_default_direction(
 
 } // namespace
 
+std::filesystem::path single_instance_lock_path() {
+    char* preference_path =
+        SDL_GetPrefPath("StarFoxEnhanced", "StarFoxEnhanced");
+    if (preference_path == nullptr) return {};
+    const auto result =
+        std::filesystem::path{preference_path} / "runtime.lock";
+    SDL_free(preference_path);
+    return result;
+}
+
 void configure_native_gamepad_support() noexcept {
     // XInput is the native Windows path used by Xbox controllers and by Steam
     // Input under Proton. The dedicated HIDAPI path exposes the Steam Deck's

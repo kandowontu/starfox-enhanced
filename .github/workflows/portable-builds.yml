@@ -53,6 +53,55 @@ jobs:
           gh release upload "${tag}" \
             StarFoxAssetBuilder-0.0.1-alpha-windows-x64.zip --clobber
 
+  linux-x64:
+    name: Linux x64 native runtime
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SDL build dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config \
+            libasound2-dev libpulse-dev libx11-dev libxext-dev \
+            libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev \
+            libxss-dev libxtst-dev libxkbcommon-dev libgl1-mesa-dev \
+            libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev \
+            libudev-dev
+      - name: Build, test, and install
+        shell: bash
+        run: |
+          chmod +x tools/build_linux.sh
+          tools/build_linux.sh "$GITHUB_WORKSPACE" \
+            "$RUNNER_TEMP/starfox-enhanced-linux-x64" \
+            "$GITHUB_WORKSPACE/dist/StarFoxEnhanced-linux-x64"
+      - name: Verify and package runtime
+        shell: bash
+        run: |
+          binary="dist/StarFoxEnhanced-linux-x64/starfox_pc"
+          test -x "${binary}"
+          test -x dist/StarFoxEnhanced-linux-x64/starfox_asset_builder
+          file "${binary}" | grep -q 'ELF 64-bit.*x86-64'
+          ! ldd "${binary}" | grep -q 'not found'
+          cmake -E tar cf StarFoxEnhanced-0.0.1-alpha-linux-x64.zip \
+            --format=zip dist/StarFoxEnhanced-linux-x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StarFoxEnhanced-0.0.1-alpha-linux-x64
+          path: StarFoxEnhanced-0.0.1-alpha-linux-x64.zip
+          if-no-files-found: error
+      - name: Add to GitHub release
+        if: github.event_name == 'push' || inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
+          gh release upload "${tag}" \
+            StarFoxEnhanced-0.0.1-alpha-linux-x64.zip --clobber
+
   macos-universal:
     name: macOS universal (unsigned)
     runs-on: macos-15

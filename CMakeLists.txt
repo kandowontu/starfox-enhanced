@@ -2,6 +2,12 @@ cmake_minimum_required(VERSION 3.24)
 
 project(starfox_enhanced VERSION 0.0.1 LANGUAGES CXX)
 
+# devkitPro's current toolchain identifies Horizon as NintendoSwitch but does
+# not define the legacy SWITCH convenience variable used by projects and SDL.
+if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+    set(SWITCH TRUE)
+endif()
+
 option(STARFOX_BUILD_TESTS "Build deterministic timing tests" ON)
 option(STARFOX_BUILD_RUNTIME "Build the SDL3 native PC runtime" ON)
 option(STARFOX_EMBED_RUNTIME_ASSETS
@@ -26,23 +32,30 @@ set(STARFOX_ORIGINAL_PATCH_FILE
 set(STARFOX_EX_PATCH_FILE
     "${CMAKE_CURRENT_SOURCE_DIR}/assets/patches/starfox-ex-v12.bps"
     CACHE FILEPATH "Star Fox EX BPS delta for a clean Star Fox USA v1.2 ROM")
+if(WIN32)
+    set(STARFOX_RETAIL_ROM_DIR "C:/NTSC-US Super Nintendo System Roms"
+        CACHE PATH "Directory searched for clean retail validation ROMs")
+else()
+    set(STARFOX_RETAIL_ROM_DIR "$ENV{HOME}/NTSC-US Super Nintendo System Roms"
+        CACHE PATH "Directory searched for clean retail validation ROMs")
+endif()
 set(STARFOX_RETAIL_V12_FILE
-    "C:/NTSC-US Super Nintendo System Roms/Star Fox (USA) (Rev 2).sfc"
+    "${STARFOX_RETAIL_ROM_DIR}/Star Fox (USA) (Rev 2).sfc"
     CACHE FILEPATH "Clean Star Fox USA v1.2 ROM used only for local validation")
 set(STARFOX_RETAIL_JAPAN_V10_FILE
-    "C:/NTSC-US Super Nintendo System Roms/Star Fox (Japan).sfc")
+    "${STARFOX_RETAIL_ROM_DIR}/Star Fox (Japan).sfc")
 set(STARFOX_RETAIL_JAPAN_V11_FILE
-    "C:/NTSC-US Super Nintendo System Roms/Star Fox (Japan) (Rev 1).sfc")
+    "${STARFOX_RETAIL_ROM_DIR}/Star Fox (Japan) (Rev 1).sfc")
 set(STARFOX_RETAIL_USA_V10_FILE
-    "C:/NTSC-US Super Nintendo System Roms/Star Fox (USA).sfc")
+    "${STARFOX_RETAIL_ROM_DIR}/Star Fox (USA).sfc")
 set(STARFOX_RETAIL_USA_V11_FILE
-    "C:/NTSC-US Super Nintendo System Roms/Star Fox (USA) (Rev 1).sfc")
+    "${STARFOX_RETAIL_ROM_DIR}/Star Fox (USA) (Rev 1).sfc")
 set(STARFOX_RETAIL_EUROPE_V10_FILE
-    "C:/NTSC-US Super Nintendo System Roms/Starwing (Europe).sfc")
+    "${STARFOX_RETAIL_ROM_DIR}/Starwing (Europe).sfc")
 set(STARFOX_RETAIL_EUROPE_V11_FILE
-    "C:/NTSC-US Super Nintendo System Roms/Starwing (Europe) (Rev 1).sfc")
+    "${STARFOX_RETAIL_ROM_DIR}/Starwing (Europe) (Rev 1).sfc")
 set(STARFOX_RETAIL_GERMANY_V10_FILE
-    "C:/NTSC-US Super Nintendo System Roms/Starwing (Germany).sfc")
+    "${STARFOX_RETAIL_ROM_DIR}/Starwing (Germany).sfc")
 set(STARFOX_RETAIL_JAPAN_V10_PATCH_FILE
     "${CMAKE_CURRENT_SOURCE_DIR}/assets/patches/retail-japan-v10-to-usa-v12.bps")
 set(STARFOX_RETAIL_JAPAN_V11_PATCH_FILE
@@ -101,11 +114,13 @@ add_library(retro_cpu_core STATIC
     "${retro_cpu_SOURCE_DIR}/cpu.cc"
 )
 target_include_directories(retro_cpu_core SYSTEM PUBLIC "${retro_cpu_SOURCE_DIR}")
+target_compile_features(retro_cpu_core PUBLIC cxx_std_17)
 add_library(retro_cpu_65816 STATIC
     "${retro_cpu_SOURCE_DIR}/cpu/65816/cpu_65c816.cc"
 )
 target_include_directories(retro_cpu_65816 SYSTEM PUBLIC "${retro_cpu_SOURCE_DIR}")
 target_link_libraries(retro_cpu_65816 PUBLIC retro_cpu_core)
+target_compile_features(retro_cpu_65816 PUBLIC cxx_std_17)
 if(MINGW)
     target_compile_definitions(retro_cpu_core PUBLIC __FUNCSIG__=__PRETTY_FUNCTION__)
     target_compile_definitions(retro_cpu_65816 PUBLIC __FUNCSIG__=__PRETTY_FUNCTION__)

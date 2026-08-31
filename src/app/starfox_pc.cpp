@@ -25,6 +25,9 @@
 #include <SDL3/SDL.h>
 #if defined(__ANDROID__) || defined(SDL_PLATFORM_IOS) || defined(__SWITCH__)
 #include <SDL3/SDL_main.h>
+#ifdef main
+#undef main
+#endif
 #endif
 
 #include <algorithm>
@@ -55,6 +58,10 @@
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#elif defined(__linux__) && !defined(__ANDROID__)
+#include <fcntl.h>
+#include <sys/file.h>
+#include <unistd.h>
 #endif
 
 namespace {
@@ -625,6 +632,13 @@ find_required_retail(const std::filesystem::path& executable_directory) {
 #if defined(_WIN32)
     directories.insert(directories.begin(), std::filesystem::path{
         R"(C:\NTSC-US Super Nintendo System Roms)"});
+#else
+    if (const auto* home = std::getenv("HOME");
+        home != nullptr && *home != '\0') {
+        directories.insert(directories.begin(),
+            std::filesystem::path{home}
+                / "NTSC-US Super Nintendo System Roms");
+    }
 #endif
     if (const auto* documents = SDL_GetUserFolder(SDL_FOLDER_DOCUMENTS);
         documents != nullptr && *documents != '\0') {
@@ -2756,9 +2770,24 @@ CameraPoint world_to_camera(
     };
 }
 
+// argv[0] is not necessarily an absolute or directly resolvable path when a
+// Linux desktop launches the program through PATH or a shortcut.
+std::filesystem::path executable_path(const char* argv0) {
+#if defined(__linux__) && !defined(__ANDROID__)
+    std::error_code error;
+    auto resolved = std::filesystem::read_symlink("/proc/self/exe", error);
+    if (!error && !resolved.empty()) return resolved;
+#endif
+    return std::filesystem::absolute(argv0);
+}
+
 } // namespace
 
+#if defined(__ANDROID__) || defined(SDL_PLATFORM_IOS) || defined(__SWITCH__)
+int SDL_main(int argc, char** argv) {
+#else
 int main(int argc, char** argv) {
+#endif
 #if defined(_WIN32)
     // Keep the lock alive through the catch block and its modal error dialog.
     // If it lived inside try, stack unwinding released it before MessageBoxA;
@@ -2775,6 +2804,28 @@ int main(int argc, char** argv) {
         if (single_instance.handle == nullptr) return 1;
         if (GetLastError() == ERROR_ALREADY_EXISTS) return 0;
     }
+#elif defined(__linux__) && !defined(__ANDROID__)
+    struct SingleInstanceLock {
+        int descriptor{-1};
+        ~SingleInstanceLock() {
+            if (descriptor >= 0) ::close(descriptor);
+        }
+    } single_instance;
+    if (std::getenv("STARFOX_TEST_FRAMES") == nullptr) {
+        const auto lock_path = starfox::app::single_instance_lock_path();
+        if (!lock_path.empty()) {
+            std::error_code lock_error;
+            std::filesystem::create_directories(
+                lock_path.parent_path(), lock_error);
+            single_instance.descriptor = ::open(
+                lock_path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0644);
+            if (single_instance.descriptor >= 0
+                && ::flock(single_instance.descriptor,
+                    LOCK_EX | LOCK_NB) != 0) {
+                return 0;
+            }
+        }
+    }
 #endif
     try {
         const auto saved_pregame_path = starfox::app::pregame_settings_path();
@@ -2786,7 +2837,7 @@ int main(int argc, char** argv) {
             saved_pregame.renderer_mode)};
         std::string initial_map = "BOOT";
         const auto executable_directory =
-            std::filesystem::absolute(argv[0]).parent_path();
+            executable_path(argv[0]).parent_path();
         const starfox::audio::Msu1Pack msu1_pack{
             find_msu1_pack(executable_directory)};
 #if defined(STARFOX_HAS_EMBEDDED_ASSETS)

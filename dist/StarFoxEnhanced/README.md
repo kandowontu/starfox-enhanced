@@ -141,11 +141,13 @@ for source-to-port comparisons.
 
 ## UltraStarFox source setup
 
-The required Original revision is pinned in `config/upstream.json`:
+The required Original revision is pinned in `config/upstream.json` and tracked
+as a submodule, so `git clone --recurse-submodules` fetches the source with the
+repository and the pin keeps the embedded symbol tables bound to the checked-in
+BPS deltas:
 
 ```powershell
-git clone https://github.com/Sunlitspace542/ultrastarfox.git upstream-ultrastarfox
-git -C upstream-ultrastarfox checkout 270e959a47d82240d9290a6c6630032c9ec53ff5
+git submodule update --init upstream-ultrastarfox
 powershell -ExecutionPolicy Bypass -File tools/build_upstream.ps1
 ```
 
@@ -272,6 +274,13 @@ script for generating an optional NSP forwarder with NTON and keys dumped from
 the user's own console; console keys are never stored in this repository or in
 the public build workflow. See `platform/switch/README.md` for the exact layout
 and the forwarder warning.
+
+Linux builds SDL from the pinned source archive. Install the distribution's
+SDL build dependencies first; the authoritative Ubuntu/Fedora package lists
+are maintained in SDL's
+[Linux build documentation](https://github.com/libsdl-org/SDL/blob/main/docs/README-linux.md).
+`tools/build_linux.sh` performs an optimized clean build, runs the complete
+test set, and installs both the runtime and standalone asset builder.
 
 Xbox/XInput controllers, Steam Input virtual controllers, and the Steam Deck's
 built-in controls are detected automatically. Both the D-pad and left stick

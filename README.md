@@ -275,6 +275,13 @@ the user's own console; console keys are never stored in this repository or in
 the public build workflow. See `platform/switch/README.md` for the exact layout
 and the forwarder warning.
 
+Linux builds SDL from the pinned source archive. Install the distribution's
+SDL build dependencies first; the authoritative Ubuntu/Fedora package lists
+are maintained in SDL's
+[Linux build documentation](https://github.com/libsdl-org/SDL/blob/main/docs/README-linux.md).
+`tools/build_linux.sh` performs an optimized clean build, runs the complete
+test set, and installs both the runtime and standalone asset builder.
+
 Xbox/XInput controllers, Steam Input virtual controllers, and the Steam Deck's
 built-in controls are detected automatically. Both the D-pad and left stick
 move by default; Deck back paddles and all other exposed controls can be
