@@ -2372,7 +2372,7 @@ public:
     [[nodiscard]] std::array<std::uint8_t, 4> queue_logic_tick(
         std::span<const starfox::simulation::ApuPortWrite> writes,
         std::span<const starfox::simulation::MsuRegisterWrite> msu_writes,
-        bool fast_forward, bool queue_output = true) {
+        std::uint32_t speed_multiplier, bool queue_output = true) {
         static_cast<void>(emulator_.render_logic_tick(writes));
         msu1_.process_register_writes(msu_writes);
         const auto music = msu1_.enabled()
@@ -2396,18 +2396,32 @@ public:
         }
         auto& samples = mixed_samples_;
         std::span<const std::int16_t> queued_samples{samples};
-        if (fast_forward) {
+        speed_multiplier = std::max(1U, speed_multiplier);
+        if (speed_multiplier != previous_speed_multiplier_) {
+            fast_sample_phase_ = 0U;
+            previous_speed_multiplier_ = speed_multiplier;
+        }
+        if (speed_multiplier > 1U) {
             // The SPC still advances through its complete 50 ms source tick,
-            // but 2x playback consumes that tick in 25 ms. Preserve stereo
-            // pairs while selecting every other native sample frame so music
-            // and sound effects stay synchronized with the doubled game clock.
-            fast_samples_.resize(samples.size() / 2U);
-            for (std::size_t destination = 0U;
-                 destination < fast_samples_.size(); destination += 2U) {
-                const auto source = destination * 2U;
-                fast_samples_[destination] = samples[source];
-                fast_samples_[destination + 1U] = samples[source + 1U];
+            // but accelerated playback consumes it in 1/N of that time.
+            // Select complete stereo frames on a continuous modulo-N phase;
+            // carrying the remainder across ticks prevents 3x from dropping
+            // twenty samples per second and becoming audibly choppy.
+            fast_samples_.clear();
+            const auto source_frames = samples.size() / 2U;
+            fast_samples_.reserve(
+                ((source_frames + speed_multiplier - 1U) / speed_multiplier)
+                * 2U);
+            for (std::size_t source_frame = 0U;
+                 source_frame < source_frames; ++source_frame) {
+                if ((fast_sample_phase_ + source_frame) % speed_multiplier
+                    != 0U) continue;
+                const auto source = source_frame * 2U;
+                fast_samples_.push_back(samples[source]);
+                fast_samples_.push_back(samples[source + 1U]);
             }
+            fast_sample_phase_ = static_cast<std::uint32_t>(
+                (fast_sample_phase_ + source_frames) % speed_multiplier);
             queued_samples = fast_samples_;
         }
         if (queue_output && !SDL_PutAudioStreamData(stream_, queued_samples.data(),
@@ -2433,6 +2447,8 @@ private:
     std::vector<std::int16_t> mixed_samples_;
     std::uint8_t music_volume_{100U};
     std::uint8_t sfx_volume_{100U};
+    std::uint32_t fast_sample_phase_{};
+    std::uint32_t previous_speed_multiplier_{1U};
     bool started_{};
     bool paused_{};
 };
@@ -3494,7 +3510,7 @@ int main(int argc, char** argv) {
                 constexpr std::size_t direct_entry_settle_ticks = 30U;
                 for (std::size_t tick = 0U;
                      tick < direct_entry_settle_ticks; ++tick) {
-                    ports = audio.queue_logic_tick({}, {}, false, false);
+                    ports = audio.queue_logic_tick({}, {}, 1U, false);
                 }
             }
             game.synchronize_apu_output_ports(ports);
@@ -4367,9 +4383,16 @@ int main(int argc, char** argv) {
             }
             remap_input.sample(
                 bindings.sample_fixed_menu_navigation(gamepad));
-            const auto fast_forward = !advance_frozen_frame
-                && (test_fast_forward || (keyboard_state[SDL_SCANCODE_TAB]
-                    && !(remap_menu.active && remap_menu.waiting_for_input)));
+            const auto tab_fast_forward = keyboard_state[SDL_SCANCODE_TAB]
+                && !(remap_menu.active && remap_menu.waiting_for_input);
+            const auto control_fast_forward = keyboard_state[SDL_SCANCODE_LCTRL]
+                || keyboard_state[SDL_SCANCODE_RCTRL];
+            const auto shift_fast_forward = keyboard_state[SDL_SCANCODE_LSHIFT]
+                || keyboard_state[SDL_SCANCODE_RSHIFT];
+            const auto speed_multiplier = advance_frozen_frame ? 1U
+                : test_fast_forward ? 2U
+                : starfox::timing::playback_speed_multiplier(tab_fast_forward,
+                      control_fast_forward, shift_fast_forward);
             // Presentation FPS is independent of the cartridge's 60 Hz
             // raster. Low output rates may service multiple raster phases
             // before one draw; high rates expose fractional progress between
@@ -4382,7 +4405,7 @@ int main(int argc, char** argv) {
                 }
                 if (test_unpaced) {
                     return raster_clock.advance(
-                        game.presentation_fps(), fast_forward ? 2U : 1U);
+                        game.presentation_fps(), speed_multiplier);
                 }
                 const auto now = std::chrono::steady_clock::now();
                 const auto elapsed = std::chrono::duration_cast<
@@ -4390,7 +4413,7 @@ int main(int argc, char** argv) {
                         now - raster_timestamp);
                 raster_timestamp = now;
                 const auto realtime = realtime_raster_clock.advance(
-                    fast_forward ? elapsed * 2 : elapsed);
+                    elapsed * speed_multiplier);
                 return starfox::timing::RasterPhaseBatch{
                     realtime.simulation_steps,
                     realtime.interpolation_alpha,
@@ -4609,7 +4632,7 @@ int main(int argc, char** argv) {
                     game.synchronize_apu_output_ports(
                         audio.queue_logic_tick(
                             pending_audio_writes, pending_msu_writes,
-                            fast_forward,
+                            speed_multiplier,
                             !advance_frozen_frame));
                     pending_audio_writes.clear();
                     pending_msu_writes.clear();

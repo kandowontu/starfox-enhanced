@@ -571,6 +571,36 @@ int main(int argc, char** argv) {
                 && crosshair_frame.get(100, 180) == 0U,
             "cockpit crosshair fragment was mistaken for edge HUD artwork");
 
+    starfox::simulation::SnesPpuState warning_arrow_ppu;
+    warning_arrow_ppu.main_screen = 0x10U;
+    warning_arrow_ppu.object_select = 0U;
+    constexpr std::array<std::uint8_t, 4> warning_x{119U, 127U, 119U, 127U};
+    constexpr std::array<std::uint8_t, 4> warning_y{193U, 193U, 184U, 184U};
+    for (std::size_t piece = 0U; piece < warning_x.size(); ++piece) {
+        const auto low = piece * 4U;
+        warning_arrow_ppu.oam[low] = warning_x[piece];
+        warning_arrow_ppu.oam[low + 1U] = warning_y[piece];
+        warning_arrow_ppu.oam[low + 2U] = 0xbeU;
+        warning_arrow_ppu.oam[low + 3U]
+            = piece % 2U == 0U ? 0xa0U : 0xe0U;
+    }
+    for (std::size_t row = 0U; row < 8U; ++row) {
+        warning_arrow_ppu.vram[0xbeU * 32U + row * 2U] = 0xffU;
+    }
+    starfox::render::HudLayout warning_hud;
+    warning_hud[starfox::render::HudElement::shield] = {31, -20};
+    starfox::render::Framebuffer warning_wide_frame{400U, 224U};
+    sprite_renderer.draw_objects(warning_arrow_ppu, warning_wide_frame,
+        std::nullopt, 72, true, true, &warning_hud);
+    require(warning_wide_frame.get(191, 184) == 129U
+                && warning_wide_frame.get(191, 193) == 0U,
+            "widescreen top-border warning rendered a duplicate down arrow");
+    starfox::render::Framebuffer warning_native_frame{256U, 224U};
+    sprite_renderer.draw_objects(warning_arrow_ppu, warning_native_frame);
+    require(warning_native_frame.get(119, 184) == 129U
+                && warning_native_frame.get(119, 193) == 129U,
+            "native warning-arrow OAM animation was altered");
+
     // Crosshair OBJ slots can move when the source sprite list changes. Match
     // the complete four-quadrant group rather than assuming stable indices,
     // and interpolate it as one rigid reticle between 20 Hz source updates.
@@ -3853,9 +3883,10 @@ int main(int argc, char** argv) {
                   && game.flow_state()
                      == starfox::simulation::GameFlowState::stage_results;
              ++tick) {
-            if (starfox_ex_cartridge
-                && game.map().read_native_word(result_pointer_address.front())
-                    == static_cast<std::uint16_t>(result_pointer_before + 1U)) {
+            if ((starfox_ex_cartridge
+                    && game.map().read_native_word(result_pointer_address.front())
+                        == static_cast<std::uint16_t>(result_pointer_before + 1U))
+                || (!starfox_ex_cartridge && tick == 80U)) {
                 // In a real clear, bossbgm*.ASM keeps advancing inside
                 // TRANSFER_L and mapendwipe sets CLB2 after the tally has
                 // finished. This focused transition test injects
@@ -3863,6 +3894,10 @@ int main(int argc, char** argv) {
                 // signal only after END_LEVEL_SEQ has recorded its result.
                 game.map().write_native_byte(
                     upstream_symbols.find("CLB2").front(), 1U);
+                if (!starfox_ex_cartridge) {
+                    game.map().write_native_byte(
+                        upstream_symbols.find("DONEACIRCLE").front(), 1U);
+                }
             }
             game.present_frame();
             game.present_frame();
@@ -3893,8 +3928,8 @@ int main(int argc, char** argv) {
                 "results-to-route transition did not restore Mode 3");
         require((game.map().ppu_state().main_screen & 0x03U) == 0x03U,
                 "results-to-route transition did not enable both map backgrounds");
-        require(saw_results_fade,
-                "results-to-route transition skipped the source fade");
+        require(starfox_ex_cartridge ? saw_results_fade : !saw_results_fade,
+                "results-to-route transition ignored the source wipe/fade choice");
         require(saw_live_results_transfer,
                 "mission tally froze instead of running its source transfer loop");
         require(game.map().ppu_state().bg1_scroll_x == 0
@@ -3902,6 +3937,9 @@ int main(int argc, char** argv) {
                     && game.map().ppu_state().bg2_scroll_x == 0
                     && game.map().ppu_state().bg2_scroll_y == 0,
                 "post-level map retained gameplay PPU scroll offsets");
+        require(!game.map().ppu_state().bg2_horizontal_offsets_enabled
+                    && !game.map().ppu_state().bg2_vertical_offsets_enabled,
+                "post-level map retained gameplay per-line offset tables");
         for (const auto launch : game.map().unknown_superfx_launches()) {
             std::cerr << "  result-screen GSU launch $" << std::hex << launch
                       << std::dec << '\n';

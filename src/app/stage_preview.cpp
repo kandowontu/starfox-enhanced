@@ -66,6 +66,16 @@ int main(int argc, char** argv) {
                 throw std::runtime_error{
                     "POSTLEVELMAP could not reach first-stage gameplay"};
             }
+            // Let the optional tick count advance the live stage before the
+            // synthetic clear. This preserves non-zero background and PPU
+            // state in transition probes instead of testing only the first
+            // pristine gameplay frame.
+            for (unsigned long tick = 0U; tick < ticks; ++tick) {
+                game.present_frame();
+                game.present_frame();
+                game.present_frame();
+                static_cast<void>(game.tick({}));
+            }
             game.map().write_native_word(
                 symbols.find("LEVELFINISHED").front(), 1U);
             static_cast<void>(game.tick({}));
@@ -73,6 +83,12 @@ int main(int argc, char** argv) {
                  && game.flow_state()
                     == starfox::simulation::GameFlowState::stage_results;
                  ++tick) {
+                if (tick == 80U) {
+                    // This probe injects LEVELFINISHED without running the
+                    // stage-clear map script which normally publishes CLB2.
+                    game.map().write_native_byte(
+                        symbols.find("CLB2").front(), 1U);
+                }
                 game.present_frame();
                 game.present_frame();
                 game.present_frame();

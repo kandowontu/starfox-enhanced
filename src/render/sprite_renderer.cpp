@@ -170,6 +170,29 @@ void SpriteRenderer::draw_objects(
     const auto sizes = kObjectSizes[size_selection < kObjectSizes.size()
         ? size_selection : kObjectSizes.size() - 1U];
 
+    // The source border-warning animation briefly contains both the old and
+    // new row of its vertical arrow. At 20 Hz that is a one-frame motion
+    // smear; on a high-rate widescreen presentation it reads as two separate
+    // arrows for several displayed frames. Detect that middle phase so the
+    // expanded renderer can show the new row only, while leaving native 4:3
+    // output byte-for-byte faithful to the source OAM.
+    auto up_new_row_pieces = std::uint8_t{};
+    auto down_new_row_pieces = std::uint8_t{};
+    if (anchor_edge_hud && horizontal_origin > 0) {
+        for (std::size_t object = 0U; object < 128U; ++object) {
+            const auto low = object * 4U;
+            const auto tile = static_cast<std::uint16_t>(ppu.oam[low + 2U])
+                | (static_cast<std::uint16_t>(ppu.oam[low + 3U] & 1U) << 8U);
+            const auto x = ppu.oam[low];
+            const auto y = ppu.oam[low + 1U];
+            if ((tile & 0x7fU) != 0x3eU || (x != 119U && x != 127U)) {
+                continue;
+            }
+            if (y == 33U) ++up_new_row_pieces;
+            else if (y == 184U) ++down_new_row_pieces;
+        }
+    }
+
     // Lower OAM indices win sprite-to-sprite priority, so paint in reverse.
     for (std::size_t object = 128U; object-- > 0U;) {
         const auto low = object * 4U;
@@ -201,11 +224,22 @@ void SpriteRenderer::draw_objects(
         // shield, or bombs moved each one toward a different widescreen edge
         // (and applied unrelated saved HUD offsets), fragmenting the reticle.
         const auto cockpit_crosshair_tile = (tile & 0x7fU) == 0x61U;
+        const auto vertical_warning_arrow = (tile & 0x7fU) == 0x3eU
+            && (x == 119 || x == 127)
+            && (y_byte == 24U || y_byte == 33U
+                || y_byte == 184U || y_byte == 193U);
+        if (anchor_edge_hud && horizontal_origin > 0
+            && vertical_warning_arrow
+            && ((y_byte == 24U && up_new_row_pieces >= 2U)
+                || (y_byte == 193U && down_new_row_pieces >= 2U))) {
+            continue;
+        }
         const auto boss_label_tile = y_byte < 32U
             && tile >= 0x71U && tile <= 0x74U;
         auto object_origin = horizontal_origin;
         if (anchor_edge_hud && horizontal_origin > 0
             && !cockpit_crosshair_tile
+            && !vertical_warning_arrow
             && (y_byte < 32U || y_byte >= 168U)) {
             // Only the top/bottom gameplay OAM bands are edge HUD artwork.
             // Keep those labels, lives and bombs at the expanded edges. The
@@ -223,8 +257,9 @@ void SpriteRenderer::draw_objects(
         const auto lives_tile = tile == 189U || tile == 226U
             || tile == 229U || tile == 230U;
         auto element = std::optional<HudElement>{};
-        if (cockpit_crosshair_tile) {
-            // The reticle is gameplay geometry, not a configurable HUD group.
+        if (cockpit_crosshair_tile || vertical_warning_arrow) {
+            // Reticles and border warnings are gameplay geometry, not a
+            // configurable HUD group.
         } else if (boss_label_tile) {
             element = HudElement::boss_health;
         } else if (lives_tile || (y_byte < 32U && x < 128)) {

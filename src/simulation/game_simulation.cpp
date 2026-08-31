@@ -300,6 +300,8 @@ GameSimulation::GameSimulation(
       slippy_health_(ram_symbol("FROG")),
       percentage_buffer_(ram_symbol("SPECBUF")),
       percentage_pointer_(ram_symbol("SPECPTR")),
+      results_exit_(ram_symbol("CLB2")),
+      done_a_circle_(ram_symbol("DONEACIRCLE")),
       planet_names_(rom_symbol("PLANETNAMES")),
       dog_characters_(rom_symbol("DOGCCR")),
       dog_tilemap_(rom_symbol("DOGPCR")),
@@ -3098,6 +3100,13 @@ void GameSimulation::enter_planet_map(
     Wdc65816Registers registers;
     registers.status = 0x24U;
     map_.call_native_routine(setup_planets_, registers, 50'000'000, true);
+    // CLEARHVOFS_L resets the cartridge's HDMA work flags, but the host PPU
+    // snapshot also retains the last captured gameplay offset tables.  Mode
+    // 3 does not use those tables on hardware.  Leaving the host-only flags
+    // armed shifted every scanline of BG2 independently, scrambling the
+    // labels and boxes on the map reached after a real stage.
+    map_.set_bg2_vertical_offsets_enabled(false);
+    map_.capture_bg2_horizontal_offsets(0U, false);
     registers = {};
     registers.status = 0x24U;
     map_.call_native_routine(
@@ -3916,6 +3925,10 @@ void GameSimulation::service_level_exit() {
             map_.write_native_word(level_finished_, 0U);
             if (pending_end_game_) {
                 begin_end_game_sequence();
+            } else if (map_.read_native_byte(done_a_circle_) != 0U) {
+                // A mapendwipe stage has already closed the live scene with
+                // the cartridge's round wipe. MAIN.ASM skips FADEDOWN here.
+                finish_stage_results();
             } else {
                 map_.start_display_fade(-1);
                 frontend_phase_ = FrontendPhase::stage_results_fade_to_map;
@@ -3970,6 +3983,8 @@ GameTickResult GameSimulation::tick_stage_results(const input::TickInput& input)
             map_.write_native_word(level_finished_, 0U);
             if (pending_end_game_) {
                 begin_end_game_sequence();
+            } else if (map_.read_native_byte(done_a_circle_) != 0U) {
+                finish_stage_results();
             } else {
                 // END_LEVEL_SEQ returns to MAIN.ASM immediately before its
                 // source FADEDOWN loop. Keep the completed native bitmap
@@ -4431,17 +4446,21 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
                         static_cast<std::uint16_t>(
                             displayed_stage_percentage_) + 3U));
             }
-            const auto count_ticks = static_cast<std::uint32_t>(
-                (static_cast<std::uint16_t>(stage_percentage_) + 2U) / 3U);
-            if (displayed_stage_percentage_ == stage_percentage_
-                && ((flow_ticks_ >= 20U
-                        && (input.pressed
-                            & (starfox::input::a | starfox::input::b
-                                | starfox::input::start)) != 0U)
-                    || flow_ticks_ >= count_ticks + 60U)) {
+            const auto exit_signal = map_.read_native_byte(results_exit_);
+            if (exit_signal != 0U && exit_signal != 2U) {
+                // END_LEVEL_SEQ is driven by CLB2 from the active map script,
+                // not by a fixed host timer or an input shortcut. In ordinary
+                // stages mapendwipe finishes the circular close first and
+                // sets DONEACIRCLE, so MAIN jumps straight to PLANETSEQ. A
+                // few special exits omit the wipe and use the source fade.
+                if (map_.read_native_byte(done_a_circle_) != 0U) {
+                    finish_stage_results();
+                    GameTickResult result;
+                    result.audio_port_writes = map_.take_apu_port_writes();
+                    return result;
+                }
                 map_.start_display_fade(-1);
-                frontend_phase_ =
-                    FrontendPhase::stage_results_fade_to_map;
+                frontend_phase_ = FrontendPhase::stage_results_fade_to_map;
             }
         }
     }

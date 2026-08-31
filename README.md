@@ -317,9 +317,11 @@ EX option is enabled; otherwise right-drag remains the free presentation camera.
 asterisk to Shift+8 or keypad Multiply, hash to Shift+3 or keypad Divide,
 period to either Period key, C to C, and Hang Up to H.
 
-Hold Tab at any time to fast-forward the complete cartridge clock at 2x speed,
-including gameplay, frontend transitions, music, and sound effects. Releasing
-Tab immediately restores the selected game pace; render FPS is unchanged.
+Hold Tab at any time to fast-forward the complete cartridge clock at 2x speed.
+Hold Ctrl+Tab for 3x total speed (200% faster), or Shift+Ctrl+Tab for 5x total
+speed (400% faster). Gameplay, frontend transitions, music, and sound effects
+all accelerate together. Releasing Tab immediately restores the selected game
+pace; render FPS is unchanged.
 
 During gameplay, hold the right mouse button and drag to freely adjust camera
 yaw and pitch. While still holding the right mouse button, use the mouse wheel

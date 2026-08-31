@@ -830,6 +830,8 @@ private:
     std::uint32_t slippy_health_{};
     std::uint32_t percentage_buffer_{};
     std::uint32_t percentage_pointer_{};
+    std::uint32_t results_exit_{};
+    std::uint32_t done_a_circle_{};
     std::uint32_t planet_names_{};
     std::uint32_t dog_characters_{};
     std::uint32_t dog_tilemap_{};

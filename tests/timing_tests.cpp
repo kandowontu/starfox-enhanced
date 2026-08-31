@@ -80,23 +80,33 @@ void test_selectable_presentation_rates_preserve_raster_pace() {
             "480 FPS cadence did not repeat after one raster phase");
 }
 
-void test_fast_forward_exactly_doubles_raster_pace() {
+void test_fast_forward_multipliers_preserve_exact_raster_pace() {
     constexpr std::array<std::uint32_t, 8> rates{
         20U, 30U, 60U, 90U, 120U, 240U, 360U, 480U};
-    for (const auto rate : rates) {
-        starfox::timing::RasterPhaseClock clock;
-        std::uint32_t phases = 0U;
-        double final_fraction = -1.0;
-        for (std::uint32_t frame = 0; frame < rate; ++frame) {
-            const auto batch = clock.advance(rate, 2U);
-            phases += batch.video_phases;
-            final_fraction = batch.phase_fraction;
+    for (const auto multiplier : {2U, 3U, 5U}) {
+        for (const auto rate : rates) {
+            starfox::timing::RasterPhaseClock clock;
+            std::uint32_t phases = 0U;
+            double final_fraction = -1.0;
+            for (std::uint32_t frame = 0; frame < rate; ++frame) {
+                const auto batch = clock.advance(rate, multiplier);
+                phases += batch.video_phases;
+                final_fraction = batch.phase_fraction;
+            }
+            require(phases == starfox::timing::kPresentationHz * multiplier,
+                    "fast-forward did not produce its exact raster rate");
+            require(final_fraction == 0.0,
+                    "fast-forward accumulated fractional drift");
         }
-        require(phases == starfox::timing::kPresentationHz * 2U,
-                "2x fast-forward did not produce exactly 120 raster phases");
-        require(final_fraction == 0.0,
-                "2x fast-forward accumulated fractional drift");
     }
+    require(starfox::timing::playback_speed_multiplier(false, true, true) == 1U
+                && starfox::timing::playback_speed_multiplier(true, false, true)
+                    == 2U
+                && starfox::timing::playback_speed_multiplier(true, true, false)
+                    == 3U
+                && starfox::timing::playback_speed_multiplier(true, true, true)
+                    == 5U,
+            "Tab modifier combination selected the wrong playback speed");
 }
 
 void test_frame_step_clock_synchronizes_fractional_phase() {
@@ -347,7 +357,7 @@ void test_input_edges_survive_between_ticks() {
 int main() {
     test_exact_60_to_20_cadence();
     test_selectable_presentation_rates_preserve_raster_pace();
-    test_fast_forward_exactly_doubles_raster_pace();
+    test_fast_forward_multipliers_preserve_exact_raster_pace();
     test_frame_step_clock_synchronizes_fractional_phase();
     test_frame_debug_never_steps_multiple_native_rasters();
     test_presentation_history_walks_without_changing_live_edge();

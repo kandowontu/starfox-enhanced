@@ -12,6 +12,15 @@ namespace starfox::timing {
 inline constexpr std::uint32_t kSimulationHz = 20;
 inline constexpr std::uint32_t kPresentationHz = 60;
 
+// Tab accelerates the source clock by 100%; Ctrl and Shift raise that to the
+// requested 200% and 400% boosts (2x, 3x and 5x total speed respectively).
+[[nodiscard]] constexpr std::uint32_t playback_speed_multiplier(
+    bool tab, bool control, bool shift) noexcept {
+    if (!tab) return 1U;
+    if (!control) return 2U;
+    return shift ? 5U : 3U;
+}
+
 // Frame debugging must never collapse a keypress into a low-rate 20/30 FPS
 // output interval (three/two cartridge rasters). Above the native raster rate,
 // retain the selected interpolation cadence so every generated output frame
