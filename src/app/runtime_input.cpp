@@ -7,6 +7,8 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace starfox::app {
@@ -96,6 +98,11 @@ int gamepad_preference(SDL_JoystickID identifier) {
     }
     return score;
 }
+
+// Pre-game settings file format. Bump kPregameRevision when a field is added;
+// the reader accepts every revision up to it.
+constexpr std::string_view kPregameTag{"SFE_PREGAME_V"};
+constexpr int kPregameRevision = 9;
 
 std::filesystem::path settings_path() {
     char* preference_path = SDL_GetPrefPath("StarFoxEnhanced", "StarFoxEnhanced");
@@ -476,31 +483,38 @@ bool load_pregame_settings(
     if (path.empty()) return false;
     std::ifstream input{path};
     std::string version;
-    if (!(input >> version)
-        || (version != "SFE_PREGAME_V1" && version != "SFE_PREGAME_V2"
-            && version != "SFE_PREGAME_V3"
-            && version != "SFE_PREGAME_V4"
-            && version != "SFE_PREGAME_V5"
-            && version != "SFE_PREGAME_V6"
-            && version != "SFE_PREGAME_V7"
-            && version != "SFE_PREGAME_V8")) {
+    if (!(input >> version) || !version.starts_with(kPregameTag)) return false;
+    const auto digits = std::string_view{version}.substr(kPregameTag.size());
+    if (digits.empty() || !std::all_of(digits.begin(), digits.end(),
+            [](unsigned char character) {
+                return std::isdigit(character) != 0;
+            })) {
         return false;
     }
+    int revision{};
+    try {
+        revision = std::stoi(std::string{digits});
+    } catch (...) {
+        return false;
+    }
+    if (revision < 1 || revision > kPregameRevision) return false;
+
     auto loaded = PregameSettings{};
-    std::array<bool, 17> found{};
-    if (version != "SFE_PREGAME_V8") found[16] = true;
-    if (version != "SFE_PREGAME_V7" && version != "SFE_PREGAME_V8") {
+    std::array<bool, 18> found{};
+    if (revision < 9) found[17] = true;
+    if (revision < 8) found[16] = true;
+    if (revision < 7) {
         found[14] = true;
         found[15] = true;
     }
-    if (version != "SFE_PREGAME_V6") {
+    if (revision < 6) {
         found[12] = true;
         found[13] = true;
     }
-    found[6] = version == "SFE_PREGAME_V1";
-    if (version == "SFE_PREGAME_V1" || version == "SFE_PREGAME_V2") {
+    found[6] = revision == 1;
+    if (revision <= 2) {
         std::fill(found.begin() + 7, found.end(), true);
-    } else if (version == "SFE_PREGAME_V3") {
+    } else if (revision == 3) {
         // V3's combined Enhanced option already included polygon edge
         // smoothing. Preserve that visible result when splitting it into a
         // dedicated V4 choice.
@@ -527,11 +541,7 @@ bool load_pregame_settings(
             found[4] = value == 0 || value == 1;
         } else if (name == "ANTI_ALIASING") {
             loaded.anti_aliasing = static_cast<std::uint8_t>(value);
-            found[7] = value >= 0 && value <= (
-                version == "SFE_PREGAME_V5" || version == "SFE_PREGAME_V6"
-                    || version == "SFE_PREGAME_V7"
-                    || version == "SFE_PREGAME_V8"
-                ? 3 : 1);
+            found[7] = value >= 0 && value <= (revision >= 5 ? 3 : 1);
         } else if (name == "ENHANCED_GRAPHICS") {
             loaded.enhanced_graphics = value != 0;
             found[8] = value == 0 || value == 1;
@@ -565,16 +575,17 @@ bool load_pregame_settings(
         } else if (name == "SFX_VOLUME") {
             loaded.sfx_volume = static_cast<std::uint8_t>(value);
             found[15] = value >= 0 && value <= 100;
+        } else if (name == "RENDER_SCALE") {
+            loaded.render_scale = static_cast<std::uint8_t>(value);
+            found[17] = value >= 0 && value <= 9;
         }
     }
     if (!std::all_of(found.begin(), found.end(),
             [](bool value) { return value; })) return false;
-    if (version == "SFE_PREGAME_V3") {
+    if (revision == 3) {
         loaded.smooth_polys = loaded.enhanced_graphics;
     }
-    if (version != "SFE_PREGAME_V5" && version != "SFE_PREGAME_V6"
-        && version != "SFE_PREGAME_V7" && version != "SFE_PREGAME_V8"
-        && loaded.anti_aliasing != 0U) {
+    if (revision < 5 && loaded.anti_aliasing != 0U) {
         // The original ON setting used what is now the medium FXAA kernel.
         loaded.anti_aliasing = 2U;
     }
@@ -590,7 +601,7 @@ bool save_pregame_settings(
         || settings.anti_aliasing > 3U
         || settings.renderer_mode > 1U
         || settings.experience > 1U || settings.music_volume > 100U
-        || settings.sfx_volume > 100U) {
+        || settings.sfx_volume > 100U || settings.render_scale > 9U) {
         return false;
     }
     constexpr std::array<std::uint16_t, 8> valid_fps{
@@ -602,7 +613,7 @@ bool save_pregame_settings(
     if (error) return false;
     std::ofstream output{path, std::ios::trunc};
     if (!output) return false;
-    output << "SFE_PREGAME_V8\n"
+    output << kPregameTag << kPregameRevision << '\n'
            << "EXPERIENCE " << static_cast<unsigned>(settings.experience) << '\n'
            << "TIMING_MODE " << static_cast<unsigned>(settings.timing_mode) << '\n'
            << "PRESENTATION_FPS " << settings.presentation_fps << '\n'
@@ -628,7 +639,9 @@ bool save_pregame_settings(
            << "MUSIC_VOLUME "
            << static_cast<unsigned>(settings.music_volume) << '\n'
            << "SFX_VOLUME "
-           << static_cast<unsigned>(settings.sfx_volume) << '\n';
+           << static_cast<unsigned>(settings.sfx_volume) << '\n'
+           << "RENDER_SCALE "
+           << static_cast<unsigned>(settings.render_scale) << '\n';
     return static_cast<bool>(output);
 }
 

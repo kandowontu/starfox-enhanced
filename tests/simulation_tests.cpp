@@ -5632,10 +5632,43 @@ int main(int argc, char** argv) {
                 "crosshair colour selector did not wrap backward");
         drive_boot({0, starfox::input::right, 0});
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 3U,
-                "pre-game cursor did not reach CUSTOMIZE SCREEN");
+        require(boot_game.pregame_selection() == 3U
+                    && boot_game.render_scale()
+                        == starfox::simulation::RenderScale::scale_1x,
+                "pre-game cursor did not reach the native render scale");
+        drive_boot({0, starfox::input::right, 0});
+        require(boot_game.render_scale()
+                    == starfox::simulation::RenderScale::scale_2x,
+                "render scale selector did not advance to 2x");
+        drive_boot({0, starfox::input::right, 0});
+        require(boot_game.render_scale()
+                    == starfox::simulation::RenderScale::scale_3x,
+                "render scale selector did not advance to 3x");
+        drive_boot({0, starfox::input::left, 0});
+        require(boot_game.render_scale()
+                    == starfox::simulation::RenderScale::scale_2x,
+                "render scale selector did not step back to 2x");
+        drive_boot({0, starfox::input::left, 0});
+        drive_boot({0, starfox::input::left, 0});
+        require(boot_game.render_scale()
+                    == starfox::simulation::RenderScale::scale_10x,
+                "render scale selector did not wrap backward to 10x");
+        for (std::size_t step = 0;
+             step < starfox::simulation::render_scale_count; ++step) {
+            drive_boot({0, starfox::input::right, 0});
+        }
+        require(boot_game.render_scale()
+                    == starfox::simulation::RenderScale::scale_10x,
+                "render scale selector did not cycle through every scale");
+        drive_boot({0, starfox::input::right, 0});
+        require(boot_game.render_scale()
+                    == starfox::simulation::RenderScale::scale_1x,
+                "render scale selector did not wrap forward to native");
         drive_boot({0, starfox::input::down, 0});
         require(boot_game.pregame_selection() == 4U,
+                "pre-game cursor did not reach CUSTOMIZE SCREEN");
+        drive_boot({0, starfox::input::down, 0});
+        require(boot_game.pregame_selection() == 5U,
                 "pre-game cursor did not reach MUSIC VOLUME");
         require(boot_game.music_volume() == 100U,
                 "pre-game music volume did not default to 100 percent");
@@ -5651,7 +5684,7 @@ int main(int argc, char** argv) {
                 "pre-game music volume did not step right after release");
         drive_boot({0, 0, starfox::input::right});
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 5U
+        require(boot_game.pregame_selection() == 6U
                     && boot_game.sfx_volume() == 100U,
                 "pre-game cursor did not reach default SFX VOLUME");
         drive_boot({0, starfox::input::left, 0});
@@ -5661,7 +5694,7 @@ int main(int argc, char** argv) {
         require(boot_game.sfx_volume() == 100U,
                 "pre-game SFX volume did not step right by 10 percent");
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 6U,
+        require(boot_game.pregame_selection() == 7U,
                 "pre-game cursor did not reach OPTIONS BACK");
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.pregame_page()
@@ -5675,7 +5708,9 @@ int main(int argc, char** argv) {
                      && boot_game.rtx_lighting()
                     && boot_game.vsync()
                     && boot_game.crosshair_colour()
-                        == starfox::simulation::CrosshairColour::green,
+                        == starfox::simulation::CrosshairColour::green
+                    && boot_game.render_scale()
+                        == starfox::simulation::RenderScale::scale_1x,
                 "OPTIONS did not retain its toggles when returning to setup");
         drive_boot({0, starfox::input::down, 0});
         require(boot_game.pregame_selection() == 14U,

@@ -244,6 +244,50 @@ int main() {
     require(coloured_pixels > 50, "decoded shape did not render a visible polygon");
     require(surface_pixels == coloured_pixels,
             "rendered polygon did not retain per-pixel surface metadata");
+
+    constexpr std::uint32_t test_render_scale = 3U;
+    starfox::render::Framebuffer scaled_framebuffer{
+        224, 192, test_render_scale};
+    starfox::render::SurfaceBuffer scaled_surfaces{
+        224 * test_render_scale, 192 * test_render_scale};
+    starfox::render::RenderSettings scaled_settings;
+    scaled_settings.focal_length = 180.0;
+    scaled_settings.render_scale = test_render_scale;
+    const starfox::render::SoftwareRenderer scaled_renderer{scaled_settings};
+    scaled_renderer.draw(
+        shape, {}, scaled_framebuffer, true, &scaled_surfaces);
+    require(scaled_framebuffer.width() == 224U
+                && scaled_framebuffer.height() == 192U
+                && scaled_framebuffer.stored_width() == 672U
+                && scaled_framebuffer.stored_height() == 576U,
+            "render scale changed the logical raster dimensions");
+    std::size_t scaled_coloured_pixels{};
+    std::size_t scaled_surface_pixels{};
+    for (std::uint32_t y = 0U; y < scaled_framebuffer.stored_height(); ++y) {
+        for (std::uint32_t x = 0U; x < scaled_framebuffer.stored_width(); ++x) {
+            const auto colour = scaled_framebuffer.get_stored(x, y);
+            scaled_coloured_pixels += colour != 0U;
+            const auto& surface = scaled_surfaces.get(x, y);
+            scaled_surface_pixels += surface.valid
+                && surface.palette_index == colour;
+        }
+    }
+    require(scaled_coloured_pixels > coloured_pixels * 6U,
+            "scaled scan conversion did not add polygon edge resolution");
+    require(scaled_surface_pixels == scaled_coloured_pixels,
+            "scaled polygon surface metadata diverged from its raster");
+
+    starfox::render::Framebuffer source_overlay{2U, 2U};
+    starfox::render::Framebuffer scaled_composite{2U, 2U, 3U};
+    source_overlay.set(1, 1, 9U);
+    starfox::render::composite_transparent_layer(
+        source_overlay, scaled_composite, {});
+    for (std::uint32_t y = 3U; y < 6U; ++y) {
+        for (std::uint32_t x = 3U; x < 6U; ++x) {
+            require(scaled_composite.get_stored(x, y) == 9U,
+                    "native overlay did not fill its scaled destination cell");
+        }
+    }
     starfox::render::Framebuffer wireframe{224, 192};
     starfox::render::RenderPose wireframe_pose;
     wireframe_pose.wireframe_mode = 1U;

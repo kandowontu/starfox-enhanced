@@ -97,6 +97,7 @@ struct PregameSettings {
     std::uint8_t experience{};
     std::uint8_t music_volume{100U};
     std::uint8_t sfx_volume{100U};
+    std::uint8_t render_scale{};
 
     [[nodiscard]] bool operator==(const PregameSettings&) const = default;
 };

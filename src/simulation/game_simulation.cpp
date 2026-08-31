@@ -20,6 +20,18 @@ constexpr std::array<DisplayMode, 5> kDisplayModes{
     DisplayMode::ultrawide_21_9,
     DisplayMode::super_ultrawide_32_9,
 };
+constexpr std::array<RenderScale, render_scale_count> kRenderScales{
+    RenderScale::scale_1x,
+    RenderScale::scale_2x,
+    RenderScale::scale_3x,
+    RenderScale::scale_4x,
+    RenderScale::scale_5x,
+    RenderScale::scale_6x,
+    RenderScale::scale_7x,
+    RenderScale::scale_8x,
+    RenderScale::scale_9x,
+    RenderScale::scale_10x,
+};
 constexpr std::array<CrosshairColour, 8> kCrosshairColours{
     CrosshairColour::green,
     CrosshairColour::white,
@@ -960,6 +972,7 @@ void GameSimulation::enter_pregame_menu() {
     music_volume_ = 100U;
     sfx_volume_ = 100U;
     crosshair_colour_ = CrosshairColour::green;
+    render_scale_ = RenderScale::scale_1x;
     armed_god_nukes_.clear();
     flow_ticks_ = 0U;
     frontend_frames_ = 0U;
@@ -1002,7 +1015,7 @@ GameTickResult GameSimulation::tick_pregame_menu(
 
     const auto previous_selection = pregame_selection_;
     const auto selection_count = pregame_page_ == PregamePage::main
-        ? std::uint8_t{15U} : std::uint8_t{7U};
+        ? std::uint8_t{15U} : std::uint8_t{8U};
     if ((menu_input.pressed & starfox::input::up) != 0U) {
         pregame_selection_ = static_cast<std::uint8_t>(
             (pregame_selection_ + selection_count - 1U) % selection_count);
@@ -1014,7 +1027,7 @@ GameTickResult GameSimulation::tick_pregame_menu(
 
     if (pregame_page_ == PregamePage::options) {
         const auto go_back = (menu_input.pressed & starfox::input::b) != 0U
-            || (pregame_selection_ == 6U
+            || (pregame_selection_ == 7U
                 && (menu_input.pressed & (starfox::input::a
                     | starfox::input::select)) != 0U);
         if (go_back) {
@@ -1052,11 +1065,29 @@ GameTickResult GameSimulation::tick_pregame_menu(
             }
             crosshair_colour_ = kCrosshairColours[index];
             queue_sound_effect(0x11U);
-        } else if ((pregame_selection_ == 4U || pregame_selection_ == 5U)
+        } else if (pregame_selection_ == 3U
                    && (menu_input.pressed & (starfox::input::left
                        | starfox::input::right | starfox::input::select
                        | starfox::input::a)) != 0U) {
-            auto& volume = pregame_selection_ == 4U
+            const auto found = std::find(
+                kRenderScales.begin(), kRenderScales.end(), render_scale_);
+            auto index = found == kRenderScales.end()
+                ? std::size_t{}
+                : static_cast<std::size_t>(
+                    std::distance(kRenderScales.begin(), found));
+            if ((menu_input.pressed & starfox::input::left) != 0U) {
+                index = (index + kRenderScales.size() - 1U)
+                    % kRenderScales.size();
+            } else {
+                index = (index + 1U) % kRenderScales.size();
+            }
+            render_scale_ = kRenderScales[index];
+            queue_sound_effect(0x11U);
+        } else if ((pregame_selection_ == 5U || pregame_selection_ == 6U)
+                   && (menu_input.pressed & (starfox::input::left
+                       | starfox::input::right | starfox::input::select
+                       | starfox::input::a)) != 0U) {
+            auto& volume = pregame_selection_ == 5U
                 ? music_volume_ : sfx_volume_;
             if ((menu_input.pressed & starfox::input::left) != 0U) {
                 volume = volume >= 10U

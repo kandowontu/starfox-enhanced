@@ -68,6 +68,23 @@ enum class RendererMode : std::uint8_t {
     software,
 };
 
+// Internal supersampling of the host-rendered 3D layer. Cartridge 2D art is
+// unaffected and keeps its source raster.
+enum class RenderScale : std::uint8_t {
+    scale_1x,
+    scale_2x,
+    scale_3x,
+    scale_4x,
+    scale_5x,
+    scale_6x,
+    scale_7x,
+    scale_8x,
+    scale_9x,
+    scale_10x,
+};
+
+inline constexpr std::size_t render_scale_count = 10U;
+
 enum class PregamePage {
     main,
     options,
@@ -301,6 +318,12 @@ public:
     }
     void set_crosshair_colour(CrosshairColour colour) noexcept {
         crosshair_colour_ = colour;
+    }
+    [[nodiscard]] RenderScale render_scale() const noexcept {
+        return render_scale_;
+    }
+    void set_render_scale(RenderScale scale) noexcept {
+        render_scale_ = scale;
     }
     void set_secondary_inputs(
         std::span<const input::TickInput> controllers) noexcept;
@@ -867,6 +890,7 @@ private:
     std::uint8_t sfx_volume_{100U};
     bool pregame_horizontal_blocked_{};
     CrosshairColour crosshair_colour_{CrosshairColour::green};
+    RenderScale render_scale_{RenderScale::scale_1x};
     bool planet_travel_complete_{};
     bool planet_arrival_confirmation_required_{};
     std::uint8_t stage_percentage_{};

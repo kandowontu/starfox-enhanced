@@ -33,7 +33,8 @@ void composite_transparent_layer(const Framebuffer& source,
         && (settings.mosaic & settings.mosaic_layer_mask) != 0U;
     const auto mosaic_size = static_cast<std::int32_t>(
         (settings.mosaic >> 4U) + 1U);
-    if (!mosaic_enabled) {
+    if (!mosaic_enabled && source.draw_scale() == 1U
+        && destination.draw_scale() == 1U) {
         // The normal gameplay layers are already aligned pixel-for-pixel.
         // Walk their contiguous storage directly instead of paying two
         // bounds checks and four coordinate multiplications for every one of
@@ -111,11 +112,47 @@ void composite_transparent_layer(const Framebuffer& source,
                     continue;
                 }
             }
-            const auto colour = source.get(
-                static_cast<std::uint32_t>(source_x),
-                static_cast<std::uint32_t>(source_y));
-            if (colour != 0U) {
-                destination.set(destination_x, destination_y, colour);
+            // Clipping and mosaic stay on the source raster grid, matching
+            // the PPU. Only the transfer itself runs at the stored scale so a
+            // higher-resolution 3D layer keeps its detail through the pass.
+            const auto source_scale = source.draw_scale();
+            const auto destination_scale = destination.draw_scale();
+            if (source_scale == 1U && destination_scale == 1U) {
+                const auto colour = source.get(
+                    static_cast<std::uint32_t>(source_x),
+                    static_cast<std::uint32_t>(source_y));
+                if (colour != 0U) {
+                    destination.set(destination_x, destination_y, colour);
+                }
+                continue;
+            }
+            if (destination_x < 0 || destination_y < 0) continue;
+            const auto source_origin_x =
+                static_cast<std::uint32_t>(source_x) * source_scale;
+            const auto source_origin_y =
+                static_cast<std::uint32_t>(source_y) * source_scale;
+            const auto destination_origin_x =
+                static_cast<std::uint32_t>(destination_x)
+                * destination_scale;
+            const auto destination_origin_y =
+                static_cast<std::uint32_t>(destination_y)
+                * destination_scale;
+            for (std::uint32_t row = 0; row < destination_scale; ++row) {
+                const auto source_row = std::min(source_scale - 1U,
+                    ((row * 2U + 1U) * source_scale)
+                        / (destination_scale * 2U));
+                for (std::uint32_t column = 0;
+                     column < destination_scale; ++column) {
+                    const auto source_column = std::min(source_scale - 1U,
+                        ((column * 2U + 1U) * source_scale)
+                            / (destination_scale * 2U));
+                    const auto colour = source.get_stored(
+                        source_origin_x + source_column,
+                        source_origin_y + source_row);
+                    if (colour == 0U) continue;
+                    destination.set_stored(destination_origin_x + column,
+                        destination_origin_y + row, colour);
+                }
             }
         }
     }

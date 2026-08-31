@@ -68,6 +68,21 @@ orange crosshair art. The selected hue applies to both the original four-piece
 OBJ reticle and its Super FX cockpit triangles while damaged-wing indicators
 remain red.
 
+`RENDER SCALE` rasterizes the Super FX world layer from 1x up to 10x the source
+raster. Projection, face visibility, screen clipping, and BSP order are all
+computed on the original grid at every setting, so the geometry drawn is
+identical and scale-independent; only scan conversion follows the scale,
+resolving the same polygon edges and lines with finer steps. Cartridge HUD,
+sprites, backgrounds, and text keep their authored resolution. Scan conversion
+and presentation run on the CPU, so higher scales cost frame time and memory
+and the usable ceiling depends on the machine.
+
+`ANTI-ALIASING` and the surface-driven effects (`ENHANCED GRAPHICS`,
+`UPSCALED POLYS`, `RTX LIGHTING`) run on the scaled raster as well, so they
+resolve polygon edges at the selected scale instead of the source grid. Their
+cost grows with it, and the surface samples the last three read are only
+allocated while one of them is on.
+
 `CUSTOMIZE SCREEN` opens a mouse-driven captured native-gameplay HUD preview
 using the game's actual HUD artwork. Lives, Shield, Bombs/Boost, Comms, and the
 Boss Health bar can each be dragged independently; `RESET` (or Y) restores the
