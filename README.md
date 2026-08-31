@@ -91,8 +91,10 @@ orchestration, rendering, audio output, and presentation are native C++.
 
 ## Quick start (Windows)
 
-Build the pinned UltraStarFox and Star Fox EX sources first so their local ROM
-and symbol outputs exist. These generated files stay ignored and untracked:
+Release builds use the checked-in source-built BPS deltas and pinned symbol
+maps, so a clean checkout does not need either reconstructed ROM. Developers
+regenerating those inputs can build the pinned UltraStarFox and Star Fox EX
+sources; their local ROM and symbol outputs remain ignored and untracked:
 
 ```text
 upstream-ultrastarfox/SF.SFC
@@ -232,10 +234,13 @@ audio is discarded rather than playing as a backlog afterward.
 ## Native platform targets
 
 The Windows x64 executable remains the primary release. The same portable SDL3
-runtime now also has build targets for Windows x86 and Linux x64, plus source
-targets for universal macOS, iOS, Android arm64, and Nintendo Switch. Android,
-iOS, and Switch automatically expose translucent multi-touch controls; physical
-SDL-compatible controllers continue to work normally.
+runtime also has build targets for Windows x86, Linux x64, unsigned universal
+macOS, unsigned iOS arm64, Android arm64, and Nintendo Switch. Android, iOS,
+and Switch automatically expose translucent multi-touch controls; physical
+SDL-compatible controllers continue to work normally. The Apple and Android
+packages show a native file picker on first launch, accept any supported retail
+revision, and store the reconstructed asset companion in writable application
+storage rather than attempting to modify an application bundle.
 
 ```powershell
 .\tools\build_windows_x86.ps1 -LlvmMingwRoot C:\path\to\llvm-mingw
@@ -245,12 +250,28 @@ SDL-compatible controllers continue to work normally.
 tools/build_linux.sh
 tools/build_apple.sh . macos
 tools/build_apple.sh . ios
-ANDROID_NDK_HOME=/path/to/ndk tools/build_android.sh
+tools/build_android.sh . debug
 DEVKITPRO=/opt/devkitpro tools/build_switch.sh
 ```
 
 Apple targets require Xcode on macOS, Android requires its SDK/NDK, and Switch
 requires the devkitPro Switch toolchain. These platform SDKs are not vendored.
+The `Portable platform builds` GitHub Actions workflow produces a universal
+unsigned macOS `.app`, an unsigned iOS arm64 device bundle, an installable
+debug-signed Android arm64 APK, and a Nintendo Switch homebrew `.nro`. The iOS
+bundle must be signed with the user's own Apple identity or sideloading tool
+before installation. It also packages a
+standalone Windows x64 `starfox_asset_builder.exe`: run it against a supported
+retail ROM on the PC, transfer the resulting `Starfox-Assets.BIN`, and select
+that BIN from the mobile app. Mobile can still select the retail ROM directly;
+the prebuilt BIN path is an optional convenience.
+
+The Switch archive expects that same BIN at
+`sdmc:/switch/StarFoxEnhanced/Starfox-Assets.BIN`. It includes a local PC
+script for generating an optional NSP forwarder with NTON and keys dumped from
+the user's own console; console keys are never stored in this repository or in
+the public build workflow. See `platform/switch/README.md` for the exact layout
+and the forwarder warning.
 
 Xbox/XInput controllers, Steam Input virtual controllers, and the Steam Deck's
 built-in controls are detected automatically. Both the D-pad and left stick

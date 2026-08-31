@@ -12,14 +12,14 @@ set(STARFOX_ROM_FILE
     "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
     CACHE FILEPATH "Assembled UltraStarFox ROM used by the native runtime")
 set(STARFOX_SYMBOLS_FILE
-    "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT"
-    CACHE FILEPATH "UltraStarFox symbol table used by the native runtime")
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/symbols/ultrastarfox.txt"
+    CACHE FILEPATH "Pinned UltraStarFox symbol table used by the native runtime")
 set(STARFOX_EX_ROM_FILE
     "${CMAKE_CURRENT_SOURCE_DIR}/upstream-star-fox-ex/SFES/SFES.SFC"
     CACHE FILEPATH "Assembled Star Fox EX ROM used by the native runtime")
 set(STARFOX_EX_SYMBOLS_FILE
-    "${CMAKE_CURRENT_SOURCE_DIR}/upstream-star-fox-ex/SYMBOLS.TXT"
-    CACHE FILEPATH "Star Fox EX symbol table used by the native runtime")
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/symbols/starfox-ex.txt"
+    CACHE FILEPATH "Pinned Star Fox EX symbol table used by the native runtime")
 set(STARFOX_ORIGINAL_PATCH_FILE
     "${CMAKE_CURRENT_SOURCE_DIR}/assets/patches/ultrastarfox-v12.bps"
     CACHE FILEPATH "UltraStarFox BPS delta for a clean Star Fox USA v1.2 ROM")
@@ -183,15 +183,53 @@ add_executable(starfox_planet_probe src/app/planet_probe.cpp)
 target_link_libraries(starfox_planet_probe PRIVATE starfox_core)
 
 if(STARFOX_BUILD_RUNTIME)
+    if(ANDROID AND NOT TARGET SDL3::SDL3)
+        # The Android application consumes SDL's official AAR. Its Prefab
+        # package supplies both headers and libSDL3.so to this CMake build.
+        find_package(SDL3 REQUIRED CONFIG)
+    endif()
     if(NOT TARGET SDL3::SDL3)
         set(SDL_SHARED OFF CACHE BOOL "Avoid a runtime SDL DLL" FORCE)
         set(SDL_STATIC ON CACHE BOOL "Link SDL into the native executable" FORCE)
         set(SDL_TEST_LIBRARY OFF CACHE BOOL "Do not build the SDL test library" FORCE)
+        if(SWITCH)
+            # Public SDL3 does not ship its NDA-gated Nintendo backend. Apply a
+            # pinned, zlib-licensed libnx backend for the open devkitPro build.
+            # Both the backend revision and its bytes are fixed here so the
+            # console build remains reproducible and cannot drift silently.
+            set(STARFOX_SDL3_SWITCH_PATCH
+                "${CMAKE_CURRENT_BINARY_DIR}/downloads/sdl3-switch.patch")
+            file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/downloads")
+            file(DOWNLOAD
+                "https://raw.githubusercontent.com/neomody77/sdl3-switch/182e511214d7600e4bdab8606d7caf0ef744afd6/sdl3-switch.patch"
+                "${STARFOX_SDL3_SWITCH_PATCH}"
+                EXPECTED_HASH
+                    "SHA256=9f694599723d78b08c09d99f8203ddea52ee5178575a807263fe79f8ab1f28dc"
+                TLS_VERIFY ON
+                STATUS STARFOX_SDL3_SWITCH_PATCH_STATUS)
+            list(GET STARFOX_SDL3_SWITCH_PATCH_STATUS 0
+                STARFOX_SDL3_SWITCH_PATCH_RESULT)
+            if(NOT STARFOX_SDL3_SWITCH_PATCH_RESULT EQUAL 0)
+                list(GET STARFOX_SDL3_SWITCH_PATCH_STATUS 1
+                    STARFOX_SDL3_SWITCH_PATCH_ERROR)
+                message(FATAL_ERROR
+                    "Unable to download the pinned SDL3 Switch backend: "
+                    "${STARFOX_SDL3_SWITCH_PATCH_ERROR}")
+            endif()
+            find_package(Git REQUIRED)
+            set(STARFOX_SDL3_PATCH_COMMAND
+                PATCH_COMMAND "${GIT_EXECUTABLE}" apply
+                    --whitespace=nowarn -p2
+                    "${STARFOX_SDL3_SWITCH_PATCH}")
+        else()
+            set(STARFOX_SDL3_PATCH_COMMAND "")
+        endif()
         FetchContent_Declare(
             SDL3
             URL https://github.com/libsdl-org/SDL/releases/download/release-3.4.14/SDL3-3.4.14.tar.gz
             URL_HASH SHA256=30d4aa2b3037718142b32dffd4e72f917ebb6cc5227150e7bb9c45efb2153aeb
             DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+            ${STARFOX_SDL3_PATCH_COMMAND}
         )
         FetchContent_MakeAvailable(SDL3)
     endif()
@@ -212,20 +250,52 @@ if(STARFOX_BUILD_RUNTIME)
         # it should not open a second console window beside the game.
         set_target_properties(starfox_pc PROPERTIES WIN32_EXECUTABLE TRUE)
     endif()
-    target_link_libraries(starfox_pc PRIVATE starfox_core SDL3::SDL3)
+    if(SWITCH)
+        # The public libnx SDL3 backend uses switch-mesa's EGL/GLES renderer.
+        # Keep the static graphics libraries in one rescan group because Mesa
+        # contains circular references.
+        target_link_libraries(starfox_pc PRIVATE starfox_core
+            "-Wl,--start-group" SDL3::SDL3 EGL GLESv2 glapi drm_nouveau
+            "-Wl,--end-group" nx m)
+    else()
+        target_link_libraries(starfox_pc PRIVATE starfox_core SDL3::SDL3)
+    endif()
     if(APPLE)
         set_target_properties(starfox_pc PROPERTIES
             MACOSX_BUNDLE TRUE
-            MACOSX_BUNDLE_GUI_IDENTIFIER "com.sunlitspace.starfoxenhanced")
+            OUTPUT_NAME "StarFoxEnhanced"
+            MACOSX_BUNDLE_BUNDLE_NAME "Star Fox Enhanced"
+            MACOSX_BUNDLE_GUI_IDENTIFIER "com.sunlitspace.starfoxenhanced"
+            MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+            MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+            MACOSX_BUNDLE_INFO_PLIST
+                "${CMAKE_CURRENT_SOURCE_DIR}/platform/apple/Info.plist.in")
     endif()
     if(IOS)
         set_target_properties(starfox_pc PROPERTIES
             XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2")
     endif()
-    if(SWITCH AND COMMAND nx_generate_nro)
-        nx_generate_nro(starfox_pc
-            NAME "Star Fox Enhanced"
-            AUTHOR "Star Fox Enhanced team")
+    if(SWITCH)
+        set(STARFOX_SWITCH_NACP
+            "${CMAKE_CURRENT_BINARY_DIR}/StarFoxEnhanced.nacp")
+        if(COMMAND nx_generate_nacp AND COMMAND nx_create_nro)
+            nx_generate_nacp(
+                OUTPUT "${STARFOX_SWITCH_NACP}"
+                NAME "Star Fox Enhanced"
+                AUTHOR "Star Fox Enhanced team"
+                VERSION "${PROJECT_VERSION}")
+            nx_create_nro(starfox_pc_nro
+                TARGET starfox_pc
+                OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/StarFoxEnhanced.nro"
+                NACP "${STARFOX_SWITCH_NACP}")
+        elseif(COMMAND nx_generate_nro)
+            nx_generate_nro(starfox_pc
+                NAME "Star Fox Enhanced"
+                AUTHOR "Star Fox Enhanced team")
+        else()
+            message(FATAL_ERROR
+                "The devkitPro Switch CMake helpers are unavailable")
+        endif()
     endif()
 
     if(STARFOX_PACKAGE_MSU1_MUSIC)
@@ -275,6 +345,66 @@ if(STARFOX_BUILD_RUNTIME)
             DEPENDS "${STARFOX_MSU1_PACK}")
         add_dependencies(starfox_pc starfox_msu1_pack)
         install(FILES "${STARFOX_MSU1_PACK}" DESTINATION .)
+    endif()
+
+    set(STARFOX_EMBEDDED_INPUTS_AVAILABLE FALSE)
+    if(STARFOX_EMBED_RUNTIME_ASSETS
+       AND EXISTS "${STARFOX_ORIGINAL_PATCH_FILE}"
+       AND EXISTS "${STARFOX_SYMBOLS_FILE}"
+       AND EXISTS "${STARFOX_EX_PATCH_FILE}"
+       AND EXISTS "${STARFOX_EX_SYMBOLS_FILE}"
+       AND EXISTS "${STARFOX_RETAIL_JAPAN_V10_PATCH_FILE}"
+       AND EXISTS "${STARFOX_RETAIL_JAPAN_V11_PATCH_FILE}"
+       AND EXISTS "${STARFOX_RETAIL_USA_V10_PATCH_FILE}"
+       AND EXISTS "${STARFOX_RETAIL_USA_V11_PATCH_FILE}"
+       AND EXISTS "${STARFOX_RETAIL_EUROPE_V10_PATCH_FILE}"
+       AND EXISTS "${STARFOX_RETAIL_EUROPE_V11_PATCH_FILE}"
+       AND EXISTS "${STARFOX_RETAIL_GERMANY_V10_PATCH_FILE}")
+        set(STARFOX_EMBEDDED_INPUTS_AVAILABLE TRUE)
+        find_package(Python3 REQUIRED COMPONENTS Interpreter)
+        set(STARFOX_GENERATED_EMBEDDED_ASSETS
+            "${CMAKE_CURRENT_BINARY_DIR}/generated/embedded_assets.cpp")
+        add_custom_command(
+            OUTPUT "${STARFOX_GENERATED_EMBEDDED_ASSETS}"
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_runtime_assets.py"
+                --output "${STARFOX_GENERATED_EMBEDDED_ASSETS}"
+                --resource "101=${STARFOX_ORIGINAL_PATCH_FILE}"
+                --resource "102=${STARFOX_SYMBOLS_FILE}"
+                --resource "108=${STARFOX_EX_PATCH_FILE}"
+                --resource "109=${STARFOX_EX_SYMBOLS_FILE}"
+                --resource "120=${STARFOX_RETAIL_JAPAN_V10_PATCH_FILE}"
+                --resource "121=${STARFOX_RETAIL_JAPAN_V11_PATCH_FILE}"
+                --resource "122=${STARFOX_RETAIL_USA_V10_PATCH_FILE}"
+                --resource "123=${STARFOX_RETAIL_USA_V11_PATCH_FILE}"
+                --resource "124=${STARFOX_RETAIL_EUROPE_V10_PATCH_FILE}"
+                --resource "125=${STARFOX_RETAIL_EUROPE_V11_PATCH_FILE}"
+                --resource "126=${STARFOX_RETAIL_GERMANY_V10_PATCH_FILE}"
+            DEPENDS
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_runtime_assets.py"
+                "${STARFOX_ORIGINAL_PATCH_FILE}"
+                "${STARFOX_SYMBOLS_FILE}"
+                "${STARFOX_EX_PATCH_FILE}"
+                "${STARFOX_EX_SYMBOLS_FILE}"
+                "${STARFOX_RETAIL_JAPAN_V10_PATCH_FILE}"
+                "${STARFOX_RETAIL_JAPAN_V11_PATCH_FILE}"
+                "${STARFOX_RETAIL_USA_V10_PATCH_FILE}"
+                "${STARFOX_RETAIL_USA_V11_PATCH_FILE}"
+                "${STARFOX_RETAIL_EUROPE_V10_PATCH_FILE}"
+                "${STARFOX_RETAIL_EUROPE_V11_PATCH_FILE}"
+                "${STARFOX_RETAIL_GERMANY_V10_PATCH_FILE}"
+            COMMENT "Embedding portable runtime patch resources"
+            VERBATIM)
+        add_library(starfox_embedded_assets STATIC
+            "${STARFOX_GENERATED_EMBEDDED_ASSETS}")
+        target_include_directories(starfox_embedded_assets PRIVATE include)
+        target_compile_features(starfox_embedded_assets PRIVATE cxx_std_20)
+
+        if(NOT ANDROID AND NOT IOS)
+            add_executable(starfox_asset_builder src/app/asset_builder.cpp)
+            target_link_libraries(starfox_asset_builder PRIVATE
+                starfox_core starfox_embedded_assets)
+        endif()
     endif()
 
     if(WIN32 AND STARFOX_EMBED_RUNTIME_ASSETS)
@@ -335,53 +465,8 @@ if(STARFOX_BUILD_RUNTIME)
         endif()
     endif()
     if(NOT WIN32 AND STARFOX_EMBED_RUNTIME_ASSETS)
-        if(EXISTS "${STARFOX_ORIGINAL_PATCH_FILE}"
-           AND EXISTS "${STARFOX_SYMBOLS_FILE}"
-           AND EXISTS "${STARFOX_EX_PATCH_FILE}"
-           AND EXISTS "${STARFOX_EX_SYMBOLS_FILE}"
-           AND EXISTS "${STARFOX_RETAIL_JAPAN_V10_PATCH_FILE}"
-           AND EXISTS "${STARFOX_RETAIL_JAPAN_V11_PATCH_FILE}"
-           AND EXISTS "${STARFOX_RETAIL_USA_V10_PATCH_FILE}"
-           AND EXISTS "${STARFOX_RETAIL_USA_V11_PATCH_FILE}"
-           AND EXISTS "${STARFOX_RETAIL_EUROPE_V10_PATCH_FILE}"
-           AND EXISTS "${STARFOX_RETAIL_EUROPE_V11_PATCH_FILE}"
-           AND EXISTS "${STARFOX_RETAIL_GERMANY_V10_PATCH_FILE}")
-            find_package(Python3 REQUIRED COMPONENTS Interpreter)
-            set(STARFOX_GENERATED_EMBEDDED_ASSETS
-                "${CMAKE_CURRENT_BINARY_DIR}/generated/embedded_assets.cpp")
-            add_custom_command(
-                OUTPUT "${STARFOX_GENERATED_EMBEDDED_ASSETS}"
-                COMMAND "${Python3_EXECUTABLE}"
-                    "${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_runtime_assets.py"
-                    --output "${STARFOX_GENERATED_EMBEDDED_ASSETS}"
-                    --resource "101=${STARFOX_ORIGINAL_PATCH_FILE}"
-                    --resource "102=${STARFOX_SYMBOLS_FILE}"
-                    --resource "108=${STARFOX_EX_PATCH_FILE}"
-                    --resource "109=${STARFOX_EX_SYMBOLS_FILE}"
-                    --resource "120=${STARFOX_RETAIL_JAPAN_V10_PATCH_FILE}"
-                    --resource "121=${STARFOX_RETAIL_JAPAN_V11_PATCH_FILE}"
-                    --resource "122=${STARFOX_RETAIL_USA_V10_PATCH_FILE}"
-                    --resource "123=${STARFOX_RETAIL_USA_V11_PATCH_FILE}"
-                    --resource "124=${STARFOX_RETAIL_EUROPE_V10_PATCH_FILE}"
-                    --resource "125=${STARFOX_RETAIL_EUROPE_V11_PATCH_FILE}"
-                    --resource "126=${STARFOX_RETAIL_GERMANY_V10_PATCH_FILE}"
-                DEPENDS
-                    "${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_runtime_assets.py"
-                    "${STARFOX_ORIGINAL_PATCH_FILE}"
-                    "${STARFOX_SYMBOLS_FILE}"
-                    "${STARFOX_EX_PATCH_FILE}"
-                    "${STARFOX_EX_SYMBOLS_FILE}"
-                    "${STARFOX_RETAIL_JAPAN_V10_PATCH_FILE}"
-                    "${STARFOX_RETAIL_JAPAN_V11_PATCH_FILE}"
-                    "${STARFOX_RETAIL_USA_V10_PATCH_FILE}"
-                    "${STARFOX_RETAIL_USA_V11_PATCH_FILE}"
-                    "${STARFOX_RETAIL_EUROPE_V10_PATCH_FILE}"
-                    "${STARFOX_RETAIL_EUROPE_V11_PATCH_FILE}"
-                    "${STARFOX_RETAIL_GERMANY_V10_PATCH_FILE}"
-                COMMENT "Embedding portable runtime patch resources"
-                VERBATIM)
-            target_sources(starfox_pc PRIVATE
-                "${STARFOX_GENERATED_EMBEDDED_ASSETS}")
+        if(STARFOX_EMBEDDED_INPUTS_AVAILABLE)
+            target_link_libraries(starfox_pc PRIVATE starfox_embedded_assets)
             target_compile_definitions(starfox_pc PRIVATE
                 STARFOX_HAS_EMBEDDED_ASSETS=1)
             set(STARFOX_RUNTIME_ASSETS_EMBEDDED TRUE)
@@ -399,6 +484,9 @@ if(STARFOX_BUILD_RUNTIME)
         RUNTIME DESTINATION .
         LIBRARY DESTINATION .
         BUNDLE DESTINATION .)
+    if(TARGET starfox_asset_builder)
+        install(TARGETS starfox_asset_builder RUNTIME DESTINATION .)
+    endif()
     install(FILES README.md CREDITS.md THIRD_PARTY_NOTICES.md DESTINATION .)
 
 endif()

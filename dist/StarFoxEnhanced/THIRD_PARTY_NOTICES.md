@@ -60,6 +60,19 @@ freely, subject to the following restrictions:
    misrepresented as being the original software.
 3. This notice may not be removed or altered from any source distribution.
 
+### SDL3 Nintendo Switch libnx backend
+
+Source: <https://github.com/neomody77/sdl3-switch>
+
+Pinned revision: `182e511214d7600e4bdab8606d7caf0ef744afd6`
+
+The Nintendo Switch homebrew target applies the pinned backend patch to SDL
+3.4.14. The patch is distributed under SDL's zlib licence, is plainly marked
+as a modified SDL source, and its upstream repository states that the backend
+was generated with AI assistance and verified on real libnx hardware. It is
+used only because upstream SDL's official Nintendo backend is NDA-gated and is
+not available to public devkitPro builds.
+
 ## dr_flac (dr_libs)
 
 Source: <https://github.com/mackron/dr_libs>

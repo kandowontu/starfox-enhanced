@@ -1,0 +1,61 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.sunlitspace.starfoxenhanced'
+    compileSdk 35
+    ndkVersion '28.2.13676358'
+
+    defaultConfig {
+        applicationId 'com.sunlitspace.starfoxenhanced'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '0.0.1-alpha'
+
+        externalNativeBuild {
+            cmake {
+                targets 'starfox_pc'
+                arguments '-DANDROID_PLATFORM=android-26',
+                    '-DANDROID_STL=c++_shared',
+                    '-DSTARFOX_BUILD_TESTS=OFF',
+                    '-DSTARFOX_BUILD_RUNTIME=ON',
+                    '-DSTARFOX_EMBED_RUNTIME_ASSETS=ON',
+                    '-DSTARFOX_PACKAGE_MSU1_MUSIC=OFF'
+                abiFilters 'arm64-v8a'
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            debuggable true
+        }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
+                'proguard-rules.pro'
+        }
+    }
+
+    buildFeatures {
+        prefab true
+    }
+
+    externalNativeBuild {
+        cmake {
+            path file('../../../CMakeLists.txt')
+        }
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging true
+        }
+    }
+}
+
+dependencies {
+    implementation files('libs/SDL3-3.4.14.aar')
+}

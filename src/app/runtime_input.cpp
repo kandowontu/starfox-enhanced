@@ -119,6 +119,17 @@ std::filesystem::path documents_settings_path(std::string_view filename) {
             / "Documents" / "Star Fox Enhanced" / filename;
     }
 #endif
+    // Android does not currently expose the standard user-folder API. The
+    // SDL preference directory is writable on every supported desktop/mobile
+    // target and keeps settings persistent inside the application sandbox.
+    if (char* preference_path =
+            SDL_GetPrefPath("StarFoxEnhanced", "StarFoxEnhanced");
+        preference_path != nullptr) {
+        const auto result =
+            std::filesystem::path{preference_path} / filename;
+        SDL_free(preference_path);
+        return result;
+    }
     return {};
 }
 

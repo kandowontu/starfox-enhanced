@@ -1,0 +1,215 @@
+name: Portable platform builds
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing GitHub release tag to receive the artifacts
+        required: false
+        default: ''
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  windows-asset-builder:
+    name: Windows x64 standalone asset builder
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure and build
+        shell: pwsh
+        run: |
+          cmake -S . -B build/asset-builder -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DSTARFOX_BUILD_TESTS=OFF `
+            -DSTARFOX_PACKAGE_MSU1_MUSIC=OFF
+          cmake --build build/asset-builder --target starfox_asset_builder
+      - name: Package builder
+        shell: pwsh
+        run: |
+          $package = 'StarFoxAssetBuilder-0.0.1-alpha-windows-x64'
+          New-Item -ItemType Directory -Force $package | Out-Null
+          Copy-Item build/asset-builder/starfox_asset_builder.exe $package/
+          Copy-Item platform/mobile/ASSET_BUILDER.md $package/README.md
+          Copy-Item THIRD_PARTY_NOTICES.md $package/
+          Compress-Archive -Path "$package/*" -DestinationPath "$package.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StarFoxAssetBuilder-0.0.1-alpha-windows-x64
+          path: StarFoxAssetBuilder-0.0.1-alpha-windows-x64.zip
+          if-no-files-found: error
+      - name: Add to GitHub release
+        if: github.event_name == 'push' || inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
+          gh release upload "${tag}" \
+            StarFoxAssetBuilder-0.0.1-alpha-windows-x64.zip --clobber
+
+  macos-universal:
+    name: macOS universal (unsigned)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test
+        shell: bash
+        run: |
+          chmod +x tools/build_apple.sh
+          tools/build_apple.sh "$GITHUB_WORKSPACE" macos
+      - name: Verify and package application
+        shell: bash
+        run: |
+          app="build/macos-universal/Release/StarFoxEnhanced.app"
+          binary="${app}/Contents/MacOS/StarFoxEnhanced"
+          test -d "${app}"
+          test -x "${binary}"
+          plutil -lint "${app}/Contents/Info.plist"
+          archs="$(lipo -archs "${binary}")"
+          [[ " ${archs} " == *" arm64 "* ]]
+          [[ " ${archs} " == *" x86_64 "* ]]
+          package="StarFoxEnhanced-0.0.1-alpha-macos-universal"
+          mkdir -p "${package}"
+          cp -R "${app}" "${package}/"
+          cp build/macos-universal/Release/starfox_asset_builder "${package}/"
+          cp platform/mobile/ASSET_BUILDER.md "${package}/ASSET_BUILDER.md"
+          cp README.md CREDITS.md THIRD_PARTY_NOTICES.md "${package}/"
+          ditto -c -k --sequesterRsrc --keepParent "${package}" "${package}.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StarFoxEnhanced-0.0.1-alpha-macos-universal
+          path: StarFoxEnhanced-0.0.1-alpha-macos-universal.zip
+          if-no-files-found: error
+      - name: Add to GitHub release
+        if: github.event_name == 'push' || inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
+          gh release upload "${tag}" \
+            StarFoxEnhanced-0.0.1-alpha-macos-universal.zip --clobber
+
+  ios-device:
+    name: iOS arm64 device (unsigned)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build unsigned device application
+        shell: bash
+        run: |
+          chmod +x tools/build_apple.sh
+          tools/build_apple.sh "$GITHUB_WORKSPACE" ios
+      - name: Verify and package application
+        shell: bash
+        run: |
+          app="build/ios/Release-iphoneos/StarFoxEnhanced.app"
+          binary="${app}/StarFoxEnhanced"
+          test -d "${app}"
+          test -f "${binary}"
+          plutil -lint "${app}/Info.plist"
+          [[ " $(lipo -archs "${binary}") " == *" arm64 "* ]]
+          package="StarFoxEnhanced-0.0.1-alpha-ios-arm64-unsigned"
+          mkdir -p "${package}/Payload"
+          cp -R "${app}" "${package}/Payload/"
+          cp platform/apple/IOS_INSTALL.md "${package}/README.md"
+          ditto -c -k --sequesterRsrc --keepParent "${package}" "${package}.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StarFoxEnhanced-0.0.1-alpha-ios-arm64-unsigned
+          path: StarFoxEnhanced-0.0.1-alpha-ios-arm64-unsigned.zip
+          if-no-files-found: error
+      - name: Add to GitHub release
+        if: github.event_name == 'push' || inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
+          gh release upload "${tag}" \
+            StarFoxEnhanced-0.0.1-alpha-ios-arm64-unsigned.zip --clobber
+
+  android-arm64:
+    name: Android arm64 development APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Android build components
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0' \
+            'ndk;28.2.13676358'
+      - name: Build installable development APK
+        shell: bash
+        run: |
+          chmod +x tools/build_android.sh platform/android/gradlew
+          tools/build_android.sh "$GITHUB_WORKSPACE" debug
+      - name: Verify APK payload
+        shell: bash
+        run: |
+          apk="dist/StarFoxEnhanced-android-arm64.apk"
+          test -f "${apk}"
+          "${ANDROID_HOME}/build-tools/35.0.0/aapt" dump badging "${apk}"
+          unzip -l "${apk}" | grep -q 'lib/arm64-v8a/libmain.so'
+          unzip -l "${apk}" | grep -q 'lib/arm64-v8a/libSDL3.so'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StarFoxEnhanced-0.0.1-alpha-android-arm64
+          path: dist/StarFoxEnhanced-android-arm64.apk
+          if-no-files-found: error
+      - name: Add to GitHub release
+        if: github.event_name == 'push' || inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
+          gh release upload "${tag}" \
+            dist/StarFoxEnhanced-android-arm64.apk --clobber
+
+  switch-homebrew:
+    name: Nintendo Switch homebrew NRO
+    runs-on: ubuntu-latest
+    container:
+      image: devkitpro/devkita64:20260219@sha256:1fc388c3a0d34bd2045a6dadcb1020e069d5f876a187fd705de14b4440c00282
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build native Switch application
+        shell: bash
+        run: |
+          chmod +x tools/build_switch.sh
+          tools/build_switch.sh "$GITHUB_WORKSPACE"
+      - name: Verify and package NRO
+        shell: bash
+        run: |
+          nro="dist/StarFoxEnhanced-switch/switch/StarFoxEnhanced/StarFoxEnhanced.nro"
+          test -s "${nro}"
+          test -f dist/StarFoxEnhanced-switch/package_switch_nsp.ps1
+          cmake -E tar cf \
+            StarFoxEnhanced-0.0.1-alpha-switch-homebrew.zip \
+            --format=zip dist/StarFoxEnhanced-switch
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StarFoxEnhanced-0.0.1-alpha-switch-homebrew
+          path: StarFoxEnhanced-0.0.1-alpha-switch-homebrew.zip
+          if-no-files-found: error
+      - name: Add to GitHub release
+        if: github.event_name == 'push' || inputs.release_tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          files: StarFoxEnhanced-0.0.1-alpha-switch-homebrew.zip

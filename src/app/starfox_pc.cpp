@@ -23,11 +23,12 @@
 #include "starfox/timing/fixed_step.hpp"
 
 #include <SDL3/SDL.h>
-#if defined(__ANDROID__) || defined(__IPHONEOS__) || defined(__SWITCH__)
+#if defined(__ANDROID__) || defined(SDL_PLATFORM_IOS) || defined(__SWITCH__)
 #include <SDL3/SDL_main.h>
 #endif
 
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <bit>
 #include <cctype>
@@ -465,14 +466,87 @@ struct RuntimeAssetSet {
 
 std::vector<std::uint8_t> read_binary_file(
     const std::filesystem::path& path) {
-    std::ifstream stream{path, std::ios::binary};
-    if (!stream) {
+    const auto path_text = path.string();
+    auto* stream = SDL_IOFromFile(path_text.c_str(), "rb");
+    if (stream == nullptr) {
         throw std::runtime_error{"unable to open file: " + path.string()};
     }
-    return {
-        std::istreambuf_iterator<char>{stream},
-        std::istreambuf_iterator<char>{},
+    auto bytes = std::vector<std::uint8_t>{};
+    const auto expected_size = SDL_GetIOSize(stream);
+    if (expected_size >= 0) {
+        bytes.resize(static_cast<std::size_t>(expected_size));
+        auto offset = std::size_t{};
+        while (offset < bytes.size()) {
+            const auto count = SDL_ReadIO(
+                stream, bytes.data() + offset, bytes.size() - offset);
+            if (count == 0U) break;
+            offset += count;
+        }
+        bytes.resize(offset);
+    } else {
+        auto chunk = std::array<std::uint8_t, 64U * 1024U>{};
+        for (;;) {
+            const auto count = SDL_ReadIO(stream, chunk.data(), chunk.size());
+            bytes.insert(bytes.end(), chunk.begin(), chunk.begin() + count);
+            if (count != chunk.size()) break;
+        }
+    }
+    const auto status = SDL_GetIOStatus(stream);
+    static_cast<void>(SDL_CloseIO(stream));
+    if (status == SDL_IO_STATUS_ERROR
+        || (expected_size >= 0
+            && bytes.size() != static_cast<std::size_t>(expected_size))) {
+        throw std::runtime_error{"unable to read file: " + path.string()};
+    }
+    return bytes;
+}
+
+struct RuntimeInputDialogState {
+    std::atomic<bool> complete{};
+    std::string selection;
+    std::string error;
+};
+
+void SDLCALL runtime_input_dialog_callback(void* userdata,
+    const char* const* files, int) {
+    auto& state = *static_cast<RuntimeInputDialogState*>(userdata);
+    if (files == nullptr) state.error = SDL_GetError();
+    else if (files[0] != nullptr) state.selection = files[0];
+    state.complete.store(true, std::memory_order_release);
+}
+
+std::filesystem::path choose_runtime_input() {
+#if defined(__SWITCH__)
+    throw std::runtime_error{
+        "Starfox-Assets.BIN was not found. Create it on a PC with "
+        "starfox_asset_builder, then copy it to "
+        "sdmc:/switch/StarFoxEnhanced/Starfox-Assets.BIN"};
+#else
+    RuntimeInputDialogState state;
+    constexpr std::array filters{
+        SDL_DialogFileFilter{"Star Fox data", "bin;sfc;smc"},
+        SDL_DialogFileFilter{"All files", "*"},
     };
+    SDL_ShowOpenFileDialog(runtime_input_dialog_callback, &state, nullptr,
+        filters.data(), static_cast<int>(filters.size()), nullptr, false);
+    while (!state.complete.load(std::memory_order_acquire)) {
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_EVENT_QUIT) {
+                throw std::runtime_error{"runtime input selection was canceled"};
+            }
+        }
+        SDL_Delay(10U);
+    }
+    if (!state.error.empty()) {
+        throw std::runtime_error{
+            "unable to open the runtime input picker: " + state.error};
+    }
+    if (state.selection.empty()) {
+        throw std::runtime_error{"runtime input selection was canceled"};
+    }
+    return std::filesystem::path{state.selection};
+#endif
 }
 
 struct RetailVariant {
@@ -525,15 +599,15 @@ std::vector<std::uint8_t> canonicalize_retail_rom(
     return canonical;
 }
 
-std::pair<std::filesystem::path, std::vector<std::uint8_t>>
-load_required_retail(const std::filesystem::path& executable_directory) {
+std::optional<std::pair<std::filesystem::path, std::vector<std::uint8_t>>>
+find_required_retail(const std::filesystem::path& executable_directory) {
     std::vector<std::filesystem::path> candidates;
     if (const auto* override_path = std::getenv("STARFOX_RETAIL_ROM");
         override_path != nullptr && *override_path != '\0') {
         // An explicit override is authoritative: report a bad selection
         // rather than silently finding a different ROM elsewhere.
         const auto path = std::filesystem::path{override_path};
-        return {path, canonicalize_retail_rom(path)};
+        return std::make_pair(path, canonicalize_retail_rom(path));
     }
     constexpr std::array filenames{
         "Star Fox (USA) (Rev 2).sfc",
@@ -566,18 +640,14 @@ load_required_retail(const std::filesystem::path& executable_directory) {
     for (const auto& path : candidates) {
         if (!std::filesystem::is_regular_file(path)) continue;
         try {
-            return {path, canonicalize_retail_rom(path)};
+            return std::make_pair(path, canonicalize_retail_rom(path));
         } catch (const std::runtime_error&) {
             // Automatic discovery may encounter a corrupt or modified dump.
             // Continue looking for another supported retail revision; an
             // explicit STARFOX_RETAIL_ROM selection remains authoritative.
         }
     }
-    throw std::runtime_error{
-        "Star Fox Enhanced requires an unmodified retail Star Fox/Starwing "
-        "ROM: Japan 1.0/1.1, USA 1.0/1.1/1.2, Europe 1.0/1.1, or Germany "
-        "1.0. Place it beside the game or in the Star Fox Enhanced "
-        "Documents folder, or set STARFOX_RETAIL_ROM to its full path."};
+    return std::nullopt;
 }
 
 std::uint32_t embedded_asset_manifest() {
@@ -609,10 +679,60 @@ RuntimeAssetSet unpack_runtime_assets(
             std::move(payload.starfox_ex_symbols)),
     };
 }
+#endif
+
+std::filesystem::path writable_runtime_directory(
+    const std::filesystem::path& executable_directory) {
+#if defined(__SWITCH__)
+    return std::filesystem::path{"sdmc:/switch/StarFoxEnhanced"};
+#elif defined(__APPLE__) || defined(__ANDROID__)
+    if (char* preference_path =
+            SDL_GetPrefPath("StarFoxEnhanced", "StarFoxEnhanced");
+        preference_path != nullptr) {
+        const auto result = std::filesystem::path{preference_path};
+        SDL_free(preference_path);
+        return result;
+    }
+#endif
+    return executable_directory;
+}
+
+std::filesystem::path find_msu1_pack(
+    const std::filesystem::path& executable_directory) {
+    auto candidates = std::vector<std::filesystem::path>{
+        executable_directory
+            / std::filesystem::path{starfox::audio::msu1_pack_filename}};
+#if defined(__APPLE__) && !defined(SDL_PLATFORM_IOS)
+    // A macOS bundle keeps the executable in App.app/Contents/MacOS. Also
+    // accept the documented companion beside the .app bundle itself.
+    candidates.push_back(executable_directory.parent_path().parent_path()
+        .parent_path() / starfox::audio::msu1_pack_filename);
+#endif
+    if (const auto* documents = SDL_GetUserFolder(SDL_FOLDER_DOCUMENTS);
+        documents != nullptr && *documents != '\0') {
+        candidates.emplace_back(std::filesystem::path{documents}
+            / "Star Fox Enhanced" / starfox::audio::msu1_pack_filename);
+    }
+    candidates.emplace_back(writable_runtime_directory(executable_directory)
+        / starfox::audio::msu1_pack_filename);
+    const auto found = std::find_if(candidates.begin(), candidates.end(),
+        [](const auto& path) { return std::filesystem::is_regular_file(path); });
+    return found == candidates.end() ? candidates.front() : *found;
+}
 
 void write_asset_companion(
     const std::filesystem::path& path,
     std::span<const std::uint8_t> bytes) {
+    std::error_code directory_error;
+    if (!path.parent_path().empty()) {
+        std::filesystem::create_directories(
+            path.parent_path(), directory_error);
+    }
+    if (directory_error) {
+        throw std::runtime_error{"unable to create asset directory: "
+            + path.parent_path().string() + ": "
+            + directory_error.message()};
+    }
     auto temporary = path;
     temporary += ".tmp";
     {
@@ -652,16 +772,32 @@ void write_asset_companion(
 #endif
 }
 
+#if defined(STARFOX_HAS_EMBEDDED_ASSETS)
 RuntimeAssetSet load_or_compile_runtime_assets(
     const std::filesystem::path& executable_directory) {
     const auto companion_path =
-        executable_directory / "Starfox-Assets.BIN";
+        writable_runtime_directory(executable_directory)
+            / "Starfox-Assets.BIN";
     const auto manifest = embedded_asset_manifest();
-    if (std::filesystem::is_regular_file(companion_path)) {
+    auto companion_candidates =
+        std::vector<std::filesystem::path>{companion_path};
+    if (const auto* documents = SDL_GetUserFolder(SDL_FOLDER_DOCUMENTS);
+        documents != nullptr && *documents != '\0') {
+        companion_candidates.emplace_back(
+            std::filesystem::path{documents} / "Starfox-Assets.BIN");
+        companion_candidates.emplace_back(std::filesystem::path{documents}
+            / "Star Fox Enhanced" / "Starfox-Assets.BIN");
+    }
+    for (const auto& candidate : companion_candidates) {
+        if (!std::filesystem::is_regular_file(candidate)) continue;
         try {
-            return unpack_runtime_assets(
-                starfox::assets::decode_runtime_bundle(
-                    read_binary_file(companion_path), manifest));
+            const auto bytes = read_binary_file(candidate);
+            auto assets = unpack_runtime_assets(
+                starfox::assets::decode_runtime_bundle(bytes, manifest));
+            if (candidate != companion_path) {
+                write_asset_companion(companion_path, bytes);
+            }
+            return assets;
         } catch (const std::exception&) {
             // An update can legitimately invalidate a previously compiled
             // companion. Rebuild it below from the user's validated retail
@@ -670,8 +806,24 @@ RuntimeAssetSet load_or_compile_runtime_assets(
         }
     }
 
-    const auto [retail_path, retail_rom] =
-        load_required_retail(executable_directory);
+    auto retail = find_required_retail(executable_directory);
+    if (!retail) {
+        const auto selected = choose_runtime_input();
+        const auto selected_bytes = read_binary_file(selected);
+        constexpr std::array<std::uint8_t, 8> bundle_magic{
+            'S', 'F', 'O', 'X', 'A', 'S', '0', '1'};
+        if (selected_bytes.size() >= bundle_magic.size()
+            && std::equal(bundle_magic.begin(), bundle_magic.end(),
+                selected_bytes.begin())) {
+            auto assets = unpack_runtime_assets(
+                starfox::assets::decode_runtime_bundle(
+                    selected_bytes, manifest));
+            write_asset_companion(companion_path, selected_bytes);
+            return assets;
+        }
+        retail.emplace(selected, canonicalize_retail_rom(selected));
+    }
+    auto [retail_path, retail_rom] = std::move(*retail);
     static_cast<void>(retail_path);
     starfox::assets::RuntimeBundlePayload payload;
     payload.original_rom = starfox::assets::apply_bps_patch(
@@ -2636,8 +2788,7 @@ int main(int argc, char** argv) {
         const auto executable_directory =
             std::filesystem::absolute(argv[0]).parent_path();
         const starfox::audio::Msu1Pack msu1_pack{
-            executable_directory
-                / std::filesystem::path{starfox::audio::msu1_pack_filename}};
+            find_msu1_pack(executable_directory)};
 #if defined(STARFOX_HAS_EMBEDDED_ASSETS)
         auto embedded_runtime_assets =
             load_or_compile_runtime_assets(executable_directory);
@@ -6203,6 +6354,11 @@ int main(int argc, char** argv) {
         if (std::getenv("STARFOX_TEST_FRAMES") == nullptr) {
             MessageBoxA(nullptr, message.c_str(), "Star Fox Enhanced",
                 MB_OK | MB_ICONERROR | MB_TASKMODAL);
+        }
+#else
+        if (std::getenv("STARFOX_TEST_FRAMES") == nullptr) {
+            static_cast<void>(SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
+                "Star Fox Enhanced", message.c_str(), nullptr));
         }
 #endif
         return 1;

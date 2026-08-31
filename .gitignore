@@ -8,7 +8,13 @@ Starfox-Assets.BIN
 /dist/StarFoxEnhanced/starfox_pc.exe
 /dist/StarFoxEnhanced-windows-x86/
 /dist/StarFoxEnhanced-linux-x64/
+/dist/StarFoxEnhanced-android-arm64.apk
+/dist/StarFoxEnhanced-switch/
 /assets/hud_editor/*.bmp
+/platform/android/.gradle/
+/platform/android/app/.cxx/
+/platform/android/app/build/
+/platform/android/app/libs/*.aar
 /tmp/
 __pycache__/
 *.pyc
