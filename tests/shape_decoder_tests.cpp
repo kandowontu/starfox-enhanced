@@ -277,6 +277,40 @@ int main() {
     require(scaled_surface_pixels == scaled_coloured_pixels,
             "scaled polygon surface metadata diverged from its raster");
 
+    auto reverse_winding_shape = shape;
+    reverse_winding_shape.bsp_root_address = 0U;
+    reverse_winding_shape.faces.front().visibility_index = -1;
+    std::reverse(reverse_winding_shape.faces.front().vertex_indices.begin(),
+        reverse_winding_shape.faces.front().vertex_indices.end());
+    starfox::render::Framebuffer reverse_winding_frame{
+        224, 192, test_render_scale};
+    scaled_renderer.draw(
+        reverse_winding_shape, {}, reverse_winding_frame, true);
+    require(std::any_of(reverse_winding_frame.pixels().begin(),
+                reverse_winding_frame.pixels().end(),
+                [](auto pixel) { return pixel != 0U; }),
+            "Render Upscale dropped a polygon with reversed raster winding");
+
+    auto reverse_textured_shape = reverse_winding_shape;
+    const auto reverse_texture_colour =
+        reverse_textured_shape.faces.front().colour_id;
+    reverse_textured_shape.colour_words[reverse_texture_colour] = 0x4000U;
+    reverse_textured_shape.colour_materials[
+        reverse_texture_colour].animation_frames.clear();
+    reverse_textured_shape.textures = {{
+        0x4000U, 0U, 3U, 3U,
+        {{{0U, 0U}, {3U, 0U}, {0U, 3U}, {3U, 3U}}},
+        std::vector<std::uint8_t>(16U, 7U),
+    }};
+    starfox::render::Framebuffer reverse_textured_frame{
+        224, 192, test_render_scale};
+    scaled_renderer.draw(
+        reverse_textured_shape, {}, reverse_textured_frame, true);
+    require(std::any_of(reverse_textured_frame.pixels().begin(),
+                reverse_textured_frame.pixels().end(),
+                [](auto pixel) { return pixel == 7U; }),
+            "Render Upscale dropped a textured face with reversed winding");
+
     auto stable_upscale_shape = shape;
     starfox::render::RenderPose source_endpoint_pose;
     source_endpoint_pose.use_rotation_matrix = true;

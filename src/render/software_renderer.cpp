@@ -675,6 +675,7 @@ void fill_source_polygon(
     FaceColour colour,
     std::uint8_t colour_index_base,
     const RenderPose& pose,
+    bool winding_independent,
     SurfaceBuffer* surfaces,
     const SurfaceSample& surface) {
     if (polygon.size() < 3U) return;
@@ -806,8 +807,14 @@ void fill_source_polygon(
         const auto right_starts_segment = right.remaining == 0;
         if (left_starts_segment && !begin_segment(left)) return;
         if (right_starts_segment && !begin_segment(right)) return;
-        const auto x1 = integer_x(left.x);
-        const auto x2 = integer_x(right.x);
+        auto x1 = integer_x(left.x);
+        auto x2 = integer_x(right.x);
+        // Fractional projection and near-plane clipping can reverse the two
+        // active edges without changing whether the source visibility plane
+        // selected this face. The cartridge raster silently assumes its
+        // original winding; at upscale resolution that assumption discarded
+        // the complete span, making the face flash off for a presentation.
+        if (winding_independent && x2 < x1) std::swap(x1, x2);
         if (x2 >= x1) {
             const auto plot = [&](std::int32_t x, std::int32_t plot_y) {
                 const auto palette_index = static_cast<std::uint8_t>(colour_index_base
@@ -879,6 +886,7 @@ void fill_source_textured_polygon(
     std::int32_t texture_scroll_x,
     std::int32_t texture_scroll_y,
     std::uint8_t colour_index_base,
+    bool winding_independent,
     SurfaceBuffer* surfaces,
     const SurfaceSample& surface) {
     if (polygon.size() < 3U) return;
@@ -1005,23 +1013,40 @@ void fill_source_textured_polygon(
     while (y < maximum_y) {
         if (left.remaining == 0 && !begin_segment(left)) return;
         if (right.remaining == 0 && !begin_segment(right)) return;
-        const auto x1 = integer_x(left.x);
-        const auto x2 = integer_x(right.x);
+        auto x1 = integer_x(left.x);
+        auto x2 = integer_x(right.x);
+        const auto next_left_u = source_advance_edge(
+            left.u, left.u_increment);
+        const auto next_left_v = source_advance_edge(
+            left.v, left.v_increment);
         const auto next_right_u = source_advance_edge(
             right.u, right.u_increment);
         const auto next_right_v = source_advance_edge(
             right.v, right.v_increment);
+        auto span_u = left.u;
+        auto span_v = left.v;
+        auto span_right_u = next_right_u;
+        auto span_right_v = next_right_v;
+        if (winding_independent && x2 < x1) {
+            // Keep the corresponding affine texture endpoints attached to
+            // whichever edge is now the left side of the stored raster.
+            std::swap(x1, x2);
+            span_u = right.u;
+            span_v = right.v;
+            span_right_u = next_left_u;
+            span_right_v = next_left_v;
+        }
         if (x2 >= x1) {
             const auto span = x2 - x1;
             const auto reciprocal = span == 0 ? std::int16_t{}
                 : static_cast<std::int16_t>(
                     span == 1 ? 32'767 : 32'768 / span);
             const auto u_increment = starfox::simulation::multiply_q15(
-                starfox::simulation::subtract16(next_right_u, left.u), reciprocal);
+                starfox::simulation::subtract16(span_right_u, span_u), reciprocal);
             const auto v_increment = starfox::simulation::multiply_q15(
-                starfox::simulation::subtract16(next_right_v, left.v), reciprocal);
-            auto u = left.u;
-            auto v = left.v;
+                starfox::simulation::subtract16(span_right_v, span_v), reciprocal);
+            auto u = span_u;
+            auto v = span_v;
             for (auto x = x1; x <= x2; ++x) {
                 const auto sample_u = (source_fixed_integer(u)
                     + texture_scroll_x) & texture.u_mask;
@@ -1043,8 +1068,8 @@ void fill_source_textured_polygon(
             }
         }
         left.x = advance_x(left.x, left.x_increment);
-        left.u = source_advance_edge(left.u, left.u_increment);
-        left.v = source_advance_edge(left.v, left.v_increment);
+        left.u = next_left_u;
+        left.v = next_left_v;
         right.x = advance_x(right.x, right.x_increment);
         right.u = next_right_u;
         right.v = next_right_v;
@@ -1814,11 +1839,13 @@ void SoftwareRenderer::draw(
         }
         if (material.texture == nullptr) {
             fill_source_polygon(target, raster_polygon, material.colour,
-                settings_.colour_index_base, pose, surfaces, surface);
+                settings_.colour_index_base, pose,
+                settings_.render_scale > 1U, surfaces, surface);
         } else {
             fill_source_textured_polygon(target, raster_polygon,
                 *material.texture, pose.texture_scroll_x, pose.texture_scroll_y,
-                settings_.colour_index_base, surfaces, surface);
+                settings_.colour_index_base, settings_.render_scale > 1U,
+                surfaces, surface);
         }
     }
 }

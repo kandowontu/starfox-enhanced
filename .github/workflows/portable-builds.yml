@@ -28,6 +28,23 @@ jobs:
             -DSTARFOX_BUILD_TESTS=OFF `
             -DSTARFOX_PACKAGE_MSU1_MUSIC=OFF
           cmake --build build/asset-builder --target starfox_pc starfox_asset_builder
+      - name: Verify standalone Windows imports
+        shell: pwsh
+        run: |
+          $objdump = (Get-Command objdump.exe -ErrorAction Stop).Source
+          foreach ($binary in @(
+              'build/asset-builder/starfox_pc.exe',
+              'build/asset-builder/starfox_asset_builder.exe')) {
+            $imports = (& $objdump -p $binary | Out-String)
+            if ($imports -match 'libgcc_s_|libstdc\+\+|libwinpthread') {
+              throw "$binary still depends on a MinGW runtime DLL"
+            }
+          }
+          & build/asset-builder/starfox_asset_builder.exe
+          if ($LASTEXITCODE -ne 2) {
+            throw 'asset builder did not launch and print its usage'
+          }
+          $global:LASTEXITCODE = 0
       - name: Package runtime and builder
         shell: pwsh
         run: |

@@ -493,6 +493,13 @@ if(STARFOX_BUILD_RUNTIME)
     endif()
     if(MINGW)
         target_link_options(starfox_pc PRIVATE -static -static-libgcc -static-libstdc++)
+        if(TARGET starfox_asset_builder)
+            # The builder is distributed as a single standalone executable.
+            # Do not leave users dependent on whichever MinGW runtime happened
+            # to be installed on the CI worker that produced the release.
+            target_link_options(starfox_asset_builder PRIVATE
+                -static -static-libgcc -static-libstdc++)
+        endif()
     endif()
 
     install(TARGETS starfox_pc
