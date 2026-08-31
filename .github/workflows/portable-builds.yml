@@ -142,16 +142,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-      - name: Install Android build components
-        shell: bash
-        run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager 'platforms;android-35' 'build-tools;35.0.0' \
-            'ndk;28.2.13676358'
+      - name: Install Android SDK and NDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: >-
+            platform-tools platforms;android-35 build-tools;35.0.0
+            ndk;28.2.13676358
+          log-accepted-android-sdk-licenses: 'false'
       - name: Build installable development APK
         shell: bash
         run: |
