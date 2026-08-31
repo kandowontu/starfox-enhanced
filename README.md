@@ -141,11 +141,13 @@ for source-to-port comparisons.
 
 ## UltraStarFox source setup
 
-The required Original revision is pinned in `config/upstream.json`:
+The required Original revision is pinned in `config/upstream.json` and tracked
+as a submodule, so `git clone --recurse-submodules` fetches the source with the
+repository and the pin keeps the embedded symbol tables bound to the checked-in
+BPS deltas:
 
 ```powershell
-git clone https://github.com/Sunlitspace542/ultrastarfox.git upstream-ultrastarfox
-git -C upstream-ultrastarfox checkout 270e959a47d82240d9290a6c6630032c9ec53ff5
+git submodule update --init upstream-ultrastarfox
 powershell -ExecutionPolicy Bypass -File tools/build_upstream.ps1
 ```
 

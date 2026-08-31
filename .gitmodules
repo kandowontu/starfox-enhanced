@@ -1,0 +1,5 @@
+[submodule "upstream-ultrastarfox"]
+	path = upstream-ultrastarfox
+	url = https://github.com/Sunlitspace542/ultrastarfox.git
+	# The DOS assembler writes its outputs into the checkout.
+	ignore = untracked
