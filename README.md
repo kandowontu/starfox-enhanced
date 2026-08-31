@@ -6,6 +6,8 @@ presents at a selectable 20, 30, 60, 90, 120, 240, 360, or 480 frames per
 second while preserving the original game's intended NTSC simulation speed
 and assembled model data. The default is 60 FPS.
 
+# NOTE: YOU DO NOT HAVE TO BUILD THIS, THE NIGHTLY IS IN THE REPO AT dist/StarFoxEnhanced
+
 This repository is an early playable fidelity pass. It does not track a game
 executable, retail ROM, reconstructed ROM, or generated asset companion. The
 Windows executable embeds source-built BPS deltas and symbol data. The
