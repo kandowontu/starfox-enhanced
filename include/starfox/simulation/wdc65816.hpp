@@ -141,6 +141,7 @@ public:
     // into this bitmap even when model geometry is host-rendered.
     void submit_superfx_bitmap();
     void set_bg1_scroll(std::int16_t x, std::int16_t y) noexcept;
+    void set_bg2_scroll(std::int16_t x, std::int16_t y) noexcept;
     void draw_planet_sphere(std::uint16_t sprite);
     void set_bg2_vertical_offsets_enabled(bool enabled) noexcept;
     void capture_bg2_horizontal_offsets(

@@ -4756,27 +4756,38 @@ int main(int argc, char** argv) {
             };
             const auto ex_native_menu = game.flow_state()
                 == starfox::simulation::GameFlowState::ex_pregame_menu;
+            const auto controls_scene = game.flow_state()
+                    == starfox::simulation::GameFlowState::controls_type
+                || game.flow_state()
+                    == starfox::simulation::GameFlowState::controls_choice;
+            auto ppu = game.map().ppu_state();
             // Gameplay's Mode 1/2 landscape follows the host-interpolated
             // BG2XSCROLL/BG2SCROLL work variables. Mode 3 front ends do not:
             // PLANETSEQ clears and owns the actual PPU BG2 scroll registers
-            // while those gameplay scratch words retain the just-finished
-            // level's arbitrary offsets. Feeding the stale gameplay words to
-            // the post-level map wrapped each tilemap row through unrelated
-            // regions, scattering its boxes, labels and score panel. Native
-            // EX menus have the same register-owned contract.
+            // while those gameplay scratch words retain stale values. The
+            // controller selector likewise moves among four 256x256 BG2
+            // quadrants through SEQSCROLL, so read its live 60 Hz PPU value
+            // rather than the unrelated gameplay words.
             const auto use_ppu_bg2_scroll = ex_native_menu
                 || current_raster_motion.background_mode == 3U;
-            const auto background_x = interpolate_raster_word(
-                use_ppu_bg2_scroll ? previous_raster_motion.bg2_scroll_x
-                                   : previous_raster_motion.background_x,
-                use_ppu_bg2_scroll ? current_raster_motion.bg2_scroll_x
-                                   : current_raster_motion.background_x);
-            const auto background_y = interpolate_raster_word(
-                use_ppu_bg2_scroll ? previous_raster_motion.bg2_scroll_y
-                                   : previous_raster_motion.background_y,
-                use_ppu_bg2_scroll ? current_raster_motion.bg2_scroll_y
-                                   : current_raster_motion.background_y);
-            auto ppu = game.map().ppu_state();
+            const auto background_x = controls_scene
+                ? ppu.bg2_scroll_x
+                : interpolate_raster_word(
+                    use_ppu_bg2_scroll
+                        ? previous_raster_motion.bg2_scroll_x
+                        : previous_raster_motion.background_x,
+                    use_ppu_bg2_scroll
+                        ? current_raster_motion.bg2_scroll_x
+                        : current_raster_motion.background_x);
+            const auto background_y = controls_scene
+                ? ppu.bg2_scroll_y
+                : interpolate_raster_word(
+                    use_ppu_bg2_scroll
+                        ? previous_raster_motion.bg2_scroll_y
+                        : previous_raster_motion.background_y,
+                    use_ppu_bg2_scroll
+                        ? current_raster_motion.bg2_scroll_y
+                        : current_raster_motion.background_y);
             starfox::render::interpolate_crosshair_oam(
                 previous_oam, interpolation_alpha, ppu);
             const auto ex_title_logo_screen = game.experience()
@@ -4848,10 +4859,6 @@ int main(int argc, char** argv) {
             circle.centre_x = static_cast<std::int16_t>(
                 circle.centre_x + viewport_origin);
             auto planet_presentation = game.planet_presentation_state();
-            const auto controls_scene = game.flow_state()
-                    == starfox::simulation::GameFlowState::controls_type
-                || game.flow_state()
-                    == starfox::simulation::GameFlowState::controls_choice;
             framebuffer.clear(0U);
             superfx_frame.clear(0U);
             superfx_surfaces.clear();

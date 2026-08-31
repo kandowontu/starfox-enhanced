@@ -2520,6 +2520,11 @@ void Wdc65816::set_bg1_scroll(std::int16_t x, std::int16_t y) noexcept {
     impl_->ppu.bg1_scroll_y = y;
 }
 
+void Wdc65816::set_bg2_scroll(std::int16_t x, std::int16_t y) noexcept {
+    impl_->ppu.bg2_scroll_x = x;
+    impl_->ppu.bg2_scroll_y = y;
+}
+
 void Wdc65816::draw_planet_sphere(std::uint16_t sprite) {
     impl_->write_superfx16(impl_->msprite, sprite);
     impl_->draw_planet_sphere();

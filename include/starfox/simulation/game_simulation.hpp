@@ -445,6 +445,8 @@ private:
     void complete_video_phases_for_tick();
     void enter_controls(GameFlowState state, std::uint8_t selection = 0U);
     void enter_training();
+    void apply_control_type();
+    void advance_control_type_scroll();
     void update_control_screen_sprites();
     void initialize_native_map(std::uint32_t address);
     void clear_communications();
@@ -628,6 +630,10 @@ private:
     std::uint32_t previous_ship_key_down_{};
     std::uint32_t controls_exit_{};
     std::uint32_t control_type_{};
+    std::uint32_t control_bg2_horizontal_request_{};
+    std::uint32_t control_bg2_vertical_request_{};
+    std::uint32_t control_bg2_horizontal_backup_{};
+    std::uint32_t control_bg2_vertical_backup_{};
     std::uint32_t default_training_{};
     std::uint32_t lives_{};
     std::uint32_t sprite_position_{};

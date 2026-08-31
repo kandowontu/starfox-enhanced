@@ -5142,6 +5142,74 @@ int main(int argc, char** argv) {
                     "EX controller X+L did not invoke its source previous-ship selector");
             static_cast<void>(title_game.tick({}));
         }
+        const auto controls_type_high =
+            upstream_symbols.find("CONT0").front();
+        const auto controls_type_low =
+            upstream_symbols.find("CONTL0").front();
+        const auto controls_type_trigger =
+            upstream_symbols.find("TRIG0").front();
+        constexpr auto physical_control_input = static_cast<
+            starfox::input::ButtonMask>(
+                starfox::input::b | starfox::input::up
+                | starfox::input::a);
+        constexpr std::array mapped_control_inputs{
+            physical_control_input,
+            static_cast<starfox::input::ButtonMask>(
+                starfox::input::y | starfox::input::up
+                | starfox::input::a),
+            static_cast<starfox::input::ButtonMask>(
+                starfox::input::b | starfox::input::down
+                | starfox::input::a),
+            static_cast<starfox::input::ButtonMask>(
+                starfox::input::y | starfox::input::down
+                | starfox::input::a),
+        };
+        for (std::uint8_t type = 0U; type < mapped_control_inputs.size();
+             ++type) {
+            title_game.map().write_native_byte(control_type, type);
+            static_cast<void>(title_game.tick({physical_control_input,
+                physical_control_input, 0U}));
+            const auto mapped = mapped_control_inputs[type];
+            require(title_game.map().read_native_byte(controls_type_high)
+                            == static_cast<std::uint8_t>(mapped >> 8U)
+                        && title_game.map().read_native_byte(controls_type_low)
+                            == static_cast<std::uint8_t>(mapped)
+                        && title_game.map().read_native_word(
+                            controls_type_trigger) == mapped,
+                "controller type did not remap gameplay buttons");
+        }
+
+        // SET_C_TYPE selects one of four 256x256 BG2 quadrants. CONT.ASM's
+        // SEQSCROLL moves the displayed controller diagram toward that page
+        // at two horizontal pixels and one vertical pixel per raster.
+        title_game.map().write_native_byte(control_type, 0U);
+        static_cast<void>(title_game.tick({}));
+        for (std::size_t frame = 0U; frame < 260U; ++frame) {
+            title_game.present_frame();
+        }
+        require(title_game.map().ppu_state().bg2_scroll_x == 0
+                    && title_game.map().ppu_state().bg2_scroll_y == 0,
+            "controller type A did not settle on its artwork page");
+        title_game.map().write_native_byte(control_type, 1U);
+        static_cast<void>(title_game.tick({}));
+        title_game.present_frame();
+        title_game.present_frame();
+        require(title_game.map().ppu_state().bg2_scroll_x == 2
+                    && title_game.map().ppu_state().bg2_scroll_y == 0,
+            "controller type B did not scroll to its artwork page");
+        for (std::uint8_t type = 1U; type < 4U; ++type) {
+            title_game.map().write_native_byte(control_type, type);
+            static_cast<void>(title_game.tick({}));
+            for (std::size_t frame = 0U; frame < 260U; ++frame) {
+                title_game.present_frame();
+            }
+            require(title_game.map().ppu_state().bg2_scroll_x
+                            == ((type & 1U) != 0U ? 256 : 0)
+                        && title_game.map().ppu_state().bg2_scroll_y
+                            == ((type & 2U) != 0U ? 256 : 0),
+                "controller type did not settle on its A/B/C/D artwork page");
+        }
+
         const auto old_control_type = title_game.map().read_native_byte(control_type);
         static_cast<void>(title_game.tick(
             {0, starfox::input::select, 0}));

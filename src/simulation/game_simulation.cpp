@@ -59,6 +59,29 @@ std::int16_t signed_word(std::uint16_t value) noexcept {
     return std::bit_cast<std::int16_t>(value);
 }
 
+input::ButtonMask map_control_type_buttons(
+    input::ButtonMask buttons, std::uint8_t control_type) noexcept {
+    const auto swap_pair = [&buttons](
+        input::ButtonMask first, input::ButtonMask second) {
+        const auto first_held = (buttons & first) != 0U;
+        const auto second_held = (buttons & second) != 0U;
+        buttons = static_cast<input::ButtonMask>(
+            buttons & ~static_cast<input::ButtonMask>(first | second));
+        if (first_held) buttons = static_cast<input::ButtonMask>(buttons | second);
+        if (second_held) buttons = static_cast<input::ButtonMask>(buttons | first);
+    };
+    // IRQ.ASM's TYPEA/B/C/D table leaves A/X/L/R untouched. Type B swaps
+    // the two face-button bits B/Y, Type C swaps Up/Down, and Type D applies
+    // both transformations.
+    if ((control_type & 1U) != 0U) {
+        swap_pair(input::b, input::y);
+    }
+    if ((control_type & 2U) != 0U) {
+        swap_pair(input::up, input::down);
+    }
+    return buttons;
+}
+
 std::size_t native_object_capacity(const assets::SymbolMap& symbols) {
     const auto& values = symbols.find("NUMBER_AL");
     if (values.empty()) {
@@ -197,6 +220,10 @@ GameSimulation::GameSimulation(
       reset_sprites_(rom_symbol("RESET_SPRITES_L")),
       controls_exit_(ram_symbol("CONTEXIT")),
       control_type_(ram_symbol("C_TYPE")),
+      control_bg2_horizontal_request_(ram_symbol("BG2HOFSREQ")),
+      control_bg2_vertical_request_(ram_symbol("BG2VOFSREQ")),
+      control_bg2_horizontal_backup_(ram_symbol("BG2HOFSBAK")),
+      control_bg2_vertical_backup_(ram_symbol("BG2VOFSBAK")),
       default_training_(ram_symbol("DEFAULTTRAIN")),
       lives_(ram_symbol("LIVES")),
       sprite_position_(ram_symbol("SPRITESPOS")),
@@ -1669,6 +1696,12 @@ void GameSimulation::refresh_player_reference() {
 }
 
 void GameSimulation::write_input(const input::TickInput& input) {
+    const auto control_type = static_cast<std::uint8_t>(
+        map_.read_native_byte(control_type_) & 3U);
+    const auto mapped_held = map_control_type_buttons(
+        input.held, control_type);
+    const auto mapped_pressed = map_control_type_buttons(
+        input.pressed, control_type);
     // IRQ.ASM stores old/current high and low bytes interleaved rather than
     // as one contiguous 16-bit word: CONT0L, CONT0, CONTL0L, CONTL0.
     map_.write_native_byte(previous_controller_high_,
@@ -1676,10 +1709,10 @@ void GameSimulation::write_input(const input::TickInput& input) {
     map_.write_native_byte(previous_controller_low_,
                            map_.read_native_byte(controller_low_));
     map_.write_native_byte(controller_high_,
-                           static_cast<std::uint8_t>(input.held >> 8U));
+                           static_cast<std::uint8_t>(mapped_held >> 8U));
     map_.write_native_byte(controller_low_,
-                           static_cast<std::uint8_t>(input.held));
-    map_.write_native_word(trigger_, input.pressed);
+                           static_cast<std::uint8_t>(mapped_held));
+    map_.write_native_word(trigger_, mapped_pressed);
     map_.write_native_word(hardware_controller_, input.held);
     if (starfox_ex_cartridge_) {
         const auto& second = secondary_inputs_.front();
@@ -2771,6 +2804,45 @@ void GameSimulation::update_control_screen_sprites() {
     map_.upload_oam(sprite_block_, 544U);
 }
 
+void GameSimulation::apply_control_type() {
+    Wdc65816Registers registers;
+    registers.status = 0x24U;
+    map_.call_native_near_routine(set_control_type_, registers);
+}
+
+void GameSimulation::advance_control_type_scroll() {
+    const auto horizontal = signed_word(map_.read_native_word(
+        control_bg2_horizontal_backup_));
+    const auto vertical = signed_word(map_.read_native_word(
+        control_bg2_vertical_backup_));
+    // SEQSCROLL writes the current backups to the PPU before RAMCHASE moves
+    // them toward SET_C_TYPE's requested 256x256 tilemap quadrant. This is
+    // the smooth A/B/C/D page movement visible on the cartridge.
+    map_.set_bg2_scroll(horizontal, vertical);
+    const auto chase = [](std::int16_t current, std::int16_t target,
+                          std::int16_t speed) {
+        if (current < target) {
+            return static_cast<std::int16_t>(
+                std::min<std::int32_t>(current + speed, target));
+        }
+        if (current > target) {
+            return static_cast<std::int16_t>(
+                std::max<std::int32_t>(current - speed, target));
+        }
+        return current;
+    };
+    const auto requested_horizontal = signed_word(map_.read_native_word(
+        control_bg2_horizontal_request_));
+    const auto requested_vertical = signed_word(map_.read_native_word(
+        control_bg2_vertical_request_));
+    map_.write_native_word(control_bg2_horizontal_backup_,
+        std::bit_cast<std::uint16_t>(
+            chase(horizontal, requested_horizontal, 2)));
+    map_.write_native_word(control_bg2_vertical_backup_,
+        std::bit_cast<std::uint16_t>(
+            chase(vertical, requested_vertical, 1)));
+}
+
 void GameSimulation::enter_controls(
     GameFlowState state, std::uint8_t selection) {
     Wdc65816Registers registers;
@@ -2824,9 +2896,7 @@ void GameSimulation::enter_controls(
     frontend_phase_ = FrontendPhase::controls_reveal_hold;
     flow_state_ = state;
     set_player_control(state == GameFlowState::controls_type);
-    registers = {};
-    registers.status = 0x24U;
-    map_.call_native_near_routine(set_control_type_, registers);
+    apply_control_type();
     update_control_screen_sprites();
 }
 
@@ -3372,6 +3442,10 @@ void GameSimulation::begin_planet_selection_sequence() {
 
 void GameSimulation::present_frame() {
     map_.tick_video_phase();
+    if (flow_state_ == GameFlowState::controls_type
+        || flow_state_ == GameFlowState::controls_choice) {
+        advance_control_type_scroll();
+    }
     if (deferred_msu_track_) {
         if (deferred_msu_frames_ != 0U) --deferred_msu_frames_;
         if (deferred_msu_frames_ == 0U) {
@@ -5224,9 +5298,7 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
                 (map_.read_native_byte(control_type_) + 1U) & 3U));
             queue_sound_effect(0x11U);
         }
-        Wdc65816Registers registers;
-        registers.status = 0x24U;
-        map_.call_native_near_routine(set_control_type_, registers);
+        apply_control_type();
         if (flow_ticks_ >= 16U
             && (input.pressed & starfox::input::start) != 0U) {
             map_.write_native_byte(controls_exit_, 0U);

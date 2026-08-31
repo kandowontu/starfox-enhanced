@@ -134,6 +134,9 @@ public:
     void set_bg1_scroll(std::int16_t x, std::int16_t y) noexcept {
         cpu_.set_bg1_scroll(x, y);
     }
+    void set_bg2_scroll(std::int16_t x, std::int16_t y) noexcept {
+        cpu_.set_bg2_scroll(x, y);
+    }
     void draw_planet_sphere(std::uint16_t sprite) {
         cpu_.draw_planet_sphere(sprite);
     }
