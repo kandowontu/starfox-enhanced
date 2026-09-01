@@ -23,7 +23,10 @@
 #include "starfox/timing/fixed_step.hpp"
 
 #include <SDL3/SDL.h>
-#if defined(__ANDROID__) || defined(SDL_PLATFORM_IOS)
+#if defined(STARFOX_UWP)
+#define SDL_MAIN_NOIMPL
+#endif
+#if defined(__ANDROID__) || defined(SDL_PLATFORM_IOS) || defined(STARFOX_UWP)
 #include <SDL3/SDL_main.h>
 #ifdef main
 #undef main
@@ -55,7 +58,7 @@
 #include <utility>
 #include <vector>
 
-#if defined(_WIN32)
+#if defined(_WIN32) && !defined(STARFOX_UWP)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #elif defined(__linux__) && !defined(__ANDROID__)
@@ -132,6 +135,7 @@ struct PresentationEffects {
     const starfox::render::Framebuffer* fixed_subtract_foreground{};
     std::int32_t fixed_subtract_foreground_x{};
     std::int32_t fixed_subtract_foreground_y{};
+    std::uint8_t master_brightness{15U};
     starfox::simulation::PlanetPresentationState planet;
     starfox::simulation::WindowWipeState wipe;
     bool expand_wipe{};
@@ -464,9 +468,42 @@ std::vector<ScriptedPress> parse_scripted_presses(const char* text) {
     return result;
 }
 
+bool filename_equal_case_insensitive(
+    const std::filesystem::path& left,
+    const std::filesystem::path& right) {
+    const auto left_name = left.filename().string();
+    const auto right_name = right.filename().string();
+    if (left_name.size() != right_name.size()) return false;
+    return std::equal(left_name.begin(), left_name.end(), right_name.begin(),
+        [](unsigned char a, unsigned char b) {
+            return std::tolower(a) == std::tolower(b);
+        });
+}
+
+std::filesystem::path resolve_companion_case(
+    const std::filesystem::path& requested) {
+    std::error_code error;
+    if (std::filesystem::is_regular_file(requested, error)) return requested;
+    error.clear();
+    auto directory = requested.parent_path();
+    if (directory.empty()) directory = ".";
+    for (std::filesystem::directory_iterator entries{directory, error}, end;
+         !error && entries != end; entries.increment(error)) {
+        if (!entries->is_regular_file(error)) {
+            error.clear();
+            continue;
+        }
+        if (filename_equal_case_insensitive(
+                entries->path(), requested.filename())) {
+            return entries->path();
+        }
+    }
+    return requested;
+}
+
 #if defined(STARFOX_HAS_EMBEDDED_ASSETS)
 std::span<const std::uint8_t> embedded_resource(int identifier) {
-#if defined(_WIN32)
+#if defined(_WIN32) && !defined(STARFOX_UWP)
     const auto module = GetModuleHandleW(nullptr);
     const auto resource = FindResourceW(
         module, MAKEINTRESOURCEW(identifier), MAKEINTRESOURCEW(10));
@@ -558,6 +595,11 @@ std::filesystem::path choose_runtime_input() {
     throw std::runtime_error{
         "Starfox-Assets.BIN was not found. Create it on a PC with "
         "starfox_asset_builder, then copy it beside StarFoxEnhanced.nro"};
+#elif defined(STARFOX_UWP)
+    throw std::runtime_error{
+        "Starfox-Assets.BIN was not found. Create it on a PC with "
+        "starfox_asset_builder, then copy it to this app's internal "
+        "LocalState storage"};
 #else
     RuntimeInputDialogState state;
     constexpr std::array filters{
@@ -659,7 +701,7 @@ find_required_retail(const std::filesystem::path& executable_directory) {
     };
     auto directories = std::vector<std::filesystem::path>{
         executable_directory};
-#if defined(_WIN32)
+#if defined(_WIN32) && !defined(STARFOX_UWP)
     directories.insert(directories.begin(), std::filesystem::path{
         R"(C:\NTSC-US Super Nintendo System Roms)"});
 #else
@@ -738,7 +780,7 @@ std::filesystem::path writable_runtime_directory(
     return executable_directory.empty()
         ? std::filesystem::path{"sdmc:/switch/StarFoxEnhanced"}
         : executable_directory;
-#elif defined(__APPLE__) || defined(__ANDROID__)
+#elif defined(__APPLE__) || defined(__ANDROID__) || defined(STARFOX_UWP)
     if (char* preference_path =
             SDL_GetPrefPath("StarFoxEnhanced", "StarFoxEnhanced");
         preference_path != nullptr) {
@@ -775,9 +817,11 @@ std::filesystem::path find_msu1_pack(
     }
     candidates.emplace_back(writable_runtime_directory(executable_directory)
         / starfox::audio::msu1_pack_filename);
-    const auto found = std::find_if(candidates.begin(), candidates.end(),
-        [](const auto& path) { return std::filesystem::is_regular_file(path); });
-    return found == candidates.end() ? candidates.front() : *found;
+    for (const auto& requested : candidates) {
+        const auto candidate = resolve_companion_case(requested);
+        if (std::filesystem::is_regular_file(candidate)) return candidate;
+    }
+    return candidates.front();
 }
 
 void write_asset_companion(
@@ -809,7 +853,7 @@ void write_asset_companion(
                 "unable to write asset companion: " + path.string()};
         }
     }
-#if defined(_WIN32)
+#if defined(_WIN32) && !defined(STARFOX_UWP)
     if (!MoveFileExW(temporary.c_str(), path.c_str(),
             MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
         const auto error = GetLastError();
@@ -856,7 +900,8 @@ RuntimeAssetSet load_or_compile_runtime_assets(
         companion_candidates.emplace_back(std::filesystem::path{documents}
             / "Star Fox Enhanced" / "Starfox-Assets.BIN");
     }
-    for (const auto& candidate : companion_candidates) {
+    for (const auto& requested : companion_candidates) {
+        const auto candidate = resolve_companion_case(requested);
         if (!std::filesystem::is_regular_file(candidate)) continue;
         try {
             const auto bytes = read_binary_file(candidate);
@@ -1088,10 +1133,12 @@ public:
                 value &= 0x1fU;
                 return static_cast<std::int32_t>((value << 3U) | (value >> 2U));
             };
+            const auto brightness = std::min<std::int32_t>(
+                effects.master_brightness, 15U);
             const std::array<std::int32_t, 3> fixed{
-                expand_five(circle.red),
-                expand_five(circle.green),
-                expand_five(circle.blue),
+                expand_five(circle.red) * brightness / 15,
+                expand_five(circle.green) * brightness / 15,
+                expand_five(circle.blue) * brightness / 15,
             };
             const auto radius_squared = static_cast<std::int64_t>(circle.radius)
                 * static_cast<std::int64_t>(circle.radius);
@@ -2909,7 +2956,10 @@ starfox::simulation::CircleEffectState interpolate_circle_effect(
     double alpha) noexcept {
     alpha = std::clamp(alpha, 0.0, 1.0);
     if (!previous.active && !current.active) return {};
-    if (previous.active && !current.active) return previous;
+    // Circle programs end on a source boundary. Holding the previous active
+    // state for another interpolation interval leaves the death fill visibly
+    // stuck after the cartridge has cleared CIRCLEANIM.
+    if (previous.active && !current.active) return current;
     auto result = current;
     const auto start_radius = previous.active ? previous.radius : 0U;
     result.radius = static_cast<std::uint16_t>(std::lround(
@@ -2963,6 +3013,12 @@ std::filesystem::path executable_path(const char* argv0) {
     }
     return std::filesystem::path{
         "sdmc:/switch/StarFoxEnhanced/StarFoxEnhanced.nro"};
+#elif defined(STARFOX_UWP)
+    if (const auto* base_path = SDL_GetBasePath();
+        base_path != nullptr && *base_path != '\0') {
+        return std::filesystem::path{base_path} / "starfox_pc.exe";
+    }
+    return {};
 #elif defined(__linux__) && !defined(__ANDROID__)
     std::error_code error;
     auto resolved = std::filesystem::read_symlink("/proc/self/exe", error);
@@ -2973,12 +3029,12 @@ std::filesystem::path executable_path(const char* argv0) {
 
 } // namespace
 
-#if defined(__ANDROID__) || defined(SDL_PLATFORM_IOS)
+#if defined(__ANDROID__) || defined(SDL_PLATFORM_IOS) || defined(STARFOX_UWP)
 int SDL_main(int argc, char** argv) {
 #else
 int main(int argc, char** argv) {
 #endif
-#if defined(_WIN32)
+#if defined(_WIN32) && !defined(STARFOX_UWP)
     // Keep the lock alive through the catch block and its modal error dialog.
     // If it lived inside try, stack unwinding released it before MessageBoxA;
     // a second launch could then enter and display an identical second box.
@@ -3460,6 +3516,18 @@ int main(int argc, char** argv) {
             return static_cast<std::uint16_t>(
                 title_intro.front() - background_lists.front());
         }();
+        const auto background_id = [&symbols](const char* name) {
+            const auto& entry = symbols.find(name);
+            const auto& background_lists = symbols.find("BGLISTS");
+            if (entry.empty() || background_lists.empty()
+                || (entry.front() & 0xff0000U)
+                    != (background_lists.front() & 0xff0000U)) {
+                return std::uint16_t{};
+            }
+            return static_cast<std::uint16_t>(
+                entry.front() - background_lists.front());
+        };
+        const auto space_planet_background = background_id("BG_2_2");
         const auto special_colour = colour_symbol("ID_1_C");
         const auto red_colour = colour_symbol("RED_C");
         const auto white_colour = colour_symbol("WHITE_C");
@@ -3775,7 +3843,8 @@ int main(int argc, char** argv) {
         };
         const auto raster_source_changed = [](
             const RasterMotionSnapshot& previous,
-            const RasterMotionSnapshot& current) {
+            const RasterMotionSnapshot& current,
+            bool ignore_superfx_page_flip) {
             return previous.background != current.background
                 || previous.background_mode != current.background_mode
                 || previous.main_screen != current.main_screen
@@ -3786,7 +3855,9 @@ int main(int argc, char** argv) {
                     != current.bg2_vertical_offsets_enabled
                 || previous.bg2_horizontal_offsets_enabled
                     != current.bg2_horizontal_offsets_enabled
-                || previous.bg1_character_base != current.bg1_character_base
+                || (!ignore_superfx_page_flip
+                    && previous.bg1_character_base
+                        != current.bg1_character_base)
                 || previous.bg1_screen_base != current.bg1_screen_base
                 || previous.bg2_character_base != current.bg2_character_base
                 || previous.bg2_screen_base != current.bg2_screen_base
@@ -3799,10 +3870,16 @@ int main(int argc, char** argv) {
         auto current_oam = previous_oam;
         auto previous_circle = game.circle_effect_state();
         auto current_circle = previous_circle;
+        auto previous_window_wipe = game.window_wipe_state();
+        auto current_window_wipe = previous_window_wipe;
         std::unordered_map<std::uint32_t, starfox::assets::Shape> shape_cache;
         std::unordered_set<std::uint32_t> invalid_shapes;
         std::uint64_t presented_frames = 0;
         std::uint64_t source_logic_frames = 0;
+        std::uint64_t profile_scene_cuts{};
+        std::uint64_t profile_camera_cuts{};
+        std::uint64_t profile_raster_cuts{};
+        std::uint64_t profile_fractional_presentations{};
         std::uint64_t profile_background_ns{};
         std::uint64_t profile_world_ns{};
         std::uint64_t profile_composite_ns{};
@@ -4420,10 +4497,13 @@ int main(int argc, char** argv) {
                 || keyboard_state[SDL_SCANCODE_RCTRL];
             const auto shift_fast_forward = keyboard_state[SDL_SCANCODE_LSHIFT]
                 || keyboard_state[SDL_SCANCODE_RSHIFT];
+            const auto super_fast_forward = keyboard_state[SDL_SCANCODE_GRAVE]
+                && !(remap_menu.active && remap_menu.waiting_for_input);
             const auto speed_multiplier = advance_frozen_frame ? 1U
                 : test_fast_forward ? 2U
                 : starfox::timing::playback_speed_multiplier(tab_fast_forward,
-                      control_fast_forward, shift_fast_forward);
+                      control_fast_forward, shift_fast_forward,
+                      super_fast_forward);
             // Presentation FPS is independent of the cartridge's 60 Hz
             // raster. Low output rates may service multiple raster phases
             // before one draw; high rates expose fractional progress between
@@ -4592,6 +4672,7 @@ int main(int argc, char** argv) {
                     previous_raster_motion = current_raster_motion;
                     previous_oam = current_oam;
                     previous_circle = current_circle;
+                    previous_window_wipe = current_window_wipe;
                     const auto previous_scene = game.scene_revision();
                     const auto settings_before_tick = capture_pregame_settings();
                     game.set_secondary_inputs(secondary_controls);
@@ -4627,13 +4708,27 @@ int main(int argc, char** argv) {
                     current_raster_motion = capture_raster_motion();
                     current_oam = game.map().ppu_state().oam;
                     current_circle = game.circle_effect_state();
+                    current_window_wipe = game.window_wipe_state();
                     const auto camera_cut =
                         starfox::timing::camera_transform_is_discontinuous(
                             previous_camera, current_camera);
+                    const auto host_superfx_gameplay =
+                        current_raster_motion.background_mode == 2U
+                        && (game.flow_state()
+                                == starfox::simulation::GameFlowState::gameplay
+                            || game.flow_state()
+                                == starfox::simulation::GameFlowState::training);
                     const auto raster_cut = raster_source_changed(
-                        previous_raster_motion, current_raster_motion);
-                    if (game.scene_revision() != previous_scene || camera_cut
-                        || raster_cut) {
+                        previous_raster_motion, current_raster_motion,
+                        host_superfx_gameplay);
+                    if (game.scene_revision() != previous_scene) {
+                        ++profile_scene_cuts;
+                    }
+                    if (camera_cut) ++profile_camera_cuts;
+                    if (raster_cut) {
+                        ++profile_raster_cuts;
+                    }
+                    if (game.scene_revision() != previous_scene || camera_cut) {
                         // LEVEL1_1 replaces the scramble camera with ExitBase's
                         // view in one source update. Interpolating that cut put
                         // the newly spawned docking station off-screen, then
@@ -4645,6 +4740,15 @@ int main(int argc, char** argv) {
                         previous_raster_motion = current_raster_motion;
                         previous_oam = current_oam;
                         previous_circle = current_circle;
+                        previous_window_wipe = current_window_wipe;
+                    } else if (raster_cut) {
+                        // EX alternates its Super FX BG1 character page every
+                        // source update. That is a normal completed bitmap
+                        // transfer, not a camera cut. Snap only the raster
+                        // registers whose interpretation changed; retaining
+                        // the prior camera/object snapshots keeps the host's
+                        // 60-480 Hz presentation interpolation alive.
+                        previous_raster_motion = current_raster_motion;
                     }
                     for (const auto& [handle, snapshot] : current) {
                         previous.try_emplace(handle, snapshot);
@@ -4749,6 +4853,9 @@ int main(int argc, char** argv) {
             // between adjacent integer projections on high-refresh displays.
             const auto interpolation_alpha = game.paused() ? 1.0
                 : game.logic_interpolation_alpha(raster_batch.phase_fraction);
+            if (interpolation_alpha > 0.0 && interpolation_alpha < 1.0) {
+                ++profile_fractional_presentations;
+            }
             const auto interpolate_raster_word = [interpolation_alpha](
                 std::int16_t previous_value, std::int16_t current_value) {
                 return interpolate_source_word(
@@ -4769,6 +4876,8 @@ int main(int argc, char** argv) {
             // quadrants through SEQSCROLL, so read its live 60 Hz PPU value
             // rather than the unrelated gameplay words.
             const auto use_ppu_bg2_scroll = ex_native_menu
+                || game.flow_state()
+                    == starfox::simulation::GameFlowState::game_over
                 || current_raster_motion.background_mode == 3U;
             const auto background_x = controls_scene
                 ? ppu.bg2_scroll_x
@@ -5052,7 +5161,11 @@ int main(int argc, char** argv) {
                         background_renderer.draw_bg2(ppu, background_x,
                             background_y, framebuffer,
                             starfox::render::TilePriorityPass::all,
-                            viewport_origin, extend_cartridge_scene);
+                            viewport_origin, extend_cartridge_scene, true,
+                            false,
+                            game.map().background()
+                                    == space_planet_background
+                                ? 168U : 0U);
                         mode2_background_cache.set_draw_scale(
                             framebuffer.draw_scale());
                         mode2_background_cache.resize(
@@ -5869,6 +5982,20 @@ int main(int argc, char** argv) {
             } else {
                 composite_superfx(
                     superfx_frame, 0, scene_offset_y, false);
+                if (game.flow_state()
+                        == starfox::simulation::GameFlowState::continue_choice
+                    && ppu.background_mode == 1U) {
+                    // MSHOWOBJ3 supplies BG1. In the source Mode 1 priority
+                    // order OBJ priority 2 and BG2-high (the Continue window
+                    // frame) are above that bitmap. Restore those two passes
+                    // after the host model so it remains behind the window.
+                    sprite_renderer.draw_objects(ppu, framebuffer, 2U,
+                        viewport_origin, extend_cartridge_scene);
+                    background_renderer.draw_bg2(ppu, background_x,
+                        background_y, framebuffer,
+                        starfox::render::TilePriorityPass::high,
+                        viewport_origin, extend_cartridge_scene);
+                }
             }
             if (game.experience()
                     == starfox::simulation::Experience::starfox_ex
@@ -5954,11 +6081,11 @@ int main(int argc, char** argv) {
                 if (briefing.planet_name_address != 0U) {
                     text_renderer.draw_game_text(briefing.planet_name_address,
                         30 + viewport_origin, 41, briefing_target, 0U, 1U,
-                        214 + viewport_origin,
+                        224 + viewport_origin,
                         briefing.visible_planet_characters);
                     text_renderer.draw_game_text(briefing.planet_name_address,
                         28 + viewport_origin, 39, briefing_target, 0U, 4U,
-                        212 + viewport_origin,
+                        224 + viewport_origin,
                         briefing.visible_planet_characters);
                 }
             }
@@ -5974,23 +6101,32 @@ int main(int argc, char** argv) {
                     ppu, framebuffer, starfox::render::TilePriorityPass::high,
                     viewport_origin, extend_cartridge_scene);
             }
-            if (controls_screen && viewport_origin > 0) {
-                // The controller screen's backdrop is a BG tile colour rather
-                // than CGRAM colour zero. Continue that exact indexed colour
-                // through both wide margins so brightness fades remain
-                // identical to the centred cartridge canvas.
-                const auto backdrop = framebuffer.get(
-                    static_cast<std::uint32_t>(viewport_origin), 0U);
+            const auto solid_frontend_margins = controls_screen
+                || game.flow_state()
+                    == starfox::simulation::GameFlowState::game_over
+                || game.flow_state()
+                    == starfox::simulation::GameFlowState::continue_choice;
+            if (solid_frontend_margins && viewport_origin > 0) {
+                // These front ends draw a single-colour field around their
+                // centred artwork. CGRAM colour zero is black on Continue and
+                // is modified by GAMEOVER_L's colour math, so leaving cleared
+                // host pixels in the wide margins gives both screens the
+                // wrong colour. Extend the actual left/right edge pixels per
+                // scanline without repeating the menu/window artwork.
                 const auto right = viewport_origin
                     + static_cast<std::int32_t>(snes_width);
                 for (std::int32_t y = 0;
                      y < static_cast<std::int32_t>(framebuffer.height()); ++y) {
+                    const auto left_backdrop = framebuffer.get(
+                        viewport_origin, y);
+                    const auto right_backdrop = framebuffer.get(
+                        right - 1, y);
                     for (std::int32_t x = 0; x < viewport_origin; ++x) {
-                        framebuffer.set(x, y, backdrop);
+                        framebuffer.set(x, y, left_backdrop);
                     }
                     for (std::int32_t x = right;
                          x < static_cast<std::int32_t>(framebuffer.width()); ++x) {
-                        framebuffer.set(x, y, backdrop);
+                        framebuffer.set(x, y, right_backdrop);
                     }
                 }
             }
@@ -6392,7 +6528,9 @@ int main(int argc, char** argv) {
                     == starfox::simulation::GameFlowState::gameplay
                 || game.flow_state()
                     == starfox::simulation::GameFlowState::intro;
-            const auto window_wipe = game.window_wipe_state();
+            const auto window_wipe = starfox::simulation::interpolate_window_wipe(
+                previous_window_wipe, current_window_wipe,
+                interpolation_alpha);
             const auto forced_black = uses_black_window
                 && game.map().read_native_byte(stay_black_address) != 0xffU;
             const auto launch_wipe = game.flow_state()
@@ -6482,6 +6620,7 @@ int main(int argc, char** argv) {
                     editor_background, editor_foreground);
             }
             PresentationEffects presentation_effects;
+            presentation_effects.master_brightness = presentation_brightness;
             if (planet_presentation.briefing_layers) {
                 presentation_effects.overlay = &planet_overlay;
                 presentation_effects.overlay_brightness =
@@ -6515,7 +6654,10 @@ int main(int argc, char** argv) {
             }
             presentation_effects.expand_wipe = display_width > snes_width
                 && extend_cartridge_scene;
-            presentation_effects.expand_wipe_vertical = extend_scene_vertical;
+            presentation_effects.expand_wipe_vertical = extend_scene_vertical
+                || (game.flow_state()
+                        == starfox::simulation::GameFlowState::stage_results
+                    && window_wipe.active);
             presentation_effects.clip_circle = controls_screen;
             presentation_effects.circle_left = static_cast<std::int16_t>(
                 24 + viewport_origin);
@@ -6611,6 +6753,12 @@ int main(int argc, char** argv) {
                               << '/' << profiled_background_modes[6U]
                               << '/' << profiled_background_modes[7U]
                               << " hud=" << profiled_gameplay_hud_frames
+                              << " interpolation="
+                              << profile_fractional_presentations << '/'
+                              << presented_frames
+                              << " cuts=" << profile_scene_cuts << '/'
+                              << profile_camera_cuts << '/'
+                              << profile_raster_cuts
                               << '\n';
                 }
                 if (std::getenv("STARFOX_TRACE_MSU1") != nullptr) {
@@ -6660,7 +6808,7 @@ int main(int argc, char** argv) {
         const std::string message =
             std::string{"Star Fox Enhanced could not start:\n\n"} + error.what();
         std::cerr << "starfox_pc failed: " << error.what() << '\n';
-#if defined(_WIN32)
+#if defined(_WIN32) && !defined(STARFOX_UWP)
         // Automated runtime checks must remain headless even when they find a
         // regression; stderr and the non-zero exit status are sufficient and
         // cannot strand modal dialogs on the user's desktop.

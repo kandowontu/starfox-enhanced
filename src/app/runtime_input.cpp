@@ -114,6 +114,18 @@ std::filesystem::path settings_path() {
 }
 
 std::filesystem::path documents_settings_path(std::string_view filename) {
+#if defined(STARFOX_UWP)
+    // Xbox UWP package files are read-only. SDL maps its preference path to
+    // the app's persistent LocalState internal-storage directory.
+    if (char* preference_path =
+            SDL_GetPrefPath("StarFoxEnhanced", "StarFoxEnhanced");
+        preference_path != nullptr) {
+        const auto result = std::filesystem::path{preference_path} / filename;
+        SDL_free(preference_path);
+        return result;
+    }
+    return {};
+#else
     if (const auto* documents = SDL_GetUserFolder(SDL_FOLDER_DOCUMENTS);
         documents != nullptr && *documents != '\0') {
         return std::filesystem::path{documents}
@@ -146,6 +158,7 @@ std::filesystem::path documents_settings_path(std::string_view filename) {
         return result;
     }
     return {};
+#endif
 }
 
 constexpr std::array<std::string_view, 5> kHudElementNames{

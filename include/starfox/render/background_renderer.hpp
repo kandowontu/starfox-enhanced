@@ -32,7 +32,8 @@ public:
         std::int32_t horizontal_origin = 0,
         bool extend_horizontal = true,
         bool wrap_horizontal = true,
-        bool transparent_cgram_black = false) const noexcept;
+        bool transparent_cgram_black = false,
+        std::uint32_t single_occurrence_top_rows = 0U) const noexcept;
     void draw_bg3(
         const simulation::SnesPpuState& ppu,
         Framebuffer& target,

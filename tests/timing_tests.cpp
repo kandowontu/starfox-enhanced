@@ -83,7 +83,7 @@ void test_selectable_presentation_rates_preserve_raster_pace() {
 void test_fast_forward_multipliers_preserve_exact_raster_pace() {
     constexpr std::array<std::uint32_t, 8> rates{
         20U, 30U, 60U, 90U, 120U, 240U, 360U, 480U};
-    for (const auto multiplier : {2U, 3U, 5U}) {
+    for (const auto multiplier : {2U, 3U, 5U, 20U}) {
         for (const auto rate : rates) {
             starfox::timing::RasterPhaseClock clock;
             std::uint32_t phases = 0U;
@@ -105,7 +105,11 @@ void test_fast_forward_multipliers_preserve_exact_raster_pace() {
                 && starfox::timing::playback_speed_multiplier(true, true, false)
                     == 3U
                 && starfox::timing::playback_speed_multiplier(true, true, true)
-                    == 5U,
+                    == 5U
+                && starfox::timing::playback_speed_multiplier(
+                    false, true, true, true) == 20U
+                && starfox::timing::playback_speed_multiplier(
+                    true, true, true, true) == 20U,
             "Tab modifier combination selected the wrong playback speed");
 }
 
@@ -306,6 +310,36 @@ void test_rotation_matrix_interpolation_is_orthonormal() {
                 && starfox::simulation::interpolate_rotation_matrix_q15(
                     identity, quarter_turn, 1.0) == quarter_turn,
             "matrix interpolation changed exact source-frame endpoints");
+
+    constexpr starfox::simulation::MatrixQ15 half_turn_x{
+        32'767, 0, 0, 0, -32'768, 0, 0, 0, -32'768};
+    const auto before_antipode =
+        starfox::simulation::interpolate_rotation_matrix_q15(
+            identity, half_turn_x, 0.49);
+    const auto after_antipode =
+        starfox::simulation::interpolate_rotation_matrix_q15(
+            identity, half_turn_x, 0.51);
+    const auto determinant = [](const auto& matrix) {
+        return static_cast<double>(matrix[0])
+                * (static_cast<double>(matrix[4]) * matrix[8]
+                    - static_cast<double>(matrix[5]) * matrix[7])
+            - static_cast<double>(matrix[1])
+                * (static_cast<double>(matrix[3]) * matrix[8]
+                    - static_cast<double>(matrix[5]) * matrix[6])
+            + static_cast<double>(matrix[2])
+                * (static_cast<double>(matrix[3]) * matrix[7]
+                    - static_cast<double>(matrix[4]) * matrix[6]);
+    };
+    require(determinant(before_antipode) > 0.0
+                && determinant(after_antipode) > 0.0,
+            "near-180-degree interpolation reflected the model");
+    std::int64_t continuity{};
+    for (std::size_t index = 0U; index < before_antipode.size(); ++index) {
+        continuity += static_cast<std::int64_t>(before_antipode[index])
+            * after_antipode[index];
+    }
+    require(continuity > 2'000'000'000LL,
+            "near-180-degree interpolation flipped between adjacent frames");
 }
 
 void test_camera_cuts_are_not_interpolated() {

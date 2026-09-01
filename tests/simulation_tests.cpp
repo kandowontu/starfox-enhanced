@@ -2764,6 +2764,142 @@ int main(int argc, char** argv) {
         }
 
         {
+            // The source models the body and each wing as independent native
+            // collision objects. Exercise both destruction initializers and
+            // the subsequent SETCURRPSHAPE update, including EX's shifted
+            // AL_COLLCOUNT field that previously corrupted the hit lifecycle.
+            starfox::simulation::GameSimulation wing_game{
+                upstream_rom, upstream_symbols, "LEVEL1_1"};
+            starfox::simulation::Wdc65816Registers select_ship_registers;
+            select_ship_registers.status = 0x24U;
+            select_ship_registers.a = 0U;
+            wing_game.map().call_native_routine(
+                upstream_symbols.find("SELECT_SHIP_L").front(),
+                select_ship_registers, 5'000'000U, true);
+            const auto alien_base = static_cast<std::uint16_t>(
+                upstream_symbols.find("ALBLKS").front());
+            const auto alien_size = static_cast<std::uint16_t>(
+                upstream_symbols.find("AL_SIZE").front());
+            const auto object_from_pointer = [alien_base, alien_size](
+                    std::uint16_t pointer) {
+                return pointer < alien_base
+                    || (pointer - alien_base) % alien_size != 0U
+                    ? starfox::simulation::ObjectHandle{}
+                    : static_cast<starfox::simulation::ObjectHandle>(
+                        (pointer - alien_base) / alien_size + 1U);
+            };
+            const auto left_wing = object_from_pointer(
+                wing_game.map().read_native_word(
+                    upstream_symbols.find("PCBOXOBJ_LW").front()));
+            const auto right_wing = object_from_pointer(
+                wing_game.map().read_native_word(
+                    upstream_symbols.find("PCBOXOBJ_RW").front()));
+            const auto body = object_from_pointer(
+                wing_game.map().read_native_word(
+                    upstream_symbols.find("PCBOXOBJ_B").front()));
+            const auto expected_wing_health = starfox_ex_cartridge
+                ? wing_game.map().read_native_byte(
+                    upstream_symbols.find("PLAYERW_HP").front())
+                : static_cast<std::uint8_t>(
+                    upstream_symbols.find("PLAYERW_HP").front());
+            require(left_wing != 0U && right_wing != 0U && body != 0U
+                        && wing_game.objects().is_active(left_wing)
+                        && wing_game.objects().is_active(right_wing)
+                        && wing_game.objects().is_active(body)
+                        && wing_game.objects().at(left_wing).health
+                            == expected_wing_health
+                        && wing_game.objects().at(right_wing).health
+                            == expected_wing_health,
+                "player wing collision objects did not initialize symmetrically");
+            const auto ship_flags = upstream_symbols.find("PSHIPFLAGS").front();
+            const auto ship_flags_3 =
+                upstream_symbols.find("PSHIPFLAGS3").front();
+            wing_game.map().write_native_byte(ship_flags_3,
+                static_cast<std::uint8_t>(
+                    wing_game.map().read_native_byte(ship_flags_3) & ~0x08U));
+            wing_game.map().call_native_object_routine(
+                upstream_symbols.find("PLWBRK_ISTRAT").front(), left_wing,
+                0x7eU, 0x24U, 5'000'000U);
+            auto& damaged_player = wing_game.objects().at(wing_game.player());
+            damaged_player.strategy_address =
+                upstream_symbols.find("PLAYER_ISTRAT").front();
+            damaged_player.strategy_state = 0U;
+            damaged_player.extended[18U] = 0U;
+            static_cast<void>(wing_game.tick({}));
+            const auto hud_flags = upstream_symbols.find("M_HUDFLAGS").front();
+            require((wing_game.map().read_native_byte(ship_flags) & 0x18U)
+                            == 0x08U
+                        && wing_game.objects().at(left_wing).health == 0xffU
+                        && wing_game.objects().at(left_wing).attack_power == 0U
+                        && wing_game.objects().at(body).collision_count != 0U
+                        && wing_game.map().read_native_word(hud_flags) == 1U,
+                "left-wing destruction did not update damage and HUD state");
+            wing_game.map().call_native_object_routine(
+                upstream_symbols.find("PRWBRK_ISTRAT").front(), right_wing,
+                0x7eU, 0x24U, 5'000'000U);
+            auto& both_damaged_player =
+                wing_game.objects().at(wing_game.player());
+            both_damaged_player.strategy_address =
+                upstream_symbols.find("PLAYER_ISTRAT").front();
+            both_damaged_player.strategy_state = 0U;
+            both_damaged_player.extended[18U] = 0U;
+            static_cast<void>(wing_game.tick({}));
+            require((wing_game.map().read_native_byte(ship_flags) & 0x18U)
+                            == 0x18U
+                        && wing_game.objects().at(right_wing).health == 0xffU
+                        && wing_game.objects().at(right_wing).attack_power == 0U
+                        && wing_game.objects().at(body).collision_count != 0U
+                        && wing_game.map().read_native_word(hud_flags) == 3U,
+                    "right-wing destruction did not compose with existing damage");
+        }
+
+        {
+            starfox::simulation::GameSimulation transition_game{
+                upstream_rom, upstream_symbols, "LEVEL1_1"};
+            const auto circle_animation =
+                upstream_symbols.find("CIRCLEANIM").front();
+            const auto circle_object =
+                upstream_symbols.find("CIRCLEOBJ").front();
+            const auto circle_radius =
+                upstream_symbols.find("CIRCLERAD").front();
+            const auto do_a_wipe = upstream_symbols.find("DOAWIPE").front();
+            const auto doing_wipe =
+                upstream_symbols.find("DOINGWIPE").front();
+            transition_game.map().write_native_word(circle_animation, 1U);
+            transition_game.map().write_native_word(circle_object, 1U);
+            transition_game.map().write_native_word(circle_radius, 64U);
+            transition_game.map().write_native_byte(do_a_wipe, 1U);
+            transition_game.map().write_native_byte(doing_wipe, 1U);
+            transition_game.map().write_native_byte(
+                upstream_symbols.find("MSG_COUNT1").front(), 9U);
+            transition_game.map().set_bg2_vertical_offsets_enabled(true);
+            transition_game.map().capture_bg2_horizontal_offsets(0U, true);
+            transition_game.map().set_native_model_draw(
+                {true, 1U, 0, 0, 350});
+            const auto previous_revision = transition_game.scene_revision();
+
+            transition_game.start_map("LEVEL1_2");
+
+            require(transition_game.scene_revision() > previous_revision
+                        && transition_game.map().read_native_word(
+                            circle_animation) == 0U
+                        && transition_game.map().read_native_word(
+                            circle_object) == 0U
+                        && transition_game.map().read_native_word(
+                            circle_radius) == 0U
+                        && !transition_game.window_wipe_state().active
+                        && !transition_game.dialogue_state().active
+                        && !transition_game.map().ppu_state()
+                            .bg2_vertical_offsets_enabled
+                        && !transition_game.map().ppu_state()
+                            .bg2_horizontal_offsets_enabled
+                        && !transition_game.map().native_model_draw().active
+                        && transition_game.particles().active_count() == 0U,
+                    "scene handoff retained an outgoing wipe, dialogue, "
+                    "offset table, model, or particle state");
+        }
+
+        {
             starfox::simulation::GameSimulation god_game{
                 upstream_rom, upstream_symbols, "LEVEL1_1"};
             god_game.set_god_mode(true);
@@ -3331,6 +3467,28 @@ int main(int argc, char** argv) {
                     && game.map().unknown_superfx_launches().empty(),
                 "table-driven gameplay wipe was not advanced for presentation");
 
+        starfox::simulation::WindowWipeState previous_wipe;
+        previous_wipe.active = true;
+        previous_wipe.logic = 0xaaU;
+        previous_wipe.left.fill(16U);
+        previous_wipe.right.fill(239U);
+        auto current_wipe = previous_wipe;
+        current_wipe.left.fill(80U);
+        current_wipe.right.fill(175U);
+        const auto halfway_wipe =
+            starfox::simulation::interpolate_window_wipe(
+                previous_wipe, current_wipe, 0.5);
+        require(halfway_wipe.active && halfway_wipe.logic == 0xaaU
+                    && halfway_wipe.left.front() == 48U
+                    && halfway_wipe.right.front() == 207U
+                    && halfway_wipe.left.back() == 48U
+                    && halfway_wipe.right.back() == 207U,
+                "window wipe did not interpolate between 20 Hz source rasters");
+        current_wipe.active = false;
+        require(!starfox::simulation::interpolate_window_wipe(
+                    previous_wipe, current_wipe, 0.5).active,
+                "completed window wipe was incorrectly held for interpolation");
+
         const auto send_message = upstream_symbols.find("SEND_MESSAGE_L");
         require(!send_message.empty(), "SEND_MESSAGE_L symbol is missing");
         starfox::simulation::Wdc65816Registers message_registers;
@@ -3860,11 +4018,36 @@ int main(int argc, char** argv) {
         const auto stage_address = upstream_symbols.find("STAGE");
         const auto new_map_address = upstream_symbols.find("NEWMAP");
         const auto level1_2 = upstream_symbols.find("LEVEL1_2");
+        const auto current_planet_address =
+            upstream_symbols.find("CURRENTPLANET").front();
+        const auto start_planet_positions =
+            upstream_symbols.find("STARTPLANETPOS").front();
+        const auto completed_planet = game.map().read_native_byte(
+            current_planet_address);
         require(!level_finished.empty() && !stage_address.empty()
                     && !new_map_address.empty() && !level1_2.empty(),
                 "route-transition symbols are missing");
         game.map().write_native_word(level_finished.front(), 1U);
         static_cast<void>(game.tick({}));
+        // A boss message may still be live on the last gameplay transfer.
+        // PLANETSEQ must discard it rather than painting it over the map.
+        const auto stale_friends_message =
+            upstream_symbols.find("FRIENDS_MSG").front();
+        const auto stale_message_count_1 =
+            upstream_symbols.find("MSG_COUNT1").front();
+        game.map().write_native_word(stale_friends_message, 0x8000U);
+        game.map().write_native_byte(stale_message_count_1, 1U);
+        const auto stale_friends_message_2 =
+            upstream_symbols.find("FRIENDS_MSG2");
+        const auto stale_message_count_1_2 =
+            upstream_symbols.find("MSG_COUNT1_2");
+        if (!stale_friends_message_2.empty()
+            && !stale_message_count_1_2.empty()) {
+            game.map().write_native_word(
+                stale_friends_message_2.front(), 0x8000U);
+            game.map().write_native_byte(
+                stale_message_count_1_2.front(), 1U);
+        }
         const auto stage_results = game.stage_results_state();
         require(game.flow_state() == starfox::simulation::GameFlowState::stage_results
                     && stage_results.active
@@ -3953,6 +4136,43 @@ int main(int argc, char** argv) {
                     && game.map().read_native_byte(doing_wipe_address.front()) == 0U
                     && game.map().read_native_byte(do_a_wipe_address.front()) == 0U,
                 "post-level map retained the completed stage's black window wipe");
+        require(game.map().read_native_word(stale_friends_message) == 0U
+                    && game.map().read_native_byte(stale_message_count_1) == 0U
+                    && (stale_friends_message_2.empty()
+                        || game.map().read_native_word(
+                               stale_friends_message_2.front())
+                            == 0U)
+                    && (stale_message_count_1_2.empty()
+                        || game.map().read_native_byte(
+                               stale_message_count_1_2.front())
+                            == 0U),
+                "post-level map retained a gameplay communication overlay");
+        const auto post_level_oam = game.map().ppu_state().oam;
+        auto post_level_ship_records_present = true;
+        for (std::size_t object = 4U; object < 8U; ++object) {
+            const auto offset = object * 4U;
+            post_level_ship_records_present = post_level_ship_records_present
+                && (post_level_oam[offset] != 0U
+                    || post_level_oam[offset + 1U] != 0U
+                    || post_level_oam[offset + 2U] != 0U
+                    || post_level_oam[offset + 3U] != 0U)
+                && ((post_level_oam[offset + 3U] >> 4U) & 3U) == 3U;
+        }
+        auto isolated_ship_ppu = game.map().ppu_state();
+        isolated_ship_ppu.oam.fill(0U);
+        std::copy(post_level_oam.begin() + 4U * 4U,
+            post_level_oam.begin() + 8U * 4U,
+            isolated_ship_ppu.oam.begin() + 4U * 4U);
+        isolated_ship_ppu.oam[512U + 4U / 4U] = post_level_oam[512U + 4U / 4U];
+        starfox::render::Framebuffer isolated_ship_frame{256U, 224U};
+        sprite_renderer.draw_objects(
+            isolated_ship_ppu, isolated_ship_frame, 3U);
+        const auto post_level_ship_pixels = std::count_if(
+            isolated_ship_frame.pixels().begin(),
+            isolated_ship_frame.pixels().end(),
+            [](std::uint8_t pixel) { return pixel != 0U; });
+        require(post_level_ship_records_present && post_level_ship_pixels > 16,
+                "post-level route did not render its four-piece Arwing");
         for (const auto launch : game.map().unknown_superfx_launches()) {
             std::cerr << "  result-screen GSU launch $" << std::hex << launch
                       << std::dec << '\n';
@@ -3970,8 +4190,6 @@ int main(int argc, char** argv) {
         }
         require(source_planet_palette_is_exact,
                 "post-level map did not load PLANSELPAL exactly into CGRAM");
-        const auto current_planet_address =
-            upstream_symbols.find("CURRENTPLANET").front();
         const auto planet_positions = upstream_symbols.find("PLANETPOS").front();
         const auto selected_planet = game.map().read_native_byte(
             current_planet_address);
@@ -3996,18 +4214,43 @@ int main(int argc, char** argv) {
             upstream_symbols.find("SHIPXY").front();
         const auto initial_route_ship_position =
             game.map().read_native_word(ship_position_address);
+        require(initial_route_ship_position
+                    == upstream_rom.read16(start_planet_positions
+                        + static_cast<std::uint32_t>(completed_planet) * 2U),
+                "post-level Arwing did not start on the completed planet");
+        const auto new_ship_position_address =
+            upstream_symbols.find("NEWSHIPXY").front();
+        const auto route_cursor_address = upstream_symbols.find("X1").front();
+        require(game.map().read_native_word(route_cursor_address) != 0U,
+                "post-level route discarded its first authored ship segment");
+        auto last_route_ship_target = game.map().read_native_word(
+            new_ship_position_address);
+        auto route_ship_target_changes = std::size_t{};
         auto saw_route_ship_move = false;
         for (std::size_t frame = 0; frame < 900U; ++frame) {
             game.present_frame();
             saw_route_ship_move = saw_route_ship_move
                 || game.map().read_native_word(ship_position_address)
                     != initial_route_ship_position;
+            const auto target = game.map().read_native_word(
+                new_ship_position_address);
+            if (target != last_route_ship_target) {
+                ++route_ship_target_changes;
+                last_route_ship_target = target;
+            }
             if ((frame % 3U) == 2U) static_cast<void>(game.tick({}));
         }
         require(game.flow_state()
                         == starfox::simulation::GameFlowState::planet_travel
-                    && saw_route_ship_move && !game.briefing_state().active,
-                "post-level route did not hold at the arrived planet for A");
+                    && !game.briefing_state().active,
+                "post-level route did not hold for arrival confirmation");
+        require(saw_route_ship_move,
+                "post-level Arwing did not leave the completed planet");
+        require(route_ship_target_changes >= 1U,
+                "post-level Arwing skipped its authored route waypoint");
+        require(game.map().read_native_word(ship_position_address)
+                    == game.map().read_native_word(new_ship_position_address),
+                "post-level Arwing did not settle at the destination planet");
         static_cast<void>(game.tick(
             {0U, starfox::input::a, 0U}));
         auto saw_valid_post_level_briefing = false;
@@ -4083,13 +4326,24 @@ int main(int argc, char** argv) {
                     && game.map().native_model_draw().active
                     && game.map().native_model_draw().shape
                         == static_cast<std::uint16_t>(my_demo)
+                    && game.map().native_model_draw().vanish_x == 76
+                    && game.map().native_model_draw().vanish_y == 92
                     && std::any_of(game.map().ppu_state().vram.begin(),
                         game.map().ppu_state().vram.end(),
                         [](std::uint8_t byte) { return byte != 0U; }),
-                "game-over lock did not open the original Fox continue screen");
+                "game-over lock did not open the source-centred Fox continue screen");
         require(game.map().read_native_byte(
                     upstream_symbols.find("LIVES").front()) == 4U,
                 "continue screen did not restore the source's visible x3 reserve");
+        const auto& continue_cgram = game.map().ppu_state().cgram;
+        for (std::size_t index = 1U; index < 15U; ++index) {
+            require(continue_cgram[128U + index]
+                        == continue_cgram[64U + index],
+                    "continue screen did not match Fox's animated OBJ colours "
+                    "to his BG body palette");
+        }
+        require(continue_cgram[143U] == 0x456bU,
+                "continue screen omitted Fox's final animated sprite colour");
         if (starfox_ex_cartridge) {
             for (const auto* reserve : {
                      "LIVESTWO", "LIVESTHREE", "LIVESFOUR", "LIVESFIVE"}) {
@@ -6028,6 +6282,99 @@ int main(int argc, char** argv) {
                     != restart_x,
                 "rebuilt player ignored directional input after death restart");
 
+        // Exercise the complete cartridge death loop instead of only
+        // injecting TRANS.ASM's final restart request. PLAYERDEAD_ISTRAT owns
+        // the 60-update tumble, PEXPLODE_ISTRAT the red circle/life decrement,
+        // and GROUND_STRAT the 20-update hold, black fade, checkpoint restart,
+        // and zero-life GAME OVER branch.
+        starfox::simulation::GameSimulation death_game{
+            upstream_rom, upstream_symbols, "LEVEL1_1"};
+        for (std::size_t tick = 0; tick < 3'000U
+             && death_game.map().read_native_word(restart_pointer) == 0U;
+             ++tick) {
+            static_cast<void>(death_game.tick({}));
+        }
+        require(death_game.map().read_native_word(restart_pointer) != 0U
+                    && death_game.objects().is_active(death_game.player()),
+                "death regression never reached a source checkpoint");
+        const auto player_ship_flags_2 =
+            upstream_symbols.find("PSHIPFLAGS2").front();
+        const auto player_death_initializer =
+            upstream_symbols.find("PLAYERDEAD_ISTRAT").front();
+        const auto lives = upstream_symbols.find("LIVES").front();
+        death_game.map().write_native_byte(lives, 2U);
+        death_game.objects().at(
+            death_game.player()).strategy_address = player_death_initializer;
+        auto saw_player_dying = false;
+        auto saw_player_dead = false;
+        auto saw_death_circle = false;
+        auto saw_circle_during_fade = false;
+        auto restarted_after_death = false;
+        for (std::size_t tick = 0; tick < 400U; ++tick) {
+            static_cast<void>(death_game.tick({}));
+            const auto flags = death_game.map().read_native_byte(game_flags);
+            const auto circle = death_game.circle_effect_state();
+            saw_player_dying = saw_player_dying || (flags & 0x02U) != 0U;
+            saw_player_dead = saw_player_dead || (flags & 0x40U) != 0U;
+            saw_death_circle = saw_death_circle || circle.active;
+            saw_circle_during_fade = saw_circle_during_fade
+                || (circle.active
+                    && death_game.map().display_brightness() < 15U);
+            if (saw_player_dead
+                && (flags & 0x42U) == 0U
+                && (death_game.map().read_native_byte(player_ship_flags_2)
+                    & 0x80U) == 0U
+                && death_game.map().read_native_byte(lives) == 1U
+                && !circle.active
+                && death_game.objects().is_active(death_game.player())) {
+                restarted_after_death = true;
+                break;
+            }
+        }
+        if (!(saw_player_dying && saw_player_dead && saw_death_circle
+                && saw_circle_during_fade && restarted_after_death)) {
+            std::cerr << "death diagnostic: dying=" << saw_player_dying
+                      << " dead=" << saw_player_dead
+                      << " circle=" << saw_death_circle
+                      << " circle-fade=" << saw_circle_during_fade
+                      << " restarted=" << restarted_after_death
+                      << " flags=$" << std::hex
+                      << static_cast<unsigned>(
+                          death_game.map().read_native_byte(game_flags))
+                      << " pflags2=$" << static_cast<unsigned>(
+                          death_game.map().read_native_byte(player_ship_flags_2))
+                      << std::dec << " lives=" << static_cast<unsigned>(
+                          death_game.map().read_native_byte(lives))
+                      << " brightness=" << static_cast<unsigned>(
+                          death_game.map().display_brightness())
+                      << " circle-active="
+                      << death_game.circle_effect_state().active << '\n';
+        }
+        require(saw_player_dying && saw_player_dead && saw_death_circle
+                    && saw_circle_during_fade && restarted_after_death,
+                "native death tumble/circle/fade did not restart its checkpoint");
+
+        // The next death consumes the final active ship and must traverse the
+        // same visual sequence before MAIN.ASM enters GAME OVER. In particular
+        // CIRCLEANIM must be gone at the scene boundary.
+        death_game.objects().at(
+            death_game.player()).strategy_address = player_death_initializer;
+        auto saw_final_death_circle = false;
+        for (std::size_t tick = 0; tick < 400U
+             && death_game.flow_state()
+                != starfox::simulation::GameFlowState::game_over; ++tick) {
+            static_cast<void>(death_game.tick({}));
+            saw_final_death_circle = saw_final_death_circle
+                || death_game.circle_effect_state().active;
+        }
+        require(saw_final_death_circle
+                    && death_game.flow_state()
+                        == starfox::simulation::GameFlowState::game_over
+                    && !death_game.circle_effect_state().active
+                    && death_game.map().read_native_word(
+                        upstream_symbols.find("CIRCLEANIM").front()) == 0U,
+                "zero-life death did not clear its circle before GAME OVER");
+
         const starfox::assets::ShapeDecoder textured_decoder{
             upstream_rom, upstream_symbols};
         const auto andross = textured_decoder.decode_by_name(upstream_symbols, "ANDROSS");
@@ -6127,6 +6474,24 @@ int main(int argc, char** argv) {
         require(std::count(pause_frame.pixels().begin(), pause_frame.pixels().end(),
                     pause_colour) > 40,
                 "original variable-width PAUSED font did not render");
+        const auto messages = upstream_symbols.find("MESSAGES").front();
+        const auto armada_pointer = upstream_rom.read16(
+            messages + static_cast<std::uint32_t>(97U - 1U) * 2U);
+        const auto armada_text = (messages & 0xff0000U)
+            | static_cast<std::uint16_t>(armada_pointer + 2U);
+        starfox::render::Framebuffer armada_frame{224, 80};
+        text_renderer.draw_game_text(
+            armada_text, 28, 39, armada_frame, 0U, 4U, 224);
+        auto armada_second_line_pixels = std::size_t{};
+        for (std::uint32_t y = 52U; y < 65U; ++y) {
+            for (std::uint32_t x = 0U; x < armada_frame.width(); ++x) {
+                if (armada_frame.get(x, y) != 0U) {
+                    ++armada_second_line_pixels;
+                }
+            }
+        }
+        require(armada_second_line_pixels == 0U,
+                "THE ANDROSS SPACE ARMADA wrapped onto a second line");
         starfox::render::Framebuffer face_frame{224, 192};
         text_renderer.draw_face(5U, 48, 152, face_frame);
         require(std::count_if(face_frame.pixels().begin(), face_frame.pixels().end(),

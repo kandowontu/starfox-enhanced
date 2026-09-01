@@ -105,8 +105,8 @@ struct PregameSettings {
 // Guards the per-user preference directory against a second desktop runtime.
 [[nodiscard]] std::filesystem::path single_instance_lock_path();
 
-// Front-end choices live beside HUD layouts in Documents so presentation and
-// accessibility settings survive upgrades and self-contained EXE moves.
+// Front-end choices live beside HUD layouts in persistent per-user storage so
+// presentation and accessibility settings survive upgrades and app moves.
 [[nodiscard]] std::filesystem::path pregame_settings_path();
 [[nodiscard]] bool load_pregame_settings(
     const std::filesystem::path& path,

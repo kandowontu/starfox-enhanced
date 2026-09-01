@@ -90,6 +90,27 @@ if(NOT verify_result EQUAL 0)
 endif()
 file(SHA256 "${companion}" first_companion_hash)
 
+# Linux, Xbox LocalState, and other case-sensitive filesystems must discover
+# companion files copied with casing chosen by an archive tool or file manager.
+set(mixed_case_companion "${WORK_DIR}/STARFOX-assets.bin")
+file(RENAME "${companion}" "${mixed_case_companion}")
+run_runtime(case_result
+    "${WORK_DIR}/retail-is-deliberately-absent.sfc" ORIGINAL 1)
+if(NOT case_result EQUAL 0)
+    message(FATAL_ERROR
+        "runtime did not discover a mixed-case asset companion:\n"
+        "${runtime_output}")
+endif()
+if(NOT EXISTS "${companion}")
+    message(FATAL_ERROR
+        "runtime did not normalize a mixed-case asset companion")
+endif()
+file(SHA256 "${companion}" case_companion_hash)
+if(NOT case_companion_hash STREQUAL first_companion_hash)
+    message(FATAL_ERROR "mixed-case companion load changed the asset payload")
+endif()
+file(REMOVE "${mixed_case_companion}")
+
 # A damaged companion must be replaced from the validated retail image rather
 # than reaching either experience with partial or stale assets.
 file(WRITE "${companion}" "corrupt companion")

@@ -60,6 +60,17 @@ freely, subject to the following restrictions:
    misrepresented as being the original software.
 3. This notice may not be removed or altered from any source distribution.
 
+### SDL3 UWP/WinRT fork
+
+Source: <https://github.com/SternXD/SDL3-uwp>
+
+Pinned revision: `8fd8db768df139e9bb4c7a7869fb913a0e29ea89`
+
+The Xbox Developer Mode target uses this maintained SDL 3.4.10-compatible
+fork because official SDL no longer ships its UWP backend. The fork retains
+SDL's zlib licence above and supplies the WinRT D3D11, WASAPI, filesystem, and
+gamepad integration used by the UWP package.
+
 ### SDL3 Nintendo Switch libnx backend
 
 Source: <https://github.com/neomody77/sdl3-switch>

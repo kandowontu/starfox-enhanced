@@ -134,6 +134,49 @@ jobs:
           gh release upload "${tag}" \
             StarFoxEnhanced-0.0.2-windows-x86.zip --clobber
 
+  xbox-uwp-x64:
+    name: Xbox UWP x64 (Developer Mode)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Build signed Xbox Developer Mode package
+        shell: pwsh
+        run: |
+          ./tools/build_xbox_uwp.ps1 `
+            -BuildDirectory build/xbox-uwp-x64 `
+            -InstallDirectory dist/StarFoxEnhanced-xbox-uwp-x64
+      - name: Verify and package UWP output
+        shell: pwsh
+        run: |
+          $root = 'dist/StarFoxEnhanced-xbox-uwp-x64'
+          $package = Get-ChildItem -LiteralPath $root -File |
+            Where-Object { $_.Extension -in '.appx', '.msix', '.appxbundle', '.msixbundle' } |
+            Select-Object -First 1
+          if ($null -eq $package -or $package.Length -eq 0) {
+            throw 'Xbox UWP package is missing'
+          }
+          if (-not (Test-Path -LiteralPath "$root/StarFoxEnhanced-UWP-Development.cer")) {
+            throw 'Xbox UWP public development certificate is missing'
+          }
+          Compress-Archive -Path "$root/*" `
+            -DestinationPath StarFoxEnhanced-0.0.2-xbox-uwp-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StarFoxEnhanced-0.0.2-xbox-uwp-x64
+          path: StarFoxEnhanced-0.0.2-xbox-uwp-x64.zip
+          if-no-files-found: error
+      - name: Add to GitHub release
+        if: github.event_name == 'push' || inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
+          gh release upload "${tag}" \
+            StarFoxEnhanced-0.0.2-xbox-uwp-x64.zip --clobber
+
   linux-x64:
     name: Linux x64 native runtime
     runs-on: ubuntu-24.04

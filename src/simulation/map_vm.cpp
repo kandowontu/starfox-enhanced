@@ -563,41 +563,19 @@ ObjectHandle MapVm::native_object_handle(std::uint16_t pointer) const noexcept {
 
 std::uint8_t MapVm::read_native_object_byte(
     ObjectHandle handle, std::uint16_t offset) const {
-    if (object_size_ == 56U || offset < 44U) {
-        return objects_->read_base_byte(handle, offset);
-    }
-    if (offset == 44U) return objects_->read_base_byte(handle, 45U);
-    if (offset == 45U) return objects_->read_base_byte(handle, 46U);
-    if (offset >= 46U && offset <= 52U) {
-        return objects_->read_base_byte(handle, static_cast<std::uint16_t>(offset + 1U));
-    }
-    if (offset == 53U) return objects_->read_base_byte(handle, 44U);
-    if (offset == 54U) return objects_->at(handle).open_al;
-    if (offset >= 55U && offset <= 56U) {
-        return objects_->read_base_byte(handle, static_cast<std::uint16_t>(offset - 1U));
-    }
-    throw std::out_of_range{"native object byte offset is outside al_size"};
+    // ObjectPool is constructed with the cartridge's concrete record layout.
+    // Its byte accessor already maps EX's inserted AL_WEAPONNUM/OPENAL fields
+    // and shifted collision/vector fields to the semantic GameObject members.
+    // Translating the EX offsets a second time here made AL_COLLCOUNT read
+    // AL_COLLFLAGS, AL_COLLFLAGS read VX, and every following field drift by
+    // one byte. Among other things, that made left/right wing collision holds
+    // release inconsistently. Keep the CPU image a literal AL_SIZE-byte copy.
+    return objects_->read_base_byte(handle, offset);
 }
 
 void MapVm::write_native_object_byte(
     ObjectHandle handle, std::uint16_t offset, std::uint8_t value) {
-    if (object_size_ == 56U || offset < 44U) {
-        objects_->write_base_byte(handle, offset, value);
-    } else if (offset == 44U) {
-        objects_->write_base_byte(handle, 45U, value);
-    } else if (offset == 45U) {
-        objects_->write_base_byte(handle, 46U, value);
-    } else if (offset >= 46U && offset <= 52U) {
-        objects_->write_base_byte(handle, static_cast<std::uint16_t>(offset + 1U), value);
-    } else if (offset == 53U) {
-        objects_->write_base_byte(handle, 44U, value);
-    } else if (offset == 54U) {
-        objects_->at(handle).open_al = value;
-    } else if (offset >= 55U && offset <= 56U) {
-        objects_->write_base_byte(handle, static_cast<std::uint16_t>(offset - 1U), value);
-    } else {
-        throw std::out_of_range{"native object byte offset is outside al_size"};
-    }
+    objects_->write_base_byte(handle, offset, value);
 }
 
 void MapVm::sync_objects_to_cpu() {

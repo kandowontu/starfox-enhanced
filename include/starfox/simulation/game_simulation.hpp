@@ -144,6 +144,11 @@ struct WindowWipeState {
     std::array<std::uint16_t, 192> right{};
 };
 
+[[nodiscard]] WindowWipeState interpolate_window_wipe(
+    const WindowWipeState& previous,
+    const WindowWipeState& current,
+    double alpha) noexcept;
+
 struct DialogueState {
     bool active{};
     bool text_visible{};
@@ -419,7 +424,7 @@ private:
     void animate_planet_frame(bool advance_rotation = true);
     void advance_planet_rotation();
     void redraw_planet_route(bool complete_route);
-    void redraw_post_level_route();
+    [[nodiscard]] std::uint8_t redraw_post_level_route();
     void set_planet_route_lines(bool visible, bool complete_route);
     void update_planet_ship_sprite();
     void launch_pending_stage();
@@ -447,6 +452,7 @@ private:
     void enter_training();
     void apply_control_type();
     void update_control_screen_sprites();
+    void reset_scene_transition_state();
     void initialize_native_map(std::uint32_t address);
     void clear_communications();
     void initialize_ex_save_ram(std::span<const std::uint8_t> cartridge_ram);

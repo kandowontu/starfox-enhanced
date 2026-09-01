@@ -37,18 +37,10 @@ int main(int argc, char** argv) {
         const auto post_level_map = requested_scene == "POSTLEVELMAP";
         const auto end_game = requested_scene == "ENDGAME";
         starfox::simulation::GameSimulation game{
-            rom, symbols, continue_scene ? "LEVEL1_1"
+            rom, symbols, continue_scene ? "CONTINUE"
                 : post_level_map ? "PLANETSELECT"
                 : end_game ? "LEVEL1_1" : requested_scene};
-        if (continue_scene) {
-            const auto finished = symbols.find("LEVELFINISHED").front();
-            game.map().write_native_word(finished, 10U);
-            static_cast<void>(game.tick({}));
-            for (std::size_t tick = 1; tick < 50U; ++tick) {
-                static_cast<void>(game.tick({}));
-            }
-            static_cast<void>(game.tick({0, starfox::input::start, 0}));
-        } else if (post_level_map) {
+        if (post_level_map) {
             for (std::size_t frame = 0U; frame < 8U; ++frame) {
                 game.present_frame();
             }
@@ -213,7 +205,9 @@ int main(int argc, char** argv) {
                   << ", bg2sc=$" << game.map().ppu_state().bg2_screen_base
                   << ", bg2chr=$" << game.map().ppu_state().bg2_character_base
                   << std::dec << "), bg-scroll=(" << background_x << ','
-                  << background_y << "), hofs=("
+                  << background_y << "), ppu-scroll=("
+                  << game.map().ppu_state().bg2_scroll_x << ','
+                  << game.map().ppu_state().bg2_scroll_y << "), hofs=("
                   << game.map().ppu_state().bg2_horizontal_offsets_enabled << ','
                   << game.map().ppu_state().bg2_horizontal_offsets.front() << ','
                   << game.map().ppu_state().bg2_horizontal_offsets[112] << ','
@@ -304,6 +298,10 @@ int main(int argc, char** argv) {
             if (oam_enabled) sprite_renderer.draw_objects(ppu, framebuffer, 2U);
             background_renderer.draw_bg1(
                 ppu, framebuffer, starfox::render::TilePriorityPass::high);
+            // The planet-map Arwing uses OBJ priority 3 so it remains above
+            // every route/planet layer. Match the runtime's final OAM pass;
+            // omitting it made transition previews falsely show no ship.
+            if (oam_enabled) sprite_renderer.draw_objects(ppu, framebuffer, 3U);
         } else {
             background_renderer.draw_bg2(
                 ppu, background_x, background_y, framebuffer);
@@ -575,6 +573,54 @@ int main(int argc, char** argv) {
             }
             renderer.draw(found->second, pose, framebuffer, false);
             ++rendered;
+        }
+        if (continue_scene) {
+            const auto& native_model = game.map().native_model_draw();
+            if (native_model.active && native_model.shape != 0U) {
+                const auto shape_key =
+                    static_cast<std::uint32_t>(native_model.shape) << 16U;
+                auto found = cache.find(shape_key);
+                if (found == cache.end()) {
+                    found = cache.emplace(shape_key,
+                        decoder.decode(native_model.shape)).first;
+                }
+                starfox::render::RenderPose pose;
+                pose.x = native_model.x;
+                pose.y = native_model.y;
+                pose.z = native_model.z;
+                pose.pitch = static_cast<std::uint16_t>(
+                    (native_model.rotation_x & 0xffU) << 8U);
+                pose.yaw = static_cast<std::uint16_t>(
+                    (native_model.rotation_y & 0xffU) << 8U);
+                pose.roll = static_cast<std::uint16_t>(
+                    (native_model.rotation_z & 0xffU) << 8U);
+                pose.rotation_matrix = starfox::simulation::rotation_matrix_q15(
+                    trigonometry, static_cast<std::int16_t>(pose.pitch),
+                    static_cast<std::int16_t>(pose.yaw),
+                    static_cast<std::int16_t>(pose.roll));
+                pose.use_rotation_matrix = true;
+                // M_VANISHX/Y address the 224x192 bitmap centred inside the
+                // complete 256x224 Continue raster.
+                pose.vanish_x = static_cast<std::int16_t>(
+                    native_model.vanish_x + 16);
+                pose.vanish_y = static_cast<std::int16_t>(
+                    native_model.vanish_y + 16);
+                pose.animation_frame = native_model.animation_frame;
+                pose.colour_frame = native_model.colour_frame;
+                starfox::render::apply_source_depth_tables(rom,
+                    depth_table_address, depth_thresholds, depth_colours, 0U,
+                    pose);
+                renderer.draw(found->second, pose, framebuffer, false);
+                ++rendered;
+
+                // The model is BG1-low in CONTINUE.ASM. Restore the two native
+                // layers above it so the Arwing stays behind the window frame.
+                if (oam_enabled) {
+                    sprite_renderer.draw_objects(ppu, framebuffer, 2U);
+                }
+                background_renderer.draw_bg2(ppu, background_x, background_y,
+                    framebuffer, starfox::render::TilePriorityPass::high);
+            }
         }
         if (overlays_enabled
             && std::getenv("STARFOX_NO_METERS") == nullptr) {

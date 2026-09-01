@@ -252,8 +252,9 @@ audio is discarded rather than playing as a backlog afterward.
 
 The Windows x64 executable remains the primary release. The same portable SDL3
 runtime also has build targets for Windows x86, Linux x64, unsigned universal
-macOS, unsigned iOS arm64, Android arm64, and Nintendo Switch. Android, iOS,
-and Switch automatically expose translucent multi-touch controls; physical
+macOS, unsigned iOS arm64, Android arm64, Nintendo Switch, and an x64 Xbox UWP
+package for Developer Mode. Only Android and iOS expose translucent on-screen
+controls; physical
 SDL-compatible controllers continue to work normally. The Apple and Android
 packages show a native file picker on first launch, accept any supported retail
 revision, and store the reconstructed asset companion in writable application
@@ -261,6 +262,7 @@ storage rather than attempting to modify an application bundle.
 
 ```powershell
 .\tools\build_windows_x86.ps1 -LlvmMingwRoot C:\path\to\llvm-mingw
+.\tools\build_xbox_uwp.ps1
 ```
 
 ```bash
@@ -275,7 +277,11 @@ Apple targets require Xcode on macOS, Android requires its SDK/NDK, and Switch
 requires the devkitPro Switch toolchain. These platform SDKs are not vendored.
 The `Portable platform builds` GitHub Actions workflow produces a universal
 unsigned macOS `.app`, an unsigned iOS arm64 device bundle, an installable
-debug-signed Android arm64 APK, and a Nintendo Switch homebrew `.nro`. The iOS
+debug-signed Android arm64 APK, a Nintendo Switch homebrew `.nro`, and a signed
+x64 UWP package for Xbox Developer Mode. The Xbox build uses UWP LocalState as
+its internal writable storage for settings, HUD layouts, `Starfox-Assets.BIN`,
+and the optional `Starfox-MSU1.PAK`; both companion names are matched without
+regard to case. Packaged application files remain read-only. The iOS
 bundle must be signed with the user's own Apple identity or sideloading tool
 before installation. It also packages a
 standalone Windows x64 `starfox_asset_builder.exe`: run it against a supported
@@ -320,9 +326,10 @@ period to either Period key, C to C, and Hang Up to H.
 
 Hold Tab at any time to fast-forward the complete cartridge clock at 2x speed.
 Hold Ctrl+Tab for 3x total speed (200% faster), or Shift+Ctrl+Tab for 5x total
-speed (400% faster). Gameplay, frontend transitions, music, and sound effects
-all accelerate together. Releasing Tab immediately restores the selected game
-pace; render FPS is unchanged.
+speed (400% faster). For transition testing, Ctrl+Shift+` runs at 20x total
+speed (2000%). Gameplay, frontend transitions, music, and sound effects all
+accelerate together. Releasing the shortcut immediately restores the selected
+game pace; render FPS is unchanged.
 
 During gameplay, hold the right mouse button and drag to freely adjust camera
 yaw and pitch. While still holding the right mouse button, use the mouse wheel

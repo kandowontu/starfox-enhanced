@@ -8,12 +8,22 @@ if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
     set(SWITCH TRUE)
 endif()
 
+if(WINDOWS_STORE)
+    set(STARFOX_BUILD_TOOLS_DEFAULT OFF)
+else()
+    set(STARFOX_BUILD_TOOLS_DEFAULT ON)
+endif()
+
 option(STARFOX_BUILD_TESTS "Build deterministic timing tests" ON)
 option(STARFOX_BUILD_RUNTIME "Build the SDL3 native PC runtime" ON)
+option(STARFOX_BUILD_TOOLS "Build host-side trace and asset tools"
+    ${STARFOX_BUILD_TOOLS_DEFAULT})
 option(STARFOX_EMBED_RUNTIME_ASSETS
     "Embed source-built BPS deltas and symbol tables into the Windows runtime" ON)
 option(STARFOX_PACKAGE_MSU1_MUSIC
     "Build and install the optional Starfox-MSU1.PAK companion" ON)
+set(STARFOX_UWP_PACKAGE_CERTIFICATE "" CACHE FILEPATH
+    "Development PFX used to sign the Xbox UWP package")
 set(STARFOX_ROM_FILE
     "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
     CACHE FILEPATH "Assembled UltraStarFox ROM used by the native runtime")
@@ -170,32 +180,34 @@ else()
     target_compile_options(starfox_core PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-add_executable(starfox_timing_demo src/app/timing_demo.cpp)
-target_link_libraries(starfox_timing_demo PRIVATE starfox_core)
+if(STARFOX_BUILD_TOOLS)
+    add_executable(starfox_timing_demo src/app/timing_demo.cpp)
+    target_link_libraries(starfox_timing_demo PRIVATE starfox_core)
 
-add_executable(starfox_shape_preview src/app/shape_preview.cpp)
-target_link_libraries(starfox_shape_preview PRIVATE starfox_core)
+    add_executable(starfox_shape_preview src/app/shape_preview.cpp)
+    target_link_libraries(starfox_shape_preview PRIVATE starfox_core)
 
-add_executable(starfox_shape_coverage src/app/shape_coverage.cpp)
-target_link_libraries(starfox_shape_coverage PRIVATE starfox_core)
+    add_executable(starfox_shape_coverage src/app/shape_coverage.cpp)
+    target_link_libraries(starfox_shape_coverage PRIVATE starfox_core)
 
-add_executable(starfox_map_trace src/app/map_trace.cpp)
-target_link_libraries(starfox_map_trace PRIVATE starfox_core)
+    add_executable(starfox_map_trace src/app/map_trace.cpp)
+    target_link_libraries(starfox_map_trace PRIVATE starfox_core)
 
-add_executable(starfox_strategy_trace src/app/strategy_trace.cpp)
-target_link_libraries(starfox_strategy_trace PRIVATE starfox_core)
+    add_executable(starfox_strategy_trace src/app/strategy_trace.cpp)
+    target_link_libraries(starfox_strategy_trace PRIVATE starfox_core)
 
-add_executable(starfox_game_init_trace src/app/game_init_trace.cpp)
-target_link_libraries(starfox_game_init_trace PRIVATE starfox_core)
+    add_executable(starfox_game_init_trace src/app/game_init_trace.cpp)
+    target_link_libraries(starfox_game_init_trace PRIVATE starfox_core)
 
-add_executable(starfox_stage_trace src/app/stage_trace.cpp)
-target_link_libraries(starfox_stage_trace PRIVATE starfox_core)
+    add_executable(starfox_stage_trace src/app/stage_trace.cpp)
+    target_link_libraries(starfox_stage_trace PRIVATE starfox_core)
 
-add_executable(starfox_stage_preview src/app/stage_preview.cpp)
-target_link_libraries(starfox_stage_preview PRIVATE starfox_core)
+    add_executable(starfox_stage_preview src/app/stage_preview.cpp)
+    target_link_libraries(starfox_stage_preview PRIVATE starfox_core)
 
-add_executable(starfox_planet_probe src/app/planet_probe.cpp)
-target_link_libraries(starfox_planet_probe PRIVATE starfox_core)
+    add_executable(starfox_planet_probe src/app/planet_probe.cpp)
+    target_link_libraries(starfox_planet_probe PRIVATE starfox_core)
+endif()
 
 if(STARFOX_BUILD_RUNTIME)
     if(ANDROID AND NOT TARGET SDL3::SDL3)
@@ -239,13 +251,22 @@ if(STARFOX_BUILD_RUNTIME)
         else()
             set(STARFOX_SDL3_PATCH_COMMAND "")
         endif()
-        FetchContent_Declare(
-            SDL3
-            URL https://github.com/libsdl-org/SDL/releases/download/release-3.4.14/SDL3-3.4.14.tar.gz
-            URL_HASH SHA256=30d4aa2b3037718142b32dffd4e72f917ebb6cc5227150e7bb9c45efb2153aeb
-            DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-            ${STARFOX_SDL3_PATCH_COMMAND}
-        )
+        if(WINDOWS_STORE)
+            # Upstream SDL dropped UWP. This maintained SDL 3.4-compatible
+            # fork keeps WinRT video/audio, XInput gamepads and Xbox Dev Mode.
+            FetchContent_Declare(
+                SDL3
+                GIT_REPOSITORY https://github.com/SternXD/SDL3-uwp.git
+                GIT_TAG 8fd8db768df139e9bb4c7a7869fb913a0e29ea89
+                GIT_SHALLOW TRUE)
+        else()
+            FetchContent_Declare(
+                SDL3
+                URL https://github.com/libsdl-org/SDL/releases/download/release-3.4.14/SDL3-3.4.14.tar.gz
+                URL_HASH SHA256=30d4aa2b3037718142b32dffd4e72f917ebb6cc5227150e7bb9c45efb2153aeb
+                DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+                ${STARFOX_SDL3_PATCH_COMMAND})
+        endif()
         FetchContent_MakeAvailable(SDL3)
     endif()
 
@@ -259,6 +280,66 @@ if(STARFOX_BUILD_RUNTIME)
         set_target_properties(starfox_pc PROPERTIES OUTPUT_NAME main)
     else()
         add_executable(starfox_pc ${STARFOX_RUNTIME_SOURCES})
+    endif()
+    if(WINDOWS_STORE)
+        target_compile_definitions(starfox_pc PRIVATE STARFOX_UWP=1)
+        add_library(starfox_uwp_main OBJECT src/app/uwp_main.cpp)
+        target_link_libraries(starfox_uwp_main PRIVATE SDL3::Headers)
+        target_compile_options(starfox_uwp_main PRIVATE /ZW)
+        set_target_properties(starfox_uwp_main PROPERTIES
+            CXX_STANDARD 17
+            CXX_STANDARD_REQUIRED YES
+            CXX_EXTENSIONS NO)
+        target_sources(starfox_pc PRIVATE
+            $<TARGET_OBJECTS:starfox_uwp_main>)
+        target_link_options(starfox_pc PRIVATE
+            /APPCONTAINER
+            /WINMD
+            "/WINMDFILE:${CMAKE_CURRENT_BINARY_DIR}/starfox_pc.winmd")
+
+        find_package(Python3 REQUIRED COMPONENTS Interpreter)
+        set(STARFOX_UWP_ASSET_DIRECTORY
+            "${CMAKE_CURRENT_BINARY_DIR}/uwp-assets")
+        set(STARFOX_UWP_VISUAL_ASSETS
+            "${STARFOX_UWP_ASSET_DIRECTORY}/StoreLogo.png"
+            "${STARFOX_UWP_ASSET_DIRECTORY}/Square44x44Logo.png"
+            "${STARFOX_UWP_ASSET_DIRECTORY}/Square150x150Logo.png"
+            "${STARFOX_UWP_ASSET_DIRECTORY}/Wide310x150Logo.png"
+            "${STARFOX_UWP_ASSET_DIRECTORY}/SplashScreen.png")
+        add_custom_command(
+            OUTPUT ${STARFOX_UWP_VISUAL_ASSETS}
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_uwp_assets.py"
+                --output "${STARFOX_UWP_ASSET_DIRECTORY}"
+            DEPENDS
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_uwp_assets.py"
+            COMMENT "Generating Xbox UWP visual assets"
+            VERBATIM)
+        set(STARFOX_UWP_MANIFEST
+            "${CMAKE_CURRENT_BINARY_DIR}/Package.appxmanifest")
+        configure_file(platform/uwp/Package.appxmanifest.in
+            "${STARFOX_UWP_MANIFEST}" @ONLY)
+        target_sources(starfox_pc PRIVATE
+            "${STARFOX_UWP_MANIFEST}" ${STARFOX_UWP_VISUAL_ASSETS})
+        set_source_files_properties("${STARFOX_UWP_MANIFEST}" PROPERTIES
+            VS_DEPLOYMENT_CONTENT 1)
+        set_source_files_properties(${STARFOX_UWP_VISUAL_ASSETS} PROPERTIES
+            VS_DEPLOYMENT_CONTENT 1
+            VS_DEPLOYMENT_LOCATION "Assets")
+        set_target_properties(starfox_pc PROPERTIES
+            VS_GLOBAL_AppContainerApplication true
+            VS_GLOBAL_ApplicationType "Windows Store"
+            VS_GLOBAL_ApplicationTypeRevision "10.0"
+            VS_GLOBAL_AppxPackage true
+            VS_GLOBAL_AppxPackageSigningEnabled true
+            VS_GLOBAL_GenerateAppxPackageOnBuild true
+            VS_GLOBAL_UapAppxPackageBuildMode SideloadOnly
+            VS_GLOBAL_DefaultLanguage en-US)
+        if(STARFOX_UWP_PACKAGE_CERTIFICATE)
+            set_target_properties(starfox_pc PROPERTIES
+                VS_GLOBAL_PackageCertificateKeyFile
+                    "${STARFOX_UWP_PACKAGE_CERTIFICATE}")
+        endif()
     endif()
     if(WIN32)
         # The packaged runtime reports failures through a native message box;
@@ -415,14 +496,14 @@ if(STARFOX_BUILD_RUNTIME)
         target_include_directories(starfox_embedded_assets PRIVATE include)
         target_compile_features(starfox_embedded_assets PRIVATE cxx_std_20)
 
-        if(NOT ANDROID AND NOT IOS)
+        if(NOT ANDROID AND NOT IOS AND NOT WINDOWS_STORE)
             add_executable(starfox_asset_builder src/app/asset_builder.cpp)
             target_link_libraries(starfox_asset_builder PRIVATE
                 starfox_core starfox_embedded_assets)
         endif()
     endif()
 
-    if(WIN32 AND STARFOX_EMBED_RUNTIME_ASSETS)
+    if(WIN32 AND NOT WINDOWS_STORE AND STARFOX_EMBED_RUNTIME_ASSETS)
         if(EXISTS "${STARFOX_ORIGINAL_PATCH_FILE}"
            AND EXISTS "${STARFOX_SYMBOLS_FILE}"
            AND EXISTS "${STARFOX_EX_PATCH_FILE}"
@@ -479,7 +560,7 @@ if(STARFOX_BUILD_RUNTIME)
                 "BPS/symbol pair is missing. starfox_pc will require external assets.")
         endif()
     endif()
-    if(NOT WIN32 AND STARFOX_EMBED_RUNTIME_ASSETS)
+    if((NOT WIN32 OR WINDOWS_STORE) AND STARFOX_EMBED_RUNTIME_ASSETS)
         if(STARFOX_EMBEDDED_INPUTS_AVAILABLE)
             target_link_libraries(starfox_pc PRIVATE starfox_embedded_assets)
             target_compile_definitions(starfox_pc PRIVATE

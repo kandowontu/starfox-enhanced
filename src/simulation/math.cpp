@@ -150,58 +150,118 @@ MatrixQ15 interpolate_rotation_matrix_q15(
     if (alpha >= 1.0) return current;
     alpha = std::clamp(alpha, 0.0, 1.0);
 
-    using Vector = std::array<double, 3>;
+    struct Quaternion {
+        double w{};
+        double x{};
+        double y{};
+        double z{};
+    };
     constexpr double q15 = 32'768.0;
-    const auto blended_column = [&](std::size_t column) {
-        Vector result{};
-        for (std::size_t row = 0; row < 3U; ++row) {
-            const auto index = row * 3U + column;
-            result[row] = (static_cast<double>(previous[index])
-                    + (static_cast<double>(current[index])
-                        - static_cast<double>(previous[index])) * alpha)
-                / q15;
-        }
-        return result;
-    };
-    const auto dot = [](const Vector& left, const Vector& right) {
-        return left[0] * right[0] + left[1] * right[1]
-            + left[2] * right[2];
-    };
-    const auto normalized = [&dot](Vector value, Vector fallback) {
-        const auto magnitude = std::sqrt(dot(value, value));
-        if (magnitude < 1.0e-9) return fallback;
-        for (auto& component : value) component /= magnitude;
+    const auto normalized = [](Quaternion value) {
+        const auto magnitude = std::sqrt(value.w * value.w
+            + value.x * value.x + value.y * value.y + value.z * value.z);
+        if (magnitude < 1.0e-12) return Quaternion{1.0, 0.0, 0.0, 0.0};
+        value.w /= magnitude;
+        value.x /= magnitude;
+        value.y /= magnitude;
+        value.z /= magnitude;
         return value;
     };
-    auto first = normalized(blended_column(0U), {1.0, 0.0, 0.0});
-    auto second = blended_column(1U);
-    const auto projection = dot(first, second);
-    for (std::size_t axis = 0; axis < 3U; ++axis) {
-        second[axis] -= first[axis] * projection;
-    }
-    second = normalized(second, {0.0, 1.0, 0.0});
-    Vector third{
-        first[1] * second[2] - first[2] * second[1],
-        first[2] * second[0] - first[0] * second[2],
-        first[0] * second[1] - first[1] * second[0],
+    const auto matrix_quaternion = [&normalized](const MatrixQ15& source) {
+        std::array<double, 9> matrix{};
+        for (std::size_t index = 0U; index < matrix.size(); ++index) {
+            matrix[index] = static_cast<double>(source[index]) / q15;
+        }
+        Quaternion result{};
+        const auto trace = matrix[0] + matrix[4] + matrix[8];
+        if (trace > 0.0) {
+            const auto scale = std::sqrt(trace + 1.0) * 2.0;
+            result.w = 0.25 * scale;
+            result.x = (matrix[7] - matrix[5]) / scale;
+            result.y = (matrix[2] - matrix[6]) / scale;
+            result.z = (matrix[3] - matrix[1]) / scale;
+        } else if (matrix[0] > matrix[4] && matrix[0] > matrix[8]) {
+            const auto scale = std::sqrt(std::max(
+                0.0, 1.0 + matrix[0] - matrix[4] - matrix[8])) * 2.0;
+            if (scale < 1.0e-12) return Quaternion{1.0, 0.0, 0.0, 0.0};
+            result.w = (matrix[7] - matrix[5]) / scale;
+            result.x = 0.25 * scale;
+            result.y = (matrix[1] + matrix[3]) / scale;
+            result.z = (matrix[2] + matrix[6]) / scale;
+        } else if (matrix[4] > matrix[8]) {
+            const auto scale = std::sqrt(std::max(
+                0.0, 1.0 + matrix[4] - matrix[0] - matrix[8])) * 2.0;
+            if (scale < 1.0e-12) return Quaternion{1.0, 0.0, 0.0, 0.0};
+            result.w = (matrix[2] - matrix[6]) / scale;
+            result.x = (matrix[1] + matrix[3]) / scale;
+            result.y = 0.25 * scale;
+            result.z = (matrix[5] + matrix[7]) / scale;
+        } else {
+            const auto scale = std::sqrt(std::max(
+                0.0, 1.0 + matrix[8] - matrix[0] - matrix[4])) * 2.0;
+            if (scale < 1.0e-12) return Quaternion{1.0, 0.0, 0.0, 0.0};
+            result.w = (matrix[3] - matrix[1]) / scale;
+            result.x = (matrix[2] + matrix[6]) / scale;
+            result.y = (matrix[5] + matrix[7]) / scale;
+            result.z = 0.25 * scale;
+        }
+        return normalized(result);
     };
-    third = normalized(third, {0.0, 0.0, 1.0});
-    // A near-180-degree step can make the first two blended columns
-    // ambiguous. Match the source destination's third axis so the result
-    // remains a proper rotation instead of reflecting the model.
-    if (dot(third, blended_column(2U)) < 0.0) {
-        for (auto& component : second) component = -component;
-        for (auto& component : third) component = -component;
+    auto from = matrix_quaternion(previous);
+    auto to = matrix_quaternion(current);
+    auto cosine = from.w * to.w + from.x * to.x
+        + from.y * to.y + from.z * to.z;
+    // q and -q are the same orientation. Selecting the positive-dot
+    // hemisphere guarantees the shortest presentation arc and prevents the
+    // single-frame inversion that normalized matrix-column lerp can produce
+    // near an antipodal source step.
+    if (cosine < 0.0) {
+        to.w = -to.w;
+        to.x = -to.x;
+        to.y = -to.y;
+        to.z = -to.z;
+        cosine = -cosine;
     }
+    cosine = std::clamp(cosine, -1.0, 1.0);
+    auto from_weight = 1.0 - alpha;
+    auto to_weight = alpha;
+    if (cosine < 0.9995) {
+        const auto angle = std::acos(cosine);
+        const auto sine = std::sin(angle);
+        if (sine > 1.0e-12) {
+            from_weight = std::sin((1.0 - alpha) * angle) / sine;
+            to_weight = std::sin(alpha * angle) / sine;
+        }
+    }
+    const auto blended = normalized(Quaternion{
+        from.w * from_weight + to.w * to_weight,
+        from.x * from_weight + to.x * to_weight,
+        from.y * from_weight + to.y * to_weight,
+        from.z * from_weight + to.z * to_weight,
+    });
+
+    const auto xx = blended.x * blended.x;
+    const auto yy = blended.y * blended.y;
+    const auto zz = blended.z * blended.z;
+    const auto xy = blended.x * blended.y;
+    const auto xz = blended.x * blended.z;
+    const auto yz = blended.y * blended.z;
+    const auto wx = blended.w * blended.x;
+    const auto wy = blended.w * blended.y;
+    const auto wz = blended.w * blended.z;
+    const std::array<double, 9> matrix{
+        1.0 - 2.0 * (yy + zz), 2.0 * (xy - wz),
+        2.0 * (xz + wy), 2.0 * (xy + wz),
+        1.0 - 2.0 * (xx + zz), 2.0 * (yz - wx),
+        2.0 * (xz - wy), 2.0 * (yz + wx),
+        1.0 - 2.0 * (xx + yy),
+    };
 
     MatrixQ15 result{};
-    const std::array<Vector, 3> columns{first, second, third};
-    for (std::size_t column = 0; column < 3U; ++column) {
-        for (std::size_t row = 0; row < 3U; ++row) {
-            const auto value = std::lround(columns[column][row] * q15);
-            result[row * 3U + column] = static_cast<std::int16_t>(
-                std::clamp<long>(value, -32'768L, 32'767L));
-        }
+    for (std::size_t index = 0U; index < result.size(); ++index) {
+        const auto value = std::lround(matrix[index] * q15);
+        result[index] = static_cast<std::int16_t>(
+            std::clamp<long>(value, -32'768L, 32'767L));
     }
     return result;
 }

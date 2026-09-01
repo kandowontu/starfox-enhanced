@@ -14,8 +14,10 @@ inline constexpr std::uint32_t kPresentationHz = 60;
 
 // Tab accelerates the source clock by 100%; Ctrl and Shift raise that to the
 // requested 200% and 400% boosts (2x, 3x and 5x total speed respectively).
+// Ctrl+Shift+grave is the separate 2000% test mode (20x total speed).
 [[nodiscard]] constexpr std::uint32_t playback_speed_multiplier(
-    bool tab, bool control, bool shift) noexcept {
+    bool tab, bool control, bool shift, bool super_speed = false) noexcept {
+    if (super_speed && control && shift) return 20U;
     if (!tab) return 1U;
     if (!control) return 2U;
     return shift ? 5U : 3U;

@@ -207,7 +207,8 @@ void BackgroundRenderer::draw_bg2(
     std::int32_t horizontal_origin,
     bool extend_horizontal,
     bool wrap_horizontal,
-    bool transparent_cgram_black) const noexcept {
+    bool transparent_cgram_black,
+    std::uint32_t single_occurrence_top_rows) const noexcept {
     if ((ppu.main_screen & 0x02U) == 0U) return;
     const auto width_tiles = (ppu.bg2_screen_size & 1U) != 0U ? 64U : 32U;
     const auto height_tiles = (ppu.bg2_screen_size & 2U) != 0U ? 64U : 32U;
@@ -219,6 +220,13 @@ void BackgroundRenderer::draw_bg2(
         value %= modulus;
         return value < 0 ? value + modulus : value;
     };
+    auto black_colour = std::uint8_t{};
+    for (std::size_t index = 0U; index < ppu.cgram.size(); ++index) {
+        if ((ppu.cgram[index] & 0x7fffU) == 0U) {
+            black_colour = static_cast<std::uint8_t>(index);
+            break;
+        }
+    }
     std::array<std::uint16_t, 32> vertical_offsets{};
     if (ppu.background_mode == 2U && ppu.bg2_vertical_offsets_enabled) {
         for (std::size_t index = 0; index < vertical_offsets.size(); ++index) {
@@ -484,6 +492,23 @@ void BackgroundRenderer::draw_bg2(
             // the wrapped fragment—or the whole logo—across the margins.
             if (!wrap_horizontal && (unwrapped_source_x < 0
                     || unwrapped_source_x >= width_pixels)) {
+                continue;
+            }
+            if (single_occurrence_top_rows != 0U
+                && screen_y < single_occurrence_top_rows
+                && (static_cast<std::int32_t>(screen_x) < horizontal_origin
+                    || static_cast<std::int32_t>(screen_x)
+                        >= horizontal_origin + 256)
+                && (unwrapped_source_x < 0
+                    || unwrapped_source_x >= width_pixels)) {
+                // A few space stages combine a singular distant planet in
+                // the upper tilemap with a deliberately repeatable straight
+                // horizon below it. Expose the rest of the same authored map
+                // occurrence in wide margins, but do not wrap a second moon
+                // or planet into view. The native 256-pixel window and the
+                // lower horizontal surface retain exact cartridge wrapping.
+                target.set(static_cast<std::int32_t>(screen_x),
+                    static_cast<std::int32_t>(screen_y), black_colour);
                 continue;
             }
             const auto source_x = wrap(unwrapped_source_x, width_pixels);

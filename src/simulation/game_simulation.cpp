@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cctype>
 #include <bit>
+#include <cmath>
 #include <stdexcept>
 
 namespace starfox::simulation {
@@ -102,6 +103,32 @@ ObjectMemoryLayout native_object_layout(const assets::SymbolMap& symbols) {
 }
 
 } // namespace
+
+WindowWipeState interpolate_window_wipe(
+    const WindowWipeState& previous,
+    const WindowWipeState& current,
+    double alpha) noexcept {
+    // TRANSFER_L advances the source table at 20 Hz. Activation, completion,
+    // and logic changes remain exact cuts; stable wipe programs interpolate
+    // their 192 scanline bounds at the physical presentation rate.
+    if (!current.active || !previous.active
+        || previous.logic != current.logic) return current;
+    alpha = std::clamp(alpha, 0.0, 1.0);
+    auto result = current;
+    const auto interpolate_bound = [alpha](
+        std::uint16_t from, std::uint16_t to) {
+        return static_cast<std::uint16_t>(std::lround(
+            static_cast<double>(from)
+            + (static_cast<double>(to) - from) * alpha));
+    };
+    for (std::size_t line = 0U; line < result.left.size(); ++line) {
+        result.left[line] = interpolate_bound(
+            previous.left[line], current.left[line]);
+        result.right[line] = interpolate_bound(
+            previous.right[line], current.right[line]);
+    }
+    return result;
+}
 
 GameSimulation::GameSimulation(
     const assets::RomImage& rom,
@@ -871,6 +898,7 @@ GameSimulation::GameSimulation(
         || initial_upper == "TITLEMAP"
         || initial_upper == "INTROMAP"
         || initial_upper == "CONTMAP"
+        || initial_upper == "GAMEOVER"
         || initial_upper == "CONTINUE"
         || initial_upper == "CREDITSMAP";
     if (!native_flow_entry) {
@@ -917,6 +945,9 @@ GameSimulation::GameSimulation(
         enter_title();
     } else if (initial_upper == "CONTMAP") {
         enter_controls(GameFlowState::controls_type);
+    } else if (initial_upper == "GAMEOVER") {
+        // Deterministic visual entry for the native GAME/OVER composition.
+        enter_game_over();
     } else if (initial_upper == "CONTINUE") {
         // Deterministic diagnostic entry used by the native renderer smoke
         // tests; ordinary play still reaches this through GAME OVER.
@@ -967,8 +998,7 @@ void GameSimulation::initialize_ex_save_ram(
 }
 
 void GameSimulation::enter_pregame_menu() {
-    paused_ = false;
-    draw_order_.clear();
+    reset_scene_transition_state();
     map_.write_native_word(meters_enabled_, 0U);
     map_.write_native_word(level_finished_, 0U);
     map_.write_native_byte(doing_wipe_, 0U);
@@ -2024,7 +2054,7 @@ void GameSimulation::complete_video_phases_for_tick() {
 }
 
 void GameSimulation::start_map(const std::string& symbol) {
-    paused_ = false;
+    reset_scene_transition_state();
     map_.start(rom_symbol(symbol), player_);
     map_.advance_distance(1);
     ++scene_revision_;
@@ -2117,28 +2147,80 @@ std::uint32_t GameSimulation::resolve_route_stage(std::uint16_t remaining_stage)
     throw std::runtime_error{"planet route traversal exceeded its record limit"};
 }
 
-void GameSimulation::initialize_native_map(std::uint32_t address) {
+void GameSimulation::reset_scene_transition_state() {
     paused_ = false;
+    frontend_frames_ = 0U;
+    frontend_phase_ = FrontendPhase::none;
+    source_update_sequence_ = 0U;
+    draw_order_.clear();
+
     boss_music_before_death_.reset();
     post_boss_dialogue_active_ = false;
+    gameplay_palette_before_death_valid_ = false;
     circle_effect_ = {};
-    // INITGAME3D_L normally follows the complete cartridge teardown, which
-    // clears the colour-window program. Host scene changes call the native
-    // initializer directly, so clear its retained smart-bomb state here as
-    // well; otherwise leaving training during an active bomb resumes that
-    // circle over the controller screen on the next source tick.
+    // Every cartridge scene wrapper tears down its colour-window program
+    // before handing ownership to the next screen. Host-directed transitions
+    // can bypass that common wrapper, so clear both the native bytes and the
+    // host snapshot here. This covers smart bombs, death circles and the
+    // map-end wipe rather than relying on each destination to remember them.
     map_.write_native_word(circle_animation_, 0U);
     map_.write_native_word(circle_object_, 0U);
     map_.write_native_word(circle_radius_, 0U);
     map_.write_native_byte(circle_affected_layers_, 0U);
-    // INITGAME3D_L resets M_PARTICLERAND to $1234 for every map. The native
-    // Super FX draw list is host-translated, so reset its host pool here too.
+    map_.write_native_byte(do_a_wipe_, 0U);
+    map_.write_native_byte(doing_wipe_, 0U);
+    wipe_logic_snapshot_ = 0U;
+
+    // The PPU disables these HDMA tables between scenes. They also have
+    // host-side enable latches, which otherwise survive the native register
+    // reset and bend the first frame of title, menu, map or gameplay art with
+    // the outgoing screen's per-line offsets.
+    map_.set_bg2_vertical_offsets_enabled(false);
+    map_.capture_bg2_horizontal_offsets(0U, false);
+    map_.set_native_model_draw({});
+
+    // INITGAME3D_L resets M_PARTICLERAND and the dust field for every map.
+    // Non-map screens can be entered without INITGAME, so keep both translated
+    // host pools under the same scene-boundary contract.
     particles_.reset();
-    // Communication counters and the submitted Super FX bitmap are owned by
-    // the outgoing map. INITGAME does not consistently clear EX's second
-    // channel, so an intro/training portrait could otherwise remain burned
-    // into BG1 after the flow had moved to controls, title, or gameplay.
+    dust_.reset();
+
+    // Communication counters and the submitted Super FX bitmap belong to the
+    // outgoing screen. EX's second channel is not consistently cleared by the
+    // cartridge wrappers, so reset both channels at every host scene handoff.
     clear_communications();
+
+    briefing_started_ = false;
+    briefing_message_address_ = 0U;
+    briefing_planet_address_ = 0U;
+    briefing_message_characters_ = 0U;
+    briefing_message_character_count_ = 0U;
+    briefing_planet_characters_ = 0U;
+    briefing_planet_character_count_ = 0U;
+    briefing_lead_frames_ = 0U;
+    briefing_character_frames_ = 0U;
+    briefing_hold_frames_ = 0U;
+    planet_zoom_remaining_ = 0U;
+    pepper_brightness_ = 0U;
+    planet_zoom_is_sphere_ = false;
+
+    // Delayed music starts are scoped to their source screen. A deferred
+    // controller/map track or an atomic SPC-upload acknowledgement must not
+    // fire after an early exit into another front-end scene.
+    deferred_msu_track_.reset();
+    deferred_msu_frames_ = 0U;
+    deferred_msu_repeat_ = false;
+    background_music_start_pending_ = false;
+    background_music_start_delay_phases_ = 0U;
+    background_music_hold_phases_ = 0U;
+    background_music_upload_delay_override_ = 0U;
+
+    ex_results_task_active_ = false;
+    ex_results_recorded_ = false;
+}
+
+void GameSimulation::initialize_native_map(std::uint32_t address) {
+    reset_scene_transition_state();
     map_.write_native_word(ram_symbol("MAPPTR"),
         static_cast<std::uint16_t>(address & 0x7fffU));
     map_.write_native_byte(ram_symbol("MAPBANK"),
@@ -2197,7 +2279,7 @@ void GameSimulation::clear_communications() {
 }
 
 void GameSimulation::enter_game_over() {
-    paused_ = false;
+    reset_scene_transition_state();
     Wdc65816Registers registers;
     registers.status = 0x24U;
     map_.call_native_routine(
@@ -2218,7 +2300,9 @@ void GameSimulation::enter_game_over() {
     draw_order_ = objects_.active_handles();
     flow_ticks_ = 0U;
     frontend_frames_ = 0U;
+    frontend_phase_ = FrontendPhase::none;
     flow_state_ = GameFlowState::game_over;
+    ++scene_revision_;
 }
 
 void GameSimulation::update_continue_sprites() {
@@ -2232,7 +2316,7 @@ void GameSimulation::update_continue_sprites() {
 }
 
 void GameSimulation::enter_continue_screen() {
-    paused_ = false;
+    reset_scene_transition_state();
     map_.write_native_word(meters_enabled_, 0U);
     map_.write_native_byte(foxy_option_, 0U);
     map_.write_native_byte(foxy_frame_, 0U);
@@ -2298,6 +2382,23 @@ void GameSimulation::enter_continue_screen() {
     model_palette_registers.status = 0x24U;
     map_.call_native_routine(rom_symbol("SETPAL_L"),
         model_palette_registers, 5'000'000, true);
+    if (starfox_ex_cartridge_) {
+        // EX relocates GAMEPALETTES and leaves the first OBJ row holding a
+        // gameplay lighting ramp when FOXY_CONTINUE is entered through the
+        // host transition. Fox's body is BG2 palette 4, while his animated
+        // arm and shoe are OBJ palette 0; the stale row therefore made only
+        // those moving pieces nearly black. The retail screen duplicates the
+        // body colours into OBJ entries 1..14 and supplies one darker final
+        // brown. Rebuild that row from the active, variant-correct body palette
+        // after SETPAL has installed the Arwing's independent 3D colours.
+        std::array<std::uint16_t, 16> fox_object_palette{};
+        fox_object_palette[0] = 0x3e13U; // Transparent OBJ colour; source value.
+        for (std::size_t index = 1U; index < 15U; ++index) {
+            fox_object_palette[index] = map_.ppu_state().cgram[64U + index];
+        }
+        fox_object_palette[15] = 0x456bU;
+        map_.write_cgram(128U, fox_object_palette);
+    }
 
     Wdc65816Registers registers;
     registers.status = 0x24U;
@@ -2310,8 +2411,10 @@ void GameSimulation::enter_continue_screen() {
     map_.set_display_brightness(0U);
     map_.write_native_word(ram_symbol("BG2XSCROLL"), 0U);
     map_.write_native_word(ram_symbol("BG2SCROLL"), 0U);
-    map_.write_native_word(vanish_x_, 112U);
-    map_.write_native_word(vanish_y_, 96U);
+    // CONTINUE.ASM's DRAWSOME3D anchors MSHOWOBJ3 inside the 112x88 flight
+    // window, not at the centre of the complete 256x224 screen.
+    map_.write_native_word(vanish_x_, 9U * 8U + 4U);
+    map_.write_native_word(vanish_y_, 7U * 8U + 32U + 4U);
     for (std::uint32_t offset = 0; offset < 6U; offset += 2U) {
         map_.write_native_word(view_position_ + offset, 0U);
         map_.write_native_word(previous_view_position_ + offset, 0U);
@@ -2342,7 +2445,7 @@ void GameSimulation::enter_continue_screen() {
     map_.set_native_model_draw({true,
         static_cast<std::uint16_t>(fox_shape_), 0, 0, continue_model_z_,
         continue_rotation_x_, continue_rotation_y_, continue_rotation_z_,
-        112, 96, 0, 0});
+        9 * 8 + 4, 7 * 8 + 32 + 4, 0, 0});
     update_continue_sprites();
     registers = {};
     registers.status = 0x24U;
@@ -2374,8 +2477,7 @@ void GameSimulation::enter_ex_pregame_menu(bool model_test) {
     if (!starfox_ex_cartridge_) {
         throw std::logic_error{"EX pre-game menu requested for a retail cartridge"};
     }
-    paused_ = false;
-    draw_order_.clear();
+    reset_scene_transition_state();
     map_.write_native_word(meters_enabled_, 0U);
     map_.write_native_word(level_finished_, 0U);
     map_.write_native_byte(ex_stop_counting_, model_test ? 10U : 11U);
@@ -2553,8 +2655,8 @@ void GameSimulation::enter_intro() {
     registers.status = 0x24U;
     map_.call_native_routine(
         intro_music_, registers, 20'000'000, true);
-    request_msu_music(msu_track::title_demo, false);
     initialize_native_map(intro_map_);
+    request_msu_music(msu_track::title_demo, false);
     registers = {};
     registers.status = 0x24U;
     map_.call_native_routine(
@@ -2647,7 +2749,7 @@ GameTickResult GameSimulation::tick_continue_screen(const input::TickInput& inpu
     map_.set_native_model_draw({true,
         static_cast<std::uint16_t>(fox_shape_), 0, 0, continue_model_z_,
         continue_rotation_x_, continue_rotation_y_, continue_rotation_z_,
-        112, 96, 0, 0});
+        9 * 8 + 4, 7 * 8 + 32 + 4, 0, 0});
     update_continue_sprites();
     if ((input.pressed & (starfox::input::a | starfox::input::b
             | starfox::input::start)) != 0U) {
@@ -2692,18 +2794,19 @@ void GameSimulation::enter_credits() {
         map_.call_native_routine(
             credits_music, music_registers, 50'000'000U, true);
     }
-    request_msu_music(msu_track::staff_roll, false);
     initialize_native_map(credits_map_);
+    request_msu_music(msu_track::staff_roll, false);
     map_.write_native_word(meters_enabled_, 0U);
     map_.write_native_word(level_finished_, 0U);
     flow_ticks_ = 0U;
+    frontend_frames_ = 0U;
+    frontend_phase_ = FrontendPhase::none;
     flow_state_ = GameFlowState::credits;
 }
 
 void GameSimulation::begin_end_game_sequence() {
     pending_end_game_ = false;
-    paused_ = false;
-    clear_communications();
+    reset_scene_transition_state();
     map_.write_native_word(meters_enabled_, 0U);
     flow_ticks_ = 0U;
     flow_state_ = GameFlowState::credits;
@@ -2825,14 +2928,14 @@ void GameSimulation::enter_controls(
     // The host preserves CONTMAP's otherwise-atomic 90-raster hidden setup.
     // Start the companion at the same boundary as the delayed OPS/SPC track,
     // not while the previous screen is still fading under forced black.
-    defer_msu_music(msu_track::controls, true, 90U);
     // BGM OPS is uploaded over the 65C816/APU handshake before its first
     // track command can be acknowledged. The host copies it atomically, so
     // retain the measured setup interval explicitly. The controller raster is
     // held black for 90 presentations; start OPS as that hold ends instead of
     // letting it arrive over the preceding title-to-controls transition.
-    background_music_upload_delay_override_ = 90U;
     initialize_native_map(controls_map_);
+    defer_msu_music(msu_track::controls, true, 90U);
+    background_music_upload_delay_override_ = 90U;
     registers = {};
     registers.status = 0x24U;
     map_.call_native_routine(
@@ -2960,7 +3063,7 @@ void GameSimulation::redraw_planet_route(bool complete_route) {
     map_.upload_oam(sprite_block_, 544U);
 }
 
-void GameSimulation::redraw_post_level_route() {
+std::uint8_t GameSimulation::redraw_post_level_route() {
     // PLANETS.ASM PLANETSEQ draws the newly unlocked segment at the current
     // STAGE, then temporarily decrements STAGE and draws the completed path
     // beneath it. Preserve CURRENTPLANET across the older-segment draw just
@@ -2969,6 +3072,7 @@ void GameSimulation::redraw_post_level_route() {
     set_planet_route_lines(false, false);
     const auto saved_stage = map_.read_native_word(stage_);
     const auto saved_planet = map_.read_native_word(current_planet_);
+    auto route_origin_planet = static_cast<std::uint8_t>(saved_planet);
     Wdc65816Registers registers;
     registers.status = 0x24U;
     map_.call_native_routine(
@@ -2980,6 +3084,11 @@ void GameSimulation::redraw_post_level_route() {
         registers.status = 0x24U;
         map_.call_native_routine(
             draw_planet_lines_, registers, 5'000'000, true);
+        // This is the exact record PLANETSEQ has just completed. The second
+        // DRAWPLANETLINES call leaves CURRENTPLANET on that record while X1
+        // points at its outbound geometry. The ship must begin here, not at
+        // the next record selected by the first call.
+        route_origin_planet = map_.read_native_byte(current_planet_);
     }
     map_.write_native_word(current_planet_, saved_planet);
     map_.write_native_word(stage_, saved_stage);
@@ -2990,6 +3099,7 @@ void GameSimulation::redraw_post_level_route() {
     map_.call_native_near_routine(
         draw_route_name_, registers, 2'000'000, true);
     map_.upload_oam(sprite_block_, 544U);
+    return route_origin_planet;
 }
 
 void GameSimulation::set_planet_route_lines(
@@ -3091,17 +3201,13 @@ void GameSimulation::update_planet_ship_sprite() {
 void GameSimulation::enter_planet_map(
     bool selecting_route, std::uint32_t pending_map,
     bool wait_for_arrival_confirmation) {
-    paused_ = false;
-    circle_effect_ = {};
+    reset_scene_transition_state();
     // SETUP_PLANETS_L zeros W12SEL/W34SEL/WOBJSEL and all of the window
     // logic/mask registers. The native variables can still contain the last
     // mapendwipe state because PLANETSEQ no longer calls TRANSFER_L, but on
     // hardware that stale state is no longer visible. Clear the host-facing
     // latches too so the completed stage's circular wipe cannot be composed
     // over the freshly initialized planet map.
-    map_.write_native_byte(do_a_wipe_, 0U);
-    map_.write_native_byte(doing_wipe_, 0U);
-    wipe_logic_snapshot_ = 0U;
     if (!route_display_order_) {
         auto route = map_.read_native_byte(which_route_);
         if (route < 2U) {
@@ -3115,16 +3221,6 @@ void GameSimulation::enter_planet_map(
     planet_arrival_confirmation_required_ = wait_for_arrival_confirmation;
     planet_route_blink_frames_ = 0U;
     planet_route_lines_visible_ = false;
-    briefing_started_ = false;
-    briefing_message_address_ = 0U;
-    briefing_planet_address_ = 0U;
-    briefing_message_characters_ = 0U;
-    briefing_message_character_count_ = 0U;
-    briefing_planet_characters_ = 0U;
-    briefing_planet_character_count_ = 0U;
-    briefing_lead_frames_ = 0U;
-    briefing_character_frames_ = 0U;
-    briefing_hold_frames_ = 0U;
     map_.write_native_word(meters_enabled_, 0U);
     map_.write_native_word(light_x_, 0U);
     map_.write_native_word(light_y_, 0U);
@@ -3193,8 +3289,9 @@ void GameSimulation::enter_planet_map(
     frontend_phase_ = FrontendPhase::planet_fade_in;
     flow_state_ = selecting_route
         ? GameFlowState::planet_select : GameFlowState::planet_travel;
+    auto route_origin_planet = std::uint8_t{0U};
     if (selecting_route) redraw_planet_route(true);
-    else redraw_post_level_route();
+    else route_origin_planet = redraw_post_level_route();
     if (pending_map_ != 0U) {
         map_.write_native_byte(new_map_, static_cast<std::uint8_t>(pending_map_));
         map_.write_native_byte(new_map_ + 1U,
@@ -3203,13 +3300,23 @@ void GameSimulation::enter_planet_map(
             static_cast<std::uint8_t>(pending_map_ >> 16U));
     }
     const auto selected_planet = map_.read_native_byte(current_planet_);
-    const auto initial_planet = selecting_route || selected_planet >= planet_count_
-        ? std::uint8_t{0U} : selected_planet;
+    const auto initial_planet = selecting_route
+        ? std::uint8_t{0U}
+        : route_origin_planet < planet_count_
+            ? route_origin_planet
+            : selected_planet < planet_count_
+                ? selected_planet
+                : std::uint8_t{0U};
     const auto start = rom_->read16(start_planet_positions_
         + static_cast<std::uint32_t>(initial_planet) * 2U);
     map_.write_native_word(ship_position_, start);
     map_.write_native_word(new_ship_position_, start);
-    map_.write_native_word(route_x_, 0U);
+    // DRAWPLANETLINES leaves X1 at the first not-yet-drawn segment. The
+    // post-level .switchonloop feeds that cursor straight into
+    // MOVESHIPALONGPATH; clearing it here skipped the authored waypoints and
+    // could leave the Arwing absent or jumping directly to the destination.
+    // A fresh route-selection screen does not travel and may start clean.
+    if (selecting_route) map_.write_native_word(route_x_, 0U);
     draw_order_.clear();
     planet_spin_remainders_.fill(0);
     planet_rotation_video_phases_ = 0U;
@@ -3241,6 +3348,16 @@ void GameSimulation::animate_planet_frame(bool advance_rotation) {
     if (frontend_phase_ == FrontendPhase::planet_briefing
         || frontend_phase_ == FrontendPhase::planet_fade_to_level) return;
 
+    const auto draw_all_during_route =
+        flow_state_ == GameFlowState::planet_travel
+        && (frontend_phase_ == FrontendPhase::planet_fade_in
+            || frontend_phase_ == FrontendPhase::planet_route);
+    // PLANETS.ASM saves X1 before COPYLIGHT, because even that first routine
+    // uses it as arithmetic scratch. Preserve the segment cursor across the
+    // complete redraw/DMA group and restore it before ship movement.
+    const auto route_cursor = draw_all_during_route
+        ? map_.read_native_word(route_x_) : std::uint16_t{0U};
+    const auto selected_planet = map_.read_native_word(current_planet_);
     Wdc65816Registers registers;
     registers.status = 0x24U;
     map_.call_native_near_routine(
@@ -3251,11 +3368,6 @@ void GameSimulation::animate_planet_frame(bool advance_rotation) {
     if (advance_rotation) {
         advance_planet_rotation();
     }
-    const auto draw_all_during_route =
-        flow_state_ == GameFlowState::planet_travel
-        && (frontend_phase_ == FrontendPhase::planet_fade_in
-            || frontend_phase_ == FrontendPhase::planet_route);
-    const auto selected_planet = map_.read_native_word(current_planet_);
     if (draw_all_during_route) {
         // PLANETS.ASM's .shownext loop stores -1 in CURRENTPLANET before each
         // redraw, which makes DRAWPLANETSPRITES include all sixteen map cells.
@@ -3278,6 +3390,9 @@ void GameSimulation::animate_planet_frame(bool advance_rotation) {
     registers.status = 0x24U;
     map_.call_native_near_routine(
         switch_planet_buffer_, registers, 2'000'000, true);
+    if (draw_all_during_route) {
+        map_.write_native_word(route_x_, route_cursor);
+    }
     if (flow_state_ == GameFlowState::planet_travel
         && frontend_phase_ == FrontendPhase::planet_route
         && !planet_travel_complete_) {
@@ -4112,6 +4227,10 @@ void GameSimulation::service_transfer_request() {
         map_.write_native_byte(fade_to_red_, 0U);
         set_player_control(true);
         paused_ = false;
+        // RESTART_L is entered only after the death fade has reached black and
+        // GROUND_STRAT has cleared CIRCLEANIM. Do not carry the pre-strategy
+        // presentation snapshot into the newly initialized checkpoint.
+        circle_effect_ = {};
         flags = map_.read_native_byte(background_flags_);
     }
     if ((flags & 4U) != 0U) {
