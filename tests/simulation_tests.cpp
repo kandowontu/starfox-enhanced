@@ -4060,6 +4060,12 @@ int main(int argc, char** argv) {
         require(!level_finished.empty() && !stage_address.empty()
                     && !new_map_address.empty() && !level1_2.empty(),
                 "route-transition symbols are missing");
+        require(game.map().read_native_word(stage_address.front()) == 0U,
+                "Corneria did not launch as route stage zero");
+        // EX can reuse STAGE as route-table work before the host sees the
+        // completed transfer. Progression must advance the level that was
+        // launched, not advance this already-shifted scratch value again.
+        game.map().write_native_word(stage_address.front(), 1U);
         game.map().write_native_word(level_finished.front(), 1U);
         static_cast<void>(game.tick({}));
         // A boss message may still be live on the last gameplay transfer.

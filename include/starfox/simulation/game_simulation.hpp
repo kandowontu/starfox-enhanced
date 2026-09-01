@@ -875,6 +875,10 @@ private:
     std::array<std::int32_t, 6> planet_spin_remainders_{};
     std::uint8_t planet_route_blink_frames_{};
     std::uint32_t pending_map_{};
+    // STAGE is shared cartridge work RAM and is rewritten while route records
+    // are drawn. Keep the identity of the level that actually launched so a
+    // post-level transition can advance it exactly once.
+    std::uint16_t active_route_stage_{};
     std::uint64_t scene_revision_{};
     GameFlowState flow_state_{GameFlowState::gameplay};
     FrontendPhase frontend_phase_{FrontendPhase::none};

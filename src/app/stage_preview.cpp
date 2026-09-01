@@ -109,7 +109,12 @@ int main(int argc, char** argv) {
             }
         }
 
-        starfox::render::Framebuffer framebuffer{224, 192};
+        // Planet maps are a full 256x224 PPU composition. Cropping them to
+        // the 224x192 Super FX viewport hid Corneria's bottom-edge Arwing and
+        // made the transition probe report a false missing-ship result.
+        starfox::render::Framebuffer framebuffer{
+            post_level_map ? 256U : 224U,
+            post_level_map ? 224U : 192U};
         framebuffer.clear(0);
         starfox::render::RenderSettings render_settings;
         render_settings.colour_index_base = 7U * 16U;

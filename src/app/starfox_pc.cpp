@@ -5253,6 +5253,17 @@ int main(int argc, char** argv) {
                         ppu, framebuffer, starfox::render::TilePriorityPass::high,
                         viewport_origin, extend_cartridge_scene);
                 }
+                if ((ppu.main_screen & 0x10U) != 0U) {
+                    // PLANETS places the four-piece map Arwing at OBJ
+                    // priority 3 so it stays above every planet and route
+                    // layer. Omitting the final priority pass discarded the
+                    // ship even though its OAM and character data were valid.
+                    sprite_renderer.draw_objects(
+                        ppu, framebuffer, 3U, viewport_origin,
+                        extend_cartridge_scene, anchor_edge_hud,
+                        gameplay_layout,
+                        suppress_configurable_hud && gameplay_hud);
+                }
             } else {
                 ++profiled_background_modes[std::min<std::size_t>(
                     ppu.background_mode, profiled_background_modes.size() - 1U)];

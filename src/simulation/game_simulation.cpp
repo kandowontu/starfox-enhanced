@@ -2088,6 +2088,7 @@ void GameSimulation::configure_route_for_map(const std::string& symbol) {
     }
     const auto route = static_cast<std::uint8_t>(upper[5] - '1');
     const auto stage = static_cast<std::uint16_t>(upper[7] - '1');
+    active_route_stage_ = stage;
     if (starfox_ex_cartridge_) select_planet_campaign(route >= 4U);
     map_.write_native_word(stage_, stage);
     map_.write_native_byte(current_level_, route);
@@ -2786,7 +2787,11 @@ void GameSimulation::continue_current_stage() {
             map_.write_native_byte(ram_symbol(reserve), 4U);
         }
     }
-    const auto map_address = selected_route_stage(map_.read_native_word(stage_));
+    // Continue returns to the level that was actually running. Do not trust
+    // STAGE here either: the game-over/Continue routines and EX front-end can
+    // reuse the route work word before PLANETSEQ regains ownership.
+    map_.write_native_word(stage_, active_route_stage_);
+    const auto map_address = selected_route_stage(active_route_stage_);
     // MAIN.ASM returns from FOXY_CONTINUE directly through PLANETSEQ.  Its
     // .shownext path moves the ship from the preceding planet to the current
     // stage, then remains in .rotateforabit until a new face-button press.
@@ -3856,6 +3861,7 @@ void GameSimulation::launch_pending_stage() {
     }
     const auto map_address = pending_map_;
     pending_map_ = 0U;
+    active_route_stage_ = map_.read_native_word(stage_);
     if (route_display_order_) {
         auto route = map_.read_native_byte(which_route_);
         if (route < 2U) {
@@ -4051,9 +4057,13 @@ void GameSimulation::service_level_exit() {
         return;
     }
     pending_end_game_ = exit == 6U;
-    // MAIN.ASM increments STAGE before normal, special and final route exits.
+    // MAIN.ASM increments the stage belonging to the level that just ran.
+    // STAGE is also route-drawing work RAM and can already contain the next
+    // record by the time the host observes LEVELFINISHED (notably in EX).
+    // Advancing that live value skipped stage 1 and moved Corneria directly
+    // to stage 2. The launch latch is the authoritative completed stage.
     const auto next_stage = static_cast<std::uint16_t>(
-        map_.read_native_word(stage_) + 1U);
+        active_route_stage_ + 1U);
     map_.write_native_word(stage_, next_stage);
 
     std::uint32_t route_change{};
