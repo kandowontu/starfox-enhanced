@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(starfox_enhanced VERSION 0.0.2 LANGUAGES CXX)
+project(starfox_enhanced VERSION 0.0.3 LANGUAGES CXX)
 
 # devkitPro's current toolchain identifies Horizon as NintendoSwitch but does
 # not define the legacy SWITCH convenience variable used by projects and SDL.

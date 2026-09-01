@@ -99,7 +99,7 @@ try {
     Copy-Item -Path (Join-Path $build 'uwp-assets/*.png') `
         -Destination $stagingAssets -Force
 
-    $packageName = 'StarFoxEnhanced-0.0.2-xbox-uwp-x64.appx'
+    $packageName = 'StarFoxEnhanced-0.0.3-xbox-uwp-x64.appx'
     $packagePath = Join-Path $install $packageName
     if (Test-Path -LiteralPath $packagePath -PathType Leaf) {
         Remove-Item -LiteralPath $packagePath -Force

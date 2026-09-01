@@ -19,7 +19,7 @@ first launch it validates the user's own unmodified Star Fox USA v1.2 (Rev 2)
 ROM, reconstructs the Original and Star Fox EX runtime data locally, and writes
 one version-bound `Starfox-Assets.BIN` companion beside the executable. Later
 launches use that validated companion without requiring the retail ROM to stay
-present. `v0.0.2` is the current public alpha release.
+present. `v0.0.3` is the current public alpha release.
 
 ## What is preserved
 

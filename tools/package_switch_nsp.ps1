@@ -34,7 +34,7 @@ Write-Host "The forwarder will launch sdmc:$SdmcPath"
     --sdmc $SdmcPath `
     --name 'Star Fox Enhanced' `
     --publisher 'Star Fox Enhanced team' `
-    --version '0.0.2'
+    --version '0.0.3'
 if ($LASTEXITCODE -ne 0) {
     throw "NTON failed with exit code $LASTEXITCODE"
 }
