@@ -229,6 +229,34 @@ int main(int argc, char** argv) {
     require(music_is_isolated,
         "sound effect command modified or consumed a music-channel sample");
 
+    // SOUND.ASM's PLAYERSND writes the continuous Arwing engine to port 1;
+    // NEAROBJS/DO_OBSTACLES use port 2 for other engines and positional
+    // loops. MSU replaces only port-0 BGM, so both continuous buses must be
+    // present in the independently mixed effect stem as well as port 3.
+    auto continuous_effect_changed = false;
+    auto continuous_music_unchanged = true;
+    for (std::size_t tick = 0U; tick < 12U; ++tick) {
+        // Repeated writes match the cartridge's per-raster engine update.
+        constexpr std::array writes{
+            starfox::simulation::ApuPortWrite{1U, 0xc0U, 0U},
+            starfox::simulation::ApuPortWrite{2U, 0x60U, 0U},
+        };
+        static_cast<void>(effect_audio.render_logic_tick(writes));
+        static_cast<void>(control_audio.render_logic_tick({}));
+        continuous_effect_changed = continuous_effect_changed || pcm_difference(
+            effect_audio.last_effect_samples(),
+            control_audio.last_effect_samples()) != 0U;
+        continuous_music_unchanged = continuous_music_unchanged && std::equal(
+            effect_audio.last_music_samples().begin(),
+            effect_audio.last_music_samples().end(),
+            control_audio.last_music_samples().begin(),
+            control_audio.last_music_samples().end());
+    }
+    require(continuous_effect_changed,
+        "continuous engine ports did not reach the isolated effect stem");
+    require(continuous_music_unchanged,
+        "continuous effect bus modified the isolated music stem");
+
     // PAUSESND is carried over the nominal SFX port, but $01/$02 are global
     // controls in Nintendo's driver. The two host SPC stems must therefore
     // diverge when only one receives PAUSE ON; ordinary SFX above must not.

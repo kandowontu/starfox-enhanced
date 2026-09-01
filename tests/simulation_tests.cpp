@@ -4375,6 +4375,36 @@ int main(int argc, char** argv) {
                     && game.map().read_native_word(stage_address.front()) == 1U
                     && game.map().ppu_state().background_mode == 3U,
                 "continue YES did not return through the route screen");
+        const auto continue_route_start = game.map().read_native_word(
+            ship_position_address);
+        require(continue_route_start
+                    == upstream_rom.read16(start_planet_positions
+                        + static_cast<std::uint32_t>(completed_planet) * 2U),
+                "continue route did not restore the ship to the preceding planet");
+        // PLANETSEQ fades the completed route in before .shownext begins.
+        // The ship must remain exactly centred on that planet throughout the
+        // eight-raster reveal instead of departing while the map is dim.
+        for (std::size_t frame = 0; frame < 8U; ++frame) {
+            game.present_frame();
+            require(game.map().read_native_word(ship_position_address)
+                        == continue_route_start,
+                    "continue route moved the ship during the map fade-in");
+        }
+        for (std::size_t frame = 0;
+             frame < 3'000U
+                 && game.flow_state()
+                     == starfox::simulation::GameFlowState::planet_travel;
+             ++frame) {
+            game.present_frame();
+            if ((frame % 3U) == 2U) static_cast<void>(game.tick({}));
+        }
+        require(game.flow_state()
+                        == starfox::simulation::GameFlowState::planet_travel
+                    && !game.briefing_state().active
+                    && game.map().read_native_word(ship_position_address)
+                        == game.map().read_native_word(new_ship_position_address),
+                "continue route did not wait for confirmation after arrival");
+        static_cast<void>(game.tick({0U, starfox::input::a, 0U}));
         for (std::size_t frame = 0;
              frame < 3'000U
                  && game.flow_state()
@@ -4385,7 +4415,7 @@ int main(int argc, char** argv) {
         }
         require(game.flow_state() == starfox::simulation::GameFlowState::gameplay
                     && game.objects().is_active(game.player()),
-                "game-over route screen did not restart the same stage");
+                "A did not restart the same stage after the continue route");
 
         game.map().write_native_word(level_finished.front(), 6U);
         static_cast<void>(game.tick({}));

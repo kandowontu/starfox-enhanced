@@ -46,10 +46,11 @@ public:
     [[nodiscard]] std::vector<std::int16_t> render_logic_tick(
         std::span<const simulation::ApuPortWrite> writes);
 
-    // Music commands (CPU ports 0-2) and effect commands (port 3) run on
-    // independent SPC700 instances in the native port. Exposing the most
-    // recent stems makes it possible to verify that an effect changed only
-    // the effect mix and never consumed or muted a music voice.
+    // BGM commands (CPU port 0) and effect commands (continuous engine and
+    // positional audio on ports 1/2 plus queued effects on port 3) run on
+    // independent SPC700 instances. Exposing the most recent stems makes it
+    // possible to verify that an effect changed only the effect mix and never
+    // consumed or muted a music voice.
     [[nodiscard]] std::span<const std::int16_t> last_music_samples() const
         noexcept { return last_music_samples_; }
     [[nodiscard]] std::span<const std::int16_t> last_effect_samples() const

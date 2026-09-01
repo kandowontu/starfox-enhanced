@@ -33,12 +33,14 @@ void composite_transparent_layer(const Framebuffer& source,
         && (settings.mosaic & settings.mosaic_layer_mask) != 0U;
     const auto mosaic_size = static_cast<std::int32_t>(
         (settings.mosaic >> 4U) + 1U);
-    if (!mosaic_enabled && source.draw_scale() == 1U
-        && destination.draw_scale() == 1U) {
-        // The normal gameplay layers are already aligned pixel-for-pixel.
-        // Walk their contiguous storage directly instead of paying two
-        // bounds checks and four coordinate multiplications for every one of
-        // the hundreds of thousands of transparent pixels at wide outputs.
+    if (!mosaic_enabled
+        && source.draw_scale() == destination.draw_scale()) {
+        // Equal-scale layers are already aligned pixel-for-pixel in stored
+        // space. Walk their contiguous storage directly instead of paying
+        // logical clipping, coordinate multiplication and an SxS nested loop
+        // for every source pixel. This is particularly important for Render
+        // Upscale: the old generic path repeated that machinery nine times
+        // per logical pixel at 3x even though no resampling was required.
         auto source_left = std::max(0, -settings.offset_x);
         auto source_top = std::max(0, -settings.offset_y);
         auto source_right = std::min(
@@ -66,15 +68,31 @@ void composite_transparent_layer(const Framebuffer& source,
                 source_bottom, settings.clip_bottom - settings.offset_y);
         }
         if (source_left >= source_right || source_top >= source_bottom) return;
+        const auto scale = source.draw_scale();
+        const auto stored_source_left = static_cast<std::size_t>(source_left)
+            * scale;
+        const auto stored_source_top = static_cast<std::size_t>(source_top)
+            * scale;
+        const auto stored_source_right = static_cast<std::size_t>(source_right)
+            * scale;
+        const auto stored_source_bottom = static_cast<std::size_t>(source_bottom)
+            * scale;
+        const auto stored_offset_x = static_cast<std::int64_t>(
+            settings.offset_x) * scale;
+        const auto stored_offset_y = static_cast<std::int64_t>(
+            settings.offset_y) * scale;
         const auto& source_pixels = source.pixels();
         auto& destination_pixels = destination.pixels();
-        for (auto y = source_top; y < source_bottom; ++y) {
-            auto source_index = static_cast<std::size_t>(y) * source.width()
-                + static_cast<std::size_t>(source_left);
+        for (auto y = stored_source_top; y < stored_source_bottom; ++y) {
+            auto source_index = y * source.stored_width()
+                + stored_source_left;
             auto destination_index = static_cast<std::size_t>(
-                y + settings.offset_y) * destination.width()
-                + static_cast<std::size_t>(source_left + settings.offset_x);
-            for (auto x = source_left; x < source_right; ++x) {
+                static_cast<std::int64_t>(y) + stored_offset_y)
+                    * destination.stored_width()
+                + static_cast<std::size_t>(
+                    static_cast<std::int64_t>(stored_source_left)
+                        + stored_offset_x);
+            for (auto x = stored_source_left; x < stored_source_right; ++x) {
                 const auto colour = source_pixels[source_index++];
                 if (colour != 0U) destination_pixels[destination_index] = colour;
                 ++destination_index;

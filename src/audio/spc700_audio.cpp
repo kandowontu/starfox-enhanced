@@ -222,10 +222,13 @@ struct Spc700Audio::Impl {
             if (uploading) {
                 consume_upload_write(write);
             } else {
-                // The running Star Fox driver reserves CPU ports 0-2 for
-                // music/control and port 3 for its effect queue. Keep those
-                // buses on independent SPC instances so the effect driver's
-                // voice allocator can never key-off a music voice.
+                // The running Star Fox driver uses port 0 for BGM control,
+                // ports 1/2 for continuous player/near-object audio (engine,
+                // tunnel and positional sounds), and port 3 for its queued
+                // one-shot effects. Keep the BGM bus on one SPC instance and
+                // all three effect buses on the other so MSU replacement can
+                // never discard an Arwing engine or let an effect key-off a
+                // music voice.
                 // Star Fox normally reserves port 3 for effects, but its
                 // $01/$02 PAUSESND commands are global driver controls. The
                 // PC port deliberately runs music and effects on independent
@@ -235,8 +238,8 @@ struct Spc700Audio::Impl {
                     && (write.value == 0x01U || write.value == 0x02U);
                 const auto accepts_command = command_stream
                         == CommandStream::effects
-                    ? write.port == 3U
-                    : write.port != 3U || global_pause_command;
+                    ? write.port != 0U
+                    : write.port == 0U || global_pause_command;
                 if (!accepts_command) continue;
                 const auto clock = std::clamp(
                     static_cast<int>(write.clock_offset), last_clock,
@@ -321,8 +324,8 @@ std::array<std::uint8_t, 4> Spc700Audio::output_ports() const noexcept {
     if (!driver_loaded()) return {};
     return {
         static_cast<std::uint8_t>(spc_read_port(music_impl_->spc, 0, 0)),
-        static_cast<std::uint8_t>(spc_read_port(music_impl_->spc, 0, 1)),
-        static_cast<std::uint8_t>(spc_read_port(music_impl_->spc, 0, 2)),
+        static_cast<std::uint8_t>(spc_read_port(effects_impl_->spc, 0, 1)),
+        static_cast<std::uint8_t>(spc_read_port(effects_impl_->spc, 0, 2)),
         static_cast<std::uint8_t>(spc_read_port(effects_impl_->spc, 0, 3)),
     };
 }

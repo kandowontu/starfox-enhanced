@@ -6108,19 +6108,28 @@ int main(int argc, char** argv) {
                     == starfox::simulation::GameFlowState::continue_choice;
             if (solid_frontend_margins && viewport_origin > 0) {
                 // These front ends draw a single-colour field around their
-                // centred artwork. CGRAM colour zero is black on Continue and
-                // is modified by GAMEOVER_L's colour math, so leaving cleared
-                // host pixels in the wide margins gives both screens the
-                // wrong colour. Extend the actual left/right edge pixels per
-                // scanline without repeating the menu/window artwork.
+                // centred artwork. Pick the dominant colour from each native
+                // edge rather than extending every scanline independently:
+                // a star or animated edge pixel must not become a full-width
+                // horizontal line in the added margins.
                 const auto right = viewport_origin
                     + static_cast<std::int32_t>(snes_width);
+                const auto dominant_edge_colour = [&framebuffer](
+                                                      std::int32_t x) {
+                    std::array<std::uint32_t, 256U> counts{};
+                    for (std::int32_t y = 0;
+                         y < static_cast<std::int32_t>(framebuffer.height());
+                         ++y) {
+                        ++counts[framebuffer.get(x, y)];
+                    }
+                    return static_cast<std::uint8_t>(std::distance(
+                        counts.begin(), std::max_element(
+                            counts.begin(), counts.end())));
+                };
+                const auto left_backdrop = dominant_edge_colour(viewport_origin);
+                const auto right_backdrop = dominant_edge_colour(right - 1);
                 for (std::int32_t y = 0;
                      y < static_cast<std::int32_t>(framebuffer.height()); ++y) {
-                    const auto left_backdrop = framebuffer.get(
-                        viewport_origin, y);
-                    const auto right_backdrop = framebuffer.get(
-                        right - 1, y);
                     for (std::int32_t x = 0; x < viewport_origin; ++x) {
                         framebuffer.set(x, y, left_backdrop);
                     }

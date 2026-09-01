@@ -408,6 +408,18 @@ int main() {
                     "native overlay did not fill its scaled destination cell");
         }
     }
+    starfox::render::Framebuffer high_resolution_overlay{2U, 2U, 3U};
+    starfox::render::Framebuffer high_resolution_composite{4U, 2U, 3U};
+    high_resolution_overlay.set(1, 1, 9U);
+    high_resolution_overlay.set_stored(5U, 5U, 11U);
+    starfox::render::LayerCompositeSettings high_resolution_settings;
+    high_resolution_settings.offset_x = 1;
+    starfox::render::composite_transparent_layer(high_resolution_overlay,
+        high_resolution_composite, high_resolution_settings);
+    require(high_resolution_composite.get_stored(6U, 3U) == 9U
+                && high_resolution_composite.get_stored(8U, 5U) == 11U
+                && high_resolution_composite.get_stored(5U, 5U) == 0U,
+            "equal-scale Render Upscale composite lost sub-pixel geometry");
     starfox::render::Framebuffer wireframe{224, 192};
     starfox::render::RenderPose wireframe_pose;
     wireframe_pose.wireframe_mode = 1U;

@@ -2776,7 +2776,12 @@ void GameSimulation::continue_current_stage() {
         }
     }
     const auto map_address = selected_route_stage(map_.read_native_word(stage_));
-    enter_planet_map(false, map_address);
+    // MAIN.ASM returns from FOXY_CONTINUE directly through PLANETSEQ.  Its
+    // .shownext path moves the ship from the preceding planet to the current
+    // stage, then remains in .rotateforabit until a new face-button press.
+    // Treat Continue exactly like the ordinary post-level route rather than
+    // letting arrival fall straight through to the briefing/level launch.
+    enter_planet_map(false, map_address, true);
 }
 
 void GameSimulation::enter_credits() {
