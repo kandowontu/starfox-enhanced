@@ -21,6 +21,8 @@ one version-bound `Starfox-Assets.BIN` companion beside the executable. Later
 launches use that validated companion without requiring the retail ROM to stay
 present. `v0.0.3` is the current public alpha release.
 
+This project utilizes Codex GPT 5.6 Sol at Ex-High thought.
+
 ## What is preserved
 
 - Gameplay, PATH/map bytecode, strategies, collision, damage, RNG, animation,
