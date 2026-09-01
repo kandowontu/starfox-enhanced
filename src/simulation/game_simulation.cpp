@@ -235,6 +235,7 @@ GameSimulation::GameSimulation(
       flash_ship_(ram_symbol("FLASHSHIP")),
       ship_angle_(ram_symbol("SHIPANGLE")),
       route_x_(ram_symbol("X1")),
+      route_y_(ram_symbol("Y1")),
       light_x_(ram_symbol("LIGHTX")),
       light_y_(ram_symbol("LIGHTY")),
       light_z_(ram_symbol("LIGHTZ")),
@@ -1545,6 +1546,16 @@ std::uint8_t GameSimulation::game_over_background_subtract() const noexcept {
 }
 
 DialogueState GameSimulation::dialogue_state() const noexcept {
+    // CONTINUE.ASM's FRIENDS_MESSAGES_L exits before drawing either channel
+    // whenever GF_PLAYERDYING or GF_PLAYERDEAD is set. The source leaves its
+    // counters latched during that interval, so counters alone are not proof
+    // that a portrait belongs in the submitted frame. Mirroring this gate
+    // prevents a newly triggered or half-open communication from being
+    // composited over the death tumble/circle as fragmented stale graphics.
+    if (flow_state_ == GameFlowState::gameplay
+        && (map_.read_native_byte(game_flags_) & 0x42U) != 0U) {
+        return {};
+    }
     // MAIN.ASM advances channel 1 and then channel 2. MCOPYFACE2 therefore
     // overwrites MCOPYFACE whenever the EX channel is active, so expose that
     // same final compositor state rather than trying to show both at once.
@@ -3076,8 +3087,7 @@ std::uint8_t GameSimulation::redraw_post_level_route() {
     // walks the route table.
     set_planet_route_lines(false, false);
     const auto saved_stage = map_.read_native_word(stage_);
-    const auto saved_planet = map_.read_native_word(current_planet_);
-    auto route_origin_planet = static_cast<std::uint8_t>(saved_planet);
+    auto route_origin_planet = map_.read_native_byte(current_planet_);
     Wdc65816Registers registers;
     registers.status = 0x24U;
     map_.call_native_routine(
@@ -3095,7 +3105,12 @@ std::uint8_t GameSimulation::redraw_post_level_route() {
         // the next record selected by the first call.
         route_origin_planet = map_.read_native_byte(current_planet_);
     }
-    map_.write_native_word(current_planet_, saved_planet);
+    // PLANETSEQ deliberately leaves CURRENTPLANET on the preceding record
+    // after its second DRAWPLANETLINES call. MOVESHIPALONGPATH changes it to
+    // the destination only after consuming the authored segment list. The
+    // old host restored the first call's destination here, making the map
+    // visibly select the next level before the Arwing had even departed.
+    map_.write_native_word(current_planet_, route_origin_planet);
     map_.write_native_word(stage_, saved_stage);
     planet_route_blink_frames_ = 0U;
     planet_route_lines_visible_ = true;
@@ -3322,6 +3337,13 @@ void GameSimulation::enter_planet_map(
     // could leave the Arwing absent or jumping directly to the destination.
     // A fresh route-selection screen does not travel and may start clean.
     if (selecting_route) map_.write_native_word(route_x_, 0U);
+    else if (map_.read_native_word(stage_) == 0U) {
+        // PLANETSEQ never enters .shownext on the first stage. A Continue
+        // there displays the stage-zero planet and waits for confirmation;
+        // it must not consume that planet's outbound path to stage one.
+        map_.write_native_word(route_x_, 0U);
+        planet_travel_complete_ = true;
+    }
     draw_order_.clear();
     planet_spin_remainders_.fill(0);
     planet_rotation_video_phases_ = 0U;
@@ -3362,6 +3384,8 @@ void GameSimulation::animate_planet_frame(bool advance_rotation) {
     // complete redraw/DMA group and restore it before ship movement.
     const auto route_cursor = draw_all_during_route
         ? map_.read_native_word(route_x_) : std::uint16_t{0U};
+    const auto route_position = draw_all_during_route
+        ? map_.read_native_word(route_y_) : std::uint16_t{0U};
     const auto selected_planet = map_.read_native_word(current_planet_);
     Wdc65816Registers registers;
     registers.status = 0x24U;
@@ -3397,6 +3421,12 @@ void GameSimulation::animate_planet_frame(bool advance_rotation) {
         switch_planet_buffer_, registers, 2'000'000, true);
     if (draw_all_during_route) {
         map_.write_native_word(route_x_, route_cursor);
+        // Y1 is the pixel accumulator paired with X1's path cursor. Host-side
+        // buffer priming performs extra native draw calls before .shownext;
+        // retaining only X1 let those calls replace Y1, so the first waypoint
+        // could veer toward unrelated map scratch before later settling at
+        // the correct destination.
+        map_.write_native_word(route_y_, route_position);
     }
     if (flow_state_ == GameFlowState::planet_travel
         && frontend_phase_ == FrontendPhase::planet_route

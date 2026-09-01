@@ -89,6 +89,25 @@ int main(int argc, char** argv) {
     const auto half_palette = starfox::render::apply_snes_brightness(palette, 7);
     require(half_palette[1].r == 119 && half_palette[2].g == 119,
             "SNES master brightness scaling is wrong");
+    starfox::render::Palette256 rgba_palette{};
+    rgba_palette[0] = {1U, 2U, 3U, 4U};
+    rgba_palette[17] = {40U, 50U, 60U, 70U};
+    rgba_palette[255] = {252U, 253U, 254U, 255U};
+    starfox::render::Framebuffer rgba_source{3U, 1U};
+    rgba_source.set(0U, 0U, 255U);
+    rgba_source.set(1U, 0U, 17U);
+    rgba_source.set(2U, 0U, 0U);
+    std::vector<std::uint8_t> expanded_rgba;
+    starfox::render::expand_rgba(
+        rgba_source, expanded_rgba, rgba_palette);
+    constexpr std::array<std::uint8_t, 12U> expected_rgba{
+        252U, 253U, 254U, 255U,
+        40U, 50U, 60U, 70U,
+        1U, 2U, 3U, 4U,
+    };
+    require(std::equal(expanded_rgba.begin(), expanded_rgba.end(),
+                expected_rgba.begin(), expected_rgba.end()),
+            "packed indexed-to-RGBA expansion changed channel order");
     starfox::render::Framebuffer superfx_mosaic_source{6U, 3U};
     superfx_mosaic_source.set(0, 0, 5U);
     superfx_mosaic_source.set(3, 0, 8U);
@@ -3527,6 +3546,20 @@ int main(int argc, char** argv) {
                     && dialogue.text_address != 0U
                     && game.map().unknown_superfx_launches().empty(),
                 "original teammate communication state was not presented");
+        const auto dialogue_game_flags =
+            upstream_symbols.find("GAMEFLAGS").front();
+        const auto flags_before_dialogue_death =
+            game.map().read_native_byte(dialogue_game_flags);
+        game.map().write_native_byte(dialogue_game_flags,
+            static_cast<std::uint8_t>(flags_before_dialogue_death | 0x02U));
+        require(!game.dialogue_state().active,
+                "dying player retained a communication overlay");
+        game.map().write_native_byte(dialogue_game_flags,
+            static_cast<std::uint8_t>(flags_before_dialogue_death | 0x40U));
+        require(!game.dialogue_state().active,
+                "dead player retained a communication overlay");
+        game.map().write_native_byte(
+            dialogue_game_flags, flags_before_dialogue_death);
         if (starfox_ex_cartridge) {
             require(game.map().read_native_byte(
                         upstream_symbols.find("MACHINETYPE").front()) == 10U,
@@ -4218,15 +4251,31 @@ int main(int argc, char** argv) {
                     == upstream_rom.read16(start_planet_positions
                         + static_cast<std::uint32_t>(completed_planet) * 2U),
                 "post-level Arwing did not start on the completed planet");
+        require(game.map().read_native_byte(current_planet_address)
+                    == completed_planet,
+                "post-level map selected the destination before ship departure");
         const auto new_ship_position_address =
             upstream_symbols.find("NEWSHIPXY").front();
         const auto route_cursor_address = upstream_symbols.find("X1").front();
+        const auto route_position_address = upstream_symbols.find("Y1").front();
+        const auto stage_paths = upstream_symbols.find("STAGEPATHS").front();
         require(game.map().read_native_word(route_cursor_address) != 0U,
                 "post-level route discarded its first authored ship segment");
+        const auto first_route_cursor =
+            game.map().read_native_word(route_cursor_address);
+        const auto first_route_position =
+            game.map().read_native_word(route_position_address);
+        const auto first_route_character = upstream_rom.read16(
+            stage_paths + first_route_cursor);
+        const auto first_authored_target = static_cast<std::uint16_t>(
+            first_route_position
+            + upstream_rom.read16(stage_paths + first_route_cursor + 2U)
+            - 0x0810U);
         auto last_route_ship_target = game.map().read_native_word(
             new_ship_position_address);
         auto route_ship_target_changes = std::size_t{};
         auto saw_route_ship_move = false;
+        auto checked_first_authored_target = false;
         for (std::size_t frame = 0; frame < 900U; ++frame) {
             game.present_frame();
             saw_route_ship_move = saw_route_ship_move
@@ -4236,6 +4285,13 @@ int main(int argc, char** argv) {
                 new_ship_position_address);
             if (target != last_route_ship_target) {
                 ++route_ship_target_changes;
+                if (!checked_first_authored_target
+                    && static_cast<std::int16_t>(first_route_character) >= 0) {
+                    require(target == first_authored_target,
+                        "post-level Arwing detoured from its first authored "
+                        "route waypoint");
+                    checked_first_authored_target = true;
+                }
                 last_route_ship_target = target;
             }
             if ((frame % 3U) == 2U) static_cast<void>(game.tick({}));
@@ -4248,9 +4304,15 @@ int main(int argc, char** argv) {
                 "post-level Arwing did not leave the completed planet");
         require(route_ship_target_changes >= 1U,
                 "post-level Arwing skipped its authored route waypoint");
+        require(static_cast<std::int16_t>(first_route_character) < 0
+                    || checked_first_authored_target,
+                "post-level Arwing never selected its first authored waypoint");
         require(game.map().read_native_word(ship_position_address)
                     == game.map().read_native_word(new_ship_position_address),
                 "post-level Arwing did not settle at the destination planet");
+        require(game.map().read_native_byte(current_planet_address)
+                    != completed_planet,
+                "post-level route never selected its destination on arrival");
         static_cast<void>(game.tick(
             {0U, starfox::input::a, 0U}));
         auto saw_valid_post_level_briefing = false;
@@ -4381,6 +4443,9 @@ int main(int argc, char** argv) {
                     == upstream_rom.read16(start_planet_positions
                         + static_cast<std::uint32_t>(completed_planet) * 2U),
                 "continue route did not restore the ship to the preceding planet");
+        require(game.map().read_native_byte(current_planet_address)
+                    == completed_planet,
+                "continue route selected the current stage before ship departure");
         // PLANETSEQ fades the completed route in before .shownext begins.
         // The ship must remain exactly centred on that planet throughout the
         // eight-raster reveal instead of departing while the map is dim.

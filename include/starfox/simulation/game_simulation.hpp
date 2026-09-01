@@ -617,6 +617,7 @@ private:
     std::uint32_t flash_ship_{};
     std::uint32_t ship_angle_{};
     std::uint32_t route_x_{};
+    std::uint32_t route_y_{};
     std::uint32_t light_x_{};
     std::uint32_t light_y_{};
     std::uint32_t light_z_{};

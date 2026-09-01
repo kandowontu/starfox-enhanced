@@ -1,6 +1,7 @@
 #include "starfox/render/palette.hpp"
 
 #include <algorithm>
+#include <cstring>
 #include <stdexcept>
 
 namespace starfox::render {
@@ -88,14 +89,23 @@ void expand_rgba(
     }
     const auto byte_count = source.pixels().size() * 4U;
     destination.resize(byte_count);
-    auto output = destination.begin();
+    auto* output = destination.data();
     if (palette.size() >= 256U) {
+        // Render Upscale can expand several million indexed pixels per
+        // presentation. Pack the palette once, then copy one RGBA word per
+        // pixel instead of issuing four dependent byte stores. The fixed-size
+        // memcpy calls compile to an unaligned word load/store while remaining
+        // safe and byte-order neutral on every supported target.
+        static_assert(sizeof(Rgba8) == sizeof(std::uint32_t));
+        std::array<std::uint32_t, 256U> packed_palette{};
+        for (std::size_t index = 0; index < packed_palette.size(); ++index) {
+            std::memcpy(&packed_palette[index], &palette[index],
+                sizeof(packed_palette[index]));
+        }
         for (const auto pixel : source.pixels()) {
-            const auto& colour = palette[pixel];
-            *output++ = colour.r;
-            *output++ = colour.g;
-            *output++ = colour.b;
-            *output++ = colour.a;
+            std::memcpy(output, &packed_palette[pixel],
+                sizeof(packed_palette[pixel]));
+            output += sizeof(packed_palette[pixel]);
         }
     } else {
         for (const auto pixel : source.pixels()) {
