@@ -48,6 +48,13 @@ struct RenderPose {
     std::uint8_t explosion_progress{};
     std::array<std::int16_t, 9> rotation_matrix{};
     bool use_rotation_matrix{};
+    // Geometry may be interpolated between source frames for high-FPS
+    // presentation, but MOBJ chooses its depth band and light vector only at
+    // the completed source draw. Keeping that state separate prevents a
+    // presentation frame from dimming a face before the original routine did.
+    double source_depth{};
+    std::array<std::int16_t, 9> source_lighting_matrix{};
+    bool use_source_lighting_state{};
     // Generated presentation frames may retain fractional transformed
     // coordinates. Completed source frames leave this disabled and continue
     // through the bit-exact Super FX word path.

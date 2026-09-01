@@ -775,6 +775,18 @@ if(STARFOX_BUILD_TESTS)
                     "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;STARFOX_TEST_FRAMES=6;STARFOX_TEST_RENDER_SCALE=1"
                 TIMEOUT 10
             )
+            add_test(
+                NAME starfox_exit_confirmation_smoke
+                COMMAND starfox_pc
+            )
+            set_tests_properties(starfox_exit_confirmation_smoke PROPERTIES
+                ENVIRONMENT
+                    "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;STARFOX_TEST_EXIT_CONFIRMATION=1;STARFOX_TEST_FRAMES=1000000;STARFOX_TEST_PRESSES=1:0x0200,5:0x0080;STARFOX_TEST_UNPACED=1;STARFOX_TEST_SKIP_PREROLL=1;STARFOX_TEST_RENDER_SCALE=10"
+                # The scripted LEFT, then A must select YES and terminate long
+                # before the large frame sentinel. This also exercises the
+                # confirmation compositor at the maximum upscale setting.
+                TIMEOUT 10
+            )
             if(STARFOX_RUNTIME_ASSETS_EMBEDDED)
                 file(MAKE_DIRECTORY
                     "${CMAKE_CURRENT_BINARY_DIR}/embedded-runtime-smoke")

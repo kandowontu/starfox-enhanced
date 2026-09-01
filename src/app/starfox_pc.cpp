@@ -1400,12 +1400,22 @@ public:
                     || y >= static_cast<std::int32_t>(framebuffer.height())) {
                     return;
                 }
-                const auto pixel = (static_cast<std::size_t>(y)
-                    * framebuffer.width() + static_cast<std::size_t>(x)) * 4U;
-                rgba_[pixel] = value;
-                rgba_[pixel + 1U] = value;
-                rgba_[pixel + 2U] = value;
-                rgba_[pixel + 3U] = 255U;
+                const auto scale = framebuffer.draw_scale();
+                const auto stored_width = static_cast<std::size_t>(
+                    framebuffer.stored_width());
+                const auto origin_x = static_cast<std::uint32_t>(x) * scale;
+                const auto origin_y = static_cast<std::uint32_t>(y) * scale;
+                for (std::uint32_t row = 0; row < scale; ++row) {
+                    for (std::uint32_t column = 0; column < scale; ++column) {
+                        const auto pixel = (static_cast<std::size_t>(
+                            origin_y + row) * stored_width
+                            + origin_x + column) * 4U;
+                        rgba_[pixel] = value;
+                        rgba_[pixel + 1U] = value;
+                        rgba_[pixel + 2U] = value;
+                        rgba_[pixel + 3U] = 255U;
+                    }
+                }
             };
             for (auto y = top - 4; y < bottom + 4; ++y) {
                 for (auto x = left - 6; x < right + 6; ++x) {
@@ -4044,6 +4054,22 @@ int main(int argc, char** argv) {
                         window.set_relative_mouse_mode(false);
                     }
                 }
+                if (exit_confirmation
+                    && event.type == SDL_EVENT_KEY_DOWN
+                    && !event.key.repeat && !exit_confirmation_key) {
+                    if (event.key.scancode == SDL_SCANCODE_LEFT
+                        || event.key.scancode == SDL_SCANCODE_UP) {
+                        exit_yes_selected = true;
+                    } else if (event.key.scancode == SDL_SCANCODE_RIGHT
+                               || event.key.scancode == SDL_SCANCODE_DOWN) {
+                        exit_yes_selected = false;
+                    } else if (event.key.scancode == SDL_SCANCODE_RETURN
+                               || event.key.scancode == SDL_SCANCODE_KP_ENTER
+                               || event.key.scancode == SDL_SCANCODE_SPACE) {
+                        if (exit_yes_selected) running = false;
+                        else exit_confirmation = false;
+                    }
+                }
                 if (event.type == SDL_EVENT_QUIT) {
                     running = false;
                 } else if (event.type == SDL_EVENT_WINDOW_FOCUS_GAINED) {
@@ -4482,6 +4508,28 @@ int main(int argc, char** argv) {
                     sampled_buttons & ~starfox::input::start);
             }
             input.sample(sampled_buttons);
+            if (exit_confirmation) {
+                // Host confirmation input is presentation-rate UI. Consuming
+                // it only inside a 60 Hz raster phase lost quick presses at
+                // 120+ FPS, making YES appear unable to exit.
+                const auto controls = input.consume();
+                if ((controls.pressed & (starfox::input::left
+                        | starfox::input::up)) != 0U) {
+                    exit_yes_selected = true;
+                }
+                if ((controls.pressed & (starfox::input::right
+                        | starfox::input::down)) != 0U) {
+                    exit_yes_selected = false;
+                }
+                if ((controls.pressed & starfox::input::b) != 0U) {
+                    exit_confirmation = false;
+                } else if ((controls.pressed & (starfox::input::a
+                               | starfox::input::start)) != 0U) {
+                    if (exit_yes_selected) running = false;
+                    else exit_confirmation = false;
+                }
+            }
+            if (!running) break;
             for (std::size_t player = 0;
                  player < secondary_inputs.size(); ++player) {
                 secondary_inputs[player].sample(
@@ -4552,22 +4600,6 @@ int main(int argc, char** argv) {
                     continue;
                 }
                 if (exit_confirmation) {
-                    const auto controls = input.consume();
-                    if ((controls.pressed & (starfox::input::left
-                            | starfox::input::right | starfox::input::up
-                            | starfox::input::down)) != 0U) {
-                        exit_yes_selected = !exit_yes_selected;
-                    }
-                    if ((controls.pressed & starfox::input::b) != 0U) {
-                        exit_confirmation = false;
-                    } else if ((controls.pressed & (starfox::input::a
-                                   | starfox::input::start)) != 0U) {
-                        if (exit_yes_selected) {
-                            running = false;
-                        } else {
-                            exit_confirmation = false;
-                        }
-                    }
                     // Freeze source video, simulation and input underneath
                     // the host confirmation card.
                     continue;
@@ -5331,6 +5363,7 @@ int main(int argc, char** argv) {
                 CameraPoint position;
                 double source_depth{};
                 starfox::simulation::MatrixQ15 object_matrix{};
+                starfox::simulation::MatrixQ15 source_object_matrix{};
             };
             std::vector<VisibleObject> visible;
             auto camera = starfox::timing::interpolate(
@@ -5455,7 +5488,8 @@ int main(int argc, char** argv) {
                     current_transform->second.transform.z,
                     source_camera, source_view_matrix);
                 visible.push_back({handle, transform, position,
-                    source_position.z, object_matrix});
+                    source_position.z, object_matrix,
+                    current_transform->second.rotation_matrix});
             }
             const auto game_frame = static_cast<std::uint8_t>(
                 game.map().read_native_byte(game_frame_address) & 0x7fU);
@@ -5558,6 +5592,17 @@ int main(int argc, char** argv) {
                 pose.rotation_matrix = starfox::simulation::multiply_matrix_q15(
                     object_matrix, view_matrix);
                 pose.use_rotation_matrix = true;
+                auto source_object_matrix = item.source_object_matrix;
+                if (shadow) {
+                    source_object_matrix[1] = 0;
+                    source_object_matrix[4] = 0;
+                    source_object_matrix[7] = 0;
+                }
+                pose.source_depth = item.source_depth;
+                pose.source_lighting_matrix =
+                    starfox::simulation::multiply_matrix_q15(
+                        source_object_matrix, source_view_matrix);
+                pose.use_source_lighting_state = true;
                 pose.subpixel_projection = !game.paused()
                     && game.presentation_fps() > 20U
                     && interpolation_alpha > 0.0
@@ -6595,14 +6640,24 @@ int main(int argc, char** argv) {
                          exit_confirmation_overlay.width())
                         - text_renderer.measure_ascii(prompt)) / 2,
                     4, exit_confirmation_overlay, 1U, 0U);
-                const auto choices = exit_yes_selected
-                    ? std::string_view{"> YES       NO"}
-                    : std::string_view{"  YES     > NO"};
-                text_renderer.draw_ascii(choices,
+                constexpr std::string_view choices{"YES       NO"};
+                const auto choices_x =
                     (static_cast<std::int32_t>(
                          exit_confirmation_overlay.width())
-                        - text_renderer.measure_ascii(choices)) / 2,
+                        - text_renderer.measure_ascii(choices)) / 2;
+                text_renderer.draw_ascii(choices,
+                    choices_x,
                     22, exit_confirmation_overlay, 1U, 0U);
+                const auto selected_x = exit_yes_selected
+                    ? choices_x
+                    : choices_x + text_renderer.measure_ascii("YES       ");
+                const auto selected_width = text_renderer.measure_ascii(
+                    exit_yes_selected ? std::string_view{"YES"}
+                                      : std::string_view{"NO"});
+                for (auto x = 0; x < selected_width; ++x) {
+                    exit_confirmation_overlay.set(
+                        selected_x + x, 35, 1U);
+                }
             }
             auto base_palette = starfox::render::decode_bgr555_palette(
                 game.map().ppu_state().cgram);

@@ -277,6 +277,86 @@ int main() {
     require(scaled_surface_pixels == scaled_coloured_pixels,
             "scaled polygon surface metadata diverged from its raster");
 
+    // COLSMOOTH's $c000 flag pair is not a two-nibble dither descriptor.
+    // Audit every exposed scale because the erroneous black nibble was subtle
+    // at native resolution and became a large checkerboard in 10x reports.
+    auto smooth_descriptor_shape = shape;
+    smooth_descriptor_shape.bsp_root_address = 0U;
+    smooth_descriptor_shape.faces.front().visibility_index = -1;
+    const auto smooth_colour =
+        smooth_descriptor_shape.faces.front().colour_id;
+    smooth_descriptor_shape.colour_words[smooth_colour] = 0xc909U;
+    smooth_descriptor_shape.colour_materials[
+        smooth_colour].animation_frames.clear();
+    auto solid_reference_shape = smooth_descriptor_shape;
+    solid_reference_shape.colour_words[smooth_colour] = 0x3f99U;
+    for (std::uint32_t scale = 1U; scale <= 10U; ++scale) {
+        starfox::render::RenderSettings audit_settings;
+        audit_settings.focal_length = 180.0;
+        audit_settings.render_scale = scale;
+        const starfox::render::SoftwareRenderer audit_renderer{
+            audit_settings};
+        starfox::render::Framebuffer smooth_frame{224U, 192U, scale};
+        starfox::render::Framebuffer solid_frame{224U, 192U, scale};
+        audit_renderer.draw(
+            smooth_descriptor_shape, {}, smooth_frame, true);
+        audit_renderer.draw(
+            solid_reference_shape, {}, solid_frame, true);
+        require(smooth_frame.pixels() == solid_frame.pixels(),
+            "COLSMOOTH produced a checkerboard at a Render Upscale setting");
+    }
+
+    // High-FPS geometry can cross a depth/light boundary between completed
+    // 20 Hz source frames. MOBJ retains the source band and source matrix for
+    // that interval; presentation interpolation must not dim the face early.
+    auto source_lit_shape = solid_reference_shape;
+    source_lit_shape.colour_words[smooth_colour] = 0x0000U;
+    source_lit_shape.has_diffuse_shade_tables = true;
+    for (std::size_t depth = 0U;
+         depth < source_lit_shape.diffuse_shade_tables.size(); ++depth) {
+        for (auto& material : source_lit_shape.diffuse_shade_tables[depth]) {
+            for (std::size_t intensity = 0U;
+                 intensity < material.size(); ++intensity) {
+                // Band zero preserves the light intensity (identity source
+                // matrix -> intensity 9; interpolated flipped-Z matrix -> 6).
+                // Later bands use distinct constants so this one raster also
+                // catches an early depth-band transition.
+                const auto colour = static_cast<std::uint8_t>(depth == 0U
+                    ? intensity + 6U : depth + 1U);
+                material[intensity] = static_cast<std::uint8_t>(
+                    colour | (colour << 4U));
+            }
+        }
+    }
+    starfox::render::RenderPose source_lighting_pose;
+    source_lighting_pose.z = 1'100.0;
+    source_lighting_pose.depth_thresholds = {1'000, 2'000, 3'000};
+    source_lighting_pose.use_rotation_matrix = true;
+    source_lighting_pose.rotation_matrix = {
+        32'767, 0, 0,
+        0, 32'767, 0,
+        0, 0, -32'767,
+    };
+    source_lighting_pose.source_depth = 900.0;
+    source_lighting_pose.source_lighting_matrix = {
+        32'767, 0, 0,
+        0, 32'767, 0,
+        0, 0, 32'767,
+    };
+    source_lighting_pose.use_source_lighting_state = true;
+    starfox::render::Framebuffer source_lighting_frame{224U, 192U};
+    renderer.draw(source_lit_shape, source_lighting_pose,
+        source_lighting_frame, true);
+    require(std::any_of(source_lighting_frame.pixels().begin(),
+                source_lighting_frame.pixels().end(),
+                [](std::uint8_t pixel) { return pixel == 9U; })
+            && std::none_of(source_lighting_frame.pixels().begin(),
+                source_lighting_frame.pixels().end(),
+                [](std::uint8_t pixel) {
+                    return pixel == 2U || pixel == 6U;
+                }),
+        "interpolated presentation dimmed lighting before the source frame");
+
     auto reverse_winding_shape = shape;
     reverse_winding_shape.bsp_root_address = 0U;
     reverse_winding_shape.faces.front().visibility_index = -1;

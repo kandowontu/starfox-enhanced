@@ -1316,6 +1316,16 @@ FaceMaterial face_material(
         return {{15, 15, false},
             texture == shape.textures.end() ? nullptr : &*texture};
     }
+    // COLSMOOTH sets both descriptor flag bits. It is not an ordinary
+    // two-nibble colour: the low nibble names the solid material and MOBJ's
+    // smooth-shade path supplies coverage separately. Treating $C909 as $09
+    // produced a black/green checkerboard on every render scale (most visible
+    // at 10x). Retain the descriptor's actual material as a solid face rather
+    // than inventing an alternating black nibble.
+    if ((word & 0xc000U) == 0xc000U) {
+        const auto colour = static_cast<std::uint8_t>(word & 0x0fU);
+        return {{colour, colour, false}, nullptr};
+    }
     const auto material = static_cast<std::uint8_t>(word >> 8U);
     auto byte = static_cast<std::uint8_t>(word);
     if (material < 62U && shape.has_diffuse_shade_tables
@@ -1507,9 +1517,11 @@ void SoftwareRenderer::draw(
     const auto& vertices = shape.frames.empty()
         ? shape.vertices
         : shape.frames[pose.animation_frame % shape.frames.size()].vertices;
+    const auto shading_depth = pose.use_source_lighting_state
+        ? pose.source_depth : pose.z;
     auto depth_band = std::size_t{};
     while (depth_band < pose.depth_thresholds.size()
-           && pose.z >= pose.depth_thresholds[depth_band]) {
+           && shading_depth >= pose.depth_thresholds[depth_band]) {
         ++depth_band;
     }
     std::array<std::int8_t, 3> light{73, 73, 73};
@@ -1518,8 +1530,10 @@ void SoftwareRenderer::draw(
         // MDOTPROD16MQ calls explicitly consume its rows. Transpose before
         // using the shared column-vector helper so the source light follows
         // object orientation instead of being rotated by the inverse basis.
+        const auto& lighting_matrix = pose.use_source_lighting_state
+            ? pose.source_lighting_matrix : pose.rotation_matrix;
         const auto transformed_light = starfox::simulation::transform_q15(
-            starfox::simulation::transpose_q15(pose.rotation_matrix),
+            starfox::simulation::transpose_q15(lighting_matrix),
             {18'917, 18'917, 18'917});
         for (std::size_t index = 0; index < light.size(); ++index) {
             light[index] = std::bit_cast<std::int8_t>(static_cast<std::uint8_t>(
