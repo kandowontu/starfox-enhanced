@@ -3,12 +3,12 @@ plugins {
 }
 
 android {
-    namespace 'com.sunlitspace.starfoxenhanced'
+    namespace 'com.starfox.enhanced'
     compileSdk 35
     ndkVersion '28.2.13676358'
 
     defaultConfig {
-        applicationId 'com.sunlitspace.starfoxenhanced'
+        applicationId 'com.starfox.enhanced'
         minSdk 26
         targetSdk 35
         versionCode 3

@@ -361,7 +361,7 @@ if(STARFOX_BUILD_RUNTIME)
             MACOSX_BUNDLE TRUE
             OUTPUT_NAME "StarFoxEnhanced"
             MACOSX_BUNDLE_BUNDLE_NAME "Star Fox Enhanced"
-            MACOSX_BUNDLE_GUI_IDENTIFIER "com.sunlitspace.starfoxenhanced"
+            MACOSX_BUNDLE_GUI_IDENTIFIER "com.starfox.enhanced"
             MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
             MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
             MACOSX_BUNDLE_INFO_PLIST

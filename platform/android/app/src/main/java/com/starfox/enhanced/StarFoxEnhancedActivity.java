@@ -1,4 +1,4 @@
-package com.sunlitspace.starfoxenhanced;
+package com.starfox.enhanced;
 
 import org.libsdl.app.SDLActivity;
 
