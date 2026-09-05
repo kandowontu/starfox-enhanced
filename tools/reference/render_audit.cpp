@@ -12,6 +12,8 @@
 #include <set>
 #include <sstream>
 #include <stdexcept>
+#include "math_audit.hpp"
+#include "dust_audit.hpp"
 
 using namespace starfox;
 namespace {
@@ -50,12 +52,13 @@ uint64_t hash(const render::Framebuffer& frame) {
 int main(int argc, char** argv) {
     try {
         if (argc != 6) {
-            std::cerr << "Usage: render_audit CORE_DLL ROM SYMBOLS all|all-frames|[sprites:]NAME,NAME OUTPUT.csv\n";
+            std::cerr << "Usage: render_audit CORE_DLL ROM SYMBOLS all|all-frames|matrices|points|dust|[sprites:]NAME,NAME OUTPUT.csv\n";
             return 2;
         }
         auto rom = assets::RomImage::load(argv[2]);
         auto symbols = assets::SymbolMap::load(argv[3]);
         assets::ShapeDecoder decoder(rom, symbols);
+        const auto trig = simulation::TrigTables::load(rom, symbols);
         const auto address = [&](const std::string& name) {
             const auto matches = symbols.find(name);
             if (matches.empty()) throw std::runtime_error("Missing symbol: " + name);
@@ -103,6 +106,14 @@ int main(int argc, char** argv) {
             ram[(location + 1) & 65535] = static_cast<uint8_t>(value >> 8);
         };
         const std::string mode = argv[4];
+        if (mode == "matrices" || mode == "points" || mode == "dust") {
+            const auto result = mode == "dust" ? audit_dust(rom, symbols, ram, gsu, gsu_call, argv[5])
+                : audit_math(rom, symbols, ram, gsu, gsu_call, mode, argv[5]);
+            retro_unload_game();
+            retro_deinit();
+            FreeLibrary(core);
+            return result;
+        }
         const bool sprites = mode.starts_with("sprites:");
         if (sprites && !gsu_call) throw std::runtime_error("Reference call bridge is not installed");
         const bool census = mode == "all" || mode == "all-frames";
@@ -199,8 +210,16 @@ int main(int argc, char** argv) {
                             shape.header, static_cast<int8_t>(adjustment));
                     }
                     pose.use_rotation_matrix = true;
+                    simulation::MatrixQ15 native_matrix{};
                     for (unsigned i = 0; i < 9; ++i)
-                        pose.rotation_matrix[i] = static_cast<int16_t>(word(address("M_MAT11") + 2 * i));
+                        native_matrix[i] = static_cast<int16_t>(word(address("M_MAT11") + 2 * i));
+                    constexpr simulation::MatrixQ15 world{
+                        32767, 0, 0, 0, 32767, 0, 0, 0, 32767};
+                    const auto object_matrix = simulation::transpose_q15(
+                        simulation::rotation_matrix_q15(trig, 0,
+                            simulation::wrap16(-static_cast<int>(yaw)), 0));
+                    pose.rotation_matrix = simulation::compose_model_matrix_q15(
+                        object_matrix, world, 0, yaw, 0);
                     const auto threshold = word(address("M_DEPTHTABLE"));
                     const auto colour = word(address("M_DEPTHSTAB"));
                     render::apply_source_depth_tables(rom, address("DEPTHTABLES"),
@@ -233,7 +252,7 @@ int main(int argc, char** argv) {
                             << yaw << ',' << depth << ',' << native_pixels << ',' << port_pixels << ','
                             << different << ',' << mask << ',' << hash(native) << ',' << hash(port)
                             << ',' << threshold << ',' << colour;
-                        for (const auto value : pose.rotation_matrix) output << ',' << value;
+                        for (const auto value : native_matrix) output << ',' << value;
                     }
                     output << '\n';
                 }

@@ -3229,10 +3229,19 @@ starfox::simulation::CircleEffectState interpolate_circle_effect(
 CameraPoint world_to_camera(
     double x, double y, double z,
     const starfox::timing::RenderTransform& camera,
-    const starfox::simulation::MatrixQ15& matrix) {
+    const starfox::simulation::MatrixQ15& matrix,
+    bool word_exact = false) {
     x = source_word_difference(x, camera.x);
     y = source_word_difference(y, camera.y);
     z = source_word_difference(z, camera.z);
+    if (word_exact) {
+        const auto point = starfox::simulation::transform_q15(matrix, {
+            starfox::simulation::wrap16(std::llround(x)),
+            starfox::simulation::wrap16(std::llround(y)),
+            starfox::simulation::wrap16(std::llround(z))});
+        return {static_cast<double>(point[0]), static_cast<double>(point[1]),
+            static_cast<double>(point[2])};
+    }
     constexpr auto q15 = 32'768.0;
     return {
         (x * matrix[0] + y * matrix[3] + z * matrix[6]) / q15,
@@ -3814,6 +3823,7 @@ int main(int argc, char** argv) {
         const auto stay_black_address = ram_symbol("STAYBLACK");
         const auto vanish_x_address = mario_symbol("M_VANISHX");
         const auto vanish_y_address = mario_symbol("M_VANISHY");
+        const auto planet_stars_address = mario_symbol("M_PLANETSTARS");
         const auto native_model_z_address = active_experience
                 == starfox::simulation::Experience::starfox_ex
             ? mario_symbol("M_BIGZ") : 0U;
@@ -5292,6 +5302,8 @@ int main(int argc, char** argv) {
             // between adjacent integer projections on high-refresh displays.
             const auto interpolation_alpha = game.paused() ? 1.0
                 : game.logic_interpolation_alpha(raster_batch.phase_fraction);
+            const auto exact_source_positions = render_scale == 1U
+                && (interpolation_alpha == 0.0 || interpolation_alpha == 1.0);
             if (interpolation_alpha > 0.0 && interpolation_alpha < 1.0) {
                 ++profile_fractional_presentations;
             }
@@ -5919,8 +5931,17 @@ int main(int argc, char** argv) {
                 || game.flow_state()
                     == starfox::simulation::GameFlowState::controls_choice;
             if (!planet_screen && game.map().dots_mode() < 0) {
+                starfox::render::DustRenderState dust_state;
+                dust_state.subpixel_projection = !game.paused()
+                    && interpolation_alpha > 0.0 && interpolation_alpha < 1.0;
+                dust_state.planet_stars = game.map().read_native_byte(planet_stars_address);
+                dust_state.vanish_x = static_cast<std::int16_t>(
+                    game.map().read_native_word(vanish_x_address) + superfx_ui_offset_x);
+                dust_state.vanish_y = static_cast<std::int16_t>(
+                    game.map().read_native_word(vanish_y_address)
+                    + (extend_scene_vertical ? superfx_offset_y : 0));
                 dust_renderer.draw(game.dust(), game.dust_point_count(),
-                    camera, view_matrix, superfx_frame);
+                    camera, view_matrix, superfx_frame, dust_state);
             } else if (!planet_screen && game.map().dots_mode() > 0) {
                 if (grid_lines_address != 0U
                     && game.map().read_native_word(grid_lines_address) != 0U) {
@@ -6009,12 +6030,13 @@ int main(int argc, char** argv) {
                         current_transform->second.rotation_matrix,
                         transform_alpha);
                 const auto position = world_to_camera(
-                    transform.x, transform.y, transform.z, camera, view_matrix);
+                    transform.x, transform.y, transform.z, camera, view_matrix,
+                    exact_source_positions);
                 const auto source_position = world_to_camera(
                     current_transform->second.transform.x,
                     current_transform->second.transform.y,
                     current_transform->second.transform.z,
-                    source_camera, source_view_matrix);
+                    source_camera, source_view_matrix, true);
                 visible.push_back({handle, transform, position,
                     source_position.z, object_matrix,
                     current_transform->second.rotation_matrix});
@@ -6089,7 +6111,7 @@ int main(int argc, char** argv) {
                     (object.strategy_flags[0] & 0x04U) != 0U;
                 const auto position = shadow && !true_colour_shadow
                     ? world_to_camera(item.transform.x, shadow_height,
-                        item.transform.z, camera, view_matrix)
+                        item.transform.z, camera, view_matrix, exact_source_positions)
                     : item.position;
                 starfox::render::RenderPose pose;
                 pose.x = position.x;
@@ -6105,31 +6127,21 @@ int main(int argc, char** argv) {
                 pose.vanish_y = static_cast<std::int16_t>(
                     game.map().read_native_word(vanish_y_address)
                     + (extend_scene_vertical ? superfx_offset_y : 0));
-                auto object_matrix = item.object_matrix;
-                if (shadow) {
-                    // mshowshadow clears rmat12/rmat22/rmat32 before the
-                    // object matrix is composed with the view matrix.
-                    object_matrix[1] = 0;
-                    object_matrix[4] = 0;
-                    object_matrix[7] = 0;
-                    if (!true_colour_shadow) {
-                        pose.force_colour = true;
-                        pose.forced_colour = 0x09U;
-                    }
+                if (shadow && !true_colour_shadow) {
+                    pose.force_colour = true;
+                    pose.forced_colour = 0x09U;
                 }
-                pose.rotation_matrix = starfox::simulation::multiply_matrix_q15(
-                    object_matrix, view_matrix);
+                pose.rotation_matrix = starfox::simulation::compose_model_matrix_q15(
+                    item.object_matrix, view_matrix, item.transform.pitch,
+                    item.transform.yaw, item.transform.roll, shadow);
                 pose.use_rotation_matrix = true;
-                auto source_object_matrix = item.source_object_matrix;
-                if (shadow) {
-                    source_object_matrix[1] = 0;
-                    source_object_matrix[4] = 0;
-                    source_object_matrix[7] = 0;
-                }
                 pose.source_depth = item.source_depth;
                 pose.source_lighting_matrix =
-                    starfox::simulation::multiply_matrix_q15(
-                        source_object_matrix, source_view_matrix);
+                    starfox::simulation::compose_model_matrix_q15(
+                        item.source_object_matrix, source_view_matrix,
+                        static_cast<unsigned>(object.rotation_x) * 256U,
+                        static_cast<unsigned>(object.rotation_y) * 256U,
+                        static_cast<unsigned>(object.rotation_z) * 256U, shadow);
                 pose.use_source_lighting_state = true;
                 pose.subpixel_projection = !game.paused()
                     && game.presentation_fps() > 20U

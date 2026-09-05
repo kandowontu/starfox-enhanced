@@ -40,6 +40,12 @@ using MatrixQ15 = std::array<std::int16_t, 9>;
 [[nodiscard]] MatrixQ15 transpose_q15(const MatrixQ15& matrix) noexcept;
 [[nodiscard]] MatrixQ15 multiply_matrix_q15(
     const MatrixQ15& left, const MatrixQ15& right) noexcept;
+// MSHOWO has exact-copy and sign-flip paths for (0,0,0) and (0,180,0).
+// Angles use 65536 units per revolution; fractional presentation angles
+// retain the general matrix path. Shadow flattening belongs to this step.
+[[nodiscard]] MatrixQ15 compose_model_matrix_q15(
+    const MatrixQ15& object, const MatrixQ15& view,
+    double pitch, double yaw, double roll, bool shadow = false) noexcept;
 // Presentation-only normalized matrix interpolation. This is deliberately
 // separate from source state: it smooths rotations between 20 Hz updates
 // without feeding fractional transforms back into cartridge simulation.

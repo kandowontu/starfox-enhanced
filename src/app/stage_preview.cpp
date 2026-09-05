@@ -323,7 +323,9 @@ int main(int argc, char** argv) {
                 static_cast<double>(camera_z), static_cast<double>(camera_pitch),
                 static_cast<double>(camera_yaw), static_cast<double>(camera_roll)};
             dust_renderer.draw(game.dust(), game.dust_point_count(),
-                camera, view_matrix, framebuffer);
+                camera, view_matrix, framebuffer,
+                {false, game.map().read_native_byte(mario_symbol("M_PLANETSTARS")),
+                    vanish_x, vanish_y});
         } else if (game.map().dots_mode() > 0) {
             const starfox::timing::RenderTransform camera{
                 static_cast<double>(camera_x), static_cast<double>(camera_y),
@@ -421,7 +423,7 @@ int main(int argc, char** argv) {
             pose.roll = static_cast<std::uint16_t>(object.rotation_z) << 8U;
             pose.vanish_x = vanish_x;
             pose.vanish_y = vanish_y;
-            auto object_matrix = starfox::simulation::transpose_q15(
+            const auto object_matrix = starfox::simulation::transpose_q15(
                 starfox::simulation::rotation_matrix_q15(
                     trigonometry,
                     starfox::simulation::wrap16(-static_cast<std::int32_t>(
@@ -430,17 +432,12 @@ int main(int argc, char** argv) {
                         static_cast<std::uint16_t>(object.rotation_y) << 8U)),
                     starfox::simulation::wrap16(-static_cast<std::int32_t>(
                         static_cast<std::uint16_t>(object.rotation_z) << 8U))));
-            if (shadow) {
-                object_matrix[1] = 0;
-                object_matrix[4] = 0;
-                object_matrix[7] = 0;
-                if (!true_colour_shadow) {
-                    pose.force_colour = true;
-                    pose.forced_colour = 0x09U;
-                }
+            if (shadow && !true_colour_shadow) {
+                pose.force_colour = true;
+                pose.forced_colour = 0x09U;
             }
-            pose.rotation_matrix = starfox::simulation::multiply_matrix_q15(
-                object_matrix, view_matrix);
+            pose.rotation_matrix = starfox::simulation::compose_model_matrix_q15(
+                object_matrix, view_matrix, pose.pitch, pose.yaw, pose.roll, shadow);
             pose.use_rotation_matrix = true;
             pose.animation_frame = display_frame(object.animation_frame);
             pose.colour_frame = display_frame(object.colour_frame);

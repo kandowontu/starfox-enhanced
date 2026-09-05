@@ -387,6 +387,18 @@ void test_camera_cuts_are_not_interpolated() {
             "short camera motion across the source-word wrap became a cut");
 }
 
+void test_stationary_source_matrix_stays_exact() {
+    // Native Q15 rotations are not perfectly orthonormal. Normalizing two
+    // identical endpoints changed constant geometry between source updates.
+    const starfox::simulation::MatrixQ15 matrix{
+        32766, 0, 0, 0, 32766, 0, 0, 0, 32766};
+    for (const auto alpha : {0.0, 0.01, 0.25, 0.5, 0.99, 1.0}) {
+        require(starfox::simulation::interpolate_rotation_matrix_q15(matrix, matrix, alpha)
+                == matrix,
+            "stationary source matrix changed between presentation frames");
+    }
+}
+
 void test_invalid_frequency_is_rejected() {
     bool threw = false;
     try {
@@ -432,6 +444,7 @@ int main() {
     test_coordinate_interpolation_wraps_like_source_words();
     test_rotation_matrix_interpolation_is_orthonormal();
     test_camera_cuts_are_not_interpolated();
+    test_stationary_source_matrix_stays_exact();
     test_invalid_frequency_is_rejected();
     test_input_edges_survive_between_ticks();
     std::cout << "All timing tests passed.\n";

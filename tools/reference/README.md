@@ -47,8 +47,9 @@ A mutation restoring the old line accumulator fails these checks on `AIR_1`.
 
 ## What the comparison establishes
 
-Both sides share the cartridge's final model matrix and depth-table selectors,
-which are recorded in each CSV row. The port independently decodes the geometry,
+Both sides share the depth-table selectors recorded in each CSV row. The port
+now constructs its own model matrix and verifies it against the recorded native
+matrix before checking pixels. It independently decodes the geometry,
 visibility, materials and textures and projects/rasterizes them. The reference
 executes the actual cartridge code for that work. Pixels are hashed in row-major
 order using FNV-1a 64 (offset `14695981039346656037`, prime `1099511628211`). The
@@ -57,12 +58,46 @@ CSV also records visible-pixel counts and exact colour/mask difference counts.
 The fixture uses a neutral world matrix, zero translation in X/Y, no colour
 animation, no explosion and no EX rendering modifiers. SRAM is restored from
 the same 600-frame boot snapshot before each case. This validates isolated
-model rendering, not host camera/matrix construction, scene composition,
+model rendering, not complete scene composition,
 collision, palette RGB output, sound or cycle timing. Compact headers and
 runtime LOD selection require separate tests. Effects/sprite headers can need
 live scene state absent here; their census differences remain unclassified
 until that state is supplied. Enhanced interpolation and resolutions have
 separate tests and intentionally do not match the native pixel grid.
+
+## Camera, model and star-field comparisons
+
+The `matrices` and `points` modes execute MCROTWMATZXY16, MSHOWOBJ3,
+MSHOWSHADOW and MWMATROTP16 with 207 camera orientations, including fractional
+source angles, cardinal angles and a seeded random set. Nine object orientations
+exercise both direct-copy shortcuts and general composition, with and without
+shadows: **3,726 model/shadow matrices and 9,729 world points per game**.
+The regular tests also launch the host's translated GSU math entry points, so
+both the renderer math and the CPU adapter are checked against native words.
+
+The `dust` mode executes MINITDUST and 192 consecutive MSHOWDUST updates per
+point-count setting. It covers camera movement and word wrap, rotated views,
+moving vanishing points, and stars/snow/pollen. Original uses 120 points; EX
+tests 120 and 511. All **579 point states (including initialization) and 576
+framebuffers** match. The fixture returns through the cartridge's own RPIX/STOP
+to flush its final pixel-cache tile; it does not patch cartridge instructions.
+
+```powershell
+& $audit $core upstream-ultrastarfox/SF.SFC upstream-ultrastarfox/SYMBOLS.TXT matrices tests/data/reference-matrices-original.csv
+& $audit $core upstream-ultrastarfox/SF.SFC upstream-ultrastarfox/SYMBOLS.TXT points tests/data/reference-points-original.csv
+& $audit $core upstream-ultrastarfox/SF.SFC upstream-ultrastarfox/SYMBOLS.TXT dust tests/data/reference-dust-original.csv
+& $audit $core tmp/runtime-inputs/starfox-ex/SFES.SFC assets/symbols/starfox-ex.txt matrices tests/data/reference-matrices-ex.csv
+& $audit $core tmp/runtime-inputs/starfox-ex/SFES.SFC assets/symbols/starfox-ex.txt points tests/data/reference-points-ex.csv
+& $audit $core tmp/runtime-inputs/starfox-ex/SFES.SFC assets/symbols/starfox-ex.txt dust tests/data/reference-dust-ex.csv
+```
+
+These modes return nonzero on any mismatch; their entire output is retained.
+Dust point hashes consume X/Y/Z signed words as little-endian bytes, in point
+order. Frame hashes consume native 4-bit pixels in row-major order. Both use
+the FNV-1a constants above. An initialization row has frame=-1 and frame_hash=0.
+Separate mutation builds restoring general multiplication for every model
+orientation or the old dust recycling fail at the first affected reference row.
+These checks do not validate cycle timing, every full scene, or physical output.
 
 ## Desktop audio output trace
 

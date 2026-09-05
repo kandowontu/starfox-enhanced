@@ -1,0 +1,24 @@
+[OUTPUT] 
+Internal ctest changing into directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+
+[HANDLER_OUTPUT] 
+Test project C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+
+    Start 42: starfox_ex_reference_render
+    Start 17: starfox_upstream_reference_render
+1/7 Test #17: starfox_upstream_reference_render ....   Passed    1.35 sec
+    Start 44: starfox_ex_reference_sprites
+2/7 Test #44: starfox_ex_reference_sprites .........   Passed    0.16 sec
+    Start 20: starfox_upstream_reference_sprites
+3/7 Test #20: starfox_upstream_reference_sprites ...   Passed    0.04 sec
+    Start  4: starfox_core_tests
+4/7 Test  #4: starfox_core_tests ...................   Passed    0.02 sec
+    Start 18: starfox_upstream_reference_math
+5/7 Test #18: starfox_upstream_reference_math ......   Passed    0.09 sec
+    Start 43: starfox_ex_reference_math
+6/7 Test #43: starfox_ex_reference_math ............   Passed    0.05 sec
+7/7 Test #42: starfox_ex_reference_render ..........   Passed    2.09 sec
+
+100% tests passed, 0 tests failed out of 7
+
+Total Test time (real) =   2.10 sec

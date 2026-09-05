@@ -7,6 +7,13 @@
 
 namespace starfox::render {
 
+struct DustRenderState {
+    bool subpixel_projection{};
+    std::uint8_t planet_stars{};
+    std::int16_t vanish_x{112};
+    std::int16_t vanish_y{96};
+};
+
 class DustRenderer {
 public:
     DustRenderer(
@@ -18,7 +25,8 @@ public:
         std::size_t active_count,
         const timing::RenderTransform& camera,
         const simulation::MatrixQ15& view_matrix,
-        Framebuffer& target) const noexcept;
+        Framebuffer& target,
+        const DustRenderState& state = {}) const noexcept;
 
     void draw_grid(
         const timing::RenderTransform& camera,
@@ -34,6 +42,8 @@ public:
 private:
     const assets::RomImage* rom_{};
     std::uint32_t star_colours_{};
+    std::uint32_t snow_colours_{};
+    std::uint32_t depth_table_{};
     mutable bool grid_line_state_initialized_{};
     mutable std::uint64_t grid_line_source_frame_{};
     mutable std::int16_t grid_line_previous_x_{};

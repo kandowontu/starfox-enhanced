@@ -36,6 +36,8 @@ changes inside upstream-ultrastarfox were preserved.
 | EX reticles and scaled sprites | Gameplay uses MSSPRITE, not MSHOWOBJ3. Correct the source diameter formula, EX's deliberate bypass of SH_SHIFT, Q15 projection, centre rounding, small/large texture stepping and clipping in source texels. All 1,950 EX reticle and 150 Original fireball cases match independent cartridge pixels. Both desktop and stage preview use the corrected diameter calculation. |
 | Route 2/3 speed swings (new screenshot) | Fixed a confirmed output-limiter bug: missed deadlines accumulated for up to 250 ms, allowing uncapped catch-up draws when rendering became cheaper. Rebase the next output interval on the late completion immediately; keep the independent elapsed-time simulation clock. A mutation restoring the old behavior fails the burst regression. 56 one-minute route 2/3 replays across both games/paces match every source movement/roll/cadence sample at steady 60/90 FPS, varying 47–59 FPS and 100 ms stalls, with FPS display off/on. Actual barrel rolls are asserted. Original pace still uses an object-count slowdown approximation; that separate full-parity limitation remains. |
 | MIT license request | Added MIT LICENSE for project-owned code/documentation and included it in desktop, Switch and Vita packaging. Existing third-party licenses and game/music/asset ownership remain separate, as documented in README and THIRD_PARTY_NOTICES. |
+| Camera/model composition | MOBJ copies the world matrix directly for zero object rotation and negates two rows for a half-turn yaw; multiplying in those paths introduced extra rounding. Restore both shortcuts and their shadow handling. Identical matrices now remain unchanged during interpolation. Native-resolution object positions and source lighting depth use per-product Q15 rounding. All 3,726 model/shadow matrices and 9,729 world-point cases per game match independent GSU words. |
+| Stars, snow and pollen | MSHOWDUST feeds carry through its random generator and six coordinate shifts, then retries out-of-range/behind-camera points. The port used five shifts, a different carry stream and no retry. Restore the native point stream, ZTAB projection, vertical two-pixel stars, bottom-row SRAM alias and snow/pollen colours. Desktop and preview pass native vanishing-point and particle-colour state. All 579 point states and 576 framebuffers match across both games, including EX's 511-point option. |
 
 ## Coverage and practical limits
 
@@ -75,9 +77,12 @@ fail on AIR_1. No Snes9x core or ROM is included in the game's package.
 
 See [reference tool documentation](../tools/reference/README.md) for the pinned
 source revision, cartridge hashes, clean build, commands, golden selection and
-fixture limitations. The comparison supplies the native model matrix to both
-renderers, so it does not validate host camera/matrix composition. RGB palette
-composition, every scene/input/route and cycle timing remain separate concerns.
+fixture limitations. The mesh tests now construct the port model matrix and
+compare it with the recorded native matrix. Separate matrix, shadow and point
+fixtures validate the camera math and the CPU adapter's translated GSU entry
+points. The source star-field checks validate persistent point state and pixels
+through 192 consecutive updates per count setting. RGB palette composition,
+every scene/input/route and cycle timing remain separate concerns.
 
 ## Reproduction
 
@@ -94,6 +99,15 @@ addresses; do not interpret those particular diagnostic fields as EX state.
 
 ## Validation and local candidate
 
+- Camera/star-field follow-up: **17/17 affected tests passed in 197.61 seconds**,
+  `docs/validation/ctest-20260905-camera-and-dust.log`, with detailed output beside
+  it. Includes both long simulation suites, live Wolf/credits regressions,
+  route timing replays, hit-list suites, 42,678 mesh/sprite pixel hashes,
+  26,910 model/shadow/world-point cases, and 579 star-field states. Separate
+  mutation builds fail when either the model shortcut or dust-recycling fix
+  is removed. Four fresh desktop captures exercise LEVEL2_1 ground/shadows
+  and LEVEL2_2 stars in both games; these are smoke/visual checks, not native
+  full-scene pixel comparisons or FPS-limiter measurements.
 - Latest full suite: **48/48 passed in 362.62 seconds**,
   `docs/validation/ctest-20260905-pacing-and-sprites.log`. This includes the
   40,578 mesh/2,100 sprite goldens and all 56 route timing replays. The latest
@@ -146,12 +160,16 @@ addresses; do not interpret those particular diagnostic fields as EX state.
   not a measurement of the live FPS limiter.
 - Runtime map capture: `dist/StarFoxEnhanced-parity-test/validation/sector-y.bmp`.
   Credits/menu/Australia captures are in the other `validation` subdirectories.
+- The latest candidate includes the camera and star-field corrections. Fresh
+  captures are `validation/camera-dust-{original,ex}.bmp` and
+  `validation/stars-{original,ex}.bmp`. The 20 FPS/1x Original ground capture
+  and 90 FPS/4x captures use direct stage entry and bounded prerolls.
 
 SHA-256:
 
 ```text
 starfox_pc.exe
-5CA33354ADFA498BE3E4428F164CC42DC23F2CC0B0692B5D80FC2CE309CEA5ED
+E3B38F75655546EB9914A967D89A8367AFD3EEDAA338F96769280FC19A3D5994
 Starfox-Assets.BIN
 2F9A261C87F032F553952588E2EEB5DB747CBAF5FF0E5FCE7AF1862C9FC6541E
 Starfox-MSU1.PAK

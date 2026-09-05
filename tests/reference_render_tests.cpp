@@ -1,5 +1,6 @@
 #include "starfox/assets/shape_decoder.hpp"
 #include "starfox/render/software_renderer.hpp"
+#include "starfox/simulation/math.hpp"
 
 #include <fstream>
 #include <iostream>
@@ -14,6 +15,7 @@ int main(int argc, char** argv) {
         auto rom = starfox::assets::RomImage::load(argv[1]);
         auto symbols = starfox::assets::SymbolMap::load(argv[2]);
         starfox::assets::ShapeDecoder decoder(rom, symbols);
+        const auto trig = starfox::simulation::TrigTables::load(rom, symbols);
         starfox::render::SoftwareRenderer renderer;
         std::ifstream input(argv[3]);
         if (!input) throw std::runtime_error("Cannot read reference CSV");
@@ -52,8 +54,18 @@ int main(int argc, char** argv) {
                 pose.z = std::stod(fields[4]);
                 pose.animation_frame = static_cast<uint32_t>(std::stoul(fields[2]));
                 pose.use_rotation_matrix = true;
-                for (unsigned i = 0; i < 9; ++i)
-                    pose.rotation_matrix[i] = static_cast<int16_t>(std::stoi(fields[13 + i]));
+                const auto yaw = static_cast<uint16_t>(std::stoul(fields[3]));
+                const auto object = starfox::simulation::transpose_q15(
+                    starfox::simulation::rotation_matrix_q15(trig, 0,
+                        starfox::simulation::wrap16(-static_cast<int>(yaw)), 0));
+                constexpr starfox::simulation::MatrixQ15 world{
+                    32767, 0, 0, 0, 32767, 0, 0, 0, 32767};
+                pose.rotation_matrix = starfox::simulation::compose_model_matrix_q15(
+                    object, world, 0, yaw, 0);
+                for (unsigned i = 0; i < 9; ++i) {
+                    if (pose.rotation_matrix[i] != static_cast<int16_t>(std::stoi(fields[13 + i])))
+                        throw std::runtime_error("Cartridge model matrix differs: " + fields[0]);
+                }
                 starfox::render::apply_source_depth_tables(rom, symbols.find("DEPTHTABLES").at(0),
                     static_cast<uint16_t>(std::stoul(fields[11])),
                     static_cast<uint16_t>(std::stoul(fields[12])), 0, pose);

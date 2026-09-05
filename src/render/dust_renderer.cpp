@@ -57,14 +57,16 @@ std::uint32_t rom_symbol(
 DustRenderer::DustRenderer(
     const assets::RomImage& rom,
     const assets::SymbolMap& symbols)
-    : rom_(&rom), star_colours_(rom_symbol(symbols, "STAR_COLS")) {}
+    : rom_(&rom), star_colours_(rom_symbol(symbols, "STAR_COLS")),
+      snow_colours_(rom_symbol(symbols, "SNOW_COLS")),
+      depth_table_(rom_symbol(symbols, "ZTAB")) {}
 
 void DustRenderer::draw(
     const simulation::DustSystem& dust,
     std::size_t active_count,
     const timing::RenderTransform& camera,
     const simulation::MatrixQ15& view_matrix,
-    Framebuffer& target) const noexcept {
+    Framebuffer& target, const DustRenderState& state) const noexcept {
     constexpr auto q15 = 32'768.0;
     active_count = std::min(active_count, dust.points().size());
     std::size_t index = 0;
@@ -72,37 +74,53 @@ void DustRenderer::draw(
         const auto x = source_word_difference(point.x, camera.x);
         const auto y = source_word_difference(point.y, camera.y);
         const auto z = source_word_difference(point.z, camera.z);
-        const auto camera_x = (x * view_matrix[0] + y * view_matrix[3]
+        auto camera_x = (x * view_matrix[0] + y * view_matrix[3]
             + z * view_matrix[6]) / q15;
-        const auto camera_y = (x * view_matrix[1] + y * view_matrix[4]
+        auto camera_y = (x * view_matrix[1] + y * view_matrix[4]
             + z * view_matrix[7]) / q15;
-        const auto camera_z = (x * view_matrix[2] + y * view_matrix[5]
+        auto camera_z = (x * view_matrix[2] + y * view_matrix[5]
             + z * view_matrix[8]) / q15;
+        if (!state.subpixel_projection) {
+            const auto point = simulation::transform_q15(view_matrix,
+                {camera_word(x), camera_word(y), camera_word(z)});
+            camera_x = point[0]; camera_y = point[1]; camera_z = point[2];
+        }
         if (camera_z < 256.0) {
             ++index;
             continue;
         }
-        const auto clipped_z = std::min(camera_z, 4'095.0);
-        const auto screen_x = static_cast<std::int32_t>(target.width() / 2U)
-            + static_cast<std::int32_t>(
-                std::trunc(camera_x * 256.0 / clipped_z));
-        const auto screen_y = static_cast<std::int32_t>(target.height() / 2U)
-            + static_cast<std::int32_t>(
-                std::trunc(camera_y * 256.0 / clipped_z));
+        const auto clipped_z = std::min(camera_z, double(kMaximumReciprocalDepth - 1));
+        const auto reciprocal = rom_->read_i16(depth_table_
+            + (static_cast<std::uint16_t>(clipped_z) & 0xfffeU));
+        const auto project = [&](double coordinate) {
+            return state.subpixel_projection
+                ? simulation::wrap16(static_cast<std::int32_t>(
+                    std::trunc(coordinate * 256.0 / clipped_z)))
+                : simulation::multiply_q15(camera_word(coordinate), reciprocal);
+        };
+        const auto screen_x = simulation::add16(project(camera_x), state.vanish_x);
+        const auto screen_y = simulation::add16(project(camera_y), state.vanish_y);
         if (screen_x < 0 || screen_x >= static_cast<std::int32_t>(target.width())
             || screen_y < 0 || screen_y >= static_cast<std::int32_t>(target.height())) {
             ++index;
             continue;
         }
-        const auto depth = static_cast<std::uint8_t>(
-            std::clamp(static_cast<int>(clipped_z) >> 8, 0, 15));
+        const auto depth = camera_z < 4096.0 ? static_cast<unsigned>(camera_z) >> 8U : 0U;
         const auto remaining = active_count - index;
-        const auto colour = rom_->read8(star_colours_
-            + static_cast<std::uint32_t>((remaining & 3U) * 16U + depth));
+        const auto colour = state.planet_stars > 1 ? std::uint8_t{3}
+            : state.planet_stars == 1 ? rom_->read8(snow_colours_ + depth)
+            : rom_->read8(star_colours_
+                + static_cast<std::uint32_t>((remaining & 3U) * 16U + depth));
+        if ((colour & 15U) == 0U) { ++index; continue; }
         target.set(screen_x, screen_y,
             static_cast<std::uint8_t>(7U * 16U + colour));
         if (camera_z < 1'024.0) {
-            target.set(screen_x - 1, screen_y + 1,
+            // PLOT already advances X; the source DEC restores the first X.
+            // A second pixel below the native bitmap aliases the next tile
+            // column in GSU's column-major 192-row screen layout.
+            const bool next_column = target.width() == 224U && target.height() == 192U
+                && screen_y == 191;
+            target.set(screen_x + (next_column ? 8 : 0), next_column ? 0 : screen_y + 1,
                 static_cast<std::uint8_t>(7U * 16U + colour));
         }
         ++index;
