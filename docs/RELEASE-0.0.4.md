@@ -61,4 +61,11 @@ See `docs/ACTIVE-HITLIST.md`, `docs/LEVEL-CLEAR-VALIDATION.md` and
 `docs/ENDING-VALIDATION.md` for detailed test coverage and remaining visual
 checks. SHA-256 checksums are supplied alongside the release downloads.
 
+Build provenance: the runtime is tagged at `bdb046a`. Seven platform targets
+and the asset builder were packaged by GitHub Actions; Xbox and Vita were
+rebuilt and verified locally from the same source after CI packaging/runner
+failures. The overall CI run is therefore not green. See
+[`RELEASE-0.0.4-VALIDATION.md`](https://github.com/kandowontu/starfox-enhanced/blob/main/docs/RELEASE-0.0.4-VALIDATION.md)
+for details.
+
 **Full changelog:** https://github.com/kandowontu/starfox-enhanced/compare/v0.0.3...v0.0.4
