@@ -151,9 +151,10 @@ Original pace cadence. That integration remains open.
 `starfox_reference_view` samples a direct stage every ten source updates. It
 copies CPU/Super FX RAM into a disposable snapshot, executes SHOWVIEW_L,
 Ares MALLROTZSORT and ALIENFLAGS_L, and compares their flags with the port.
-Because GETVIEW is host-translated, the fixture explicitly supplies the
-current CPU WMAT11 to M_WMAT11 before the GSU transform. It does not use the
-stale GSU scratch matrix left by another translated call.
+The fixture explicitly supplies the current CPU WMAT11W to M_WMAT11 before
+the GSU transform. WMAT11 is the word's high byte, not its starting address.
+This avoids a GSU scratch matrix left by another call and checks the actual
+cartridge-visible CPU word layout. The runtime now executes GETVIEW_L directly.
 
 ```powershell
 build/current/starfox_reference_view.exe upstream-ultrastarfox/SF.SFC upstream-ultrastarfox/SYMBOLS.TXT LEVEL2_1 1800 tmp/view-original.csv
@@ -168,10 +169,77 @@ bits for every object taking `.dontkill`, even when AFFRONTPL is clear.
 The corrected port matches these source results. A regular EX simulation
 regression also checks the invisible player's flags after entering the cockpit.
 
+The later full-system camera audit found that the host and this fixture both
+used the high-byte alias as a word address. Correcting the reference first
+produced **2,772 differences in 3,028 Original route-2 views** against the old
+host. The host now uses WMAT11W and executes GETVIEW_L's original camera and
+crosshair routines. The earlier flag comparison alone could not establish
+that the camera's physical RAM layout matched the source.
+
 The comparison uses the post-tick list: it does not establish that objects
 already removed by the host should have been removed, or that the first
 object's entry carry at an exact clipping boundary always matches hardware.
 Nor is it a full-scene pixel comparison or a successful campaign playthrough.
+
+## Full-system frame and camera reference
+
+`tools/reference/build-full-reference.ps1` builds the pinned Ares v148 SNES
+accuracy core as a separate Windows/MinGW development executable. Build the
+normal port first. The script checks the revision and clean checkout, expands
+its sparse source tree, and generates resource arrays and observation hooks
+outside that checkout. It preserves Ares instruction, memory, DMA, refresh,
+PPU and scheduling code. The power-on RAM pattern uses Ares's stock low-entropy
+generator with `Random::Default` as its fixed seed; this makes fixture runs
+reproducible without pretending that real hardware has a fixed power-on RAM
+state. This tool and its firmware/game inputs are not part
+of a game package. Ares and its dependencies retain their existing licenses.
+The standalone MinGW build also initializes the scheduler before the CPU/PPU
+globals so it remains alive during their destructors. The harness joins video
+conversion before unloading PPU settings. These lifecycle adjustments do not
+change instruction execution or measured frame timing.
+
+```powershell
+pwsh -NoProfile -File tools/reference/build-full-reference.ps1
+tmp/full-reference-build/full_reference.exe upstream-ultrastarfox/SF.SFC upstream-ultrastarfox/SYMBOLS.TXT LEVEL2_1 1200 tmp/full-original-2
+tmp/full-reference-build/full_reference.exe tmp/runtime-inputs/starfox-ex/SFES.SFC assets/symbols/starfox-ex.txt LEVEL3_1 1200 tmp/full-ex-3
+```
+
+This boots the cartridge for 600 NTSC video frames, then enters GAMESTART at
+a CPU instruction boundary with the requested map and zero-based route/stage
+variables. The GSU core uses the shared NTSC oscillator and honors the
+cartridge's CLSR/CFGR/SCMR writes. The pinned Original ROM writes CLSR=1 and
+CFGR=$a0; EX writes CLSR=0 and CFGR=$a0 in the sampled stages. In particular,
+this is **not** an enforced, fixed-10.7-MHz MARIO chip profile: UltraStarFox's
+ROM.INC documents that its `fast` option has no effect on that physical chip,
+whereas Ares's general GSU model honors the selector. Resolve that hardware
+profile difference before treating these timings as stock-cartridge cadence.
+EX maps its expansion work RAM
+and header-declared save RAM contiguously. Input is neutral, and the harness
+sets PSHIPFLAGS3 bit 3 each video frame. That flag does not prevent every form
+of death; these are direct-stage traces, not completed campaign playthroughs.
+
+The output prefix receives:
+
+- `-frames.csv`: the state on entry to TRANSFER_L, after the preceding game
+  update. CPU master-clock deltas include waits, DMA and refresh. The first
+  row's delta is zero because it has no preceding measured boundary. Startup
+  delays, respawns and background loads are intentionally retained.
+- `-camera.csv`: up to 200 GETVIEW_L calls. A disposable port CPU/GSU bridge
+  receives the full native entry RAM and registers. Its 17 camera-position,
+  angle, crosshair and matrix outputs are compared with the full Ares CPU/GSU
+  at the following DOSOUNDS_L entry. The native game is never modified by
+  this comparison. A mismatch makes the tool fail.
+- `-gsu.csv`: actual CPU-triggered GSU launch addresses/configuration and
+  elapsed coprocessor clocks through STOP. A zero `stopped` flag records a
+  superseding launch. These intervals exclude any SRAM write that finishes
+  after STOP. They overlap CPU work and cannot simply be added to CPU clocks.
+- `-boot.ppm` / `-final.ppm`: reference display captures for checking entry
+  context. A successful camera comparison is not a full-scene RGB comparison.
+
+These traces supply a full-system oracle for the unfinished Original-pace
+integration. The runtime's current object-count estimate is still not a
+cycle-exact scheduler. No measured reference-frame duration is hard-coded
+into the production pace logic.
 
 The `grid` mode executes the cartridge's camera/origin transforms followed by
 MSHOWGRID or EX's MSHOWGRID2, retaining the latter's line origin across updates.

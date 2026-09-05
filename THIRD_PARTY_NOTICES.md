@@ -13,6 +13,13 @@ GSU initialization; `tools/reference/ares_cpu.cpp` adapts the bus timing express
 Both retain the following ISC notice. Other project-owned
 files remain under the repository's MIT license.
 
+`tools/reference/full-system` also builds the pinned full SNES accuracy core,
+libco, nall and SLJIT as a separate development reference. It generates source
+copies with observation hooks and a reproducible power-on RAM seed outside
+the reference checkout. The underlying Ares sources retain the ISC license;
+SLJIT retains its BSD two-clause license in `thirdparty/sljit/LICENSE` in that
+checkout. None of these full-system reference components enters a game build.
+
 Copyright (c) 2004-2025 ares team, Near et al
 
 Permission to use, copy, modify, and/or distribute this software for any

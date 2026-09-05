@@ -289,29 +289,12 @@ GameSimulation::GameSimulation(
       vsc_base_2_(static_cast<std::uint16_t>(ram_symbol("VSC_BASE2"))),
       vobj_base_(static_cast<std::uint16_t>(ram_symbol("VOBJ_BASE"))),
       credits_map_(rom_symbol("CREDITSMAP")),
+      get_view_(rom_symbol("GETVIEW_L")),
       previous_view_position_(ram_symbol("PVIEWPOSX")),
       view_position_(ram_symbol("VIEWPOSX")),
-      view_shake_(ram_symbol("VIEWSHAKEX")),
-      view_float_(ram_symbol("VIEWFLOATX")),
-      previous_view_z_offset_(ram_symbol("PVIEWPOSZOFF")),
-      view_type_(ram_symbol("VIEWTYPE")),
-      no_x_rotation_(ram_symbol("NOXROT")),
-      output_rotation_(ram_symbol("OUTVX")),
-      output_distance_(ram_symbol("OUTDIST")),
-      player_turn_rotation_(ram_symbol("PLAYER_TURNROT")),
-      player_roll_(ram_symbol("PLROTZ")),
-      do_z_rotation_(ram_symbol("DOZROT")),
       view_rotation_(ram_symbol("VIEWROTXW")),
-      matrix_(ram_symbol("MAT11W")),
-      world_matrix_(ram_symbol("WMAT11")),
-      view_to_object_(ram_symbol("VIEWTOOBJ")),
+      world_matrix_(ram_symbol("WMAT11W")),
       view_point_(ram_symbol("VIEWPT")),
-      view_block_(static_cast<std::uint16_t>(ram_symbol("VIEWBLK"))),
-      secondary_player_fly_mode_(ram_symbol("SPLAYERFLYMODE")),
-      crosshair_x_(ram_symbol("ARSEBANDX")),
-      crosshair_y_(ram_symbol("ARSEBANDY")),
-      x_angle_(rom_symbol("XANGLEXY_L")),
-      y_angle_(rom_symbol("YANGLEXY_L")),
       player_collision_box_(ram_symbol("PCBOXOBJ_B")),
       player_left_wing_collision_box_(ram_symbol("PCBOXOBJ_LW")),
       player_right_wing_collision_box_(ram_symbol("PCBOXOBJ_RW")),
@@ -4505,135 +4488,14 @@ void GameSimulation::service_transfer_request() {
 }
 
 void GameSimulation::calculate_view() {
-    const auto read_word = [this](std::uint32_t address) {
-        return signed_word(map_.read_native_word(address));
-    };
-    const auto write_word = [this](std::uint32_t address, std::int16_t value) {
-        map_.write_native_word(address, std::bit_cast<std::uint16_t>(value));
-    };
-    auto rotation_x = read_word(output_rotation_);
-    if (map_.read_native_byte(no_x_rotation_) != 0U) {
-        rotation_x = 0;
-        write_word(output_rotation_, 0);
-    }
-    auto rotation_y = subtract16(
-        read_word(output_rotation_ + 2U), read_word(player_turn_rotation_));
-    auto rotation_z = subtract16(
-        read_word(output_rotation_ + 4U), read_word(player_roll_));
-    if (map_.read_native_byte(do_z_rotation_) == 0U) rotation_z = 0;
-
-    if ((map_.read_native_byte(view_type_) & 2U) == 0U) {
-        std::array<std::int16_t, 3> position{};
-        for (std::size_t index = 0; index < 3U; ++index) {
-            const auto shake = std::bit_cast<std::int8_t>(
-                map_.read_native_byte(view_shake_ + static_cast<std::uint32_t>(index)));
-            position[index] = add16(
-                read_word(previous_view_position_ + static_cast<std::uint32_t>(index * 2U)),
-                shake);
-        }
-        position[0] = add16(position[0], read_word(view_float_));
-        position[1] = add16(position[1], read_word(view_float_ + 2U));
-        position[2] = add16(position[2], read_word(previous_view_z_offset_));
-
-        const auto pitch_matrix = rotation_matrix_q15(trigonometry_,
-            wrap16(-static_cast<std::int32_t>(rotation_x)), 0, 0);
-        auto offset = transform_q15(pitch_matrix,
-            {0, 0, wrap16(-static_cast<std::int32_t>(read_word(output_distance_)))});
-        const auto yaw_matrix = rotation_matrix_q15(trigonometry_, 0,
-            wrap16(-static_cast<std::int32_t>(rotation_y)), 0);
-        offset = transform_q15(yaw_matrix, offset);
-        for (std::size_t index = 0; index < 3U; ++index) {
-            write_word(view_position_ + static_cast<std::uint32_t>(index * 2U),
-                add16(position[index], offset[index]));
-        }
-        write_word(view_rotation_, rotation_x);
-        write_word(view_rotation_ + 2U, rotation_y);
-        write_word(view_rotation_ + 4U, rotation_z);
-    } else {
-        rotation_x = read_word(view_rotation_);
-        rotation_y = read_word(view_rotation_ + 2U);
-        rotation_z = read_word(view_rotation_ + 4U);
-    }
-
-    for (std::size_t index = 0; index < 3U; ++index) {
-        write_word(view_block_ + 12U + static_cast<std::uint32_t>(index * 2U),
-            read_word(view_position_ + static_cast<std::uint32_t>(index * 2U)));
-    }
-    // GETVIEW_L always publishes VIEWBLK as VIEWPT after resolving either
-    // a following camera or a fixed-position camera. Native strategies use
-    // that synthetic object for distance gates (notably Corneria's gradual
-    // ExitBase pullback), as well as positional sound. Leaving VIEWPT on the
-    // player made those gates read a zero distance and collapse instantly.
-    map_.write_native_word(view_point_, view_block_);
-    if ((map_.read_native_byte(view_type_) & 1U) != 0U) {
-        const auto target = map_.read_native_word(view_to_object_);
-        Wdc65816Registers registers;
-        registers.x = view_block_;
-        registers.y = target;
-        registers.status = 0x04U;
-        map_.call_native_routine(x_angle_, registers);
-        rotation_x = wrap16(-static_cast<std::int32_t>(signed_word(registers.a)));
-        write_word(view_rotation_, rotation_x);
-        write_word(output_rotation_, rotation_x);
-
-        registers = {};
-        registers.x = view_block_;
-        registers.y = target;
-        registers.status = 0x04U;
-        map_.call_native_routine(y_angle_, registers);
-        rotation_y = signed_word(registers.a);
-        rotation_z = read_word(output_rotation_ + 4U);
-        write_word(view_rotation_ + 2U, rotation_y);
-        write_word(output_rotation_ + 2U, rotation_y);
-        write_word(view_rotation_ + 4U, rotation_z);
-    }
-
-    const auto world = rotation_matrix_q15(
-        trigonometry_, rotation_x, rotation_y, rotation_z);
-    for (std::size_t index = 0; index < world.size(); ++index) {
-        write_word(matrix_ + static_cast<std::uint32_t>(index * 2U), world[index]);
-        write_word(world_matrix_ + static_cast<std::uint32_t>(index * 2U), world[index]);
-    }
-
-    // The tail of GETVIEW_L projects a point 500 world units along the
-    // player's current aim and publishes its displacement from the Super FX
-    // vanishing point. DO_CROSSHAIR consumes ARSEBANDX/Y later in the same
-    // source frame. The host replaces the Super FX call above, so it must also
-    // reproduce this output; otherwise the first-person reticle is frozen at
-    // its initial centre even though the player is turning.
-    if (objects_.is_active(player_)) {
-        const auto& player = objects_.at(player_);
-        const auto aim_matrix = rotation_matrix_q15(trigonometry_,
-            static_cast<std::int16_t>(
-                static_cast<std::uint16_t>(player.rotation_x) << 8U),
-            static_cast<std::int16_t>(
-                static_cast<std::uint16_t>(player.rotation_y) << 8U),
-            0);
-        const auto aim_offset = transform_q15(aim_matrix, {0, 0, 500});
-        auto relative = transform_q15(world, {
-            subtract16(add16(player.world_x, aim_offset[0]),
-                signed_word(map_.read_native_word(view_position_))),
-            subtract16(add16(player.world_y, aim_offset[1]),
-                signed_word(map_.read_native_word(view_position_ + 2U))),
-            subtract16(add16(player.world_z, aim_offset[2]),
-                signed_word(map_.read_native_word(view_position_ + 4U))),
-        });
-        if (map_.read_native_byte(secondary_player_fly_mode_) == 3U) {
-            relative[1] = add16(relative[1], 50);
-        }
-        const auto project_displacement = [](std::int16_t coordinate,
-                                              std::int16_t depth) {
-            if (depth == 0) depth = 1;
-            const auto quotient = static_cast<std::int64_t>(coordinate) * 256
-                / static_cast<std::int64_t>(depth);
-            return wrap16(std::clamp<std::int64_t>(
-                quotient, -16'383, 16'383));
-        };
-        map_.write_native_word(crosshair_x_, static_cast<std::uint16_t>(
-            project_displacement(relative[0], relative[2])));
-        map_.write_native_word(crosshair_y_, static_cast<std::uint16_t>(
-            project_displacement(relative[1], relative[2])));
-    }
+    // Keep GETVIEW_L's camera offsets, target angles, matrix storage and
+    // integer crosshair projection together. Its two GSU math entries are
+    // implemented by the native bridge and checked against the cartridge.
+    // In particular, WMAT11W is the low byte of the world-matrix word;
+    // WMAT11 addresses only its high byte for the source's 8-bit helpers.
+    Wdc65816Registers registers;
+    registers.status = 0x24U;
+    map_.call_native_routine(get_view_, registers);
 }
 
 std::size_t GameSimulation::update_view_flags_and_cull() {
@@ -5350,9 +5212,7 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
         }
     }
 
-    // GETVIEW_L delegates its matrices and camera offset to Super FX. Model
-    // that fixed-point path natively; running it against the temporary
-    // coprocessor-complete stub would reuse stale m_wmat/m_big values.
+    // GETVIEW_L publishes both CPU and GSU camera state before view sorting.
     if (!ex_pause_model_refresh) calculate_view();
     {
         const std::array<std::int16_t, 3> camera{

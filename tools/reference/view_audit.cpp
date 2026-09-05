@@ -43,12 +43,12 @@ int main(int argc, char** argv) { try {
         registers.status = 0x24;
         cpu.call_long(address("SHOWVIEW_L"), registers);
         for (unsigned i = 0; i < 0x10000; ++i) ram[i] = cpu.read8(0x700000 + i);
-        // GETVIEW is host-translated: its authoritative camera matrix lives
-        // in CPU WMAT11. Supply that matrix where native GETVIEW places it
-        // for MALLROTZSORT; other GSU calls may leave M_WMAT11 as scratch.
+        // GETVIEW's authoritative word matrix lives in CPU WMAT11W;
+        // WMAT11 names its high byte. Supply it where native GETVIEW places
+        // it for MALLROTZSORT; other GSU calls can reuse M_WMAT11 as scratch.
         for (unsigned i = 0; i < 9; ++i)
             put(address("M_WMAT11") + 2 * i,
-                game->map().read_native_word(address("WMAT11") + 2 * i));
+                game->map().read_native_word(address("WMAT11W") + 2 * i));
         const auto sorted = gsu.run(address("MALLROTZSORT"));
         for (unsigned i = 0; i < 0x10000; ++i) cpu.write8(0x700000 + i, ram[i]);
         registers = {};

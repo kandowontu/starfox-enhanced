@@ -1,0 +1,135 @@
+{
+  "ares_revision": "0aafd85789215e84e1e43415c07d4c88461b7899",
+  "power_on_seed": "ares::Random::Default",
+  "boot_video_frames": 600,
+  "stage_video_frames": 1200,
+  "entry": "GAMESTART at an instruction boundary; zero-based route/stage; neutral input; PSHIPFLAGS3 bit 3 each raster",
+  "executable_sha256": "DEACBDE1CA9A1F1831E6D52C14C950143B759DF5E52DFD70EC36D728978C4607",
+  "runtime_sha256": "470E495CEA88EFCB36FC753325893C24E29FC29DC64DFC75013CCF83F9A85291",
+  "camera_word_fields": 17,
+  "cases": [
+    {
+      "variant": "original",
+      "map": "LEVEL2_1",
+      "rom_sha256": "E79D7F08C9191701C43F427D8BB85D6804A4B7C05EB6E585698FD2E1B2932E32",
+      "symbols_sha256": "66F0124B38FBFE63913BA99E07A91D944A0479664A23DD2528CDE3D68DA62A84",
+      "exit_code": 0,
+      "camera_calls": 200,
+      "camera_fields_compared": 3400,
+      "camera_differences": 0,
+      "frame_boundaries": 208,
+      "gsu_intervals": 1942,
+      "superseded_gsu_intervals": 0,
+      "gsu_configurations": [
+        {
+          "clsr": 1,
+          "cfgr": 160,
+          "scmr": 57,
+          "intervals": 1942
+        }
+      ],
+      "trace_sha256": {
+        "camera": "5D3A06FF1FC0B8B3F38B6BEF97769EB6776618B3C772CA5E4FFCF380225841AF",
+        "frames": "683FA3E62D7BC600D88C08548C888B3C17172627E591812E0C7A8EECD6283887",
+        "gsu": "8E5A1E47B9152813F8F31D99EC20DDB74918D696270FEEA7FDB3FA2C52B8DE5B"
+      }
+    },
+    {
+      "variant": "original",
+      "map": "LEVEL3_1",
+      "rom_sha256": "E79D7F08C9191701C43F427D8BB85D6804A4B7C05EB6E585698FD2E1B2932E32",
+      "symbols_sha256": "66F0124B38FBFE63913BA99E07A91D944A0479664A23DD2528CDE3D68DA62A84",
+      "exit_code": 0,
+      "camera_calls": 200,
+      "camera_fields_compared": 3400,
+      "camera_differences": 0,
+      "frame_boundaries": 209,
+      "gsu_intervals": 1944,
+      "superseded_gsu_intervals": 0,
+      "gsu_configurations": [
+        {
+          "clsr": 1,
+          "cfgr": 160,
+          "scmr": 57,
+          "intervals": 1944
+        }
+      ],
+      "trace_sha256": {
+        "camera": "5D3A06FF1FC0B8B3F38B6BEF97769EB6776618B3C772CA5E4FFCF380225841AF",
+        "frames": "1B196310AEFFEC336455FBFBD3816A5CF4E57C7D49272BDFD3F329772F7E3EDD",
+        "gsu": "BAB684FFAFE25679C4B588E672AE21548231B4BADF1D44D80FEEE1ECB826FC07"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL2_1",
+      "rom_sha256": "ECA6CE47B19D14BEFE7170E613A127E4D174F24B7F9625CDF688D814DE6BD7CB",
+      "symbols_sha256": "36BA8A5CD028297FDB49C31830673433BB997167B7E489EBC983B0C416FA9FF6",
+      "exit_code": 0,
+      "camera_calls": 155,
+      "camera_fields_compared": 2635,
+      "camera_differences": 0,
+      "frame_boundaries": 155,
+      "gsu_intervals": 1417,
+      "superseded_gsu_intervals": 0,
+      "gsu_configurations": [
+        {
+          "clsr": 0,
+          "cfgr": 160,
+          "scmr": 57,
+          "intervals": 1417
+        }
+      ],
+      "trace_sha256": {
+        "camera": "4F77A876C0D318E7EAE9780192BC5FAD28742CE4D470C2A36DB6B7F7A3FFFE90",
+        "frames": "B35214A47062ED0F69D960188FF2ACAFD8E2F16ED8ACAACA5E336543BDCA31F5",
+        "gsu": "7CF1936EFA277756140BD0F284321DFA18B4A63AF3E5A94AFB502D25B3D14D3D"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL3_1",
+      "rom_sha256": "ECA6CE47B19D14BEFE7170E613A127E4D174F24B7F9625CDF688D814DE6BD7CB",
+      "symbols_sha256": "36BA8A5CD028297FDB49C31830673433BB997167B7E489EBC983B0C416FA9FF6",
+      "exit_code": 0,
+      "camera_calls": 155,
+      "camera_fields_compared": 2635,
+      "camera_differences": 0,
+      "frame_boundaries": 156,
+      "gsu_intervals": 1419,
+      "superseded_gsu_intervals": 0,
+      "gsu_configurations": [
+        {
+          "clsr": 0,
+          "cfgr": 160,
+          "scmr": 57,
+          "intervals": 1419
+        }
+      ],
+      "trace_sha256": {
+        "camera": "158901AE2B2FD1F321A4FCAF1EC9C282701DAB205AEA549E9C405F0DDB79BB64",
+        "frames": "666949B261F074A854374DC1C4865C342472C873EDB490A8E94AF0A734D1750A",
+        "gsu": "9CAC22BA1C572DD51742495CBD2A7431B2AB19EAE6DA8A1FDA50C7FF6A63CFFD"
+      }
+    }
+  ],
+  "limits": [
+    "Direct stage entry, not completed campaigns; deaths/respawns remain possible.",
+    "Ares general GSU honors CLSR/CFGR. This is not a fixed-clock physical MARIO profile.",
+    "Frame deltas include waits, refresh and DMA. GSU intervals overlap CPU work and exclude post-STOP writes.",
+    "The first frame interval is zero; startup/loading/respawn intervals are retained.",
+    "Full-camera comparison uses a disposable port CPU/GSU bridge with native entry RAM and registers.",
+    "Full-scene RGB parity and production cycle-exact scheduling are not established."
+  ],
+  "camera_calls": 710,
+  "camera_fields_compared": 12070,
+  "gsu_intervals": 6722,
+  "view_before": {
+    "rows": 3028,
+    "differences": 2772
+  },
+  "view_after": {
+    "rows": 3028,
+    "differences": 0
+  }
+}

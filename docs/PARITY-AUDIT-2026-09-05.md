@@ -19,6 +19,8 @@ changes inside upstream-ultrastarfox were preserved.
 
 | Report / audit finding | Evidence and result |
 | --- | --- |
+| Camera word layout and crosshair | WMAT11 names a matrix word's high byte; the host wrote full words there instead of WMAT11W. The earlier view fixture shared that mistake. Correcting the reference first exposed 2,772 differences among 3,028 Original route-2 object views. The host now uses WMAT11W and executes GETVIEW_L directly, preserving the source's camera offsets, target angles, byte-angle aiming and integer crosshair projection. All 12,204 sampled object views match with the corrected layout. The new full-system Ares reference independently compares complete camera calls; see CAMERA-PARITY-VALIDATION.md. |
+| Full-system timing reference | Added a separately built pinned Ares SNES core with CPU frame boundaries, actual GSU launch/configuration traces and camera comparisons. The harness fixes its own MinGW scheduler lifetime and joins video before teardown; these are reference-tool changes. The pinned Original input writes CLSR=1, while EX writes CLSR=0. Ares honors that selector, so this is not a fixed-clock physical MARIO profile. That distinction and CPU/GSU overlap must be resolved before replacing the production slowdown approximation. |
 | Native CPU execution and timing | Corrected hidden accumulator restoration, missing decimal arithmetic, SBC's wrapped-zero flag, program-bank operand wrapping, 16-bit read-modify-write order, MVN/MVP behavior and XCE. Added missing instruction/bus clocks and FastROM accounting. An independent pinned Ares CPU agrees on 12,192 instruction cases, 524,288 decimal ALU cases and 1,048,576 complete arithmetic routines. See CPU-PARITY-VALIDATION.md for the patch, reproducibility and scope. These counts exclude translated work and concurrent hardware timing; Original pacing still needs integration. |
 | Object view flags | Native SHOWVIEW_L resets flags before the invisible-object branch. Native ALIENFLAGS_L still sets AFINVIEWPL/AFLEFTPL for behind-camera objects taking `.dontkill`; only AFFRONTPL stays clear. Corrected both translated paths. The before/after Original route-2 comparison goes from 239 mismatches among 3,028 object views to zero. Sampled native CPU/GSU checks cover routes 2/3 in both games; the regular EX cockpit regression also asserts the invisible-player state. |
 | Isolated GSU timing audit | A second, pinned Ares GSU implementation agrees with all 70,980 reference rows and records 73,536 isolated calls. The comparison preserves all previously classified mesh-fixture differences. It exposed the MSSPRITE fixture's reliance on an implicit pixel-cache flush; both engines now execute the cartridge's RPIX/STOP. The adapter also completes pending SRAM writes before returning CPU-visible results. These development tools do not enter game packages. Full frame cadence still needs CPU overlap, DMA and video-phase accounting. |
@@ -104,6 +106,15 @@ addresses; do not interpret those particular diagnostic fields as EX state.
 
 ## Validation and local candidate
 
+- Native camera follow-up: **61/61 passed in 452.37 seconds**, including both
+  simulation/ending suites, SPC/MSU audio, all six live Wolf encounters and
+  route timing checks. Logs: `ctest-20260905-native-camera.log` and its detailed
+  counterpart under `docs/validation`. After removing unused camera fields
+  and caching GETVIEW_L's entry, the rebuilt runtime passed **9/9 affected
+  view, hit-list and desktop smoke checks in 18.76 seconds**. The corrected
+  physical matrix reference has 12,204 matching object views; the preceding
+  fixture's shared high-byte alias is documented rather than counted as an
+  independent check of that memory layout.
 - Native CPU follow-up: **61/61 passed in 197.41 seconds**, including both
   simulation suites, all endings/audio/MSU checks, six live Wolf encounters,
   route-timing replays, view/pixel comparisons and the new independent CPU
@@ -217,12 +228,17 @@ addresses; do not interpret those particular diagnostic fields as EX state.
   Original pace, MSU off and an unpaced dummy-device test loop. Both were
   inspected as smoke checks; their displayed FPS is not a live limiter or
   old-PC performance result. The saved user configuration remains unchanged.
+- The current executable also includes the native camera/crosshair correction.
+  `validation/native-camera-{original,ex}.bmp` repeats the same LEVEL3_1,
+  300-update preroll and 180-presentation fixture. Both captures were inspected;
+  these are direct-entry/respawn smoke images, not continuous campaign or
+  physical-console comparisons. The source timing approximation remains open.
 
 SHA-256:
 
 ```text
 starfox_pc.exe
-6EA2C7A9E7082F40D4350A9D83188EE1C92B632C47B8FEAC13F060BAF4D6A0F0
+470E495CEA88EFCB36FC753325893C24E29FC29DC64DFC75013CCF83F9A85291
 Starfox-Assets.BIN
 2F9A261C87F032F553952588E2EEB5DB747CBAF5FF0E5FCE7AF1862C9FC6541E
 Starfox-MSU1.PAK
