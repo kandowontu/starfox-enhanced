@@ -1,6 +1,7 @@
 dist/StarFoxEnhanced/starfox_pc.exe filter=lfs diff=lfs merge=lfs -text
 dist/StarFoxEnhanced/Starfox-MSU1.PAK filter=lfs diff=lfs merge=lfs -text
 config/*.patch -whitespace
+cmake/*.patch -whitespace
 *.sh text eol=lf
 platform/android/gradlew text eol=lf
 tools/package_switch_nsp.ps1 text eol=crlf

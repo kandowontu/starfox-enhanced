@@ -454,7 +454,9 @@ void BackgroundRenderer::draw_bg2(
                 sample_x + horizontal_origin,
                 static_cast<std::int32_t>(first_x),
                 static_cast<std::int32_t>(final_x - 1U));
-            const auto current_scroll_y = column_scroll_y.empty() ? scroll_y
+            const auto current_scroll_y = ppu.bg2_scanline_scroll_enabled
+                ? ppu.bg2_scanline_scroll_y[std::clamp(sample_y, 0, 223)]
+                : column_scroll_y.empty() ? scroll_y
                 : column_scroll_y[static_cast<std::size_t>(sampled_screen_x)
                     - first_x];
             const auto source_y = wrap(

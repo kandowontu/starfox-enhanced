@@ -7,7 +7,8 @@
   <Identity
     Name="StarFoxEnhanced.Dev"
     Publisher="CN=StarFoxEnhanced"
-    Version="@PROJECT_VERSION@.0" />
+    ProcessorArchitecture="x64"
+    Version="@PROJECT_VERSION@.@STARFOX_UWP_BUILD_REVISION@" />
   <mp:PhoneIdentity
     PhoneProductId="21cc9162-ecf4-40ed-b7e7-b16fdb867d1e"
     PhonePublisherId="00000000-0000-0000-0000-000000000000" />
@@ -24,7 +25,7 @@
     <PackageDependency
       Name="Microsoft.VCLibs.140.00"
       Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US"
-      MinVersion="14.0.30704.0" />
+      MinVersion="14.0.33519.0" />
   </Dependencies>
   <Resources>
     <Resource Language="en-US" />

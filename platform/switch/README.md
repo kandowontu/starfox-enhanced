@@ -14,6 +14,19 @@ beside the NRO. For the packaged folder, that is:
 The application never contains a retail ROM. The optional MSU-1 companion can
 also be copied beside the NRO as `Starfox-MSU1.PAK`.
 
+## Audio latency
+
+The current source requests a 512-frame AUDOUT period (about 10.7 ms at
+48 kHz), uses an 8 ms startup lead-in, and bounds queued source audio to
+100 ms. If rendering stalls, old queued playback is discarded while the
+SPC and MSU state continue normally; music and effects use the same queue.
+The 100 ms ceiling is not a measured end-to-end latency guarantee.
+
+An immediate-delay report is still awaiting an on-device retest. Check with
+wired headphones as well as the normal TV/Bluetooth output, and report the
+build version and whether the delay changes during play. The host queue
+regression test cannot validate console/TV/Bluetooth buffering.
+
 ## Optional NSP forwarder
 
 `package_switch_nsp.ps1` creates an NSP *forwarder* for the NRO by invoking

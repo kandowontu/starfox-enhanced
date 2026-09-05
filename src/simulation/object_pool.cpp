@@ -39,6 +39,7 @@ ObjectHandle ObjectPool::allocate_after(ObjectHandle previous) noexcept {
     auto& slot = slots_[handle];
     slot = {};
     slot.active = true;
+    generations_[handle] = ++next_generation_;
 
     if (previous == 0) {
         slot.next = first_active_;
@@ -84,6 +85,10 @@ bool ObjectPool::remove(ObjectHandle handle) noexcept {
     first_free_ = handle;
     --active_count_;
     return true;
+}
+
+std::uint64_t ObjectPool::generation(ObjectHandle handle) const noexcept {
+    return is_active(handle) ? generations_[handle] : 0U;
 }
 
 bool ObjectPool::valid_handle(ObjectHandle handle) const noexcept {
@@ -151,6 +156,7 @@ void ObjectPool::restore_lists(
     for (ObjectHandle handle = 1; handle <= capacity_; ++handle) {
         const auto was_active = slots_[handle].active;
         const auto will_be_active = std::find(active.begin(), active.end(), handle) != active.end();
+        if (!was_active && will_be_active) generations_[handle] = ++next_generation_;
         if (was_active && !will_be_active) {
             slots_[handle].object = {};
         }

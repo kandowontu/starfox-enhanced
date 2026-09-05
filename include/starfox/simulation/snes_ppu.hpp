@@ -36,6 +36,10 @@ struct SnesPpuState {
     bool bg2_vertical_offsets_enabled{};
     std::array<std::int16_t, 224> bg2_horizontal_offsets{};
     bool bg2_horizontal_offsets_enabled{};
+    // IRQ SETBG2VOFS: tunnel floor/ceiling rows select one of two tilemap
+    // pages. These are discrete HDMA page selections, not roll offsets.
+    std::array<std::int16_t, 224> bg2_scanline_scroll_y{};
+    bool bg2_scanline_scroll_enabled{};
 };
 
 } // namespace starfox::simulation

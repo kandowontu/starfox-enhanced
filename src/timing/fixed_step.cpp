@@ -1,10 +1,33 @@
 #include "starfox/timing/fixed_step.hpp"
 
 #include <algorithm>
+#include <bit>
+#include <cmath>
 #include <limits>
 #include <stdexcept>
 
 namespace starfox::timing {
+
+TransformSnapshot relative_birth_snapshot(const TransformSnapshot& sample,
+    const TransformSnapshot& previous_owner, const TransformSnapshot& current_owner) noexcept {
+    const auto offset = [](std::int32_t value, std::int32_t previous, std::int32_t current) {
+        return std::bit_cast<std::int16_t>(static_cast<std::uint16_t>(value + previous - current));
+    };
+    return {offset(sample.x, previous_owner.x, current_owner.x),
+        offset(sample.y, previous_owner.y, current_owner.y),
+        offset(sample.z, previous_owner.z, current_owner.z),
+        previous_owner.pitch, previous_owner.yaw, previous_owner.roll};
+}
+
+std::uint16_t interpolate_wrapped_scroll(std::uint16_t previous,
+    std::uint16_t current, double alpha, std::uint16_t mask) noexcept {
+    const auto period = static_cast<std::int32_t>(mask) + 1;
+    auto delta = (static_cast<std::int32_t>(current) - previous) & mask;
+    if (delta >= period / 2) delta -= period;
+    const auto value = static_cast<std::int32_t>(previous & mask)
+        + static_cast<std::int32_t>(std::lround(delta * std::clamp(alpha, 0.0, 1.0)));
+    return static_cast<std::uint16_t>(value & mask);
+}
 namespace {
 
 constexpr std::uint64_t kNanosecondsPerSecond = 1'000'000'000ULL;
@@ -171,6 +194,17 @@ RenderTransform interpolate(
         interpolate_angle(previous.yaw, current.yaw, alpha),
         interpolate_angle(previous.roll, current.roll, alpha),
     };
+}
+
+double interpolate_cockpit_roll(std::uint16_t previous,
+    std::uint16_t current, double alpha) noexcept {
+    const auto angle = static_cast<int>(current & 0xffU);
+    if ((previous & current & 0x8000U) == 0U) return angle;
+    const auto from = static_cast<int>(previous & 0xffU);
+    auto delta = angle - from;
+    if (delta > 127) delta -= 256;
+    else if (delta < -128) delta += 256;
+    return from + delta * std::clamp(alpha, 0.0, 1.0);
 }
 
 bool camera_transform_is_discontinuous(

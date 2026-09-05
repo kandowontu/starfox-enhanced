@@ -13,6 +13,10 @@ Starfox-Assets.BIN
 /dist/StarFoxEnhanced-linux-x64/
 /dist/StarFoxEnhanced-android-arm64.apk
 /dist/StarFoxEnhanced-switch/
+/dist/StarFoxEnhanced-vita/
+/dist/StarFoxEnhanced-xbox-uwp-x64/
+/dist/StarFoxEnhanced-*.zip
+/dist/StarFoxAssetBuilder-*.zip
 /assets/hud_editor/*.bmp
 /platform/android/.gradle/
 /platform/android/app/.cxx/

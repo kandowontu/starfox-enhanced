@@ -142,6 +142,9 @@ public:
     void submit_superfx_bitmap();
     void set_bg1_scroll(std::int16_t x, std::int16_t y) noexcept;
     void set_bg2_scroll(std::int16_t x, std::int16_t y) noexcept;
+    // ENDSEQ's SEQSCROLL runs once per raster, independently of CPU tasks.
+    void tick_ending_video_phase();
+    void tick_background_video_phase();
     void draw_planet_sphere(std::uint16_t sprite);
     void set_bg2_vertical_offsets_enabled(bool enabled) noexcept;
     void capture_bg2_horizontal_offsets(

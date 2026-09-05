@@ -9,6 +9,7 @@
 #include <bit>
 #include <cmath>
 #include <cstring>
+#include <map>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -83,6 +84,7 @@ struct Wdc65816::Impl {
     SystemBus bus{};
     std::vector<Page> pages{static_cast<std::size_t>(kPageCount)};
     std::uint32_t rom_bank_count{};
+    std::map<std::uint8_t, std::vector<std::uint8_t>> compatible_rom_banks;
     std::vector<std::uint8_t> wram = std::vector<std::uint8_t>(0x20000U);
     std::array<std::uint8_t, 8> controller{};
     std::array<std::uint8_t, 4> apu_ports{0xaaU, 0xbbU, 0U, 0U};
@@ -119,6 +121,10 @@ struct Wdc65816::Impl {
     std::uint16_t vram3_address{};
     std::uint16_t vram3_length{};
     std::uint32_t game_palette{};
+    std::array<std::uint32_t, 6> ending_scroll_saved{};
+    std::array<std::uint32_t, 6> ending_scroll_requested{};
+    std::uint32_t ending_text_pointer{}, ending_text_vram{}, ending_text_buffer{};
+    std::uint32_t ending_text_translation{}, ending_background_flags{};
     std::uint32_t mcallarctan16{};
     std::uint32_t arctantab{};
     std::uint32_t m_cnt{};
@@ -208,6 +214,13 @@ struct Wdc65816::Impl {
     std::uint32_t mlaced{};
     std::uint32_t mzigzag{};
     std::uint32_t bg_scrollbuffer{};
+    std::uint32_t tunnel_flag{};
+    std::uint32_t tunnel_previous_z{};
+    std::uint32_t tunnel_scroll_override{};
+    std::uint32_t tunnel_hdma_enable{};
+    std::uint32_t tunnel_tables{};
+    std::array<std::uint32_t, 8> mode_reset_bytes{};
+    std::array<std::uint32_t, 4> mode_reset_words{};
     std::uint32_t m_x1{};
     std::uint32_t m_viewposx{};
     std::uint32_t m_y1{};
@@ -487,6 +500,19 @@ struct Wdc65816::Impl {
               symbols, "VRAM3LEN", kRetailVram3Length))),
           game_palette(find_symbol_or(
               symbols, "GAMEPALBUFF", kRetailGamePalette)),
+          ending_scroll_saved{
+              find_symbol(symbols, "BG1HOFSBAK"), find_symbol(symbols, "BG1VOFSBAK"),
+              find_symbol(symbols, "BG2HOFSBAK"), find_symbol(symbols, "BG2VOFSBAK"),
+              find_symbol(symbols, "BG3HOFSBAK"), find_symbol(symbols, "BG3VOFSBAK")},
+          ending_scroll_requested{
+              find_symbol(symbols, "BG1HOFSREQ"), find_symbol(symbols, "BG1VOFSREQ"),
+              find_symbol(symbols, "BG2HOFSREQ"), find_symbol(symbols, "BG2VOFSREQ"),
+              find_symbol(symbols, "BG3HOFSREQ"), find_symbol(symbols, "BG3VOFSREQ")},
+          ending_text_pointer(find_symbol(symbols, "SEQ_TPTR")),
+          ending_text_vram(find_symbol(symbols, "SEQ_VM")),
+          ending_text_buffer(find_symbol(symbols, "SEQ_BUFFER")),
+          ending_text_translation(find_symbol(symbols, "ETESTTRANS")),
+          ending_background_flags(find_symbol(symbols, "BGFLAGS")),
           mcallarctan16(find_rom_symbol(symbols, "MCALLARCTAN16")),
           arctantab(find_rom_symbol(symbols, "ARCTANTAB")),
           m_cnt(find_symbol(symbols, "M_CNT")),
@@ -616,6 +642,18 @@ struct Wdc65816::Impl {
           projection_result(static_cast<std::uint16_t>(find_symbol(symbols, "PR"))),
           projection_vanish_x(static_cast<std::uint16_t>(
               find_symbol(symbols, "VANISHX"))) {
+        tunnel_flag = find_symbol(symbols, "INATUNNEL");
+        tunnel_previous_z = find_symbol(symbols, "OLDVIEWPOSZ");
+        tunnel_scroll_override = find_symbol(symbols, "BG2VOFSOVERRIDE");
+        tunnel_hdma_enable = find_symbol(symbols, "HDMAEN_GC");
+        tunnel_tables = find_symbol(symbols, "CHEQUERED_TABLES");
+        const std::array byte_names{"GAMEMODE", "BG3SCROLLFLAG", "FLASHTUNNELON",
+            "FLASHBG", "DOSPACESC", "NOXROT", "FADEPAL", "TUNNELSCROLL"};
+        const std::array word_names{"LASTPALFADE", "DEFAULTID", "BG2XSCROLL", "BHOLESCALEVAL"};
+        for (unsigned i = 0; i < byte_names.size(); ++i)
+            mode_reset_bytes[i] = find_symbol(symbols, byte_names[i]);
+        for (unsigned i = 0; i < word_names.size(); ++i)
+            mode_reset_words[i] = find_symbol(symbols, word_names[i]);
         for (auto& page : pages) {
             page.ptr = nullptr;
             page.flags = 0;
@@ -666,6 +704,43 @@ struct Wdc65816::Impl {
             bus.Map(((bank | 0x80U) << 16U) | 0x8000U, bank_data, 0x8000U, true);
         }
 
+        // EX GSTRATS2.ASM's SETSHIP/SETSHIP2 use AL_SBYTE3 as a temporary
+        // table index. PLAYERCLEAREARTH calls SETCURRPSHAPE via PLAYERMOVE
+        // every tick, so that temporary overwrites its live clear countdown
+        // and CHKSTAGEDONE can never succeed. The index is already in A:
+        // omit only the redundant store/reload, retaining PHX, REP, AND and
+        // the exact source ship-table lookup. Validate the instruction bytes
+        // and remap a private bank, never mutate the supplied ROM/asset pack.
+        if (find_symbol(symbols, "NOCROSSHAIRPLS") != 0U) {
+            for (const auto* name : {"SETSHIP", "SETSHIP2"}) {
+                const auto entry = find_rom_symbol(symbols, name);
+                if (entry == 0U) continue;
+                constexpr std::array<std::uint8_t, 11> scratch_lookup{
+                    0x95, 0x24, 0xda, 0xc2, 0x20, 0xb5, 0x24,
+                    0x29, 0xff, 0x00, 0xaa};
+                std::uint32_t match{};
+                for (auto pc = entry; pc + scratch_lookup.size() <= entry + 64U; ++pc) {
+                    bool equal = true;
+                    for (std::size_t i = 0; i < scratch_lookup.size(); ++i)
+                        equal &= rom_image.read8(pc + static_cast<std::uint32_t>(i)) == scratch_lookup[i];
+                    if (equal) { match = pc; break; }
+                }
+                if (match == 0U) continue; // a revised source may already preserve the timer
+                const auto bank = static_cast<std::uint8_t>(entry >> 16U);
+                auto& copy = compatible_rom_banks[bank];
+                if (copy.empty()) {
+                    const auto begin = rom_image.bytes().begin() + bank * 0x8000U;
+                    copy.assign(begin, begin + 0x8000U);
+                }
+                for (const auto offset : {0U, 1U, 5U, 6U})
+                    copy[(match & 0x7fffU) + offset] = 0xeaU; // NOP
+            }
+            for (auto& [bank, copy] : compatible_rom_banks) {
+                bus.Map((std::uint32_t{bank} << 16U) | 0x8000U, copy.data(), 0x8000U, true);
+                bus.Map((std::uint32_t{bank | 0x80U} << 16U) | 0x8000U, copy.data(), 0x8000U, true);
+            }
+        }
+
         // Star Fox's GSU work RAM is CPU-visible in bank $70. This must be
         // mapped after LoROM so $70:8000-$ffff is RAM rather than cartridge.
         bus.Map(kSuperFxRamBase, superfx_ram.data(), kSuperFxRamSize);
@@ -699,6 +774,109 @@ struct Wdc65816::Impl {
     std::uint16_t read_wram16(std::uint16_t address) const noexcept {
         return static_cast<std::uint16_t>(wram[address])
             | (static_cast<std::uint16_t>(wram[address + 1U]) << 8U);
+    }
+
+    void write_word(std::uint32_t address, std::uint16_t value) {
+        write8(address, static_cast<std::uint8_t>(value));
+        write8(address + 1U, static_cast<std::uint8_t>(value >> 8U));
+    }
+
+    void tick_background_video_phase() {
+        ppu.bg2_scanline_scroll_enabled = tunnel_flag != 0U
+            && (ppu.background_mode == 1U || ppu.background_mode == 2U)
+            && tunnel_tables != 0U && tunnel_previous_z != 0U
+            && tunnel_hdma_enable != 0U && read8(tunnel_flag) != 0U
+            && (read8(tunnel_hdma_enable) & 0x10U) != 0U
+            && (tunnel_scroll_override == 0U
+                || read8(tunnel_scroll_override) == 0U)
+            && wram[0] <= 14U;
+        if (!ppu.bg2_scanline_scroll_enabled) return;
+        // IRQ.ASM/SETBG2VOFS selects a source run-length table with the
+        // transferred camera Z, not the next strategy's player position.
+        const auto phase = (read_wram16(
+            static_cast<std::uint16_t>(tunnel_previous_z)) >> 2U) & 62U;
+        const auto pointer = read8(tunnel_tables + phase)
+            | (static_cast<std::uint16_t>(read8(tunnel_tables + phase + 1U)) << 8U);
+        auto cursor = (tunnel_tables & 0xff0000U) | pointer;
+        auto& rows = ppu.bg2_scanline_scroll_y;
+        rows.fill(0);
+        // XHDMA_BG2VOFS begins with ten unscrolled rasters. Each subsequent
+        // table byte gives a run length and selects CSCR1=24/CSCR2=280.
+        auto line = std::size_t{10U};
+        auto scroll = std::int16_t{};
+        while (line < rows.size()) {
+            const auto record = read8(cursor++);
+            const auto count = static_cast<std::size_t>(record & 0x7fU);
+            if (count == 0U) break;
+            scroll = (record & 0x80U) != 0U ? 280 : 24;
+            const auto end = std::min(rows.size(), line + count);
+            std::fill(rows.begin() + line, rows.begin() + end, scroll);
+            line = end;
+        }
+        // A terminating HDMA entry stops transfers; it does not reset VOFS.
+        std::fill(rows.begin() + line, rows.end(), scroll);
+    }
+
+    void tick_ending_video_phase() {
+        // IRQ.ASM: every ENDSEQBIT0/1/2/3 raster runs SEQSCROLL. Do not run
+        // this from service_transfer(), which may be polled many times within
+        // one native task. Nor call a bounded native routine here: that would
+        // overwrite the suspended ENDTRANS registers/stack.
+        const auto flag = wram[0];
+        if (flag != 26U && flag != 28U && flag != 30U && flag != 32U) return;
+        constexpr std::array<std::uint16_t, 6> speeds{2U, 1U, 2U, 1U, 4U, 2U};
+        for (std::size_t i = 0; i < speeds.size(); ++i) {
+            if (ending_scroll_saved[i] == 0U || ending_scroll_requested[i] == 0U)
+                continue;
+            const auto saved = static_cast<std::uint16_t>(ending_scroll_saved[i]);
+            const auto requested = static_cast<std::uint16_t>(ending_scroll_requested[i]);
+            const auto current = read_wram16(saved);
+            const auto target = read_wram16(requested);
+            const auto reg = static_cast<std::uint16_t>(0x210dU + i);
+            // The source publishes BAK before RAMCHASE updates it.
+            write_ppu(reg, static_cast<std::uint8_t>(current));
+            write_ppu(reg, static_cast<std::uint8_t>(current >> 8U));
+            const auto difference = static_cast<std::int16_t>(current - target);
+            if (difference != 0) {
+                write_word(saved, static_cast<std::uint16_t>(difference < 0
+                    ? current + speeds[i] : current - speeds[i]));
+            }
+        }
+    }
+
+    void ending_text_step() {
+        // IRQ.ASM: SEQTEXT emits one tile per completed ENDSEQBIT3 upload,
+        // following any position commands before consuming the glyph.
+        if (ending_background_flags == 0U || ending_text_pointer == 0U
+            || ending_text_vram == 0U || ending_text_buffer == 0U
+            || ending_text_translation == 0U
+            || (read8(ending_background_flags) & 0x10U) == 0U) return;
+        auto cursor = read_wram16(static_cast<std::uint16_t>(ending_text_pointer));
+        auto destination = read_wram16(static_cast<std::uint16_t>(ending_text_vram));
+        for (std::size_t positions = 0; positions < 256U; ++positions) {
+            const auto character = read8(ending_text_buffer + cursor++);
+            if (character == 0U) {
+                write8(ending_background_flags,
+                    static_cast<std::uint8_t>(read8(ending_background_flags) & ~0x10U));
+                return;
+            }
+            if (character == 1U) {
+                const auto low = read8(ending_text_buffer + cursor++);
+                const auto high = read8(ending_text_buffer + cursor++);
+                destination = static_cast<std::uint16_t>(
+                    0x7000U + low + (static_cast<std::uint16_t>(high) << 8U));
+                continue;
+            }
+            const auto glyph = read8(ending_text_translation - 32U + character);
+            const auto tile = static_cast<std::uint16_t>((glyph | 0x2000U) + 256U);
+            write_ppu(0x2116U, static_cast<std::uint8_t>(destination));
+            write_ppu(0x2117U, static_cast<std::uint8_t>(destination >> 8U));
+            write_ppu(0x2118U, static_cast<std::uint8_t>(tile));
+            write_ppu(0x2119U, static_cast<std::uint8_t>(tile >> 8U));
+            write_word(ending_text_vram, static_cast<std::uint16_t>(destination + 1U));
+            write_word(ending_text_pointer, cursor);
+            return;
+        }
     }
 
     std::uint16_t read_superfx16(std::uint32_t address) const noexcept {
@@ -2339,6 +2517,7 @@ struct Wdc65816::Impl {
                 write_word(vmap1, second);
                 write_word(vmap2, first);
             }
+            ending_text_step();
             wram[0] = 32U;
             break;
         }
@@ -2350,6 +2529,21 @@ struct Wdc65816::Impl {
         case 36U:
         case 38U:
         case 40U:
+            // IRQSETMODE1/2 reset the outgoing scene's scroll/effect state.
+            // Acknowledging only BGMODE let boss/black-hole scratch leak into
+            // the next stage and left a tunnel's HDMA channel enabled.
+            for (const auto address : mode_reset_bytes)
+                if (address != 0U) write8(address, 0U);
+            for (const auto address : mode_reset_words)
+                if (address != 0U) write_word(address, 0U);
+            if (tunnel_hdma_enable != 0U) write8(tunnel_hdma_enable, 0x0aU);
+            if (m_scrollxoff != 0U) write_superfx16(m_scrollxoff, 128U);
+            ppu.bg2_scanline_scroll_enabled = false;
+            ppu.bg2_scroll_y = 0;
+            if (flag != 36U) {
+                ppu.bg3_scroll_x = 224;
+                ppu.bg3_scroll_y = 0;
+            }
             // IRQSETMODE2SP writes $22 to BGMODE: Mode 2 with 16x16 BG2
             // characters. Several EX tunnel/special-stage transitions use
             // this third setup request. Treating it as an unknown transfer
@@ -2518,6 +2712,14 @@ void Wdc65816::submit_superfx_bitmap() {
 void Wdc65816::set_bg1_scroll(std::int16_t x, std::int16_t y) noexcept {
     impl_->ppu.bg1_scroll_x = x;
     impl_->ppu.bg1_scroll_y = y;
+}
+
+void Wdc65816::tick_ending_video_phase() {
+    impl_->tick_ending_video_phase();
+}
+
+void Wdc65816::tick_background_video_phase() {
+    impl_->tick_background_video_phase();
 }
 
 void Wdc65816::set_bg2_scroll(std::int16_t x, std::int16_t y) noexcept {

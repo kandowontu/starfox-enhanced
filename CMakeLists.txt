@@ -1,6 +1,26 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(starfox_enhanced VERSION 0.0.3 LANGUAGES CXX)
+project(starfox_enhanced VERSION 0.0.4 LANGUAGES CXX)
+
+if(WINDOWS_STORE)
+    # Apply the UWP ABI to the entire dependency graph, not only the SDL entry
+    # point. The redistributable UWP framework still uses the pre-17.10 mutex
+    # constructor ABI; ask it to initialize mutexes instead of inlining the
+    # newer desktop runtime's layout.
+    add_compile_definitions(WINAPI_FAMILY=WINAPI_FAMILY_APP
+        _CRT_APP=1 _DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR=1)
+    add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:/Zi>")
+    # Ninja links with the caller's LIB environment. A later incremental build
+    # from a desktop shell must not silently replace *_app.dll imports with
+    # desktop CRT imports (which fail before WinMain on Xbox).
+    get_filename_component(STARFOX_MSVC_X64_BIN "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    get_filename_component(STARFOX_MSVC_ROOT "${STARFOX_MSVC_X64_BIN}/../../.." ABSOLUTE)
+    set(STARFOX_UWP_CRT_LIB_DIR "${STARFOX_MSVC_ROOT}/lib/x64/store")
+    if(NOT EXISTS "${STARFOX_UWP_CRT_LIB_DIR}/msvcprt.lib")
+        message(FATAL_ERROR "The MSVC x64 UWP/Store libraries are required")
+    endif()
+    link_directories(BEFORE "${STARFOX_UWP_CRT_LIB_DIR}")
+endif()
 
 # devkitPro's current toolchain identifies Horizon as NintendoSwitch but does
 # not define the legacy SWITCH convenience variable used by projects and SDL.
@@ -8,7 +28,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
     set(SWITCH TRUE)
 endif()
 
-if(WINDOWS_STORE)
+if(WINDOWS_STORE OR ANDROID OR IOS OR SWITCH OR VITA)
     set(STARFOX_BUILD_TOOLS_DEFAULT OFF)
 else()
     set(STARFOX_BUILD_TOOLS_DEFAULT ON)
@@ -253,12 +273,24 @@ if(STARFOX_BUILD_RUNTIME)
         endif()
         if(WINDOWS_STORE)
             # Upstream SDL dropped UWP. This maintained SDL 3.4-compatible
-            # fork keeps WinRT video/audio, XInput gamepads and Xbox Dev Mode.
+            # fork keeps WinRT video/audio, Windows Gaming Input and Xbox Dev
+            # Mode.
+            # Its SDL3 forward-port retained a desktop-only D3D11 window lookup
+            # and omitted thread IDs needed by WASAPI's reentrancy checks.
+            # Apply the local UWP runtime fixes reproducibly before configuring
+            # the dependency. The helper tolerates CMake reconfiguration after
+            # the patch is already present in the fetched source tree.
+            find_package(Git REQUIRED)
             FetchContent_Declare(
                 SDL3
                 GIT_REPOSITORY https://github.com/SternXD/SDL3-uwp.git
                 GIT_TAG 8fd8db768df139e9bb4c7a7869fb913a0e29ea89
-                GIT_SHALLOW TRUE)
+                GIT_SHALLOW TRUE
+                PATCH_COMMAND "${CMAKE_COMMAND}"
+                    "-DGIT_EXECUTABLE=${GIT_EXECUTABLE}"
+                    "-DSOURCE_DIR=<SOURCE_DIR>"
+                    "-DPATCH_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/sdl3-uwp-d3d11.patch"
+                    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/apply_git_patch_once.cmake")
         else()
             FetchContent_Declare(
                 SDL3
@@ -282,9 +314,20 @@ if(STARFOX_BUILD_RUNTIME)
         add_executable(starfox_pc ${STARFOX_RUNTIME_SOURCES})
     endif()
     if(WINDOWS_STORE)
-        target_compile_definitions(starfox_pc PRIVATE STARFOX_UWP=1)
+        # The Ninja generator's WindowsStore platform adds /APPCONTAINER at
+        # link time but does not consistently publish WINAPI_FAMILY to
+        # application translation units.  SDL then compiles its library as
+        # WinRT while SDL_main.h in the executable selects the desktop Win32
+        # entry point.  That mixed startup path packages successfully but is
+        # rejected/terminated during Xbox activation.  Make both halves select
+        # the same CoreApplication implementation explicitly.
+        target_compile_definitions(starfox_pc PRIVATE
+            STARFOX_UWP=1
+            WINAPI_FAMILY=WINAPI_FAMILY_APP)
         add_library(starfox_uwp_main OBJECT src/app/uwp_main.cpp)
         target_link_libraries(starfox_uwp_main PRIVATE SDL3::Headers)
+        target_compile_definitions(starfox_uwp_main PRIVATE
+            WINAPI_FAMILY=WINAPI_FAMILY_APP)
         target_compile_options(starfox_uwp_main PRIVATE /ZW)
         set_target_properties(starfox_uwp_main PROPERTIES
             CXX_STANDARD 17
@@ -292,8 +335,19 @@ if(STARFOX_BUILD_RUNTIME)
             CXX_EXTENSIONS NO)
         target_sources(starfox_pc PRIVATE
             $<TARGET_OBJECTS:starfox_uwp_main>)
+        # SDL's WinRT entry point expects the blank-cursor resource to be part
+        # of the application binary.  The Visual Studio UWP template adds
+        # these files automatically, but the Ninja package path does not.
+        # Without them SDL can fail during activation before the first frame.
+        target_sources(starfox_pc PRIVATE
+            "${SDL3_SOURCE_DIR}/src/main/winrt/SDL3-WinRTResources.rc"
+            "${SDL3_SOURCE_DIR}/src/main/winrt/SDL3-WinRTResource_BlankCursor.cur")
         target_link_options(starfox_pc PRIVATE
             /APPCONTAINER
+            /NODEFAULTLIB:kernel32.lib
+            /NODEFAULTLIB:user32.lib
+            /DEBUG:FULL
+            /OPT:REF /OPT:ICF
             /WINMD
             "/WINMDFILE:${CMAKE_CURRENT_BINARY_DIR}/starfox_pc.winmd")
 
@@ -317,6 +371,15 @@ if(STARFOX_BUILD_RUNTIME)
             VERBATIM)
         set(STARFOX_UWP_MANIFEST
             "${CMAKE_CURRENT_BINARY_DIR}/Package.appxmanifest")
+        set(STARFOX_UWP_BUILD_REVISION "0" CACHE STRING
+            "Fourth component of the Xbox UWP package version")
+        if(NOT STARFOX_UWP_BUILD_REVISION MATCHES "^[0-9]+$")
+            message(FATAL_ERROR
+                "STARFOX_UWP_BUILD_REVISION must be an integer from 0 to 65535")
+        elseif(STARFOX_UWP_BUILD_REVISION GREATER 65535)
+            message(FATAL_ERROR
+                "STARFOX_UWP_BUILD_REVISION must be an integer from 0 to 65535")
+        endif()
         configure_file(platform/uwp/Package.appxmanifest.in
             "${STARFOX_UWP_MANIFEST}" @ONLY)
         target_sources(starfox_pc PRIVATE
@@ -496,7 +559,8 @@ if(STARFOX_BUILD_RUNTIME)
         target_include_directories(starfox_embedded_assets PRIVATE include)
         target_compile_features(starfox_embedded_assets PRIVATE cxx_std_20)
 
-        if(NOT ANDROID AND NOT IOS AND NOT WINDOWS_STORE)
+        if(NOT ANDROID AND NOT IOS AND NOT WINDOWS_STORE
+           AND NOT SWITCH AND NOT VITA)
             add_executable(starfox_asset_builder src/app/asset_builder.cpp)
             target_link_libraries(starfox_asset_builder PRIVATE
                 starfox_core starfox_embedded_assets)
@@ -581,6 +645,21 @@ if(STARFOX_BUILD_RUNTIME)
             target_link_options(starfox_asset_builder PRIVATE
                 -static -static-libgcc -static-libstdc++)
         endif()
+    endif()
+    if(VITA)
+        if(NOT DEFINED ENV{VITASDK} OR "$ENV{VITASDK}" STREQUAL "")
+            message(FATAL_ERROR "VITASDK must point to an installed VitaSDK")
+        endif()
+        include("$ENV{VITASDK}/share/vita.cmake" REQUIRED)
+        set(STARFOX_VITA_TITLE_ID "SFXE00001" CACHE STRING
+            "Nine-character PS Vita title id")
+        set(STARFOX_VITA_APP_VERSION "00.04" CACHE STRING
+            "Two-component PS Vita application version")
+        vita_create_self(eboot.bin starfox_pc)
+        vita_create_vpk(StarFoxEnhanced.vpk
+            "${STARFOX_VITA_TITLE_ID}" eboot.bin
+            VERSION "${STARFOX_VITA_APP_VERSION}"
+            NAME "Star Fox Enhanced")
     endif()
 
     install(TARGETS starfox_pc
@@ -680,6 +759,14 @@ if(STARFOX_BUILD_TESTS)
         tests/transition_parity_tests.cpp)
     target_link_libraries(starfox_transition_parity_tests PRIVATE starfox_core)
 
+    add_executable(starfox_ending_tests tests/ending_tests.cpp)
+    target_link_libraries(starfox_ending_tests PRIVATE starfox_core)
+
+    add_executable(starfox_hitlist_tests tests/hitlist_tests.cpp)
+    add_executable(starfox_level_clear_tests tests/level_clear_tests.cpp)
+    target_link_libraries(starfox_level_clear_tests PRIVATE starfox_core)
+    target_link_libraries(starfox_hitlist_tests PRIVATE starfox_core)
+
     if(STARFOX_BUILD_RUNTIME)
         add_executable(starfox_runtime_input_tests
             tests/runtime_input_tests.cpp
@@ -687,9 +774,25 @@ if(STARFOX_BUILD_TESTS)
         target_link_libraries(
             starfox_runtime_input_tests PRIVATE starfox_core SDL3::SDL3)
         add_test(NAME starfox_runtime_input_tests COMMAND starfox_runtime_input_tests)
+        add_executable(starfox_audio_queue_tests tests/audio_queue_tests.cpp)
+        target_link_libraries(starfox_audio_queue_tests PRIVATE starfox_core SDL3::SDL3)
+        add_test(NAME starfox_audio_queue_tests COMMAND starfox_audio_queue_tests)
+        set_tests_properties(starfox_audio_queue_tests PROPERTIES
+            ENVIRONMENT "SDL_AUDIODRIVER=dummy")
         set_tests_properties(starfox_runtime_input_tests PROPERTIES
             ENVIRONMENT "SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1"
             TIMEOUT 10)
+        if(WIN32 AND NOT WINDOWS_STORE)
+            # Exercise UWP's pre-initialization configuration on the host as
+            # well; ordinary desktop tests can pass via XInput without WGI.
+            add_executable(starfox_uwp_input_tests
+                tests/runtime_input_tests.cpp src/app/runtime_input.cpp)
+            target_compile_definitions(starfox_uwp_input_tests PRIVATE STARFOX_UWP=1)
+            target_link_libraries(starfox_uwp_input_tests PRIVATE starfox_core SDL3::SDL3)
+            add_test(NAME starfox_uwp_input_tests COMMAND starfox_uwp_input_tests)
+            set_tests_properties(starfox_uwp_input_tests PROPERTIES
+                ENVIRONMENT "SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1" TIMEOUT 10)
+        endif()
     endif()
 
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
@@ -718,6 +821,15 @@ if(STARFOX_BUILD_TESTS)
                     "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
                     "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT"
         )
+        add_test(NAME starfox_upstream_ending COMMAND starfox_ending_tests
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT")
+        add_test(NAME starfox_upstream_hitlist COMMAND starfox_hitlist_tests
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT")
+        add_test(NAME starfox_upstream_level_clear COMMAND starfox_level_clear_tests
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT")
         add_test(
             NAME starfox_upstream_map_trace
             COMMAND starfox_map_trace
@@ -844,6 +956,12 @@ if(STARFOX_BUILD_TESTS)
                     "${STARFOX_EX_ROM_FILE}"
                     "${STARFOX_EX_SYMBOLS_FILE}"
         )
+        add_test(NAME starfox_ex_ending COMMAND starfox_ending_tests
+            "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}")
+        add_test(NAME starfox_ex_hitlist COMMAND starfox_hitlist_tests
+            "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}")
+        add_test(NAME starfox_ex_level_clear COMMAND starfox_level_clear_tests
+            "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}")
         add_test(
             NAME starfox_ex_simulation_data
             COMMAND starfox_simulation_tests

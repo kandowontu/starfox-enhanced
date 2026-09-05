@@ -207,7 +207,7 @@ public:
     // separate from both the 3D object list and the SNES OAM reticle.
     void draw_cockpit_hud(
         const simulation::TrigTables& trigonometry,
-        std::uint8_t rotation,
+        double rotation,
         std::uint8_t colour,
         std::uint8_t damage_flags,
         std::int32_t horizontal_origin,

@@ -155,6 +155,20 @@ void interpolate_crosshair_oam(
     }
 }
 
+void suppress_crosshair_oam(simulation::SnesPpuState& ppu) noexcept {
+    const auto group = find_crosshair_oam_group(ppu.oam);
+    if (!group) return;
+    for (std::size_t quadrant = 0U; quadrant < 4U; ++quadrant) {
+        const auto object = group->first_object + quadrant;
+        const auto low = object * 4U;
+        std::fill_n(ppu.oam.begin() + static_cast<std::ptrdiff_t>(low), 4U, 0U);
+        const auto high = 512U + object / 4U;
+        const auto shift = static_cast<unsigned>((object & 3U) * 2U);
+        ppu.oam[high] = static_cast<std::uint8_t>(
+            ppu.oam[high] & ~(0x03U << shift));
+    }
+}
+
 void SpriteRenderer::draw_objects(
     const simulation::SnesPpuState& ppu,
     Framebuffer& target,

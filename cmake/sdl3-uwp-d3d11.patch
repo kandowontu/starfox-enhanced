@@ -1,0 +1,37 @@
+diff --git a/src/render/direct3d11/SDL_render_d3d11.c b/src/render/direct3d11/SDL_render_d3d11.c
+index 512124c..5e297f0 100644
+--- a/src/render/direct3d11/SDL_render_d3d11.c
++++ b/src/render/direct3d11/SDL_render_d3d11.c
+@@ -3056,10 +3056,12 @@ static bool D3D11_CreateRenderer(SDL_Renderer *renderer, SDL_Window *window, SDL
+ {
+     D3D11_RenderData *data;
+ 
++#if defined(SDL_PLATFORM_WIN32) || defined(SDL_PLATFORM_WINGDK)
+     HWND hwnd = (HWND)SDL_GetPointerProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_WIN32_HWND_POINTER, NULL);
+     if (!hwnd) {
+         return SDL_SetError("Couldn't get window handle");
+     }
++#endif
+ 
+     SDL_SetupRendererColorspace(renderer, create_props);
+ 
+diff --git a/src/thread/stdcpp/SDL_systhread.cpp b/src/thread/stdcpp/SDL_systhread.cpp
+--- a/src/thread/stdcpp/SDL_systhread.cpp
++++ b/src/thread/stdcpp/SDL_systhread.cpp
+@@ -46,7 +46,15 @@ bool SDL_SYS_CreateThread(SDL_Thread *thread,
+ {
+     try {
+         // !!! FIXME: no way to set a thread stack size here.
+-        thread->handle = (void *)new std::thread(RunThread, thread);
++        auto *cpp_thread = new std::thread(RunThread, thread);
++        thread->handle = (void *)cpp_thread;
++        // SDL3 stores the ID in the platform creation backend. SDL_RunThread
++        // no longer fills it in. WASAPI needs it to recognize reentrant work
++        // on its management thread instead of queuing and waiting on itself.
++        static_assert(sizeof(std::thread::id) <= sizeof(SDL_ThreadID), "std::thread::id must not be bigger than SDL_ThreadID");
++        const auto cpp_thread_id = cpp_thread->get_id();
++        thread->threadid = 0;
++        SDL_memcpy(&thread->threadid, &cpp_thread_id, sizeof(cpp_thread_id));
+         return true;
+     } catch (std::system_error &ex) {
+         return SDL_SetError("unable to start a C++ thread: code=%d; %s", ex.code().value(), ex.what());

@@ -1349,7 +1349,7 @@ SoftwareRenderer::SoftwareRenderer(RenderSettings settings) : settings_(settings
 
 void SoftwareRenderer::draw_cockpit_hud(
     const simulation::TrigTables& trigonometry,
-    std::uint8_t rotation,
+    double rotation,
     std::uint8_t colour,
     std::uint8_t damage_flags,
     std::int32_t horizontal_origin,
@@ -1359,22 +1359,31 @@ void SoftwareRenderer::draw_cockpit_hud(
         std::int32_t x{};
         std::int32_t y{};
     };
-    const auto sine = static_cast<std::int32_t>(trigonometry.sin8(rotation));
-    const auto cosine = static_cast<std::int32_t>(trigonometry.cos8(rotation));
-    const auto rotate = [sine, cosine](std::int32_t x, std::int32_t y) {
+    rotation = std::fmod(rotation, 256.0);
+    if (rotation < 0.0) rotation += 256.0;
+    const auto angle = static_cast<std::uint8_t>(rotation);
+    const auto next_angle = static_cast<std::uint8_t>(angle + 1U);
+    const auto fraction = rotation - angle;
+    const auto sine = std::lerp(static_cast<double>(trigonometry.sin8(angle)),
+        static_cast<double>(trigonometry.sin8(next_angle)), fraction);
+    const auto cosine = std::lerp(static_cast<double>(trigonometry.cos8(angle)),
+        static_cast<double>(trigonometry.cos8(next_angle)), fraction);
+    const auto scale = static_cast<std::int32_t>(target.draw_scale());
+    const StoredRasterScope scale_guard{target, static_cast<std::uint32_t>(scale)};
+    const auto rotate = [sine, cosine, scale](std::int32_t x, std::int32_t y) {
         // MROTPNTY loads a signed eight-bit table entry into the high byte of
         // a long product and performs one final ASR: (value * trig) / 512.
         return HudPoint{
-            simulation::arithmetic_shift_right(x * cosine + y * sine, 9U),
-            simulation::arithmetic_shift_right(y * cosine - x * sine, 9U),
+            static_cast<std::int32_t>(std::floor((x * cosine + y * sine) * scale / 512.0)),
+            static_cast<std::int32_t>(std::floor((y * cosine - x * sine) * scale / 512.0)),
         };
     };
-    const auto source_left = horizontal_origin;
-    const auto source_right = horizontal_origin + 224;
-    const auto vanish_x = horizontal_origin + 112;
-    constexpr std::int32_t vanish_y = 96;
+    const auto source_left = horizontal_origin * scale;
+    const auto source_right = (horizontal_origin + 224) * scale;
+    const auto vanish_x = (horizontal_origin + 112) * scale;
+    const auto vanish_y = 96 * scale;
     const auto paint_line = [&target, source_left, source_right,
-                             vanish_x, vanish_y](
+                             vanish_x, vanish_y, scale](
                                 HudPoint a, HudPoint b,
                                 std::uint8_t pixel) {
         auto x0 = a.x + vanish_x;
@@ -1386,8 +1395,13 @@ void SoftwareRenderer::draw_cockpit_hud(
         const auto dy = std::abs(y1 - y0);
         const auto sy = y0 < y1 ? 1 : -1;
         const auto plot = [&] {
-            if (x0 >= source_left && x0 < source_right) {
-                target.set(x0, y0, pixel);
+            // Keep the source line weight while allowing sub-source-pixel
+            // motion at Render Upscale > 1; never round roll back to 8 bits.
+            for (int dy = 0; dy < scale; ++dy) {
+                for (int dx = 0; dx < scale; ++dx) {
+                    if (x0 + dx >= source_left && x0 + dx < source_right)
+                        target.set(x0 + dx, y0 + dy, pixel);
+                }
             }
         };
         if (dx >= dy) {

@@ -137,6 +137,8 @@ public:
     void set_bg2_scroll(std::int16_t x, std::int16_t y) noexcept {
         cpu_.set_bg2_scroll(x, y);
     }
+    [[nodiscard]] std::optional<std::array<std::int16_t, 2>>
+        background_scroll_override() const;
     void draw_planet_sphere(std::uint16_t sprite) {
         cpu_.draw_planet_sphere(sprite);
     }
@@ -269,6 +271,9 @@ private:
     std::uint32_t background_flags_address_{0x001a16U};
     std::uint32_t background_dma_list_address_{0x001764U};
     std::uint32_t current_background_address_{0x0017c6U};
+    std::uint32_t background_scroll_override_address_{};
+    std::uint32_t background_scroll_requested_x_{};
+    std::uint32_t background_scroll_requested_y_{};
     std::uint32_t background_music_count_address_{0x001a49U};
     std::uint32_t background_music_address_{0x001a4aU};
     std::uint32_t player_ship_flags_2_address_{0x001562U};

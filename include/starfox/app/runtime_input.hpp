@@ -98,6 +98,8 @@ struct PregameSettings {
     std::uint8_t music_volume{100U};
     std::uint8_t sfx_volume{100U};
     std::uint8_t render_scale{};
+    bool on_screen_controls{true};
+    bool swap_face_buttons{};
 
     [[nodiscard]] bool operator==(const PregameSettings&) const = default;
 };

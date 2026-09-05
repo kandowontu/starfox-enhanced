@@ -115,6 +115,9 @@ MapVm::MapVm(
           symbols, "BG_DMALIST", kOriginalBackgroundDmaList)),
       current_background_address_(symbol_or(
           symbols, "CURRENTBG", kOriginalCurrentBackground)),
+      background_scroll_override_address_(symbol_or(symbols, "BG2VOFSOVERRIDE", 0U)),
+      background_scroll_requested_x_(symbol_or(symbols, "BG2HOFSREQ", 0U)),
+      background_scroll_requested_y_(symbol_or(symbols, "BG2VOFSREQ", 0U)),
       background_music_count_address_(symbol_or(
           symbols, "BGMCNT", kOriginalBackgroundMusicCount)),
       background_music_address_(symbol_or(
@@ -250,7 +253,26 @@ void MapVm::start_display_fade(std::int8_t direction) {
     sync_display_to_cpu();
 }
 
+std::optional<std::array<std::int16_t, 2>> MapVm::background_scroll_override() const {
+    if (background_scroll_override_address_ == 0U
+        || background_scroll_requested_x_ == 0U || background_scroll_requested_y_ == 0U
+        || read_native_byte(background_scroll_override_address_) == 0U) return std::nullopt;
+    return std::array{
+        std::bit_cast<std::int16_t>(read_native_word(background_scroll_requested_x_)),
+        std::bit_cast<std::int16_t>(read_native_word(background_scroll_requested_y_))};
+}
+
 void MapVm::tick_video_phase() {
+    cpu_.tick_ending_video_phase();
+    cpu_.tick_background_video_phase();
+    // Standard FOXIRQ3's SETBG2VOFS owns this override, not CALCBGSCROLL's
+    // gameplay scratch words. CREDITS fixes it to (0,0); GAMEOVER supplies
+    // its own requested offset too. Neither should inherit gameplay scroll.
+    if (cpu_.read8(0U) <= 14U) {
+        if (const auto scroll = background_scroll_override()) {
+            cpu_.set_bg2_scroll((*scroll)[0], (*scroll)[1]);
+        }
+    }
     if (fade_direction_ == 0) {
         return;
     }
@@ -413,6 +435,12 @@ std::size_t MapVm::call_native_object_routine(
     sync_objects_to_cpu();
     Wdc65816Registers registers;
     registers.x = original_object_pointer(object);
+    // TRANS.ASM's strategy loop advances with LDY _NEXT,X / TYX, so
+    // DO_STRAT_L receives the current object in BOTH index registers.
+    // Initial strategies such as PSHIPOUTOFLB3_ISTRAT store Y as their
+    // camera target before ever loading it. Zeroing Y loses that target
+    // and leaves the ending waiting for world coordinates to wrap.
+    registers.y = registers.x;
     registers.data_bank = data_bank;
     registers.status = status;
     const auto instructions = cpu_.call_long(address, registers, instruction_limit);

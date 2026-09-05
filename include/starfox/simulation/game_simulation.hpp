@@ -75,15 +75,9 @@ enum class RenderScale : std::uint8_t {
     scale_2x,
     scale_3x,
     scale_4x,
-    scale_5x,
-    scale_6x,
-    scale_7x,
-    scale_8x,
-    scale_9x,
-    scale_10x,
 };
 
-inline constexpr std::size_t render_scale_count = 10U;
+inline constexpr std::size_t render_scale_count = 4U;
 
 enum class PregamePage {
     main,
@@ -144,6 +138,20 @@ struct WindowWipeState {
     std::array<std::uint16_t, 192> right{};
 };
 
+// Fixed-colour effect selected by TRANS.ASM's colour-window priority list.
+// The cartridge uses this for the one-frame turquoise/red damage flash (and
+// for several scripted full-screen flashes) independently of the geometric
+// circle/window-wipe tables.
+struct ColourMathEffectState {
+    bool active{};
+    bool subtract{};
+    bool half{};
+    std::uint8_t affected_layers{};
+    std::uint8_t red{};
+    std::uint8_t green{};
+    std::uint8_t blue{};
+};
+
 [[nodiscard]] WindowWipeState interpolate_window_wipe(
     const WindowWipeState& previous,
     const WindowWipeState& current,
@@ -165,6 +173,7 @@ struct StageResultsState {
     std::uint16_t hit_score{};
     std::uint16_t total_percentage{};
     std::array<std::uint8_t, 3> teammate_health{};
+    bool visible{};
 };
 
 struct BriefingState {
@@ -233,6 +242,13 @@ public:
     }
     [[nodiscard]] std::array<std::uint16_t, 16> palette_words() const noexcept;
     [[nodiscard]] GameFlowState flow_state() const noexcept { return flow_state_; }
+    [[nodiscard]] bool boss_roll_active() const {
+        const auto transfer = map_.read_native_byte(0U);
+        return ending_task_active_ && transfer >= 26U && transfer <= 32U;
+    }
+    [[nodiscard]] bool final_score_active() const noexcept {
+        return credits_complete_ && flow_state_ == GameFlowState::finished;
+    }
     [[nodiscard]] TimingMode timing_mode() const noexcept { return timing_mode_; }
     void set_timing_mode(TimingMode mode) noexcept { timing_mode_ = mode; }
     [[nodiscard]] Experience experience() const noexcept { return experience_; }
@@ -318,6 +334,18 @@ public:
     void set_sfx_volume(std::uint8_t volume) noexcept {
         sfx_volume_ = std::min<std::uint8_t>(volume, 100U);
     }
+    [[nodiscard]] bool on_screen_controls() const noexcept {
+        return on_screen_controls_;
+    }
+    void set_on_screen_controls(bool enabled) noexcept {
+        on_screen_controls_ = enabled;
+    }
+    [[nodiscard]] bool swap_face_buttons() const noexcept {
+        return swap_face_buttons_;
+    }
+    void set_swap_face_buttons(bool enabled) noexcept {
+        swap_face_buttons_ = enabled;
+    }
     [[nodiscard]] CrosshairColour crosshair_colour() const noexcept {
         return crosshair_colour_;
     }
@@ -353,6 +381,9 @@ public:
     [[nodiscard]] bool paused() const noexcept { return paused_; }
     [[nodiscard]] MeterState meter_state() const noexcept;
     [[nodiscard]] CircleEffectState circle_effect_state() const noexcept;
+    [[nodiscard]] ColourMathEffectState colour_math_effect_state() const noexcept {
+        return colour_math_effect_;
+    }
     [[nodiscard]] WindowWipeState window_wipe_state() const noexcept;
     [[nodiscard]] std::uint8_t game_over_background_subtract() const noexcept;
     [[nodiscard]] DialogueState dialogue_state() const noexcept;
@@ -380,6 +411,8 @@ private:
         controls_fade_to_map,
         training_fade_to_controls,
         stage_results_fade_to_map,
+        special_exit_white,
+        special_exit_fade_down,
         planet_fade_in,
         planet_route,
         planet_confirm_hold,
@@ -436,6 +469,8 @@ private:
     [[nodiscard]] GameTickResult tick_continue_screen(const input::TickInput& input);
     [[nodiscard]] GameTickResult tick_stage_results(const input::TickInput& input);
     void finish_stage_results();
+    void begin_special_exit(bool fade_to_white);
+    void update_special_exit();
     void begin_planet_briefing();
     void begin_planet_selection_sequence();
     void prepare_planet_briefing_graphics();
@@ -537,6 +572,8 @@ private:
     std::uint32_t upload_background_horizontal_offsets_{};
     std::uint32_t horizontal_offsets_enabled_{};
     std::uint32_t horizontal_offsets_buffer_{};
+    std::uint32_t background_scroll_z_{};
+    std::uint32_t transferred_background_scroll_z_{};
     std::uint32_t do_sounds_{};
     std::uint32_t set_black_{};
     std::uint32_t update_objects_{};
@@ -545,6 +582,9 @@ private:
     std::uint32_t do_sprites_{};
     std::uint32_t do_circle_explosion_{};
     std::uint32_t do_window_wipe_{};
+    std::uint32_t find_window_priority_{};
+    std::uint32_t window_pointer_{};
+    std::uint32_t window_array_{};
     std::uint32_t friends_messages_{};
     std::uint32_t friends_messages_2_{};
     std::uint32_t generate_collision_list_{};
@@ -650,6 +690,7 @@ private:
     std::uint32_t route_change_black_hole_1_{};
     std::uint32_t route_change_black_hole_2_{};
     std::uint32_t route_change_black_hole_3_{};
+    std::uint32_t fade_white_{};
     std::uint32_t game_over_initialize_{};
     std::uint32_t game_over_background_{};
     std::uint32_t title_map_{};
@@ -904,11 +945,14 @@ private:
     bool rumble_{true};
     std::uint8_t music_volume_{100U};
     std::uint8_t sfx_volume_{100U};
+    bool on_screen_controls_{true};
+    bool swap_face_buttons_{};
     bool pregame_horizontal_blocked_{};
     CrosshairColour crosshair_colour_{CrosshairColour::green};
     RenderScale render_scale_{RenderScale::scale_1x};
     bool planet_travel_complete_{};
     bool planet_arrival_confirmation_required_{};
+    std::uint8_t planet_route_destination_{};
     std::uint8_t stage_percentage_{};
     std::uint8_t displayed_stage_percentage_{};
     std::uint16_t stage_hit_score_{};
@@ -929,6 +973,7 @@ private:
     bool route_display_order_{};
     bool planet_route_lines_visible_{};
     CircleEffectState circle_effect_{};
+    ColourMathEffectState colour_math_effect_{};
     std::uint8_t wipe_logic_snapshot_{};
     std::array<input::TickInput, 4> secondary_inputs_{};
     MouseInputState mouse_input_{};
@@ -944,10 +989,15 @@ private:
     bool gameplay_palette_before_death_valid_{};
     std::optional<std::uint8_t> boss_music_before_death_{};
     bool post_boss_dialogue_active_{};
+    std::vector<std::uint32_t> level_clear_player_strategies_;
+    std::vector<std::uint32_t> launch_player_strategies_;
     std::uint64_t observed_apu_upload_generation_{};
     bool ex_results_task_active_{};
     bool ex_results_recorded_{};
     bool pending_end_game_{};
+    bool pending_direct_stage_start_{};
+    std::uint8_t pending_level_exit_{};
+    std::uint8_t special_exit_white_frames_{};
     bool ending_task_active_{};
     bool ending_final_score_{};
     bool credits_complete_{};

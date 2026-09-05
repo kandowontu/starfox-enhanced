@@ -48,10 +48,10 @@ jobs:
       - name: Package runtime and builder
         shell: pwsh
         run: |
-          $runtime = 'StarFoxEnhanced-0.0.3-windows-x64'
+          $runtime = 'StarFoxEnhanced-0.0.4-windows-x64'
           cmake --install build/asset-builder --prefix $runtime
           Compress-Archive -Path "$runtime/*" -DestinationPath "$runtime.zip"
-          $builder = 'StarFoxAssetBuilder-0.0.3-windows-x64'
+          $builder = 'StarFoxAssetBuilder-0.0.4-windows-x64'
           New-Item -ItemType Directory -Force $builder | Out-Null
           Copy-Item build/asset-builder/starfox_asset_builder.exe $builder/
           Copy-Item platform/mobile/ASSET_BUILDER.md $builder/README.md
@@ -59,13 +59,13 @@ jobs:
           Compress-Archive -Path "$builder/*" -DestinationPath "$builder.zip"
       - uses: actions/upload-artifact@v4
         with:
-          name: StarFoxEnhanced-0.0.3-windows-x64
-          path: StarFoxEnhanced-0.0.3-windows-x64.zip
+          name: StarFoxEnhanced-0.0.4-windows-x64
+          path: StarFoxEnhanced-0.0.4-windows-x64.zip
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
-          name: StarFoxAssetBuilder-0.0.3-windows-x64
-          path: StarFoxAssetBuilder-0.0.3-windows-x64.zip
+          name: StarFoxAssetBuilder-0.0.4-windows-x64
+          path: StarFoxAssetBuilder-0.0.4-windows-x64.zip
           if-no-files-found: error
       - name: Add to GitHub release
         if: github.event_name == 'push' || inputs.release_tag != ''
@@ -76,8 +76,8 @@ jobs:
         run: |
           tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
           gh release upload "${tag}" \
-            StarFoxEnhanced-0.0.3-windows-x64.zip \
-            StarFoxAssetBuilder-0.0.3-windows-x64.zip --clobber
+            StarFoxEnhanced-0.0.4-windows-x64.zip \
+            StarFoxAssetBuilder-0.0.4-windows-x64.zip --clobber
 
   windows-x86:
     name: Windows x86 runtime
@@ -115,13 +115,13 @@ jobs:
           if ($headers -notmatch 'IMAGE_FILE_MACHINE_I386') {
             throw 'packaged runtime is not a 32-bit x86 PE image'
           }
-          $package = 'StarFoxEnhanced-0.0.3-windows-x86'
+          $package = 'StarFoxEnhanced-0.0.4-windows-x86'
           Move-Item dist/StarFoxEnhanced-windows-x86 $package
           Compress-Archive -Path "$package/*" -DestinationPath "$package.zip"
       - uses: actions/upload-artifact@v4
         with:
-          name: StarFoxEnhanced-0.0.3-windows-x86
-          path: StarFoxEnhanced-0.0.3-windows-x86.zip
+          name: StarFoxEnhanced-0.0.4-windows-x86
+          path: StarFoxEnhanced-0.0.4-windows-x86.zip
           if-no-files-found: error
       - name: Add to GitHub release
         if: github.event_name == 'push' || inputs.release_tag != ''
@@ -132,11 +132,14 @@ jobs:
         run: |
           tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
           gh release upload "${tag}" \
-            StarFoxEnhanced-0.0.3-windows-x86.zip --clobber
+            StarFoxEnhanced-0.0.4-windows-x86.zip --clobber
 
   xbox-uwp-x64:
     name: Xbox UWP x64 (Developer Mode)
-    runs-on: windows-latest
+    # Keep the legacy UWP/C++ packaging workload and its redistributable
+    # Microsoft.VCLibs framework package available. windows-latest moved to
+    # VS 2026 and no longer guarantees this complete Xbox Dev Mode toolchain.
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
       - uses: microsoft/setup-msbuild@v2
@@ -150,21 +153,39 @@ jobs:
         shell: pwsh
         run: |
           $root = 'dist/StarFoxEnhanced-xbox-uwp-x64'
-          $package = Get-ChildItem -LiteralPath $root -File |
-            Where-Object { $_.Extension -in '.appx', '.msix', '.appxbundle', '.msixbundle' } |
-            Select-Object -First 1
-          if ($null -eq $package -or $package.Length -eq 0) {
+          $package = Join-Path $root 'StarFoxEnhanced-0.0.4-xbox-uwp-x64.appx'
+          if (-not (Test-Path -LiteralPath $package -PathType Leaf)) {
             throw 'Xbox UWP package is missing'
+          }
+          $allPackages = @(Get-ChildItem -LiteralPath $root -File |
+            Where-Object { $_.Extension -in '.appx', '.msix', '.appxbundle', '.msixbundle' })
+          if ($allPackages.Count -ne 1 -or $allPackages[0].Name -ne (Split-Path -Leaf $package)) {
+            throw 'Xbox UWP output contains stale or unexpected packages'
           }
           if (-not (Test-Path -LiteralPath "$root/StarFoxEnhanced-UWP-Development.cer")) {
             throw 'Xbox UWP public development certificate is missing'
           }
-          Compress-Archive -Path "$root/*" `
-            -DestinationPath StarFoxEnhanced-0.0.3-xbox-uwp-x64.zip
+          $dependencies = @(Get-ChildItem -LiteralPath "$root/Dependencies/x64" `
+            -File -Filter '*.appx' -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match '^Microsoft\.VCLibs\.140\.00' })
+          if ($dependencies.Count -ne 1) {
+            throw 'Xbox UWP VCLibs x64 dependency is missing or ambiguous'
+          }
+          $dependency = $dependencies[0].FullName
+          $releaseRoot = 'build/xbox-uwp-release'
+          $releaseDependencies = "$releaseRoot/Dependencies/x64"
+          New-Item -ItemType Directory -Force $releaseDependencies | Out-Null
+          Copy-Item -LiteralPath $package -Destination $releaseRoot
+          Copy-Item -LiteralPath "$root/StarFoxEnhanced-UWP-Development.cer" `
+            -Destination $releaseRoot
+          Copy-Item -LiteralPath "$root/README-XBOX-UWP.md" -Destination $releaseRoot
+          Copy-Item -LiteralPath $dependency -Destination $releaseDependencies
+          Compress-Archive -Path "$releaseRoot/*" `
+            -DestinationPath StarFoxEnhanced-0.0.4-xbox-uwp-x64.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: StarFoxEnhanced-0.0.3-xbox-uwp-x64
-          path: StarFoxEnhanced-0.0.3-xbox-uwp-x64.zip
+          name: StarFoxEnhanced-0.0.4-xbox-uwp-x64
+          path: StarFoxEnhanced-0.0.4-xbox-uwp-x64.zip
           if-no-files-found: error
       - name: Add to GitHub release
         if: github.event_name == 'push' || inputs.release_tag != ''
@@ -175,7 +196,7 @@ jobs:
         run: |
           tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
           gh release upload "${tag}" \
-            StarFoxEnhanced-0.0.3-xbox-uwp-x64.zip --clobber
+            StarFoxEnhanced-0.0.4-xbox-uwp-x64.zip --clobber
 
   linux-x64:
     name: Linux x64 native runtime
@@ -208,12 +229,12 @@ jobs:
           test -x dist/StarFoxEnhanced-linux-x64/starfox_asset_builder
           file "${binary}" | grep -q 'ELF 64-bit.*x86-64'
           ! ldd "${binary}" | grep -q 'not found'
-          cmake -E tar cf StarFoxEnhanced-0.0.3-linux-x64.zip \
+          cmake -E tar cf StarFoxEnhanced-0.0.4-linux-x64.zip \
             --format=zip dist/StarFoxEnhanced-linux-x64
       - uses: actions/upload-artifact@v4
         with:
-          name: StarFoxEnhanced-0.0.3-linux-x64
-          path: StarFoxEnhanced-0.0.3-linux-x64.zip
+          name: StarFoxEnhanced-0.0.4-linux-x64
+          path: StarFoxEnhanced-0.0.4-linux-x64.zip
           if-no-files-found: error
       - name: Add to GitHub release
         if: github.event_name == 'push' || inputs.release_tag != ''
@@ -224,7 +245,7 @@ jobs:
         run: |
           tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
           gh release upload "${tag}" \
-            StarFoxEnhanced-0.0.3-linux-x64.zip --clobber
+            StarFoxEnhanced-0.0.4-linux-x64.zip --clobber
 
   macos-universal:
     name: macOS universal (unsigned)
@@ -247,7 +268,7 @@ jobs:
           archs="$(lipo -archs "${binary}")"
           [[ " ${archs} " == *" arm64 "* ]]
           [[ " ${archs} " == *" x86_64 "* ]]
-          package="StarFoxEnhanced-0.0.3-macos-universal"
+          package="StarFoxEnhanced-0.0.4-macos-universal"
           mkdir -p "${package}"
           cp -R "${app}" "${package}/"
           cp build/macos-universal/Release/starfox_asset_builder "${package}/"
@@ -256,8 +277,8 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent "${package}" "${package}.zip"
       - uses: actions/upload-artifact@v4
         with:
-          name: StarFoxEnhanced-0.0.3-macos-universal
-          path: StarFoxEnhanced-0.0.3-macos-universal.zip
+          name: StarFoxEnhanced-0.0.4-macos-universal
+          path: StarFoxEnhanced-0.0.4-macos-universal.zip
           if-no-files-found: error
       - name: Add to GitHub release
         if: github.event_name == 'push' || inputs.release_tag != ''
@@ -268,7 +289,7 @@ jobs:
         run: |
           tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
           gh release upload "${tag}" \
-            StarFoxEnhanced-0.0.3-macos-universal.zip --clobber
+            StarFoxEnhanced-0.0.4-macos-universal.zip --clobber
 
   ios-device:
     name: iOS arm64 device (unsigned)
@@ -289,15 +310,15 @@ jobs:
           test -f "${binary}"
           plutil -lint "${app}/Info.plist"
           [[ " $(lipo -archs "${binary}") " == *" arm64 "* ]]
-          package="StarFoxEnhanced-0.0.3-ios-arm64-unsigned"
+          package="StarFoxEnhanced-0.0.4-ios-arm64-unsigned"
           mkdir -p "${package}/Payload"
           cp -R "${app}" "${package}/Payload/"
           cp platform/apple/IOS_INSTALL.md "${package}/README.md"
           ditto -c -k --sequesterRsrc --keepParent "${package}" "${package}.zip"
       - uses: actions/upload-artifact@v4
         with:
-          name: StarFoxEnhanced-0.0.3-ios-arm64-unsigned
-          path: StarFoxEnhanced-0.0.3-ios-arm64-unsigned.zip
+          name: StarFoxEnhanced-0.0.4-ios-arm64-unsigned
+          path: StarFoxEnhanced-0.0.4-ios-arm64-unsigned.zip
           if-no-files-found: error
       - name: Add to GitHub release
         if: github.event_name == 'push' || inputs.release_tag != ''
@@ -308,7 +329,7 @@ jobs:
         run: |
           tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
           gh release upload "${tag}" \
-            StarFoxEnhanced-0.0.3-ios-arm64-unsigned.zip --clobber
+            StarFoxEnhanced-0.0.4-ios-arm64-unsigned.zip --clobber
 
   android-arm64:
     name: Android arm64 development APK
@@ -339,11 +360,11 @@ jobs:
           "${ANDROID_HOME}/build-tools/35.0.0/aapt" dump badging "${apk}"
           unzip -l "${apk}" | grep -q 'lib/arm64-v8a/libmain.so'
           unzip -l "${apk}" | grep -q 'lib/arm64-v8a/libSDL3.so'
-          cp "${apk}" StarFoxEnhanced-0.0.3-android-arm64.apk
+          cp "${apk}" StarFoxEnhanced-0.0.4-android-arm64.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: StarFoxEnhanced-0.0.3-android-arm64
-          path: StarFoxEnhanced-0.0.3-android-arm64.apk
+          name: StarFoxEnhanced-0.0.4-android-arm64
+          path: StarFoxEnhanced-0.0.4-android-arm64.apk
           if-no-files-found: error
       - name: Add to GitHub release
         if: github.event_name == 'push' || inputs.release_tag != ''
@@ -354,7 +375,7 @@ jobs:
         run: |
           tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
           gh release upload "${tag}" \
-            StarFoxEnhanced-0.0.3-android-arm64.apk --clobber
+            StarFoxEnhanced-0.0.4-android-arm64.apk --clobber
 
   switch-homebrew:
     name: Nintendo Switch homebrew NRO
@@ -375,16 +396,51 @@ jobs:
           test -s "${nro}"
           test -f dist/StarFoxEnhanced-switch/package_switch_nsp.ps1
           cmake -E tar cf \
-            StarFoxEnhanced-0.0.3-switch-homebrew.zip \
+            StarFoxEnhanced-0.0.4-switch-homebrew.zip \
             --format=zip dist/StarFoxEnhanced-switch
       - uses: actions/upload-artifact@v4
         with:
-          name: StarFoxEnhanced-0.0.3-switch-homebrew
-          path: StarFoxEnhanced-0.0.3-switch-homebrew.zip
+          name: StarFoxEnhanced-0.0.4-switch-homebrew
+          path: StarFoxEnhanced-0.0.4-switch-homebrew.zip
           if-no-files-found: error
       - name: Add to GitHub release
         if: github.event_name == 'push' || inputs.release_tag != ''
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.release_tag || github.ref_name }}
-          files: StarFoxEnhanced-0.0.3-switch-homebrew.zip
+          files: StarFoxEnhanced-0.0.4-switch-homebrew.zip
+
+  vita-homebrew:
+    name: PS Vita native VPK
+    runs-on: ubuntu-latest
+    container:
+      # Pin the dated VitaSDK multi-architecture manifest; floating nightly
+      # images can change underneath an otherwise identical release build.
+      image: vitasdk/vitasdk:nightly-non-root-20260829@sha256:8c025f249ce33e3c76f92f422099bfb8b01a4e1a1f67db175df53257c2bbc28b
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build native Vita application
+        shell: bash
+        run: |
+          chmod +x tools/build_vita.sh
+          tools/build_vita.sh "$GITHUB_WORKSPACE"
+      - name: Verify and package VPK
+        shell: bash
+        run: |
+          vpk="dist/StarFoxEnhanced-vita/StarFoxEnhanced.vpk"
+          test -s "${vpk}"
+          unzip -l "${vpk}" | grep -q 'eboot.bin'
+          cmake -E tar cf \
+            StarFoxEnhanced-0.0.4-vita.zip \
+            --format=zip dist/StarFoxEnhanced-vita
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StarFoxEnhanced-0.0.4-vita
+          path: StarFoxEnhanced-0.0.4-vita.zip
+          if-no-files-found: error
+      - name: Add to GitHub release
+        if: github.event_name == 'push' || inputs.release_tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          files: StarFoxEnhanced-0.0.4-vita.zip

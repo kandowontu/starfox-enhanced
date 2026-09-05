@@ -3,9 +3,9 @@ set -euo pipefail
 
 : "${DEVKITPRO:?Set DEVKITPRO to the devkitPro installation}"
 source_root="${1:-$(pwd)}"
-build_root="${source_root}/build/switch"
+build_root="${2:-${source_root}/build/switch}"
 toolchain="${DEVKITPRO}/cmake/Switch.cmake"
-dist_root="${source_root}/dist/StarFoxEnhanced-switch"
+dist_root="${3:-${source_root}/dist/StarFoxEnhanced-switch}"
 
 cmake -S "${source_root}" -B "${build_root}" -G Ninja \
     -DCMAKE_TOOLCHAIN_FILE="${toolchain}" \
@@ -22,4 +22,5 @@ cp "${build_root}/StarFoxEnhanced.nro" \
 cp "${source_root}/platform/switch/README.md" "${dist_root}/README.md"
 cp "${source_root}/platform/mobile/ASSET_BUILDER.md" \
     "${dist_root}/ASSET_BUILDER.md"
+cp "${source_root}/CREDITS.md" "${source_root}/THIRD_PARTY_NOTICES.md" "${dist_root}/"
 cp "${source_root}/tools/package_switch_nsp.ps1" "${dist_root}/"

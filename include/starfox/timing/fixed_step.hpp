@@ -128,6 +128,21 @@ struct RenderTransform {
     const TransformSnapshot& current,
     double alpha) noexcept;
 
+// Scroll registers wrap at the source's address width, not necessarily at
+// 16 bits. In particular CALCBGSCROLL masks BG2's vertical phase to 9 bits.
+[[nodiscard]] std::uint16_t interpolate_wrapped_scroll(
+    std::uint16_t previous, std::uint16_t current, double alpha,
+    std::uint16_t mask) noexcept;
+
+[[nodiscard]] TransformSnapshot relative_birth_snapshot(
+    const TransformSnapshot& sample, const TransformSnapshot& previous_owner,
+    const TransformSnapshot& current_owner) noexcept;
+
+// HUDROT has an enable bit and an eight-bit angle. Keep the fractional roll
+// for presentation, including when the cockpit hides the player model.
+[[nodiscard]] double interpolate_cockpit_roll(std::uint16_t previous,
+    std::uint16_t current, double alpha) noexcept;
+
 // Camera scripts occasionally replace the complete fixed-point view in one
 // source update. Those are cuts, not unusually fast motion, and must not be
 // blended across the extra host presentations.

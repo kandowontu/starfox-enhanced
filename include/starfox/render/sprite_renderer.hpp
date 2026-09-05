@@ -21,6 +21,11 @@ void interpolate_crosshair_oam(
     double interpolation_alpha,
     simulation::SnesPpuState& current_ppu) noexcept;
 
+// Front-end/map screens can inherit the final gameplay OAM image for one
+// source frame. Remove only a complete reticle group without disturbing any
+// other cartridge sprites.
+void suppress_crosshair_oam(simulation::SnesPpuState& ppu) noexcept;
+
 class SpriteRenderer {
 public:
     void draw_objects(

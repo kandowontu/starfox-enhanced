@@ -123,14 +123,30 @@ std::size_t NativeStrategyScheduler::tick_object(ObjectHandle object) {
 
 StrategyTickStats NativeStrategyScheduler::tick_all() {
     StrategyTickStats result;
+    std::array<std::uint64_t, kMaximumObjects + 1> visited{};
+    const auto next_unvisited = [&]() {
+        for (auto candidate = objects_->first_active(); candidate != 0;
+             candidate = objects_->next_active(candidate)) {
+            if (visited[candidate] != objects_->generation(candidate)) return candidate;
+        }
+        return ObjectHandle{};
+    };
     auto object = objects_->first_active();
     for (std::size_t guard = 0; object != 0 && guard < 4096; ++guard) {
+        if (visited[object] == objects_->generation(object)) {
+            object = next_unvisited();
+            continue;
+        }
+        visited[object] = objects_->generation(object);
         const auto prior_next = objects_->next_active(object);
         result.instructions += tick_object(object);
         ++result.objects_run;
 
         if (!objects_->is_active(object)) {
-            object = objects_->is_active(prior_next) ? prior_next : objects_->first_active();
+            // A native strategy can remove itself and its following object.
+            // Restarting at ALLST reran already-completed player/boss logic
+            // in the same source tick (irrespective of Original pace).
+            object = objects_->is_active(prior_next) ? prior_next : next_unvisited();
             continue;
         }
         const auto next = objects_->next_active(object);

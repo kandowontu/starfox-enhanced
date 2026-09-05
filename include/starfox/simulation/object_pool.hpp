@@ -74,6 +74,7 @@ public:
     [[nodiscard]] ObjectHandle allocate_after(ObjectHandle previous = 0) noexcept;
     [[nodiscard]] bool remove(ObjectHandle handle) noexcept;
     [[nodiscard]] bool is_active(ObjectHandle handle) const noexcept;
+    [[nodiscard]] std::uint64_t generation(ObjectHandle handle) const noexcept;
     [[nodiscard]] GameObject& at(ObjectHandle handle);
     [[nodiscard]] const GameObject& at(ObjectHandle handle) const;
     [[nodiscard]] std::vector<ObjectHandle> active_handles() const;
@@ -107,6 +108,8 @@ private:
 
     std::array<Slot, kMaximumObjects + 1> slots_{};
     std::array<ObjectHandle, kMaximumObjects + 1> free_next_{};
+    std::array<std::uint64_t, kMaximumObjects + 1> generations_{};
+    std::uint64_t next_generation_{};
     ObjectHandle first_active_{};
     ObjectHandle first_free_{};
     std::size_t active_count_{};

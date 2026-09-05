@@ -19,7 +19,7 @@ first launch it validates the user's own unmodified Star Fox USA v1.2 (Rev 2)
 ROM, reconstructs the Original and Star Fox EX runtime data locally, and writes
 one version-bound `Starfox-Assets.BIN` companion beside the executable. Later
 launches use that validated companion without requiring the retail ROM to stay
-present. `v0.0.3` is the current public alpha release.
+present. `v0.0.4` is the current public alpha release.
 
 ## What is preserved
 
@@ -252,8 +252,8 @@ audio is discarded rather than playing as a backlog afterward.
 
 The Windows x64 executable remains the primary release. The same portable SDL3
 runtime also has build targets for Windows x86, Linux x64, unsigned universal
-macOS, unsigned iOS arm64, Android arm64, Nintendo Switch, and an x64 Xbox UWP
-package for Developer Mode. Only Android and iOS expose translucent on-screen
+macOS, unsigned iOS arm64, Android arm64, Nintendo Switch, PS Vita, and an x64
+Xbox UWP package for Developer Mode. Only Android and iOS expose translucent on-screen
 controls; physical
 SDL-compatible controllers continue to work normally. The Apple and Android
 packages show a native file picker on first launch, accept any supported retail
@@ -271,15 +271,17 @@ tools/build_apple.sh . macos
 tools/build_apple.sh . ios
 tools/build_android.sh . debug
 DEVKITPRO=/opt/devkitpro tools/build_switch.sh
+VITASDK=/usr/local/vitasdk tools/build_vita.sh
 ```
 
-Apple targets require Xcode on macOS, Android requires its SDK/NDK, and Switch
-requires the devkitPro Switch toolchain. These platform SDKs are not vendored.
+Apple targets require Xcode on macOS, Android requires its SDK/NDK, Switch
+requires the devkitPro Switch toolchain, and Vita requires VitaSDK. These
+platform SDKs are not vendored.
 The `Portable platform builds` GitHub Actions workflow produces a universal
 unsigned macOS `.app`, an unsigned iOS arm64 device bundle, an installable
-debug-signed Android arm64 APK, a Nintendo Switch homebrew `.nro`, and a signed
-x64 UWP package for Xbox Developer Mode. The Xbox build uses UWP LocalState as
-its internal writable storage for settings, HUD layouts, `Starfox-Assets.BIN`,
+debug-signed Android arm64 APK, a Nintendo Switch homebrew `.nro`, a PS Vita
+homebrew `.vpk`, and a signed x64 UWP package for Xbox Developer Mode. The Xbox
+build uses UWP LocalState as its internal writable storage for settings, HUD layouts, `Starfox-Assets.BIN`,
 and the optional `Starfox-MSU1.PAK`; both companion names are matched without
 regard to case. Packaged application files remain read-only. The iOS
 bundle must be signed with the user's own Apple identity or sideloading tool

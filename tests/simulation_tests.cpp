@@ -4095,6 +4095,52 @@ int main(int argc, char** argv) {
         const auto result_pointer_address = upstream_symbols.find("SPECPTR");
         require(!result_pointer_address.empty(),
                 "stage-result percentage pointer is missing");
+
+        // MAIN.ASM's le_enterbhole and le_enterspec branches occur before
+        // END_LEVEL_SEQ. Keep them out of the normal tally and preserve the
+        // exact special-marker / white-fade behavior used by the cartridge.
+        starfox::simulation::GameSimulation black_hole_exit_game{
+            upstream_rom, upstream_symbols, "LEVEL1_1"};
+        const auto black_hole_pointer = black_hole_exit_game.map()
+            .read_native_word(result_pointer_address.front());
+        black_hole_exit_game.map().write_native_word(
+            level_finished.front(), 15U);
+        static_cast<void>(black_hole_exit_game.tick({}));
+        require(black_hole_exit_game.flow_state()
+                        == starfox::simulation::GameFlowState::planet_travel
+                    && black_hole_exit_game.map().read_native_word(
+                           result_pointer_address.front())
+                        == static_cast<std::uint16_t>(black_hole_pointer + 1U)
+                    && black_hole_exit_game.map().read_native_byte(
+                           upstream_symbols.find("SPECBUF").front()
+                               + black_hole_pointer)
+                        == 101U,
+                "black-hole entry ran a tally or lost its special route marker");
+
+        starfox::simulation::GameSimulation dimension_exit_game{
+            upstream_rom, upstream_symbols, "LEVEL1_1"};
+        const auto dimension_pointer = dimension_exit_game.map()
+            .read_native_word(result_pointer_address.front());
+        dimension_exit_game.map().write_native_word(
+            level_finished.front(), 16U);
+        static_cast<void>(dimension_exit_game.tick({}));
+        auto saw_dimension_white = false;
+        for (std::size_t tick = 0U; tick < 80U
+                && dimension_exit_game.flow_state()
+                    == starfox::simulation::GameFlowState::gameplay;
+             ++tick) {
+            static_cast<void>(dimension_exit_game.tick({}));
+            saw_dimension_white = saw_dimension_white
+                || dimension_exit_game.colour_math_effect_state().active;
+        }
+        require(saw_dimension_white
+                    && dimension_exit_game.flow_state()
+                        == starfox::simulation::GameFlowState::planet_travel
+                    && dimension_exit_game.map().read_native_word(
+                           result_pointer_address.front())
+                        == dimension_pointer,
+                "Out-of-This-Dimension entry skipped or stalled its source white fade");
+
         const auto doing_wipe_address = upstream_symbols.find("DOINGWIPE");
         const auto do_a_wipe_address = upstream_symbols.find("DOAWIPE");
         require(!doing_wipe_address.empty() && !do_a_wipe_address.empty(),
@@ -6074,8 +6120,8 @@ int main(int argc, char** argv) {
                 "Render Upscale did not step back to native");
         drive_boot({0, starfox::input::left, 0});
         require(boot_game.render_scale()
-                    == starfox::simulation::RenderScale::scale_10x,
-                "Render Upscale did not wrap backward to 10x");
+                    == starfox::simulation::RenderScale::scale_4x,
+                "Render Upscale did not wrap backward to 4x");
         drive_boot({0, starfox::input::right, 0});
         require(boot_game.render_scale()
                     == starfox::simulation::RenderScale::scale_1x
@@ -6140,6 +6186,20 @@ int main(int argc, char** argv) {
                 "pre-game cursor did not reach CUSTOMIZE SCREEN");
         drive_boot({0, starfox::input::down, 0});
         require(boot_game.pregame_selection() == 4U,
+                "pre-game cursor did not reach ON-SCREEN BUTTONS");
+        require(boot_game.on_screen_controls(),
+                "on-screen buttons did not default to enabled");
+        drive_boot({0, starfox::input::a, 0});
+        require(!boot_game.on_screen_controls(),
+                "on-screen buttons could not be disabled");
+        drive_boot({0, starfox::input::down, 0});
+        require(boot_game.pregame_selection() == 5U,
+                "pre-game cursor did not reach SWAP A/B + Y/X");
+        drive_boot({0, starfox::input::a, 0});
+        require(boot_game.swap_face_buttons(),
+                "face-button pairs could not be swapped");
+        drive_boot({0, starfox::input::down, 0});
+        require(boot_game.pregame_selection() == 6U,
                 "pre-game cursor did not reach MUSIC VOLUME");
         require(boot_game.music_volume() == 100U,
                 "pre-game music volume did not default to 100 percent");
@@ -6155,7 +6215,7 @@ int main(int argc, char** argv) {
                 "pre-game music volume did not step right after release");
         drive_boot({0, 0, starfox::input::right});
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 5U
+        require(boot_game.pregame_selection() == 7U
                     && boot_game.sfx_volume() == 100U,
                 "pre-game cursor did not reach default SFX VOLUME");
         drive_boot({0, starfox::input::left, 0});
@@ -6165,7 +6225,7 @@ int main(int argc, char** argv) {
         require(boot_game.sfx_volume() == 100U,
                 "pre-game SFX volume did not step right by 10 percent");
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 6U,
+        require(boot_game.pregame_selection() == 8U,
                 "pre-game cursor did not reach OPTIONS BACK");
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.pregame_page()
@@ -6180,8 +6240,10 @@ int main(int argc, char** argv) {
                     && boot_game.vsync()
                     && boot_game.crosshair_colour()
                         == starfox::simulation::CrosshairColour::green
-                    && boot_game.render_scale()
-                        == starfox::simulation::RenderScale::scale_1x,
+                     && boot_game.render_scale()
+                        == starfox::simulation::RenderScale::scale_1x
+                     && !boot_game.on_screen_controls()
+                     && boot_game.swap_face_buttons(),
                 "OPTIONS did not retain its toggles when returning to setup");
         drive_boot({0, starfox::input::down, 0});
         require(boot_game.pregame_selection() == 14U,
@@ -6264,6 +6326,17 @@ int main(int argc, char** argv) {
         const auto boss_max_health = upstream_symbols.find("M_BOSSMAXHP").front();
         const auto background_music = upstream_symbols.find("BGM_MUSIC").front();
         const auto background_music_count = upstream_symbols.find("BGMCNT").front();
+        // A boss model is substantially more expensive than its single
+        // draw-list record suggests. ORIGINAL pace must retain the observed
+        // five-raster minimum instead of letting a sparse boss scene fall
+        // back to the unlocked three-raster (20 Hz) cadence.
+        restart_game.set_timing_mode(
+            starfox::simulation::TimingMode::original_speed);
+        restart_game.map().write_native_byte(boss_max_health, 70U);
+        require(restart_game.logic_interpolation_alpha(1.0) <= 0.2,
+                "Original pace let an active boss run above its source cadence");
+        restart_game.set_timing_mode(
+            starfox::simulation::TimingMode::unlocked_20_fps);
         // Capture the active encounter track immediately before the synthetic
         // death. The native death sequence replaces it with $11.
         restart_game.map().write_native_byte(boss_max_health, 70U);

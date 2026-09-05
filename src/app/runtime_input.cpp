@@ -54,16 +54,29 @@ constexpr std::array<SDL_Scancode, InputBindings::action_count>
 
 constexpr std::array<GamepadBinding, InputBindings::action_count>
     kDefaultGamepad{{
+#if defined(__SWITCH__)
+        // The pinned libnx SDL backend currently publishes physical
+        // A/B/X/Y as logical SOUTH/EAST/WEST/NORTH in Xbox label order.
+        // Bind the SNES-labelled actions to Nintendo's printed buttons.
+        {GamepadBindingKind::button, SDL_GAMEPAD_BUTTON_EAST},  // B
+        {GamepadBindingKind::button, SDL_GAMEPAD_BUTTON_NORTH}, // Y
+#else
         {GamepadBindingKind::button, SDL_GAMEPAD_BUTTON_SOUTH},
         {GamepadBindingKind::button, SDL_GAMEPAD_BUTTON_WEST},
+#endif
         {GamepadBindingKind::button, SDL_GAMEPAD_BUTTON_BACK},
         {GamepadBindingKind::button, SDL_GAMEPAD_BUTTON_START},
         {GamepadBindingKind::button, SDL_GAMEPAD_BUTTON_DPAD_UP},
         {GamepadBindingKind::button, SDL_GAMEPAD_BUTTON_DPAD_DOWN},
         {GamepadBindingKind::button, SDL_GAMEPAD_BUTTON_DPAD_LEFT},
         {GamepadBindingKind::button, SDL_GAMEPAD_BUTTON_DPAD_RIGHT},
+#if defined(__SWITCH__)
+        {GamepadBindingKind::button, SDL_GAMEPAD_BUTTON_SOUTH}, // A
+        {GamepadBindingKind::button, SDL_GAMEPAD_BUTTON_WEST},  // X
+#else
         {GamepadBindingKind::button, SDL_GAMEPAD_BUTTON_EAST},
         {GamepadBindingKind::button, SDL_GAMEPAD_BUTTON_NORTH},
+#endif
         {GamepadBindingKind::button, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER},
         {GamepadBindingKind::button, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER},
     }};
@@ -102,7 +115,7 @@ int gamepad_preference(SDL_JoystickID identifier) {
 // Pre-game settings file format. Bump kPregameRevision when a field is added;
 // the reader accepts every revision up to it.
 constexpr std::string_view kPregameTag{"SFE_PREGAME_V"};
-constexpr int kPregameRevision = 9;
+constexpr int kPregameRevision = 10;
 
 std::filesystem::path settings_path() {
     char* preference_path = SDL_GetPrefPath("StarFoxEnhanced", "StarFoxEnhanced");
@@ -114,7 +127,9 @@ std::filesystem::path settings_path() {
 }
 
 std::filesystem::path documents_settings_path(std::string_view filename) {
-#if defined(STARFOX_UWP)
+#if defined(SDL_PLATFORM_VITA)
+    return std::filesystem::path{"ux0:data/StarFoxEnhanced"} / filename;
+#elif defined(STARFOX_UWP)
     // Xbox UWP package files are read-only. SDL maps its preference path to
     // the app's persistent LocalState internal-storage directory.
     if (char* preference_path =
@@ -226,6 +241,14 @@ std::filesystem::path single_instance_lock_path() {
 }
 
 void configure_native_gamepad_support() noexcept {
+#if defined(STARFOX_UWP)
+    // SDL3 disables WGI by default on desktop. It is the ONLY native
+    // controller backend in our WinRT build (XInput/RawInput are absent).
+    // Set this before SDL_INIT_GAMEPAD, including for controllers already
+    // connected when the Xbox activates the app.
+    static_cast<void>(SDL_SetHintWithPriority(
+        SDL_HINT_JOYSTICK_WGI, "1", SDL_HINT_OVERRIDE));
+#endif
     // XInput is the native Windows path used by Xbox controllers and by Steam
     // Input under Proton. The dedicated HIDAPI path exposes the Steam Deck's
     // built-in controls, paddles, and trackpad buttons when Steam Input is not
@@ -359,9 +382,15 @@ input::ButtonMask InputBindings::sample_fixed_menu_navigation(
     add_gamepad_button(result, gamepad, SDL_GAMEPAD_BUTTON_DPAD_DOWN, input::down);
     add_gamepad_button(result, gamepad, SDL_GAMEPAD_BUTTON_DPAD_LEFT, input::left);
     add_gamepad_button(result, gamepad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT, input::right);
+#if defined(__SWITCH__)
+    add_gamepad_button(result, gamepad, SDL_GAMEPAD_BUTTON_SOUTH, input::a);
+    add_gamepad_button(result, gamepad, SDL_GAMEPAD_BUTTON_NORTH, input::y);
+    add_gamepad_button(result, gamepad, SDL_GAMEPAD_BUTTON_EAST, input::b);
+#else
     add_gamepad_button(result, gamepad, SDL_GAMEPAD_BUTTON_EAST, input::a);
     add_gamepad_button(result, gamepad, SDL_GAMEPAD_BUTTON_WEST, input::y);
     add_gamepad_button(result, gamepad, SDL_GAMEPAD_BUTTON_SOUTH, input::b);
+#endif
     add_gamepad_button(result, gamepad, SDL_GAMEPAD_BUTTON_START, input::start);
     add_gamepad_axis(result, gamepad,
         SDL_GAMEPAD_AXIS_LEFTY, false, input::up);
@@ -513,7 +542,11 @@ bool load_pregame_settings(
     if (revision < 1 || revision > kPregameRevision) return false;
 
     auto loaded = PregameSettings{};
-    std::array<bool, 18> found{};
+    std::array<bool, 20> found{};
+    if (revision < 10) {
+        found[18] = true;
+        found[19] = true;
+    }
     if (revision < 9) found[17] = true;
     if (revision < 8) found[16] = true;
     if (revision < 7) {
@@ -591,6 +624,12 @@ bool load_pregame_settings(
         } else if (name == "RENDER_SCALE") {
             loaded.render_scale = static_cast<std::uint8_t>(value);
             found[17] = value >= 0 && value <= 9;
+        } else if (name == "ON_SCREEN_CONTROLS") {
+            loaded.on_screen_controls = value != 0;
+            found[18] = value == 0 || value == 1;
+        } else if (name == "SWAP_FACE_BUTTONS") {
+            loaded.swap_face_buttons = value != 0;
+            found[19] = value == 0 || value == 1;
         }
     }
     if (!std::all_of(found.begin(), found.end(),
@@ -602,6 +641,10 @@ bool load_pregame_settings(
         // The original ON setting used what is now the medium FXAA kernel.
         loaded.anti_aliasing = 2U;
     }
+    // Versions through V9 offered wasteful 5x-10x modes. Preserve those
+    // users' intent at the new supported maximum instead of rejecting their
+    // otherwise valid settings file.
+    loaded.render_scale = std::min<std::uint8_t>(loaded.render_scale, 3U);
     settings = loaded;
     return true;
 }
@@ -614,7 +657,7 @@ bool save_pregame_settings(
         || settings.anti_aliasing > 3U
         || settings.renderer_mode > 1U
         || settings.experience > 1U || settings.music_volume > 100U
-        || settings.sfx_volume > 100U || settings.render_scale > 9U) {
+        || settings.sfx_volume > 100U || settings.render_scale > 3U) {
         return false;
     }
     constexpr std::array<std::uint16_t, 8> valid_fps{
@@ -654,7 +697,11 @@ bool save_pregame_settings(
            << "SFX_VOLUME "
            << static_cast<unsigned>(settings.sfx_volume) << '\n'
            << "RENDER_SCALE "
-           << static_cast<unsigned>(settings.render_scale) << '\n';
+           << static_cast<unsigned>(settings.render_scale) << '\n'
+           << "ON_SCREEN_CONTROLS "
+           << static_cast<unsigned>(settings.on_screen_controls) << '\n'
+           << "SWAP_FACE_BUTTONS "
+           << static_cast<unsigned>(settings.swap_face_buttons) << '\n';
     return static_cast<bool>(output);
 }
 

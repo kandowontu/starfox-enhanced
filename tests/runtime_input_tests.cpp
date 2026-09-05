@@ -25,6 +25,10 @@ void require(bool condition, const char* message) {
 
 int main() {
     starfox::app::configure_native_gamepad_support();
+#if defined(STARFOX_UWP)
+    require(SDL_GetHintBoolean(SDL_HINT_JOYSTICK_WGI, false),
+            "Xbox Windows Gaming Input backend was disabled at initialization");
+#endif
     require(std::strcmp(SDL_GetHint(SDL_HINT_XINPUT_ENABLED), "1") == 0,
             "XInput support was not enabled before SDL initialization");
     require(std::strcmp(
@@ -130,6 +134,16 @@ int main() {
             "secondary gamepad sampling leaked across EX player slots");
     for (auto* opened : player_gamepads) SDL_CloseGamepad(opened);
 
+#if defined(STARFOX_UWP)
+    char* preference_path = SDL_GetPrefPath("StarFoxEnhanced", "StarFoxEnhanced");
+    require(preference_path != nullptr, "UWP preference directory is unavailable");
+    const auto settings_directory = std::filesystem::path{preference_path};
+    SDL_free(preference_path);
+    require(starfox::app::hud_layout_settings_path() == settings_directory / "hud-layout.cfg"
+            && starfox::app::pregame_settings_path() == settings_directory / "pregame.cfg"
+            && starfox::app::starfox_ex_save_ram_path() == settings_directory / "starfox-ex.srm",
+            "UWP settings did not stay in writable app storage");
+#else
     const auto documents_layout = starfox::app::hud_layout_settings_path();
     require(documents_layout.filename() == "hud-layout.cfg"
                 && documents_layout.parent_path().filename()
@@ -145,13 +159,15 @@ int main() {
                 && documents_ex_save.parent_path().filename()
                     == "Star Fox Enhanced",
             "Star Fox EX SRAM path is not in its Documents subfolder");
+#endif
     const auto pregame_test_path = std::filesystem::temp_directory_path()
         / "starfox-enhanced-pregame-test.cfg";
     require(starfox::app::PregameSettings{}.timing_mode == 1U,
             "new pre-game settings did not default to Original pace");
     const starfox::app::PregameSettings saved_pregame{
         1U, 90U, 3U, true, true,
-        3U, true, false, true, true, 1U, true, false, 5U, 1U, 70U, 30U, 4U};
+        3U, true, false, true, true, 1U, true, false, 5U, 1U, 70U, 30U, 3U,
+        false, true};
     require(starfox::app::save_pregame_settings(
                 pregame_test_path, saved_pregame),
             "pre-game settings could not be saved");
@@ -177,7 +193,9 @@ int main() {
     require(loaded_pregame.music_volume == 100U
                 && loaded_pregame.sfx_volume == 100U
                 && loaded_pregame.renderer_mode == 0U
-                && loaded_pregame.render_scale == 0U,
+                && loaded_pregame.render_scale == 0U
+                && loaded_pregame.on_screen_controls
+                && !loaded_pregame.swap_face_buttons,
             "legacy settings did not migrate to audio/GPU/native-scale defaults");
     std::error_code pregame_remove_error;
     std::filesystem::remove(pregame_test_path, pregame_remove_error);
