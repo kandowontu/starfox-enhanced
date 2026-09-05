@@ -14,6 +14,7 @@
 #include <stdexcept>
 #include "math_audit.hpp"
 #include "dust_audit.hpp"
+#include "grid_audit.hpp"
 
 using namespace starfox;
 namespace {
@@ -52,7 +53,7 @@ uint64_t hash(const render::Framebuffer& frame) {
 int main(int argc, char** argv) {
     try {
         if (argc != 6) {
-            std::cerr << "Usage: render_audit CORE_DLL ROM SYMBOLS all|all-frames|matrices|points|dust|[sprites:]NAME,NAME OUTPUT.csv\n";
+            std::cerr << "Usage: render_audit CORE_DLL ROM SYMBOLS all|all-frames|matrices|points|dust|grid|[sprites:]NAME,NAME OUTPUT.csv\n";
             return 2;
         }
         auto rom = assets::RomImage::load(argv[2]);
@@ -106,8 +107,9 @@ int main(int argc, char** argv) {
             ram[(location + 1) & 65535] = static_cast<uint8_t>(value >> 8);
         };
         const std::string mode = argv[4];
-        if (mode == "matrices" || mode == "points" || mode == "dust") {
-            const auto result = mode == "dust" ? audit_dust(rom, symbols, ram, gsu, gsu_call, argv[5])
+        if (mode == "matrices" || mode == "points" || mode == "dust" || mode == "grid") {
+            const auto result = mode == "grid" ? audit_grid(rom, symbols, ram, gsu, gsu_call, argv[5])
+                : mode == "dust" ? audit_dust(rom, symbols, ram, gsu, gsu_call, argv[5])
                 : audit_math(rom, symbols, ram, gsu, gsu_call, mode, argv[5]);
             retro_unload_game();
             retro_deinit();

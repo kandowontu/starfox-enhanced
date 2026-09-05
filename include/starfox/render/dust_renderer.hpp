@@ -44,6 +44,8 @@ private:
     std::uint32_t star_colours_{};
     std::uint32_t snow_colours_{};
     std::uint32_t depth_table_{};
+    std::uint16_t grid_size_{};
+    std::uint16_t grid_two_pixel_depth_{};
     mutable bool grid_line_state_initialized_{};
     mutable std::uint64_t grid_line_source_frame_{};
     mutable std::int16_t grid_line_previous_x_{};

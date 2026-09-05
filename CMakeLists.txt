@@ -778,6 +778,8 @@ if(STARFOX_BUILD_TESTS)
     target_link_libraries(starfox_reference_math_tests PRIVATE starfox_core)
     add_executable(starfox_reference_dust_tests tests/reference_dust_tests.cpp)
     target_link_libraries(starfox_reference_dust_tests PRIVATE starfox_core)
+    add_executable(starfox_reference_grid_tests tests/reference_grid_tests.cpp)
+    target_link_libraries(starfox_reference_grid_tests PRIVATE starfox_core)
     add_executable(starfox_timing_parity_tests tests/timing_parity_tests.cpp)
     target_link_libraries(starfox_timing_parity_tests PRIVATE starfox_core)
     add_executable(starfox_ending_audio_tests tests/ending_audio_tests.cpp)
@@ -861,6 +863,10 @@ if(STARFOX_BUILD_TESTS)
             "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
             "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/reference-dust-original.csv")
+        add_test(NAME starfox_upstream_reference_grid COMMAND starfox_reference_grid_tests
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/reference-grid-original.csv")
         add_test(NAME starfox_upstream_ending_audio COMMAND starfox_ending_audio_tests
             "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
             "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT")
@@ -1039,6 +1045,9 @@ if(STARFOX_BUILD_TESTS)
         add_test(NAME starfox_ex_reference_dust COMMAND starfox_reference_dust_tests
             "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/reference-dust-ex.csv")
+        add_test(NAME starfox_ex_reference_grid COMMAND starfox_reference_grid_tests
+            "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/reference-grid-ex.csv")
         add_test(NAME starfox_ex_reference_sprites COMMAND starfox_reference_render_tests
             "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/reference-sprites-ex.csv")

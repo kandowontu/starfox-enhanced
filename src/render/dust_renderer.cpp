@@ -9,9 +9,10 @@
 namespace starfox::render {
 namespace {
 
-constexpr std::int16_t kGridSize = 15;
 constexpr std::int16_t kGridWidth = 256;
-constexpr std::int16_t kGridHalfExtent = kGridWidth * kGridSize / 2;
+// Both cartridges' CPU setup subtracts 15*256/2. EX's GSU draw routine
+// subsequently visits 25 rows/columns; its origin remains this same value.
+constexpr std::int16_t kGridHalfExtent = kGridWidth * 15 / 2;
 constexpr std::int16_t kMaximumReciprocalDepth = 12 * 1'024;
 
 std::int16_t camera_word(double value) noexcept {
@@ -34,6 +35,47 @@ std::int16_t grid_projection(std::int16_t coordinate, std::int16_t depth) noexce
     const auto reciprocal = static_cast<std::int16_t>(
         (32'767 * 256) / even_depth);
     return simulation::multiply_q15(coordinate, reciprocal);
+}
+
+void plot_source_pixel(Framebuffer& target, std::int32_t x, std::int32_t y,
+    std::uint8_t colour) noexcept {
+    if (target.width() == 224U && target.height() == 192U) {
+        // PLOT reads byte coordinates without clipping its secondary pixels
+        // or EX line pixels. The 192-row tile layout aliases Y>=192 into the
+        // next column; preserve those writes in native-sized output.
+        x &= 255;
+        y &= 255;
+        x += (y / 192) * 8;
+        y %= 192;
+    }
+    target.set(x, y, colour);
+}
+
+std::uint16_t source_grid_size(const assets::RomImage& rom,
+    const assets::SymbolMap& symbols) {
+    const auto entry = symbols.find("MSHOWGRID").at(0);
+    const auto size_address = symbols.find("M_GRIDZSIZE").at(0);
+    // MSHOWGRID's IWT R0,count / SMS [M_GRIDZSIZE],R0 contains the assembled
+    // loop count. EX's ROM uses 25 even though its CPU-origin constant is 15.
+    for (unsigned offset = 0; offset < 64; ++offset) {
+        const auto pc = entry + offset;
+        if (rom.read8(pc) == 0xf0 && rom.read8(pc + 3) == 0x3e
+            && rom.read8(pc + 4) == 0xa0
+            && rom.read8(pc + 5) == ((size_address & 0x1ffU) >> 1U)) {
+            const auto count = rom.read16(pc + 1);
+            if (count != 0 && count <= 255) return count;
+        }
+    }
+    throw std::runtime_error{"missing cartridge ground-grid loop count"};
+}
+
+std::uint16_t source_grid_two_pixel_depth(const assets::RomImage& rom,
+    const assets::SymbolMap& symbols) {
+    const auto entry = symbols.find("MGRDRAWDOT3").at(0) - 11;
+    if (rom.read8(entry) != 0xf5 || rom.read8(entry + 3) != 0xb9
+        || rom.read8(entry + 4) != 0x15 || rom.read8(entry + 5) != 0x65)
+        throw std::runtime_error{"missing cartridge ground-grid dot threshold"};
+    return rom.read16(entry + 1);
 }
 
 double source_word_difference(double value, double origin) noexcept {
@@ -59,7 +101,9 @@ DustRenderer::DustRenderer(
     const assets::SymbolMap& symbols)
     : rom_(&rom), star_colours_(rom_symbol(symbols, "STAR_COLS")),
       snow_colours_(rom_symbol(symbols, "SNOW_COLS")),
-      depth_table_(rom_symbol(symbols, "ZTAB")) {}
+      depth_table_(rom_symbol(symbols, "ZTAB")),
+      grid_size_(source_grid_size(rom, symbols)),
+      grid_two_pixel_depth_(source_grid_two_pixel_depth(rom, symbols)) {}
 
 void DustRenderer::draw(
     const simulation::DustSystem& dust,
@@ -116,11 +160,7 @@ void DustRenderer::draw(
             static_cast<std::uint8_t>(7U * 16U + colour));
         if (camera_z < 1'024.0) {
             // PLOT already advances X; the source DEC restores the first X.
-            // A second pixel below the native bitmap aliases the next tile
-            // column in GSU's column-major 192-row screen layout.
-            const bool next_column = target.width() == 224U && target.height() == 192U
-                && screen_y == 191;
-            target.set(screen_x + (next_column ? 8 : 0), next_column ? 0 : screen_y + 1,
+            plot_source_pixel(target, screen_x, screen_y + 1,
                 static_cast<std::uint8_t>(7U * 16U + colour));
         }
         ++index;
@@ -151,9 +191,9 @@ void DustRenderer::draw_grid(
         matrix_grid_step(view_matrix[8]),
     };
 
-    for (std::int16_t grid_z = 0; grid_z < kGridSize; ++grid_z) {
+    for (std::uint16_t grid_z = 0; grid_z < grid_size_; ++grid_z) {
         auto point = row;
-        for (std::int16_t grid_x = 0; grid_x < kGridSize; ++grid_x) {
+        for (std::uint16_t grid_x = 0; grid_x < grid_size_; ++grid_x) {
             const auto original_z = point[2];
             if (original_z > 256) {
                 const auto depth = std::min<std::int16_t>(
@@ -169,8 +209,8 @@ void DustRenderer::draw_grid(
                     constexpr auto colour = static_cast<std::uint8_t>(
                         7U * 16U + 14U);
                     target.set(screen_x, screen_y, colour);
-                    if (original_z < 512) {
-                        target.set(screen_x - 1, screen_y + 1, colour);
+                    if (static_cast<std::uint16_t>(original_z) < grid_two_pixel_depth_) {
+                        plot_source_pixel(target, screen_x, screen_y + 1, colour);
                     }
                 }
             }
@@ -219,7 +259,7 @@ void DustRenderer::draw_grid_lines(
         auto error = absolute_dx;
         auto remaining = dx;
         do {
-            target.set(x - 2, y, colour);
+            plot_source_pixel(target, x - 2, y, colour);
             --x;
             error -= absolute_dy;
             if (error < 0) {
@@ -228,6 +268,7 @@ void DustRenderer::draw_grid_lines(
             }
             --remaining;
         } while (remaining >= 0);
+        return std::array<std::int32_t, 2>{x, y};
     };
 
     const auto camera_x = camera_word(camera.x);
@@ -249,9 +290,9 @@ void DustRenderer::draw_grid_lines(
         matrix_grid_step(view_matrix[8]),
     };
 
-    for (std::int16_t grid_z = 0; grid_z < kGridSize; ++grid_z) {
+    for (std::uint16_t grid_z = 0; grid_z < grid_size_; ++grid_z) {
         auto point = row;
-        for (std::int16_t grid_x = 0; grid_x < kGridSize; ++grid_x) {
+        for (std::uint16_t grid_x = 0; grid_x < grid_size_; ++grid_x) {
             const auto original_z = point[2];
             if (original_z > 256) {
                 const auto depth = std::min<std::int16_t>(
@@ -268,12 +309,12 @@ void DustRenderer::draw_grid_lines(
                     // (x-1,y), then connects back to M_PREVX/M_PREVY.
                     const auto adjusted_x = static_cast<std::int16_t>(
                         screen_x - 1);
-                    target.set(adjusted_x, screen_y + 2, colour);
-                    source_line(adjusted_x, screen_y, previous_x, previous_y);
+                    plot_source_pixel(target, adjusted_x, screen_y + 2, colour);
+                    const auto endpoint = source_line(adjusted_x, screen_y, previous_x, previous_y);
                     previous_x = adjusted_x;
                     previous_y = screen_y;
-                    if (original_z < 512) {
-                        target.set(adjusted_x - 1, screen_y + 1, colour);
+                    if (static_cast<std::uint16_t>(original_z) < grid_two_pixel_depth_) {
+                        plot_source_pixel(target, endpoint[0] - 1, endpoint[1] + 1, colour);
                     }
                 }
             }

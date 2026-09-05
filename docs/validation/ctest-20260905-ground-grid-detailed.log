@@ -1,0 +1,214 @@
+Start testing: Sep 05 15:47 Eastern Daylight Time
+----------------------------------------------------------
+44/54 Testing: starfox_ex_reference_render
+44/54 Test: starfox_ex_reference_render
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_render_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/reference-render-ex.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_reference_render" start time: Sep 05 15:47 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+24630 independent cartridge framebuffer hashes passed
+<end of output>
+Test time =   2.02 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_reference_render" end time: Sep 05 15:47 Eastern Daylight Time
+"starfox_ex_reference_render" time elapsed: 00:00:02
+----------------------------------------------------------
+
+17/54 Testing: starfox_upstream_reference_render
+17/54 Test: starfox_upstream_reference_render
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_render_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/reference-render-original.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_reference_render" start time: Sep 05 15:47 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+15948 independent cartridge framebuffer hashes passed
+<end of output>
+Test time =   1.31 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_reference_render" end time: Sep 05 15:47 Eastern Daylight Time
+"starfox_upstream_reference_render" time elapsed: 00:00:01
+----------------------------------------------------------
+
+48/54 Testing: starfox_ex_reference_sprites
+48/54 Test: starfox_ex_reference_sprites
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_render_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/reference-sprites-ex.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_reference_sprites" start time: Sep 05 15:47 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+1950 independent cartridge framebuffer hashes passed
+<end of output>
+Test time =   0.14 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_reference_sprites" end time: Sep 05 15:47 Eastern Daylight Time
+"starfox_ex_reference_sprites" time elapsed: 00:00:00
+----------------------------------------------------------
+
+18/54 Testing: starfox_upstream_reference_math
+18/54 Test: starfox_upstream_reference_math
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_math_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/reference-matrices-original.csv" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/reference-points-original.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_reference_math" start time: Sep 05 15:47 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+3726 model/shadow matrices match independent cartridge words
+9729 world points match independent cartridge words
+<end of output>
+Test time =   0.10 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_reference_math" end time: Sep 05 15:47 Eastern Daylight Time
+"starfox_upstream_reference_math" time elapsed: 00:00:00
+----------------------------------------------------------
+
+19/54 Testing: starfox_upstream_reference_dust
+19/54 Test: starfox_upstream_reference_dust
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_dust_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/reference-dust-original.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_reference_dust" start time: Sep 05 15:47 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+193 dust states match independent native points/pixels
+<end of output>
+Test time =   0.07 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_reference_dust" end time: Sep 05 15:47 Eastern Daylight Time
+"starfox_upstream_reference_dust" time elapsed: 00:00:00
+----------------------------------------------------------
+
+46/54 Testing: starfox_ex_reference_dust
+46/54 Test: starfox_ex_reference_dust
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_dust_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/reference-dust-ex.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_reference_dust" start time: Sep 05 15:47 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+386 dust states match independent native points/pixels
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_reference_dust" end time: Sep 05 15:47 Eastern Daylight Time
+"starfox_ex_reference_dust" time elapsed: 00:00:00
+----------------------------------------------------------
+
+45/54 Testing: starfox_ex_reference_math
+45/54 Test: starfox_ex_reference_math
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_math_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/reference-matrices-ex.csv" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/reference-points-ex.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_reference_math" start time: Sep 05 15:47 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+3726 model/shadow matrices match independent cartridge words
+9729 world points match independent cartridge words
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_reference_math" end time: Sep 05 15:47 Eastern Daylight Time
+"starfox_ex_reference_math" time elapsed: 00:00:00
+----------------------------------------------------------
+
+22/54 Testing: starfox_upstream_reference_sprites
+22/54 Test: starfox_upstream_reference_sprites
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_render_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/reference-sprites-original.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_reference_sprites" start time: Sep 05 15:47 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+150 independent cartridge framebuffer hashes passed
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_reference_sprites" end time: Sep 05 15:47 Eastern Daylight Time
+"starfox_upstream_reference_sprites" time elapsed: 00:00:00
+----------------------------------------------------------
+
+8/54 Testing: starfox_runtime_input_tests
+8/54 Test: starfox_runtime_input_tests
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_runtime_input_tests.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_runtime_input_tests" start time: Sep 05 15:47 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+All runtime input tests passed.
+<end of output>
+Test time =   0.13 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_runtime_input_tests" end time: Sep 05 15:47 Eastern Daylight Time
+"starfox_runtime_input_tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/54 Testing: starfox_core_tests
+4/54 Test: starfox_core_tests
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_core_tests.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_core_tests" start time: Sep 05 15:47 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+All timing tests passed.
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_core_tests" end time: Sep 05 15:47 Eastern Daylight Time
+"starfox_core_tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+20/54 Testing: starfox_upstream_reference_grid
+20/54 Test: starfox_upstream_reference_grid
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_grid_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/reference-grid-original.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_reference_grid" start time: Sep 05 15:47 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+192 ground-grid frames match independent cartridge pixels
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_reference_grid" end time: Sep 05 15:47 Eastern Daylight Time
+"starfox_upstream_reference_grid" time elapsed: 00:00:00
+----------------------------------------------------------
+
+47/54 Testing: starfox_ex_reference_grid
+47/54 Test: starfox_ex_reference_grid
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_grid_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/reference-grid-ex.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_reference_grid" start time: Sep 05 15:47 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+384 ground-grid frames match independent cartridge pixels
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_reference_grid" end time: Sep 05 15:47 Eastern Daylight Time
+"starfox_ex_reference_grid" time elapsed: 00:00:00
+----------------------------------------------------------
+
+12/54 Testing: starfox_upstream_simulation_data
+12/54 Test: starfox_upstream_simulation_data
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_simulation_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_simulation_data" start time: Sep 05 15:47 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+warning: recovered failed path object: native strategy dispatch failed for object 7 at $4805b shape=$cb07 sword2=$594 rot=(0,14,0) sflags=(b,10,8,0) coll=$0 stratmem=$4fda pathptr=$0 heap=3,4,e,5,9,90,5,c,97,5,c,0,0,0,1,1f,: 65C816 subroutine at $1fd2a5 exceeded the instruction limit at $1fd2a6 (recent $1fd2a5)
+All simulation substrate tests passed.
+<end of output>
+Test time =   9.68 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_simulation_data" end time: Sep 05 15:48 Eastern Daylight Time
+"starfox_upstream_simulation_data" time elapsed: 00:00:09
+----------------------------------------------------------
+
+End testing: Sep 05 15:48 Eastern Daylight Time

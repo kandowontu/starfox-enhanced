@@ -38,6 +38,7 @@ changes inside upstream-ultrastarfox were preserved.
 | MIT license request | Added MIT LICENSE for project-owned code/documentation and included it in desktop, Switch and Vita packaging. Existing third-party licenses and game/music/asset ownership remain separate, as documented in README and THIRD_PARTY_NOTICES. |
 | Camera/model composition | MOBJ copies the world matrix directly for zero object rotation and negates two rows for a half-turn yaw; multiplying in those paths introduced extra rounding. Restore both shortcuts and their shadow handling. Identical matrices now remain unchanged during interpolation. Native-resolution object positions and source lighting depth use per-product Q15 rounding. All 3,726 model/shadow matrices and 9,729 world-point cases per game match independent GSU words. |
 | Stars, snow and pollen | MSHOWDUST feeds carry through its random generator and six coordinate shifts, then retries out-of-range/behind-camera points. The port used five shifts, a different carry stream and no retry. Restore the native point stream, ZTAB projection, vertical two-pixel stars, bottom-row SRAM alias and snow/pollen colours. Desktop and preview pass native vanishing-point and particle-colour state. All 579 point states and 576 framebuffers match across both games, including EX's 511-point option. |
+| Ground dots / EX line grid | The EX ROM uses 25×25 GSU grid iterations and a 96-unit two-pixel threshold, while Original uses 15×15 and 512. Both CPU origins remain 1,920 units. The EX checkout's source constants differ from the assembled cartridge. Read the GSU operands, restore secondary PLOT placement/byte-coordinate aliasing and EX's line endpoint. All 576 native frames match; 557 are visible. Repeated presentation preserves source line history. |
 
 ## Coverage and practical limits
 
@@ -99,6 +100,11 @@ addresses; do not interpret those particular diagnostic fields as EX state.
 
 ## Validation and local candidate
 
+- Ground-grid follow-up: **13/13 affected tests passed in 9.69 seconds**,
+  `docs/validation/ctest-20260905-ground-grid.log`, with detailed output beside
+  it. Includes all model, matrix, point, star-field and ground-grid references,
+  Original simulation-data, core and desktop input checks. A separate mutation
+  restoring the old EX grid dimensions fails the first reference frame.
 - Camera/star-field follow-up: **17/17 affected tests passed in 197.61 seconds**,
   `docs/validation/ctest-20260905-camera-and-dust.log`, with detailed output beside
   it. Includes both long simulation suites, live Wolf/credits regressions,
@@ -164,12 +170,15 @@ addresses; do not interpret those particular diagnostic fields as EX state.
   captures are `validation/camera-dust-{original,ex}.bmp` and
   `validation/stars-{original,ex}.bmp`. The 20 FPS/1x Original ground capture
   and 90 FPS/4x captures use direct stage entry and bounded prerolls.
+- `validation/grid-final-ex.bmp` is a fresh actual desktop LEVEL2_1 capture
+  after the grid correction (90 FPS/4x, unpaced fixture). It supplements the
+  independent pixel comparisons; it is not an old-PC performance measurement.
 
 SHA-256:
 
 ```text
 starfox_pc.exe
-E3B38F75655546EB9914A967D89A8367AFD3EEDAA338F96769280FC19A3D5994
+9CA4809262216C84F534D66033114CCF978681EC86956ADC583DE0DE3BFB5436
 Starfox-Assets.BIN
 2F9A261C87F032F553952588E2EEB5DB747CBAF5FF0E5FCE7AF1862C9FC6541E
 Starfox-MSU1.PAK

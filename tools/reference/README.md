@@ -99,6 +99,23 @@ Separate mutation builds restoring general multiplication for every model
 orientation or the old dust recycling fail at the first affected reference row.
 These checks do not validate cycle timing, every full scene, or physical output.
 
+The `grid` mode executes the cartridge's camera/origin transforms followed by
+MSHOWGRID or EX's MSHOWGRID2, retaining the latter's line origin across updates.
+It verifies the CPU's 1,920-unit origin constant directly from its assembled
+SBC instruction. The GSU draws **15×15 dots in Original and 25×25 in EX**, with
+two-pixel depth thresholds **512 and 96**, respectively. These values differ
+from the EX checkout's source constants, so the port now reads the assembled
+GSU operands. All **576 frames match (557 visible)** across camera movement,
+word wrap, height, yaw and smaller pitch/roll changes. Regular tests repeat each
+presentation to check that EX's line history advances only once per source frame.
+
+```powershell
+& $audit $core upstream-ultrastarfox/SF.SFC upstream-ultrastarfox/SYMBOLS.TXT grid tests/data/reference-grid-original.csv
+& $audit $core tmp/runtime-inputs/starfox-ex/SFES.SFC assets/symbols/starfox-ex.txt grid tests/data/reference-grid-ex.csv
+```
+
+A separate mutation restoring the 15×15 EX grid fails the first reference frame.
+
 ## Desktop audio output trace
 
 `pwsh -NoProfile -File tools/reference/run-runtime-ending-audio.ps1 -Experience ORIGINAL -Msu 0 -OutputDirectory tmp/runtime-audio-original`
