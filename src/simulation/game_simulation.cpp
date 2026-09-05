@@ -2211,6 +2211,7 @@ void GameSimulation::reset_scene_transition_state() {
     frontend_phase_ = FrontendPhase::none;
     source_update_sequence_ = 0U;
     draw_order_.clear();
+    submitted_object_flags_.fill({});
 
     boss_music_before_death_.reset();
     post_boss_dialogue_active_ = false;
@@ -4502,6 +4503,13 @@ void GameSimulation::calculate_view() {
     map_.call_native_routine(get_view_, registers);
 }
 
+std::uint8_t GameSimulation::submitted_strategy_flags(ObjectHandle handle) const {
+    if (!objects_.is_active(handle)) return 0U;
+    const auto& submitted = submitted_object_flags_[handle];
+    return submitted.generation == objects_.generation(handle)
+        ? submitted.flags : objects_.at(handle).strategy_flags[0];
+}
+
 std::size_t GameSimulation::update_view_flags_and_cull() {
     constexpr std::uint8_t view_flag_mask = 0x02U | 0x04U | 0x08U | 0x10U;
     constexpr std::uint8_t front_and_in_view = 0x08U | 0x10U;
@@ -4526,6 +4534,7 @@ std::size_t GameSimulation::update_view_flags_and_cull() {
     };
     std::vector<DrawEntry> ordered;
     std::vector<ObjectHandle> removals;
+    submitted_object_flags_.fill({});
     for (const auto handle : objects_.active_handles()) {
         auto& object = objects_.at(handle);
         // MARIOSHOWVIEW resets these flags and provisionally sets AFFRONTPL
@@ -4534,6 +4543,14 @@ std::size_t GameSimulation::update_view_flags_and_cull() {
         object.flags = static_cast<std::uint8_t>(
             (object.flags & ~view_flag_mask) | 0x08U);
         if ((object.strategy_flags[3] & 0x08U) != 0U) continue;
+        // MARIOSHOWVIEW copies AL_SFLAGS to DL_SFLAGS and immediately clears
+        // ASF_HITFLASH in object RAM. Keep the submitted flags separately so
+        // every presentation can use that frame's flash without exposing it
+        // to native routines after the draw-list build. Invisible objects
+        // skip both the copy and the clear in the cartridge.
+        submitted_object_flags_[handle] = {
+            objects_.generation(handle), object.strategy_flags[0]};
+        object.strategy_flags[0] &= static_cast<std::uint8_t>(~0x02U);
         const auto position = transform_q15(world, {
             subtract16(object.world_x, camera[0]),
             subtract16(object.world_y, camera[1]),
@@ -4813,13 +4830,6 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
         && map_.read_native_byte(doing_wipe_) == 0U
         && map_.read_native_byte(stay_black_) == 0xffU;
     if (pause_after_tick) map_.write_native_byte(pause_sound_, 2U);
-    // build_drawlist copies hitflash into the just-submitted frame and clears
-    // it from al_sflags. Presentation consumes object state after tick(), so
-    // perform that clear at the following boundary: the flag remains visible
-    // for exactly the three 60 Hz presentations belonging to one logic tick.
-    for (const auto handle : objects_.active_handles()) {
-        objects_.at(handle).strategy_flags[0] &= static_cast<std::uint8_t>(~0x02U);
-    }
     // MDRAWLIS clears m_bossHP after every source frame. Strategies rebuild
     // it by summing the surviving boss components during this update.
     map_.write_native_word(boss_health_, 0U);

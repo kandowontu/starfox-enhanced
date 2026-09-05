@@ -5,6 +5,7 @@
 #include "starfox/simulation/game_simulation.hpp"
 #include <fstream>
 #include <memory>
+#include <map>
 #include <stdexcept>
 #include <string>
 
@@ -16,6 +17,8 @@ class GameplayAudit {
     unsigned count = 0;
     unsigned required;
     std::uint64_t comparisons = 0;
+    std::uint64_t submitted_comparisons = 0;
+    std::map<unsigned, std::uint8_t> submitted_flags;
     unsigned address(const char* name) const { return symbols.find(name).at(0); }
     unsigned native(unsigned p, unsigned size=2) const {
         unsigned v=0;
@@ -31,15 +34,23 @@ public:
         output(prefix+"-gameplay-differences.csv"), frames(prefix+"-gameplay.csv"), required(updates) {
         if (!output || !frames) throw std::runtime_error("Cannot create gameplay traces");
         output << "transfer,field,host,native\n";
-        frames << "transfer,gameframe,raster_phases,host_raster_phases,objects,comparisons,differences\n";
+        frames << "transfer,gameframe,raster_phases,host_raster_phases,objects,comparisons,submitted_flags,hitflashes,differences\n";
     }
     bool complete() const { return count == required; }
+    void capture_submitted_flags() { try {
+        if (!started || complete() || differences || !error.empty()) return;
+        const auto object = unsigned(sfc::cpu.r.y.w);
+        const auto list = unsigned(sfc::cpu.r.x.w);
+        const auto offset = address("DL_SFLAGS") & 65535U;
+        submitted_flags[object] = sfc::superfx.ram.read(list + offset);
+    } catch (const std::exception& exception) { error = exception.what(); } }
     void finish() const {
         std::cout << "Gameplay: " << count << '/' << required << " updates, "
             << comparisons << " comparisons, " << differences << " differences\n";
         if (!error.empty()) throw std::runtime_error(error);
         if (differences) throw std::runtime_error("Gameplay state differs from native execution");
         if (!started || !complete()) throw std::runtime_error("Gameplay comparison did not reach its required update count");
+        if (!submitted_comparisons) throw std::runtime_error("Gameplay comparison did not observe submitted draw flags");
     }
     void transfer() { try {
         if (!error.empty() || differences || complete()) return;
@@ -73,6 +84,8 @@ public:
         static_cast<void>(game->tick({}));
         ++count;
         const auto before = comparisons;
+        const auto submitted_before = submitted_comparisons;
+        unsigned hitflashes = 0;
         auto compare=[&](const std::string& name, unsigned p, unsigned size=2) {
             unsigned host=game->map().read_native_byte(p);
             if(size==2) host |= unsigned(game->map().read_native_byte(p+1))<<8;
@@ -99,10 +112,24 @@ public:
             for(unsigned i=0;i<stride;++i) compare("object_"+std::to_string(object)+"_"+std::to_string(i),object+i,1);
             auto extended=address("XALBLKS") + object-base;
             for(unsigned i=0;i<extended_size;++i) compare("extended_"+std::to_string(object)+"_"+std::to_string(i),extended+i,1);
+            if (const auto submitted = submitted_flags.find(object); submitted != submitted_flags.end()) {
+                const auto handle = static_cast<starfox::simulation::ObjectHandle>((object-base)/stride+1);
+                const auto actual = game->submitted_strategy_flags(handle);
+                ++comparisons;
+                ++submitted_comparisons;
+                hitflashes += (submitted->second & 2U) != 0U;
+                if (actual != submitted->second) {
+                    ++differences;
+                    output << count << ",submitted_flags_" << object << ',' << unsigned(actual)
+                        << ',' << unsigned(submitted->second) << '\n';
+                }
+            }
             object=native(object);
         }
+        submitted_flags.clear();
         frames << count << ',' << native(address("GAMEFRAME")) << ',' << phases << ',' << host_phases << ',' << guard
-            << ',' << comparisons-before << ',' << differences << '\n';
+            << ',' << comparisons-before << ',' << submitted_comparisons-submitted_before
+            << ',' << hitflashes << ',' << differences << '\n';
         if (!output || !frames) throw std::runtime_error("Cannot write gameplay traces");
         if(differences) std::cout<<"Gameplay differences at transfer "<<count<<": "<<differences<<'\n';
     } catch(const std::exception& e) {error=e.what();} }

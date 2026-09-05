@@ -39,7 +39,7 @@ The optional full-system Ares tool now accepts a required gameplay update count:
 
 ```powershell
 pwsh -NoProfile -File tools/reference/build-full-reference.ps1
-python tools/reference/verify-gameplay.py
+python tools/reference/verify-gameplay.py --updates 300 --video-frames 3600
 ```
 
 An individual example is:
@@ -92,7 +92,7 @@ Both native ending-audio checks, the MSU ending-audio check and EX's alternate
 orchestra check passed in the full run. Logs are retained together in
 `validation/fade-regression-validation.txt`.
 
-The local Windows candidate is
+At this validation point the local Windows candidate was
 `dist/StarFoxEnhanced-parity-test/starfox_pc.exe`, SHA-256
 `4287155279244FA6F08B8281B958232D9D4B26105A56BC194A5DD3C6EAF5EBFA`.
 Its checksum file is refreshed along with the executable and validation docs.
@@ -111,10 +111,11 @@ hardware timing, framebuffer output, audio and unlisted RAM are not compared
 by this tool. The full camera observer and other regression suites remain
 separate evidence.
 
-An exploratory Original LEVEL2_1 run first differs at update 371 in bit 1 of
-two objects' `AL_SFLAGS` bytes (host 10, native 8). The host deliberately retains
-hit-flash for presentation and clears it at the next update; the source copies
+An exploratory Original LEVEL2_1 run first differed at update 371 in bit 1 of
+two objects' `AL_SFLAGS` bytes (host 10, native 8). The host deliberately retained
+hit-flash for presentation and cleared it at the next update; the source copies
 it into its draw list and clears object RAM sooner. The strict tool reports this
 representation difference rather than masking it. Extending comparison past
-that boundary requires checking both the submitted draw state and the native
-clear timing. A full-game 1:1 claim remains unsupported.
+that boundary required checking both the submitted draw state and the native
+clear timing. That follow-up is now recorded in
+`OBJECT-STATE-PARITY-VALIDATION.md`. A full-game 1:1 claim remains unsupported.

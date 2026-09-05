@@ -13,7 +13,33 @@ ObjectPool::ObjectPool(std::size_t capacity, ObjectMemoryLayout layout)
     if (capacity_ == 0 || capacity_ > kMaximumObjects) {
         throw std::invalid_argument{"object pool capacity is outside the supported range"};
     }
+    if (layout_ == ObjectMemoryLayout::starfox_ex) {
+        native_base_ = 0x0339U;
+        native_stride_ = 57U;
+    }
     reset();
+}
+
+void ObjectPool::set_native_layout(std::uint16_t base, std::uint16_t stride) {
+    if (base == 0U || stride == 0U
+        || static_cast<std::size_t>(base) + capacity_ * stride > 0x10000U) {
+        throw std::invalid_argument{"native object pool layout is outside its WRAM bank"};
+    }
+    native_base_ = base;
+    native_stride_ = stride;
+}
+
+std::uint16_t ObjectPool::native_pointer(ObjectHandle handle) const noexcept {
+    if (!is_active(handle)) return 0U;
+    return static_cast<std::uint16_t>(native_base_ + (handle - 1U) * native_stride_);
+}
+
+ObjectHandle ObjectPool::native_handle(std::uint16_t pointer) const noexcept {
+    if (pointer < native_base_) return 0U;
+    const auto offset = pointer - native_base_;
+    if (offset % native_stride_ != 0) return 0U;
+    const auto handle = static_cast<ObjectHandle>(offset / native_stride_ + 1U);
+    return is_active(handle) ? handle : 0U;
 }
 
 void ObjectPool::reset() noexcept {
@@ -63,12 +89,16 @@ bool ObjectPool::remove(ObjectHandle handle) noexcept {
     if (!is_active(handle)) {
         return false;
     }
+    const auto pointer = native_pointer(handle);
     for (auto current = first_active_; current != 0; current = slots_[current].next) {
         auto& object = slots_[current].object;
-        if (object.attached == handle) object.attached = 0;
-        if (object.immune_object == handle) object.immune_object = 0;
-        if (object.collision_object == handle) object.collision_object = 0;
-        if (object.fire_object == handle) object.fire_object = 0;
+        if (object.attached == pointer) object.attached = 0;
+        if (object.immune_object == pointer) object.immune_object = 0;
+        if (object.collision_object == pointer) object.collision_object = 0;
+        if (object.fire_object == pointer) {
+            object.fire_object = 0;
+            object.extended[19] = object.extended[20] = 0;
+        }
     }
 
     auto& slot = slots_[handle];
@@ -365,7 +395,10 @@ std::uint8_t ObjectPool::read_path_byte(
     if (index >= kExtendedObjectBytes) {
         throw std::out_of_range{"extended alien-block byte offset is outside alx_size"};
     }
-    return at(handle).extended[index];
+    const auto& object = at(handle);
+    if (index == 19U || index == 20U)
+        return static_cast<std::uint8_t>(object.fire_object >> ((index - 19U) * 8U));
+    return object.extended[index];
 }
 
 std::uint16_t ObjectPool::read_path_word(
@@ -393,7 +426,7 @@ void ObjectPool::write_path_byte(
     if (index >= 19 && index <= 20) {
         const auto bits = static_cast<std::uint16_t>(object.fire_object);
         const auto shift = static_cast<unsigned>((index - 19U) * 8U);
-        object.fire_object = static_cast<ObjectHandle>(
+        object.fire_object = static_cast<std::uint16_t>(
             (bits & ~(std::uint16_t{0xff} << shift)) | (std::uint16_t{value} << shift));
     }
     const auto ex_shift = layout_ == ObjectMemoryLayout::starfox_ex

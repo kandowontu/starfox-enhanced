@@ -240,6 +240,7 @@ public:
     [[nodiscard]] const std::vector<ObjectHandle>& draw_order() const noexcept {
         return draw_order_;
     }
+    [[nodiscard]] std::uint8_t submitted_strategy_flags(ObjectHandle handle) const;
     [[nodiscard]] std::array<std::uint16_t, 16> palette_words() const noexcept;
     [[nodiscard]] GameFlowState flow_state() const noexcept { return flow_state_; }
     [[nodiscard]] bool boss_roll_active() const {
@@ -885,6 +886,11 @@ private:
     std::uint32_t nuke_explosion_strategy_{};
     std::array<std::uint16_t, 8> god_nuke_protected_shapes_{};
     std::vector<ObjectHandle> draw_order_;
+    struct SubmittedObjectFlags {
+        std::uint64_t generation{};
+        std::uint8_t flags{};
+    };
+    std::array<SubmittedObjectFlags, kMaximumObjects + 1> submitted_object_flags_{};
     std::vector<ObjectHandle> armed_god_nukes_;
     Wdc65816Registers ex_menu_registers_{};
     Wdc65816Registers ex_results_registers_{};

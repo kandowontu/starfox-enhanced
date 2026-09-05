@@ -2841,6 +2841,7 @@ std::size_t Wdc65816::call(
         const auto execution_bank = static_cast<std::uint8_t>(
             execution_address >> 16U);
         if ((execution_address & 0xffffU) >= 0x8000U
+            && execution_bank != 0x7eU && execution_bank != 0x7fU
             && (execution_bank & 0x7fU) >= impl_->rom_bank_count) {
             std::ostringstream message;
             message << "65C816 subroutine at $" << std::hex << address
@@ -2995,6 +2996,7 @@ Wdc65816TaskResult Wdc65816::run_task(
         if (service_transfer_flag) impl_->service_planet_transfer();
         const auto execution_bank = static_cast<std::uint8_t>(pc >> 16U);
         if ((pc & 0xffffU) >= 0x8000U
+            && execution_bank != 0x7eU && execution_bank != 0x7fU
             && (execution_bank & 0x7fU) >= impl_->rom_bank_count) {
             std::ostringstream message;
             message << "65C816 task at $" << std::hex << impl_->task_entry

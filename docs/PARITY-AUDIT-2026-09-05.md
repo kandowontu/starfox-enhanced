@@ -19,6 +19,7 @@ changes inside upstream-ultrastarfox were preserved.
 
 | Report / audit finding | Evidence and result |
 | --- | --- |
+| Object words and submitted hit-flash | A longer continuous comparison exposed AL_SFLAGS being cleared one update late and scalar AL_PTR=4 being reinterpreted as host handle 4. Preserve submitted flags separately, retain literal native object words and resolve links explicitly in host PATH operations. A related regression corrected valid upper-WRAM code being rejected as unmapped ROM. All 61 CTest checks pass; 4,000 consecutive route-2/3 updates compare 7,436,666 state values, including 62,225 submitted flags and 47 flashes, with zero differences. See OBJECT-STATE-PARITY-VALIDATION.md. |
 | Gameplay fade cadence and stores | Normal IRQBIT3 advances fades once per completed bitmap transfer. The host advanced on every raster and also omitted QFADEDOWN's second decrement. Corrected gameplay/training cadence, fade-up completion edges and all three display aliases; preserved Continue's manual fade completion. Native SETINIDISP matches 768 cases per game. A new continuous, seeded reference compares 1,200 route-2/3 opening updates and 2,125,112 state values with zero differences. It fails incomplete runs and does not certify host pace or campaigns. See FADE-PARITY-VALIDATION.md. |
 | Camera word layout and crosshair | WMAT11 names a matrix word's high byte; the host wrote full words there instead of WMAT11W. The earlier view fixture shared that mistake. Correcting the reference first exposed 2,772 differences among 3,028 Original route-2 object views. The host now uses WMAT11W and executes GETVIEW_L directly, preserving the source's camera offsets, target angles, byte-angle aiming and integer crosshair projection. All 12,204 sampled object views match with the corrected layout. The new full-system Ares reference independently compares complete camera calls; see CAMERA-PARITY-VALIDATION.md. |
 | Full-system timing reference | Added a separately built pinned Ares SNES core with CPU frame boundaries, actual GSU launch/configuration traces and camera comparisons. The harness fixes its own MinGW scheduler lifetime and joins video before teardown; these are reference-tool changes. The pinned Original input writes CLSR=1, while EX writes CLSR=0. Both request fast multiply. Primary MC1 measurements contradict the source comment about a fixed clock and expose different multiplier/cache behavior. Added explicit diagnostic register policies and requested/effective write traces; none is claimed as a physical MC1 implementation. See TIMING-PROFILE-VALIDATION.md. Hardware identity and CPU/GSU overlap must be resolved before replacing the production slowdown approximation. |
@@ -252,12 +253,16 @@ addresses; do not interpret those particular diagnostic fields as EX state.
 - The current candidate also includes the gameplay/training fade fixes and
   Continue manual-fade completion correction. Its SHA256SUMS file was refreshed
   with the executable; the previous file still listed an older candidate hash.
+- The current candidate includes literal object-word preservation, submitted
+  hit-flash state and executable-WRAM guard corrections. All 61 checks pass in
+  one rebuilt-suite run; the longer continuous reference evidence is in
+  OBJECT-STATE-PARITY-VALIDATION.md.
 
 SHA-256:
 
 ```text
 starfox_pc.exe
-4287155279244FA6F08B8281B958232D9D4B26105A56BC194A5DD3C6EAF5EBFA
+7A3F6BF01707685CD338B5E866B86EC80B8A4F9195DA997509CDD6080BDC2D1A
 Starfox-Assets.BIN
 2F9A261C87F032F553952588E2EEB5DB747CBAF5FF0E5FCE7AF1862C9FC6541E
 Starfox-MSU1.PAK

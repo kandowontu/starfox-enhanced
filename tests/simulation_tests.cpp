@@ -792,7 +792,7 @@ int main(int argc, char** argv) {
     const auto head = objects.allocate_after();
     require((objects.active_handles() == std::vector<starfox::simulation::ObjectHandle>{head, first, second}),
             "object insertion order differs from l_add");
-    objects.at(second).attached = first;
+    objects.at(second).attached = objects.native_pointer(first);
     require(objects.remove(first), "active object could not be removed");
     require(objects.at(second).attached == 0, "object references were not divorced on removal");
     const auto reused = objects.allocate_after(head);
@@ -976,7 +976,44 @@ int main(int argc, char** argv) {
     put8(score_path++, 167);
     put16(score_path, 0x0102U); score_path += 2U;
     put8(score_path++, 166); // P_WAIT1
+    auto link_path = std::uint32_t{0x018400 + 70U};
+    put8(link_path++, 41); // pair two objects
+    put8(link_path++, 166); // P_WAIT1
+    put8(link_path++, 25); // mutual collision immunity
+    put8(link_path++, 166); // P_WAIT1
+    put8(link_path++, 148); put8(link_path++, 0); // remove attached object
+    put8(link_path++, 166); // P_WAIT1
     const starfox::assets::RomImage path_rom{rom_bytes};
+    for (const auto layout : {starfox::simulation::ObjectMemoryLayout::original,
+             starfox::simulation::ObjectMemoryLayout::starfox_ex}) {
+        starfox::simulation::ObjectPool links{4, layout};
+        const auto player = links.allocate_after();
+        const auto left = links.allocate_after(), right = links.allocate_after();
+        const auto spare = links.allocate_after();
+        starfox::simulation::OriginalPrng random;
+        starfox::simulation::PathVm paths{path_rom, 0x018400, 0x029999,
+            links, starfox::simulation::TrigTables{}, random};
+        paths.set_player(player);
+        paths.attach(left, 70);
+        paths.attach(right, 70);
+        paths.tick(left);
+        paths.tick(right);
+        require(links.at(left).attached == links.native_pointer(right)
+            && links.at(right).attached == links.native_pointer(left),
+            "PATH pairing did not store cartridge pointers");
+        paths.tick(left);
+        paths.tick(right);
+        require(links.at(left).immune_object == links.native_pointer(right)
+            && links.at(right).immune_object == links.native_pointer(left),
+            "PATH immunity did not resolve the paired cartridge pointers");
+        links.at(left).attached = spare; // scalar 4 is not a cartridge pointer
+        paths.tick(left);
+        require(links.is_active(spare), "PATH removal interpreted a scalar as a host handle");
+        paths.tick(right);
+        require(!links.is_active(left) && links.is_active(right)
+            && links.at(right).attached == 0 && links.at(right).immune_object == 0,
+            "PATH removal did not remove and divorce its attached cartridge object");
+    }
     starfox::simulation::ObjectPool path_objects;
     const auto path_player = path_objects.allocate_after();
     const auto path_actor = path_objects.allocate_after(path_player);

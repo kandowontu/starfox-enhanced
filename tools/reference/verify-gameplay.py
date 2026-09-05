@@ -1,4 +1,4 @@
-"""Compare 300 consecutive neutral-input updates in routes 2/3 of both games.
+"""Compare consecutive neutral-input updates in routes 2/3 of both games.
 
 This bounded audit seeds WRAM once and supplies observed raster counts; it
 does not validate boot state, input handling, host pace or complete campaigns.
@@ -30,6 +30,8 @@ def main():
     parser.add_argument("--ex-rom", type=Path, default=root / "tmp/runtime-inputs/starfox-ex/SFES.SFC")
     parser.add_argument("--ex-symbols", type=Path, default=root / "assets/symbols/starfox-ex.txt")
     parser.add_argument("--output", type=Path, default=root / "tmp/gameplay-audit")
+    parser.add_argument("--updates", type=int, default=1000)
+    parser.add_argument("--video-frames", type=int, default=10000)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     inputs = {"original": (args.original_rom.resolve(), args.original_symbols.resolve()),
@@ -40,7 +42,7 @@ def main():
         rom, symbols = inputs[variant]
         prefix = args.output.resolve() / f"{variant}-{stage}"
         command = [str(args.executable.resolve()), str(rom), str(symbols), stage,
-                   "3600", str(prefix), "source", "300"]
+                   str(args.video_frames), str(prefix), "source", str(args.updates)]
         result = subprocess.run(command, capture_output=True, text=True, timeout=600)
         Path(str(prefix) + ".log").write_text(result.stdout + result.stderr)
         if result.returncode:
@@ -51,22 +53,25 @@ def main():
         if (len(entry) != 1 or entry[0]["map"] != stage
                 or int(entry[0]["gsu_running"]) or int(entry[0]["pending_ram_clocks"])):
             raise RuntimeError(f"{case}: unsafe or missing stage entry")
-        if ([int(row["transfer"]) for row in gameplay] != list(range(1, 301))
+        if ([int(row["transfer"]) for row in gameplay] != list(range(1, args.updates + 1))
                 or differences or any(int(row["differences"]) for row in gameplay)):
             raise RuntimeError(f"{case}: incomplete or differing gameplay state")
         if (not camera or any(row["host"] != row["native"] for row in camera)
-                or any(int(row["comparisons"]) <= 25 for row in gameplay)):
+                or any(int(row["comparisons"]) <= 25 for row in gameplay)
+                or not sum(int(row["submitted_flags"]) for row in gameplay)):
             raise RuntimeError(f"{case}: missing object/camera comparisons")
         report = {
             "variant": variant, "map": stage, "updates": len(gameplay),
             "comparisons": sum(int(row["comparisons"]) for row in gameplay),
             "differences": 0, "camera_calls": len(camera) // 17,
+            "submitted_flags": sum(int(row["submitted_flags"]) for row in gameplay),
+            "hitflashes": sum(int(row["hitflashes"]) for row in gameplay),
             "raster_phase_range": [min(int(row["raster_phases"]) for row in gameplay),
                                    max(int(row["raster_phases"]) for row in gameplay)],
             "host_minimum_phase_updates": sum(row["raster_phases"] != row["host_raster_phases"] for row in gameplay),
             "trace_sha256": {kind: sha256(path) for kind, path in paths.items()},
         }
-        print(f"{variant} {stage}: 300 updates, {report['comparisons']} comparisons, zero differences", flush=True)
+        print(f"{variant} {stage}: {args.updates} updates, {report['comparisons']} comparisons, zero differences", flush=True)
         return report
 
     with ThreadPoolExecutor(max_workers=2) as pool:

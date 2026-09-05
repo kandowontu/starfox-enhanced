@@ -148,6 +148,7 @@ MapVm::MapVm(
             + " does not match host object pool capacity "
             + std::to_string(objects_->capacity())};
     }
+    objects_->set_native_layout(object_base_, object_size_);
     if (symbols != nullptr) {
         constexpr std::array names{
             "SEND_MESSAGE_L", "SEND_MESSAGE2_L",
@@ -619,14 +620,10 @@ void MapVm::sync_objects_to_cpu() {
         for (std::uint16_t offset = 4; offset < object_size_; ++offset) {
             cpu_.write8(base + offset, read_native_object_byte(handle, offset));
         }
-        const auto& object = objects_->at(handle);
-        cpu_.write16(base + 6U, original_object_pointer(object.attached));
-        cpu_.write16(base + 25U, original_object_pointer(object.immune_object));
-        cpu_.write16(base + 27U, original_object_pointer(object.collision_object));
         for (std::size_t offset = 0; offset < extended_object_bytes_; ++offset) {
-            cpu_.write8(extended_base + offset, object.extended[offset]);
+            cpu_.write8(extended_base + offset, objects_->read_path_byte(
+                handle, static_cast<std::uint8_t>(0x80U + offset)));
         }
-        cpu_.write16(extended_base + 19U, original_object_pointer(object.fire_object));
     }
     for (std::size_t index = 0; index < free.size(); ++index) {
         const auto base = static_cast<std::uint32_t>(
@@ -665,15 +662,10 @@ void MapVm::sync_objects_from_cpu() {
         for (std::uint16_t offset = 4; offset < object_size_; ++offset) {
             write_native_object_byte(handle, offset, cpu_.read8(base + offset));
         }
-        auto& object = objects_->at(handle);
-        object.attached = object_handle(cpu_.read16(base + 6U));
-        object.immune_object = object_handle(cpu_.read16(base + 25U));
-        object.collision_object = object_handle(cpu_.read16(base + 27U));
         for (std::size_t offset = 0; offset < extended_object_bytes_; ++offset) {
             objects_->write_path_byte(handle, static_cast<std::uint8_t>(0x80U + offset),
                                       cpu_.read8(extended_base + offset));
         }
-        object.fire_object = object_handle(cpu_.read16(extended_base + 19U));
     }
 }
 

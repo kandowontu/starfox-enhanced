@@ -289,14 +289,18 @@ A separate mutation restoring the 15×15 EX grid fails the first reference frame
 
 ## Continuous gameplay state
 
-`python tools/reference/verify-gameplay.py` compares 300 consecutive updates of
+`python tools/reference/verify-gameplay.py` compares 1,000 consecutive updates of
 LEVEL2_1 and LEVEL3_1 in both games, after one native RAM seed. The full-system
 CLI accepts a final `GAMEPLAY_UPDATES` argument after its GSU policy. It requires
 that count and fails on any checked state difference or incomplete run. The
 comparison waits for the preceding display interrupt; native `TRANSFER_L` entry
 alone is not a settled display boundary. It uses observed raster counts and
 neutral input, so it does not certify host pacing, input, rendering or campaigns.
-See `docs/FADE-PARITY-VALIDATION.md` for fields, results and remaining limitations.
+It also captures submitted draw flags before the source clears hit-flash in
+object RAM, and reports the number of compared flashes. Optional `--updates`
+and `--video-frames` arguments change the requested coverage and execution budget.
+See `docs/OBJECT-STATE-PARITY-VALIDATION.md` for the current results and scope;
+`docs/FADE-PARITY-VALIDATION.md` records the earlier 300-update audit.
 
 ## Desktop audio output trace
 

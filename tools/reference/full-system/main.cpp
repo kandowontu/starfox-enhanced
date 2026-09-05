@@ -234,12 +234,25 @@ int main(int argc, char** argv) { try {
         }
     }
     if (gameplay && !settled_transfer) throw std::runtime_error("Missing settled transfer boundary");
+    unsigned draw_flags_clear = 0;
+    for (unsigned offset = 0; gameplay && offset < 512; ++offset) {
+        const auto pc = address("MARIOSHOWVIEW") + offset;
+        // AND #~ASF_HITFLASH; STA AL_SFLAGS,Y. At the store instruction,
+        // DL_SFLAGS has already captured the complete submitted flags.
+        if (rom.read8(pc) == 0x29 && rom.read8(pc + 1) == 0xfd
+            && rom.read8(pc + 2) == 0x99 && rom.read16(pc + 3) == address("AL_SFLAGS")) {
+            if (draw_flags_clear) throw std::runtime_error("Ambiguous draw-flags clear boundary");
+            draw_flags_clear = pc + 2;
+        }
+    }
+    if (gameplay && !draw_flags_clear) throw std::runtime_error("Missing draw-flags clear boundary");
     std::vector<std::pair<std::string, unsigned>> camera_fields;
     for (const auto name : {"VIEWPOSX", "VIEWPOSY", "VIEWPOSZ", "VIEWROTXW", "VIEWROTYW", "VIEWROTZW", "ARSEBANDX", "ARSEBANDY",
         "WMAT11W", "WMAT12W", "WMAT13W", "WMAT21W", "WMAT22W", "WMAT23W", "WMAT31W", "WMAT32W", "WMAT33W"})
         camera_fields.emplace_back(name, address(name));
     cpu_hook = [&](unsigned pc, unsigned clocks) {
         if (platform.pending_jump) return;
+        if (gameplay && pc == draw_flags_clear) gameplay->capture_submitted_flags();
         if (pc == get_view && camera_calls < 200 && camera_error.empty()) {
             for (unsigned i = 0; i < 0x20000; ++i) host_cpu.write8(0x7e0000 + i, sfc::cpu.wram[i]);
             for (unsigned i = 0; i < 0x10000; ++i) host_cpu.write8(0x700000 + i, sfc::superfx.ram.read(i));

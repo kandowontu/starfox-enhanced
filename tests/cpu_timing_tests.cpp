@@ -194,6 +194,39 @@ int main() try {
             "16-bit read-modify-write did not write the high byte first");
         clocks(cpu, 54 + 44, "read-modify-write I/O timing");
     }
+    for (const auto bank : {0x7e0000U, 0x7f0000U}) {
+        for (const auto offset : {0x7ff0U, 0x8000U, 0xfffaU}) {
+            const auto rom = fixture({0x6b});
+            Wdc65816 cpu{rom};
+            constexpr std::array<std::uint8_t, 7> code{0xa9,0x34,0x12,0x69,1,0,0x6b};
+            for (unsigned i = 0; i < code.size(); ++i)
+                cpu.write8(bank | ((offset + i) & 0xffffU), code[i]);
+            Wdc65816Registers regs;
+            regs.status = 0x04;
+            cpu.call_long(bank | offset, regs);
+            require(regs.a == 0x1235, "native call rejected or misread executable WRAM");
+            clocks(cpu, 92, "WRAM instruction fetch clocks");
+            constexpr unsigned instruction_bytes = 3;
+            const std::array stop{bank | ((offset + instruction_bytes) & 0xffffU)};
+            regs = {};
+            const auto started = cpu.begin_long_task(bank | offset, regs, stop);
+            require(!started.returned && regs.a == 0x1234,
+                "WRAM task did not stop after its first instruction");
+            const auto finished = cpu.resume_task(regs, {});
+            require(finished.returned && regs.a == 0x1235,
+                "WRAM task did not resume through the bank's upper half");
+            clocks(cpu, 184, "WRAM call/task cumulative clocks");
+        }
+    }
+    {
+        const auto rom = fixture({0x6b});
+        Wdc65816 cpu{rom};
+        Wdc65816Registers regs;
+        bool rejected = false;
+        try { cpu.call_long(0x018000, regs); }
+        catch (const starfox::simulation::Wdc65816ExecutionError&) { rejected = true; }
+        require(rejected, "WRAM execution fix disabled the unmapped ROM guard");
+    }
     std::cout << "CPU bus regions, FastROM transitions, internal cycles and call/task accounting pass\n";
     return 0;
 } catch (const std::exception& error) {

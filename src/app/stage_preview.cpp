@@ -338,9 +338,10 @@ int main(int argc, char** argv) {
                 ? static_cast<std::uint32_t>(object_frame & 0x7fU)
                 : static_cast<std::uint32_t>(game_frame);
         };
-        const auto effective_colour_table = [special_colour, red_colour,
-                                               white_colour](const auto& object) {
-            const auto flags = object.strategy_flags[0];
+        const auto effective_colour_table = [&game, special_colour, red_colour,
+                                               white_colour](const auto handle) {
+            const auto& object = game.objects().at(handle);
+            const auto flags = game.submitted_strategy_flags(handle);
             if ((flags & 0x40U) != 0U) return std::uint16_t{};
             if ((flags & 0x02U) != 0U && (flags & 0x20U) == 0U) {
                 return static_cast<std::uint16_t>(
@@ -379,7 +380,7 @@ int main(int argc, char** argv) {
             if (!game.objects().is_active(handle)) continue;
             const auto& object = game.objects().at(handle);
             if ((object.strategy_flags[3] & 0x08U) != 0U || object.shape == 0U) continue;
-            const auto colour_table = effective_colour_table(object);
+            const auto colour_table = effective_colour_table(handle);
             const auto base_shape_key = (static_cast<std::uint32_t>(object.shape) << 16U)
                 | colour_table;
             if (invalid.contains(base_shape_key)) continue;
@@ -406,7 +407,7 @@ int main(int argc, char** argv) {
         const auto make_pose = [&](const RenderItem& item, bool shadow) {
             const auto& object = game.objects().at(item.handle);
             const auto true_colour_shadow =
-                (object.strategy_flags[0] & 0x04U) != 0U;
+                (game.submitted_strategy_flags(item.handle) & 0x04U) != 0U;
             auto position = item.position;
             if (shadow && !true_colour_shadow) {
                 position = starfox::simulation::transform_q15(view_matrix, {
@@ -453,8 +454,8 @@ int main(int argc, char** argv) {
         if ((game.map().read_native_byte(ram_symbol("PLAYERFLYMODE")) & 0x08U) != 0U) {
             for (const auto& item : items) {
                 const auto& object = game.objects().at(item.handle);
-                if ((object.strategy_flags[0] & 0x0cU) == 0U) continue;
-                const auto colour_table = effective_colour_table(object);
+                if ((game.submitted_strategy_flags(item.handle) & 0x0cU) == 0U) continue;
+                const auto colour_table = effective_colour_table(item.handle);
                 const auto base_shape_key =
                     (static_cast<std::uint32_t>(object.shape) << 16U)
                     | colour_table;
@@ -483,19 +484,19 @@ int main(int argc, char** argv) {
         for (const auto& item : items) {
             const auto handle = item.handle;
             const auto& object = game.objects().at(handle);
-            if ((object.strategy_flags[0] & 0x04U) != 0U) continue;
-            const auto colour_table = effective_colour_table(object);
+            if ((game.submitted_strategy_flags(item.handle) & 0x04U) != 0U) continue;
+            const auto colour_table = effective_colour_table(handle);
             const auto base_shape_key = (static_cast<std::uint32_t>(object.shape) << 16U)
                 | colour_table;
             const auto base = cache.find(base_shape_key);
             if (base == cache.end()) continue;
-            if ((object.strategy_flags[0] & 0x10U) != 0U) {
+            if ((game.submitted_strategy_flags(item.handle) & 0x10U) != 0U) {
                 particle_renderer.draw_owner(game.particles(), item.handle,
                     make_pose(item, false), 1.0, framebuffer);
                 ++rendered;
                 continue;
             }
-            if ((object.strategy_flags[0] & 0x40U) != 0U) {
+            if ((game.submitted_strategy_flags(item.handle) & 0x40U) != 0U) {
                 text_renderer.draw(object.colour_table, object.extended[21],
                     std::bit_cast<std::int8_t>(object.texture_scroll_x),
                     make_pose(item, false), framebuffer);
@@ -519,7 +520,7 @@ int main(int argc, char** argv) {
                 }
             }
             auto pose = make_pose(item, false);
-            if ((object.strategy_flags[0] & 0x20U) != 0U) {
+            if ((game.submitted_strategy_flags(item.handle) & 0x20U) != 0U) {
                 pose.simple_scaled_sprite = true;
                 pose.simple_sprite_colour = object.extended[21];
                 pose.simple_sprite_world_size = decoder.simple_sprite_diameter(

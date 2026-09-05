@@ -82,6 +82,98 @@ void check_point_scaling(const assets::RomImage& rom, const assets::SymbolMap& s
     std::cout << "source point scaling: " << checked << " model/frame/scale comparisons\n";
 }
 
+void check_submitted_flags(const assets::RomImage& rom, const assets::SymbolMap& symbols) {
+    auto game = std::make_unique<GameSimulation>(rom, symbols, "LEVEL2_1");
+    for (unsigned tick = 0; tick < 120; ++tick) static_cast<void>(game->tick({}));
+    auto& objects = game->objects();
+    const auto visible = objects.allocate_after(), hidden = objects.allocate_after();
+    require(visible && hidden, "hit-flash fixture could not allocate its objects");
+    for (const auto handle : {visible, hidden}) {
+        auto& object = objects.at(handle);
+        object.shape = static_cast<std::uint16_t>(address(symbols, "SHIP_4"));
+        object.world_z = static_cast<std::int16_t>(game->map().read_native_word(address(symbols, "VIEWPOSZ")) + 2000);
+        object.strategy_flags[0] = 0x0b; // special colour, hit-flash, shadow
+        object.strategy_flags[1] = 0x01; // collision disabled
+        object.health = 100;
+    }
+    objects.at(hidden).strategy_flags[3] = 0x08;
+    static_cast<void>(game->tick({}));
+    const auto pointer = address(symbols, "ALBLKS") + (visible - 1U) * address(symbols, "AL_SIZE");
+    require(objects.at(visible).strategy_flags[0] == 0x09
+        && game->map().read_native_byte(pointer + address(symbols, "AL_SFLAGS")) == 0x09,
+        "submitted hit-flash remained visible to native object routines");
+    require(game->submitted_strategy_flags(visible) == 0x0b,
+        "the submitted frame lost its hit-flash/special-colour flags");
+    require(objects.at(hidden).strategy_flags[0] == 0x0b,
+        "invisible object lost the hit-flash skipped by MARIOSHOWVIEW");
+    for (unsigned raster = 0; raster < 7; ++raster) {
+        game->present_frame();
+        require(game->submitted_strategy_flags(visible) == 0x0b,
+            "presentation consumed the submitted hit-flash more than once");
+    }
+    static_cast<void>(game->tick({}));
+    require(game->submitted_strategy_flags(visible) == 0x09,
+        "hit-flash leaked into the next submitted frame");
+    require(objects.at(hidden).strategy_flags[0] == 0x0b,
+        "the next update cleared an invisible object's pending hit-flash");
+    // A newly allocated object must not inherit the old slot's draw flags.
+    require(objects.remove(visible), "hit-flash fixture could not remove its object");
+    const auto replacement = objects.allocate_after();
+    require(replacement == visible, "hit-flash fixture did not reuse the same slot");
+    require(game->submitted_strategy_flags(replacement) == 0U,
+        "a replacement object inherited the removed object's submitted flags");
+    std::cout << "submitted flags: native clear, repeated presentations, invisible objects and slot reuse passed\n";
+}
+
+void check_native_object_words(const assets::RomImage& rom, const assets::SymbolMap& symbols) {
+    const bool ex = !symbols.find("PLANETSEQ2_L").empty();
+    ObjectPool objects{address(symbols, "NUMBER_AL"),
+        ex ? ObjectMemoryLayout::starfox_ex : ObjectMemoryLayout::original};
+    MapVm map{rom, MapDatabase{rom, symbols}, objects, &symbols};
+    std::array<ObjectHandle, 6> handles{};
+    for (auto& handle : handles) handle = objects.allocate_after();
+    constexpr std::uint32_t noop = 0x7ff000;
+    map.write_native_byte(noop, 0x6b); // RTL: exercise both bridge directions.
+    const auto transfer = [&] {
+        Wdc65816Registers registers;
+        registers.status = 0x24;
+        map.call_native_routine(noop, registers);
+    };
+    transfer();
+    const auto base = objects.native_pointer(handles[0]);
+    const auto extended = address(symbols, "XALBLKS");
+    std::vector<std::uint16_t> values;
+    for (unsigned value = 0; value <= objects.capacity() + 1; ++value) values.push_back(value);
+    for (const auto value : {unsigned(base), unsigned(objects.native_pointer(handles[3])),
+             unsigned(base + 1), unsigned(base + address(symbols, "AL_SIZE") * objects.capacity()),
+             0x1234U, 0x7fffU, 0x8000U, 0xffffU}) values.push_back(value);
+    for (const auto value : values) {
+        for (const auto offset : {6U, 25U, 27U}) map.write_native_word(base + offset, value);
+        map.write_native_word(extended + 19, value);
+        map.restore_objects_from_native();
+        require(objects.at(handles[0]).attached == value
+            && objects.at(handles[0]).immune_object == value
+            && objects.at(handles[0]).collision_object == value
+            && objects.at(handles[0]).fire_object == value,
+            "native pointer/counter word was reinterpreted as a host handle");
+        transfer();
+        for (const auto offset : {6U, 25U, 27U})
+            require(map.read_native_word(base + offset) == value,
+                "object word changed across a native call");
+        require(map.read_native_word(extended + 19) == value,
+            "extended fire-object word changed across a native call");
+    }
+    auto& object = objects.at(handles[0]);
+    object.attached = object.collision_object = object.fire_object = handles[3];
+    object.immune_object = objects.native_pointer(handles[3]);
+    require(objects.remove(handles[3]), "pointer/counter fixture could not remove object four");
+    require(object.attached == 4 && object.collision_object == 4 && object.fire_object == 4
+        && object.immune_object == 0,
+        "removing an object modified a scalar that happened to equal its handle");
+    std::cout << "native object words: " << values.size() * 4
+        << " pointer/counter round trips and scalar-preserving removal passed\n";
+}
+
 void check_ex_shape_streams(const assets::RomImage& rom, const assets::SymbolMap& symbols) {
     if (symbols.find("PLANETSEQ2_L").empty()) return;
     assets::ShapeDecoder decoder{rom, symbols};
@@ -306,6 +398,8 @@ int main(int argc, char** argv) {
     try {
         const auto rom = assets::RomImage::load(argv[1]);
         const auto symbols = assets::SymbolMap::load(argv[2]);
+        check_native_object_words(rom, symbols);
+        check_submitted_flags(rom, symbols);
         check_point_scaling(rom, symbols);
         check_ex_shape_streams(rom, symbols);
         check_planet_texels(rom, symbols);

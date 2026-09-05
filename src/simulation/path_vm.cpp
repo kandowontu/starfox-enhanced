@@ -475,7 +475,7 @@ void PathVm::tick(ObjectHandle handle) {
             for (const auto candidate : objects_->active_handles()) {
                 if (candidate == handle) continue;
                 if (opcode == 19 && !after_current) {
-                    if (candidate == object.attached) after_current = true;
+                    if (objects_->native_pointer(candidate) == object.attached) after_current = true;
                     continue;
                 }
                 const auto& other = objects_->at(candidate);
@@ -485,7 +485,7 @@ void PathVm::tick(ObjectHandle handle) {
                     break;
                 }
             }
-            object.attached = found;
+            object.attached = objects_->native_pointer(found);
             advance(3);
             continue;
         }
@@ -494,9 +494,9 @@ void PathVm::tick(ObjectHandle handle) {
             states_.erase(handle);
             return;
         case 25:
-            if (objects_->is_active(object.attached)) {
+            if (objects_->native_handle(object.attached) != 0U) {
                 object.immune_object = object.attached;
-                objects_->at(object.attached).immune_object = handle;
+                objects_->at(objects_->native_handle(object.attached)).immune_object = objects_->native_pointer(handle);
             }
             advance(1);
             continue;
@@ -514,9 +514,9 @@ void PathVm::tick(ObjectHandle handle) {
         }
         case 31: {
             auto condition = false;
-            if (objects_->is_active(object.attached)) {
+            if (objects_->native_handle(object.attached) != 0U) {
                 condition = std::abs(static_cast<int>(subtract16(
-                    object.world_z, objects_->at(object.attached).world_z)))
+                    object.world_z, objects_->at(objects_->native_handle(object.attached)).world_z)))
                     < static_cast<int>(read16(pc + 1U));
             }
             if (state.if_not) { condition = !condition; state.if_not = false; }
@@ -540,14 +540,14 @@ void PathVm::tick(ObjectHandle handle) {
         case 41:
             if (pending_link_ == 0 || !objects_->is_active(pending_link_)) pending_link_ = handle;
             else {
-                object.attached = pending_link_;
-                objects_->at(pending_link_).attached = handle;
+                object.attached = objects_->native_pointer(pending_link_);
+                objects_->at(pending_link_).attached = objects_->native_pointer(handle);
                 pending_link_ = 0;
             }
             advance(1);
             continue;
         case 42:
-            if (!objects_->is_active(object.attached)) jump(read16(pc + 1U));
+            if (objects_->native_handle(object.attached) == 0U) jump(read16(pc + 1U));
             else advance(3);
             continue;
         case 43: {
@@ -635,12 +635,12 @@ void PathVm::tick(ObjectHandle handle) {
                 spawned.world_z = add16(object.world_z,
                     static_cast<std::int16_t>(signed_byte(read8(pc + 12U)) * 4));
                 if (opcode == 64) {
-                    object.attached = child;
-                    spawned.attached = handle;
+                    object.attached = objects_->native_pointer(child);
+                    spawned.attached = objects_->native_pointer(handle);
                 }
                 if (opcode == 65) {
                     spawned.scratch_bytes[0] = signed_byte(read8(pc + 13U));
-                    spawned.attached = handle;
+                    spawned.attached = objects_->native_pointer(handle);
                 }
             }
             advance(opcode == 65 ? 14 : 13);
@@ -654,7 +654,8 @@ void PathVm::tick(ObjectHandle handle) {
             continue;
         case 75: object.weapon_type = read8(pc + 1U); advance(2); continue;
         case 78:
-            if (objects_->is_active(object.attached)) set_flag(objects_->at(object.attached), kFlagPath, true);
+            if (objects_->native_handle(object.attached) != 0U)
+                set_flag(objects_->at(objects_->native_handle(object.attached)), kFlagPath, true);
             advance(1);
             continue;
         case 81:
@@ -891,7 +892,8 @@ void PathVm::tick(ObjectHandle handle) {
             continue;
         }
         case 148:
-            if (objects_->is_active(object.attached)) (void)objects_->remove(object.attached);
+            if (objects_->native_handle(object.attached) != 0U)
+                (void)objects_->remove(objects_->native_handle(object.attached));
             advance(2);
             continue;
         case 149: case 150: case 151: case 152: {
