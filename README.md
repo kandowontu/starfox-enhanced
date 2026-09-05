@@ -364,6 +364,12 @@ and licenses are recorded in `THIRD_PARTY_NOTICES.md`. The original Nintendo/
 Argonaut staff, Star Fox EX team, UltraStarFox contributors, native-port
 credit, and MSU-set attribution are recorded separately in `CREDITS.md`.
 
+The original code and documentation contributed to Star Fox Enhanced are
+licensed under the [MIT License](LICENSE). Third-party code retains its own
+licenses, including snes_spc's LGPL; see [third-party notices](THIRD_PARTY_NOTICES.md).
+The MIT license does not cover the underlying games, upstream game source,
+cartridge images, game patches and assets, music, or third-party trademarks.
+
 The EX regression runs every one of the 40 stage labels shipped through
 `PLANETS` and `PLANETS2` for 2,000 deterministic logic ticks. The source-only
 `PLANETS3` test campaign is intentionally outside the shipped experience.

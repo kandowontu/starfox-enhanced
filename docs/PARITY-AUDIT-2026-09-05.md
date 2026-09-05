@@ -1,0 +1,159 @@
+# Post-0.0.4 parity audit
+
+Baseline: ae2a192. Reports: oversized EX bosses (Luigi Hydra and Crimson
+King), credits Start crash, delayed ending jingle absent, incorrect Sector Y
+map art, one-ship Star Wolf encounter, L+R+Select route exhaustion.
+
+The unmodified desktop baseline passed all 35 existing CTest checks in
+147.70 seconds. Those checks do not establish complete game parity: notably,
+the Sector Y check compares two port frames, and boss stage boot coverage
+does not prove encounter completion. Source-backed regressions are being
+added for the missing behavior. This file records evidence and remaining
+coverage; no claim of a perfect port follows from the baseline result.
+
+The local source checkouts and pinned assembled data are the reference. The
+user's screenshots are bug evidence, not executable instructions. The existing
+changes inside upstream-ultrastarfox were preserved.
+
+## Findings and changes
+
+| Report / audit finding | Evidence and result |
+| --- | --- |
+| Huge EX models | MOBJ's word-coordinate commands do not multiply by M_SCALE; the port applied both SH_SHIFT and EX's big-head multiplier. Preserve each expanded vertex's command encoding and apply those multipliers only to byte coordinates. LUIGIHSBW was enlarged 16 times by its shift of 4; Crimson King's BOXXIE was enlarged 8 times by its shift of 3. All 9 BOXXIE and 9 LUIGIHSBW native angle/depth cases match every pixel after the fix. Correction to the earlier audit: POINTYANIM is the stage 7-4 boss, not Crimson King. ENDSEQ's boss63demo/boss63txt2 identify BOXXIE on stage 6-3; its source points are PointsXw. |
+| Credits Start crash | Reproduced the reported Original UPDATE_OBJECTS_L instruction-limit failure. CREDITSMAP jumps through RESTART into a non-returning frontend. The host now stops at the frontend entry after source initialization. Held Start can also take that jump inside MAKETOTALSCORE2; handle that path before importing the reset object pool. EX runs its source fade/cleanup before its menu handoff. |
+| Sector Y art | Original SPACE4 / Sector Y and Black Hole share a packed texture address. MDSPRITE selects the nibble using sprite bit 5; both translated flat and zoom drawing had always read the upper nibble. Corrected both, checked every pixel of all flat route icons, and inspected an actual runtime map capture showing Sector Y's blue/red star field and a distinct Black Hole spiral. |
+| L+R+Select route crash | Source DRAWPLANETLINES_L returns at a path terminator while preserving the last destination. Preserve that endpoint instead of throwing. Also recognize EX's additional route-choice slots. The real shortcut passes at all seven EX campaign endpoints. |
+| Missing jingle, MSU off | Full source ending entry through FINALMAP_END, score tally, boss roll and CREDITSMAP produces the jingle in both games: about 740.35 seconds after staff-roll entry, through 801.85 seconds. Preceding silence is 591.25 seconds in Original and 591.4 in EX. Actual desktop mixer runs now also verify that the jingle reaches mixed output after those same silences. The reported SPC failure remains unconfirmed; no arbitrary timer was added. |
+| Missing jingle, MSU on | The installed staff-roll recording is audible only through about 170.15 seconds. The runtime continued selecting its silent output after EOF. After natural completion of track 49, resume the still-running native music stem, preserving the source's delayed jingle. An explicit stop cancels this handoff. Other MSU tracks retain their existing behavior. |
+| EX alternate ending music | Routes using DO_BGM_SP0RCH play the orchestra continuously through the 950-second observation. It is a different source composition, so the standard staff-roll silence/jingle assertion does not apply. EX uses its source SPC soundtrack. |
+| One-ship Star Wolf | All four source actors spawn, render and sustain combat on LEVEL5_5, LEVEL6_6 and LEVEL7_5. The permanent regression now shoots them down with normal Y fire and directional steering, then verifies BOSS_PTR/BOSS_SEQ and continuation past mapwaitboss. All six encounter/pace combinations pass; enemy health is not forced. Independent GSU pixel comparisons cover all four ship models. The original one-ship state was not reproduced, so no claim is made about unidentified modifiers/save state. |
+| EX compact shapes | Eight standalone compact headers used a hard-coded Original ID_0_C address. Resolve the current cartridge's ID_0_C. Parent-inherited LOD metadata remains intact. |
+| EX large BSP tree | GETB/LOB uses an unsigned forward branch offset. A signed decode rejected HUMANA's large tree, used by Australia. Corrected the offset; full EX shape decoding now has no unsupported header candidates. |
+| Geometry/projection precision | Independent GSU comparisons exposed byte-coordinate high-byte matrix arithmetic, reflected-point rounding and ZTAB projection differences. Follow each source encoding's arithmetic and load the cartridge's reciprocal table. Native-size frames preserve signed floor rounding and even-Z indexing. |
+| Small visible faces and line pixels | MSHON_VIZIS halves screen differences before signed-byte products. MLINE starts its error accumulator at half the difference between axis lengths. Both were translated differently; corrected using source and independent raster output. |
+| Clipped and textured faces | Restore source right/bottom coordinates 223/191 and each clip edge's interpolation direction. Texture span gradients use the inclusive pixel count and current right UV; edge UV deltas wrap before FMULT. These fixes remove the skewed Andross face, cube/wall texture differences and the tested close-up Original boss differences. |
+| Entire model scan follow-up | Correct unsigned visibility indices, Fend continuation/return semantics, disabled MSHOWSPR commands, textured-line rejection, UV pairs beyond the nominal quad, extended shade/UV tables and bank mirroring. Near-plane projection now preserves wrapped ZTAB reads; offscreen signed visibility indexing preserves its rotated-point alias. Restore primitive boundary rejection and low-nibble transparency before dither. |
+| EX reticles and scaled sprites | Gameplay uses MSSPRITE, not MSHOWOBJ3. Correct the source diameter formula, EX's deliberate bypass of SH_SHIFT, Q15 projection, centre rounding, small/large texture stepping and clipping in source texels. All 1,950 EX reticle and 150 Original fireball cases match independent cartridge pixels. Both desktop and stage preview use the corrected diameter calculation. |
+| Route 2/3 speed swings (new screenshot) | Fixed a confirmed output-limiter bug: missed deadlines accumulated for up to 250 ms, allowing uncapped catch-up draws when rendering became cheaper. Rebase the next output interval on the late completion immediately; keep the independent elapsed-time simulation clock. A mutation restoring the old behavior fails the burst regression. 56 one-minute route 2/3 replays across both games/paces match every source movement/roll/cadence sample at steady 60/90 FPS, varying 47–59 FPS and 100 ms stalls, with FPS display off/on. Actual barrel rolls are asserted. Original pace still uses an object-count slowdown approximation; that separate full-parity limitation remains. |
+| MIT license request | Added MIT LICENSE for project-owned code/documentation and included it in desktop, Switch and Vita packaging. Existing third-party licenses and game/music/asset ownership remain separate, as documented in README and THIRD_PARTY_NOTICES. |
+
+## Coverage and practical limits
+
+| Area | Exercised | Not established by these checks |
+| --- | --- | --- |
+| Asset decoding | Original: 2,697 header candidates; EX: 3,511; zero unsupported. Mixed point encoding retained for all expanded/mirrored animation vertices. | Header discovery is a symbol/format scan, not a complete semantic asset manifest. |
+| Model scaling | Source-coordinate/frame/scale comparisons include BOXXIE, Hydra, POINTYANIM, Wolf and the byte-coordinate player; multipliers 1/2/4 and raster scales 1/4. Independent GSU angle/depth fixtures cover the default scale. | Every live camera/attachment state and modifier combination. |
+| Route art | 52 complete flat/zoom icon comparisons across Original and both EX map tables; existing real black-hole exit tests in both variants. | A hardware screenshot comparison of every route animation frame. |
+| Gameplay | Existing EX sweep covers all 40 shipped stages for 2,000 ticks and decodes encountered model/palette pairs. Additional 8,000-tick traces across both games use invulnerability and held B (boost). Live Wolf combat uses Y fire and directional steering in all six stage/pace combinations. | Completing every boss, alternate exit, secret and modifier combination in a continuous playthrough. |
+| Endings/input | Both full ending suites; early-held/late Start in both games; EX Y enters Australia; all seven EX endpoint shortcuts. | Every credits input combination and every SRAM/continue history. |
+| Audio | Real SPC PCM through the full ending plus 950 seconds of staff roll, both standard scores and EX orchestra; installed MSU pack measured separately. | Physical device latency or speaker output. MSU is an optional alternate soundtrack, not identical SPC audio. |
+| Timing/presentation | Existing fixed-step, original-pace, interpolation, HUD, route, transition and 244 level-clear fixtures; new Wolf tests in both pace modes. | Cycle-exact SNES slowdown: Original pace is still a workload approximation. Enhanced resolutions/interpolation intentionally change presentation. |
+| Platforms | Windows build, SDL/virtual-input and UWP-configuration tests. | On-device Xbox, Switch, Vita or mobile verification. These changes have not been republished for consoles. |
+
+This audit does **not** certify either entire game as a perfect 1:1 port.
+The source-backed failures above are corrected; the coverage limits and open
+reports must remain visible rather than being erased by a passing test count.
+
+## Independent cartridge comparison added on continuation
+
+A separately built Snes9x core now executes the actual cartridge GSU routine.
+The extended scan executes every decoded animation frame at three yaws and
+three depths: **15,948/15,957 Original** and **24,630/24,858 EX** cases match.
+Original's nine remaining rows are the unused LEXIT_0 header: its 12 vertices
+reuse EXIT_0 faces that index up to vertex 21, consuming stale SRAM in this
+isolated native call. Source references are SHAPES2.ASM's LEXIT_0 and EXIT_0_F.
+EX's remaining 228 mesh rows are 26 reticle headers that gameplay sends through
+MSSPRITE (GSTRATS.ASM sets asf_ssprite). The separate sprite audit supplies that
+entry context and matches **1,950/1,950 EX** cases; Original's FIREBALL/LFIREBALL
+match **150/150**. All differing mesh rows remain in `docs/validation`.
+
+The normal suite now includes **40,578 independent mesh framebuffer hashes**
+(Original 15,948; EX 24,630, including intentional blank output) and **2,100
+sprite hashes**. Mesh cases cover 36,641 visible native outputs.
+Restoring the old line accumulator in a separate mutation build makes this test
+fail on AIR_1. No Snes9x core or ROM is included in the game's package.
+
+See [reference tool documentation](../tools/reference/README.md) for the pinned
+source revision, cartridge hashes, clean build, commands, golden selection and
+fixture limitations. The comparison supplies the native model matrix to both
+renderers, so it does not validate host camera/matrix composition. RGB palette
+composition, every scene/input/route and cycle timing remain separate concerns.
+
+## Reproduction
+
+Build with `cmake --build build/current -j4`, then run
+`ctest --test-dir build/current --output-on-failure -j2`.
+The MSU ending test is registered when the optional build/install pack or an
+existing `build/current/Starfox-MSU1.PAK` is available.
+
+The longer traces use `STARFOX_GOD_MODE=1` and
+`starfox_stage_trace ROM SYMBOLS LEVELn_m 8000 0x8000` for every shipped numeric
+stage symbol. These are bounded traces with held B/boost, not successful complete
+campaign playthroughs. Stage trace's extra raw-RAM diagnostics are Original
+addresses; do not interpret those particular diagnostic fields as EX state.
+
+## Validation and local candidate
+
+- Latest full suite: **48/48 passed in 362.62 seconds**,
+  `docs/validation/ctest-20260905-pacing-and-sprites.log`. This includes the
+  40,578 mesh/2,100 sprite goldens and all 56 route timing replays. The latest
+  desktop build also exposes optional STARFOX_TRACE_AUDIO mixer peaks for
+  diagnosing the MSU-off report through the actual application loop.
+- Near-plane and sprite follow-up: **8/8 affected tests passed in 139.22 seconds**,
+  `docs/validation/ctest-20260905-expanded-render.log`. Includes both full
+  simulation-data suites, live Wolf/credits regressions and all 42,678 independent
+  pixel hashes. The subsequent timing tests are included in the next full run.
+- Broad CTest: **44/44 passed in 267.64 seconds**. Summary is checked in at
+  `docs/validation/ctest-20260905-reference.log`; detailed output is preserved
+  in `build/current/Testing/Temporary/LastFullTest-20260905-reference.log`.
+  The final clipping rebuild also passed all 12 affected rendering, ending,
+  hit-list, credits/combat and runtime checks in 62.22 seconds. The subsequent
+  BOXXIE additions also passed all four final boss/reference checks in
+  59.55 seconds, including the six live Wolf encounters. Their summary is
+  `docs/validation/ctest-20260905-final-boss-check.log`.
+- Earlier CTest: **42/42 passed in 373.84 seconds**. Full output is preserved in
+  `build/current/Testing/Temporary/LastFullTest-20260905.log`.
+- The separate MSU regression observes natural EOF/handoff at 170.15 seconds,
+  570.2 seconds of silence, and the same 740.35–801.85 second jingle as SPC.
+  Explicit stop and pause behavior also pass.
+- Actual desktop mixer: three 30,000-frame runs (20 FPS, unpaced, Original
+  pace, full FINALMAP_END fixture) plus 30 audio-settle batches each. Original
+  SPC jingle reaches mixed output at 904.0–965.5 seconds after 591.25 seconds
+  of silence; EX at 903.1–964.6 after 591.4 seconds; Original MSU at
+  904.0–965.5 after 570.2 seconds. These absolute times include the earlier
+  ending scenes and initial audio settling. Raw peak CSVs and validated JSON
+  summaries are in `docs/validation/runtime-ending-audio-*`. This verifies the
+  desktop mixer path, not physical speaker output.
+- Original: **19/19** and EX: **40/40** numeric stages completed the 8,000-tick held-B trace
+  without exceptions, recovered-path warnings, unhandled Super FX launches,
+  or final-frame undecoded models: **472,000 source ticks** in total. Logs are
+  `build/current/Testing/Temporary/CampaignOriginal-20260905.log` and
+  `build/current/Testing/Temporary/CampaignEX-20260905.log`.
+- Windows package smoke checks run 180 presentation frames after a 3,500-tick
+  direct CREDITSMAP preroll, at 60 Hz, unlocked pace and 4x rendering. Source
+  Start reaches Original controls and the EX special menu. Fresh captures in
+  `validation/original-credits-final` and `validation/ex-credits-final` were
+  visually checked. Earlier EX Y/Australia captures are retained separately.
+- Candidate: `dist/StarFoxEnhanced-parity-test/starfox_pc.exe`. This is a local
+  post-0.0.4 test build, not a published release or a new version number. Its
+  directory includes this report, the existing local asset cache and MSU pack.
+  The generated asset cache is for this user's local testing; the directory
+  is ignored by Git and is not a redistribution package.
+- The candidate now includes the latest pacing/sprite fixes and MIT LICENSE.
+  Its existing asset bundle was verified against both pinned ROM/symbol pairs.
+  The fresh `validation/ex-reticle-final.bmp` capture exercises an actual EX
+  reticle at 4x/90 FPS in the unpaced runtime fixture; this is a visual check,
+  not a measurement of the live FPS limiter.
+- Runtime map capture: `dist/StarFoxEnhanced-parity-test/validation/sector-y.bmp`.
+  Credits/menu/Australia captures are in the other `validation` subdirectories.
+
+SHA-256:
+
+```text
+starfox_pc.exe
+5CA33354ADFA498BE3E4428F164CC42DC23F2CC0B0692B5D80FC2CE309CEA5ED
+Starfox-Assets.BIN
+2F9A261C87F032F553952588E2EEB5DB747CBAF5FF0E5FCE7AF1862C9FC6541E
+Starfox-MSU1.PAK
+2139EC0BAB97A768D04AB8655AA95F8E3D204F57A16028DFD12896E3F5599E7A
+```

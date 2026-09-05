@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <functional>
 #include <sstream>
 #include <stdexcept>
@@ -65,14 +66,35 @@ ShapeDecoder::ShapeDecoder(const RomImage& rom, const SymbolMap& symbols)
     };
     texture_address_table_ = find_rom("TEXTUREADDRTAB");
     texture_coordinate_table_ = find_rom("TEXTUREXYTAB");
+    // Both shipped cartridges assemble MSHOWSPR as JMP R11 / NOP; the
+    // historical scaled-sprite implementation is inside IFEQ 1. Preserve
+    // that actual command behavior instead of drawing the disabled code.
+    if (const auto sprites = find_rom("MSHOWSPR"); sprites != 0U) {
+        sprite_commands_enabled_ = rom_.read16(sprites) != 0x019bU;
+    }
+    const auto z_table = find_rom("ZTAB");
+    const auto maximum_z = symbols.find("MAXZTAB");
+    if (z_table != 0U && !maximum_z.empty() && maximum_z.front() <= 0x7ffeU) {
+        auto table = std::make_shared<ProjectionTable>();
+        table->maximum_z = static_cast<std::int16_t>(maximum_z.front());
+        table->values.reserve(32768);
+        for (std::uint32_t offset = 0; offset < 65536; offset += 2)
+            table->values.push_back(rom_.read_i16((z_table & 0xff0000U)
+                | 0x8000U | ((z_table + offset) & 0x7fffU)));
+        projection_reciprocals_ = std::move(table);
+    }
     // Star Fox EX's SHMACS.INC removes the three retail simple-LOD words
     // from ShapeHdr entirely and writes optional debug-name bytes directly
     // after the shadow pointer. Reading those bytes as addresses produces
     // values such as the ASCII pair "sh" and selects invalid models once an
     // object crosses a retail LOD threshold.
     has_lod_pointers_ = symbols.find("PLANETSEQ2_L").empty();
+    // EX's MSSPRITE branches over the SH_SHIFT loop. The signed size
+    // adjustment is added once to twice SH_SIZE in both versions.
+    sprite_size_shift_enabled_ = symbols.find("PLANETSEQ2_L").empty();
     if (const auto colour_table = find_rom("ID_0_C"); colour_table != 0U) {
         colour_table_bank_ = static_cast<std::uint8_t>(colour_table >> 16U);
+        default_colour_pointer_ = static_cast<std::uint16_t>(colour_table);
     }
     has_diffuse_shade_tables_ = true;
     for (std::size_t depth = 0; depth < diffuse_shade_tables_.size(); ++depth) {
@@ -86,7 +108,7 @@ ShapeDecoder::ShapeDecoder(const RomImage& rom, const SymbolMap& symbols)
              light < diffuse_shade_tables_[depth].size(); ++light) {
             const auto shade_pointer = rom_.read16(
                 pointer_table + static_cast<std::uint32_t>(light * 2U));
-            const auto shade_address = (pointer_table & 0xff0000U) | shade_pointer;
+            const auto shade_address = (pointer_table & 0xff0000U) | 0x8000U | shade_pointer;
             for (std::size_t intensity = 0;
                  intensity < diffuse_shade_tables_[depth][light].size(); ++intensity) {
                 diffuse_shade_tables_[depth][light][intensity] = rom_.read8(
@@ -164,7 +186,7 @@ ShapeHeader ShapeDecoder::decode_header(std::uint32_t address) const {
         header.y_max = 0;
         header.z_max = 0;
         header.size = 0;
-        header.colour_pointer = 0x8213; // ID_0_C fallback for standalone previews
+        header.colour_pointer = default_colour_pointer_; // This cartridge's ID_0_C.
         const auto self = static_cast<std::uint16_t>(address & 0xffffU);
         header.shadow_pointer = self;
         header.lod1_pointer = self;
@@ -174,11 +196,25 @@ ShapeHeader ShapeDecoder::decode_header(std::uint32_t address) const {
     return header;
 }
 
+std::int16_t ShapeDecoder::simple_sprite_diameter(
+    const ShapeHeader& header, std::int8_t adjustment) const noexcept {
+    auto delta = static_cast<std::uint16_t>(static_cast<std::int16_t>(adjustment));
+    if (sprite_size_shift_enabled_) {
+        for (unsigned shift = 0; shift < header.shift; ++shift)
+            delta = static_cast<std::uint16_t>(delta * 2U);
+    }
+    const auto diameter = static_cast<std::uint16_t>(
+        static_cast<std::uint16_t>(header.size) * 2U + delta);
+    return diameter == 0 ? 1 : std::bit_cast<std::int16_t>(diameter);
+}
+
 Shape ShapeDecoder::decode(
     std::uint32_t header_address,
     std::string name,
     std::uint16_t colour_pointer_override) const {
     Shape shape;
+    shape.projection_reciprocals = projection_reciprocals_;
+    shape.sprite_commands_enabled = sprite_commands_enabled_;
     shape.name = std::move(name);
     if (null_shape_address_ != 0U && header_address == null_shape_address_) {
         shape.header.address = header_address;
@@ -361,8 +397,10 @@ void ShapeDecoder::decode_points(Shape& shape) const {
                 }
                 block.source_points.push_back(point);
                 frame.vertices.push_back(point);
+                frame.vertex_encodings.push_back(block.encoding);
                 if (mirrored) {
                     frame.vertices.push_back(Vec3i{-point.x, point.y, point.z});
+                    frame.vertex_encodings.push_back(block.encoding);
                 }
             }
             frame.point_blocks.push_back(std::move(block));
@@ -376,6 +414,7 @@ void ShapeDecoder::decode_points(Shape& shape) const {
     }
     shape.point_blocks = shape.frames.front().point_blocks;
     shape.vertices = shape.frames.front().vertices;
+    shape.vertex_encodings = shape.frames.front().vertex_encodings;
 }
 
 void ShapeDecoder::decode_faces(Shape& shape) const {
@@ -384,7 +423,7 @@ void ShapeDecoder::decode_faces(Shape& shape) const {
 
     const auto decode_face = [this, &shape](std::uint32_t& face_cursor, std::uint8_t vertex_count) {
         Face face;
-        face.visibility_index = signed8(rom_.read8(face_cursor++));
+        face.visibility_index = rom_.read8(face_cursor++);
         face.colour_id = rom_.read8(face_cursor++);
         face.normal.x = signed8(rom_.read8(face_cursor++));
         face.normal.y = signed8(rom_.read8(face_cursor++));
@@ -398,8 +437,7 @@ void ShapeDecoder::decode_faces(Shape& shape) const {
     };
 
     std::unordered_set<std::uint32_t> decoded_face_lists;
-    const auto decode_face_list = [this, &shape, &decode_face, &decoded_face_lists](
-                                      std::uint32_t address) {
+    std::function<void(std::uint32_t)> decode_face_list = [&](std::uint32_t address) {
         if (!decoded_face_lists.insert(address).second) {
             return;
         }
@@ -412,10 +450,21 @@ void ShapeDecoder::decode_faces(Shape& shape) const {
         for (std::size_t face_count = 0; face_count < 4096; ++face_count) {
             const auto opcode = rom_.read8(list_cursor++);
             if (opcode == kFaceEndQuit || opcode == kFaceEndContinue) {
+                if (opcode == kFaceEndContinue) {
+                    auto next = rom_.read8(list_cursor);
+                    if (next == kFaces) {
+                        batch.continuation_address = list_cursor;
+                    } else if (next != kQuit && next != kEndShape) {
+                        throw std::runtime_error{"unsupported BSP face continuation "
+                            + std::to_string(next)};
+                    }
+                }
                 for (const auto& face : batch.faces) {
                     shape.faces.push_back(face);
                 }
+                const auto continuation = batch.continuation_address;
                 shape.face_batches.push_back(std::move(batch));
+                if (continuation != 0U) decode_face_list(continuation);
                 return;
             }
             if (opcode < 2U || opcode > 12U) {
@@ -441,7 +490,9 @@ void ShapeDecoder::decode_faces(Shape& shape) const {
                 const auto face_address = static_cast<std::uint32_t>(
                     static_cast<std::int64_t>(face_relative_address) + 1 + face_relative);
                 const auto alternate_offset_address = address + 4U;
-                const auto alternate_offset = signed8(rom_.read8(alternate_offset_address));
+                // MOBJ's GETB/LOB zero-extends this forward branch. Large
+                // EX trees use offsets >= 128 (including HUMANA).
+                const auto alternate_offset = rom_.read8(alternate_offset_address);
                 const auto fallthrough = address + 5U;
                 const auto alternate = alternate_offset == 0
                     ? 0U
@@ -590,11 +641,10 @@ void ShapeDecoder::decode_texture(Shape& shape, std::uint16_t descriptor) const 
     const auto coordinate_index = static_cast<std::uint8_t>((descriptor >> 8U) & 0x1fU);
     const auto texture_count = static_cast<std::uint32_t>(
         (texture_coordinate_table_ - texture_address_table_) / 3U);
-    // Some shapes intentionally index past their static colour table and
-    // provide an object-specific table at runtime. Bytes following the static
-    // table can coincidentally have bit 14 set; only descriptors valid against
-    // both canonical lookup tables are textures.
-    if (coordinate_index >= 9U || texture_index >= texture_count) {
+    // The coordinate selector has five bits. VORTEX2's reused missile
+    // materials read beyond the nine named coordinate lists; preserve those
+    // cartridge bytes and the GSU's mirrored low/high ROM half-bank mapping.
+    if (texture_index >= texture_count) {
         return;
     }
     const auto address_entry = texture_address_table_
@@ -606,16 +656,19 @@ void ShapeDecoder::decode_texture(Shape& shape, std::uint16_t descriptor) const 
     const auto coordinate_pointer = rom_.read16(
         texture_coordinate_table_ + static_cast<std::uint32_t>(coordinate_index) * 2U);
     const auto coordinate_address = (texture_coordinate_table_ & 0xff0000U)
-        | coordinate_pointer;
+        | 0x8000U | coordinate_pointer;
     texture.u_mask = rom_.read8(coordinate_address);
     texture.v_mask = rom_.read8(coordinate_address + 1U);
-    if (texture.u_mask > 127U || texture.v_mask > 127U) {
-        throw std::runtime_error{"invalid texture-coordinate mask"};
-    }
     for (std::size_t vertex = 0; vertex < texture.coordinates.size(); ++vertex) {
         texture.coordinates[vertex] = {
             rom_.read8(coordinate_address + 2U + vertex * 2U),
             rom_.read8(coordinate_address + 3U + vertex * 2U),
+        };
+    }
+    for (std::size_t vertex = 0; vertex < texture.additional_coordinates.size(); ++vertex) {
+        texture.additional_coordinates[vertex] = {
+            rom_.read8(coordinate_address + 10U + vertex * 2U),
+            rom_.read8(coordinate_address + 11U + vertex * 2U),
         };
     }
     const auto width = static_cast<std::size_t>(texture.u_mask) + 1U;

@@ -342,6 +342,33 @@ void test_rotation_matrix_interpolation_is_orthonormal() {
             "near-180-degree interpolation flipped between adjacent frames");
 }
 
+void test_output_limiter_drops_missed_presentations() {
+    using namespace std::chrono_literals;
+    using Pacer = starfox::timing::PresentationDeadlineClock;
+    for (const auto fps : {60U, 90U, 120U, 240U, 480U}) {
+        Pacer pacer;
+        Pacer::time_point now{};
+        now = pacer.next_deadline(now, fps);
+        const auto period = 1'000'000'000ns / fps;
+        // Busy geometry misses several deadlines, then an empty frame costs
+        // just 1 ms. The old limiter paid back up to 250 ms of accumulated
+        // deadlines with an uncapped burst as the scene became cheaper.
+        for (unsigned cycle = 0; cycle < 20; ++cycle) {
+            now += 100ms;
+            require(pacer.next_deadline(now, fps) <= now,
+                "late output waited to present an already completed frame");
+            for (unsigned frame = 0; frame < 12; ++frame) {
+                const auto next = pacer.next_deadline(now + 1ms, fps);
+                require(next - now >= period,
+                    "a missed output deadline created a catch-up presentation burst");
+                now = next;
+            }
+        }
+        const auto changed = pacer.next_deadline(now, 90);
+        require(changed > now, "changing the cap retained old output debt");
+    }
+}
+
 void test_camera_cuts_are_not_interpolated() {
     const starfox::timing::TransformSnapshot scramble_camera{
         0, -24, 10'625, 0, 0, 0};
@@ -398,6 +425,7 @@ int main() {
     test_presentation_history_compresses_and_rewinds_many_frames();
     test_missed_render_target_preserves_realtime_raster_pace();
     test_live_fps_counter_reports_actual_output_and_lag();
+    test_output_limiter_drops_missed_presentations();
     test_stall_is_bounded();
     test_negative_time_is_ignored();
     test_interpolation_does_not_modify_snapshots();

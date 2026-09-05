@@ -150,6 +150,25 @@ FixedStepClock::duration FixedStepClock::step_duration() const noexcept {
     return duration{static_cast<duration::rep>(kNanosecondsPerSecond / simulation_hz_)};
 }
 
+PresentationDeadlineClock::time_point PresentationDeadlineClock::next_deadline(
+    time_point now, std::uint32_t presentation_hz) {
+    if (presentation_hz == 0U) throw std::invalid_argument{"presentation FPS cannot be zero"};
+    if (presentation_hz != presentation_hz_) {
+        epoch_ = now;
+        frame_ = 0U;
+        presentation_hz_ = presentation_hz;
+    }
+    const auto deadline = epoch_ + std::chrono::nanoseconds{
+        static_cast<std::chrono::nanoseconds::rep>(
+            ++frame_ * kNanosecondsPerSecond / presentation_hz_)};
+    if (deadline < now) {
+        epoch_ = now;
+        frame_ = 0U;
+        return now;
+    }
+    return deadline;
+}
+
 LiveFpsCounter::LiveFpsCounter(duration sample_period)
     : sample_period_(sample_period) {
     if (sample_period_ <= duration::zero()) {

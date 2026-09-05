@@ -201,6 +201,15 @@ else()
 endif()
 
 if(STARFOX_BUILD_TOOLS)
+    set(STARFOX_REFERENCE_CORE_DIR "" CACHE PATH
+        "Optional local Snes9x checkout for the Windows cartridge-render audit")
+    if(WIN32 AND EXISTS "${STARFOX_REFERENCE_CORE_DIR}/libretro/libretro.h")
+        add_executable(starfox_reference_render tools/reference/render_audit.cpp)
+        target_include_directories(starfox_reference_render PRIVATE
+            "${STARFOX_REFERENCE_CORE_DIR}/libretro")
+        target_link_libraries(starfox_reference_render PRIVATE starfox_core)
+    endif()
+
     add_executable(starfox_timing_demo src/app/timing_demo.cpp)
     target_link_libraries(starfox_timing_demo PRIVATE starfox_core)
 
@@ -669,7 +678,7 @@ if(STARFOX_BUILD_RUNTIME)
     if(TARGET starfox_asset_builder)
         install(TARGETS starfox_asset_builder RUNTIME DESTINATION .)
     endif()
-    install(FILES README.md CREDITS.md THIRD_PARTY_NOTICES.md DESTINATION .)
+    install(FILES LICENSE README.md CREDITS.md THIRD_PARTY_NOTICES.md DESTINATION .)
 
 endif()
 
@@ -761,6 +770,14 @@ if(STARFOX_BUILD_TESTS)
 
     add_executable(starfox_ending_tests tests/ending_tests.cpp)
     target_link_libraries(starfox_ending_tests PRIVATE starfox_core)
+    add_executable(starfox_port_regression_tests tests/port_regression_tests.cpp)
+    target_link_libraries(starfox_port_regression_tests PRIVATE starfox_core)
+    add_executable(starfox_reference_render_tests tests/reference_render_tests.cpp)
+    target_link_libraries(starfox_reference_render_tests PRIVATE starfox_core)
+    add_executable(starfox_timing_parity_tests tests/timing_parity_tests.cpp)
+    target_link_libraries(starfox_timing_parity_tests PRIVATE starfox_core)
+    add_executable(starfox_ending_audio_tests tests/ending_audio_tests.cpp)
+    target_link_libraries(starfox_ending_audio_tests PRIVATE starfox_core)
 
     add_executable(starfox_hitlist_tests tests/hitlist_tests.cpp)
     add_executable(starfox_level_clear_tests tests/level_clear_tests.cpp)
@@ -824,6 +841,37 @@ if(STARFOX_BUILD_TESTS)
         add_test(NAME starfox_upstream_ending COMMAND starfox_ending_tests
             "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
             "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT")
+        add_test(NAME starfox_upstream_port_regressions COMMAND starfox_port_regression_tests
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT")
+        add_test(NAME starfox_upstream_reference_render COMMAND starfox_reference_render_tests
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/reference-render-original.csv")
+        add_test(NAME starfox_upstream_ending_audio COMMAND starfox_ending_audio_tests
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT")
+        add_test(NAME starfox_upstream_reference_sprites COMMAND starfox_reference_render_tests
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/reference-sprites-original.csv")
+        add_test(NAME starfox_upstream_timing_parity COMMAND starfox_timing_parity_tests
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT")
+        set_tests_properties(starfox_upstream_timing_parity PROPERTIES TIMEOUT 180)
+        set(STARFOX_TEST_MSU_PACK "${STARFOX_MSU1_PACK}")
+        if(NOT STARFOX_TEST_MSU_PACK AND EXISTS "${CMAKE_CURRENT_BINARY_DIR}/Starfox-MSU1.PAK")
+            set(STARFOX_TEST_MSU_PACK "${CMAKE_CURRENT_BINARY_DIR}/Starfox-MSU1.PAK")
+        endif()
+        if(STARFOX_TEST_MSU_PACK)
+            add_test(NAME starfox_upstream_msu_ending_audio COMMAND starfox_ending_audio_tests
+                "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
+                "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT"
+                "${STARFOX_TEST_MSU_PACK}")
+            set_tests_properties(starfox_upstream_msu_ending_audio PROPERTIES TIMEOUT 180)
+        endif()
+        set_tests_properties(starfox_upstream_port_regressions starfox_upstream_ending_audio
+            PROPERTIES TIMEOUT 180)
         add_test(NAME starfox_upstream_hitlist COMMAND starfox_hitlist_tests
             "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
             "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT")
@@ -958,6 +1006,26 @@ if(STARFOX_BUILD_TESTS)
         )
         add_test(NAME starfox_ex_ending COMMAND starfox_ending_tests
             "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}")
+        add_test(NAME starfox_ex_shape_coverage COMMAND starfox_shape_coverage
+            "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}")
+        add_test(NAME starfox_ex_ending_audio COMMAND starfox_ending_audio_tests
+            "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}")
+        add_test(NAME starfox_ex_orchestra_audio COMMAND starfox_ending_audio_tests
+            "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}" "-" "orchestra")
+        set_tests_properties(starfox_ex_ending_audio starfox_ex_orchestra_audio
+            PROPERTIES TIMEOUT 180)
+        add_test(NAME starfox_ex_port_regressions COMMAND starfox_port_regression_tests
+            "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}")
+        add_test(NAME starfox_ex_reference_render COMMAND starfox_reference_render_tests
+            "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/reference-render-ex.csv")
+        add_test(NAME starfox_ex_reference_sprites COMMAND starfox_reference_render_tests
+            "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/reference-sprites-ex.csv")
+        add_test(NAME starfox_ex_timing_parity COMMAND starfox_timing_parity_tests
+            "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}")
+        set_tests_properties(starfox_ex_timing_parity PROPERTIES TIMEOUT 180)
+        set_tests_properties(starfox_ex_port_regressions PROPERTIES TIMEOUT 120)
         add_test(NAME starfox_ex_hitlist COMMAND starfox_hitlist_tests
             "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}")
         add_test(NAME starfox_ex_level_clear COMMAND starfox_level_clear_tests

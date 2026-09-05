@@ -523,19 +523,10 @@ int main(int argc, char** argv) {
             }
             auto pose = make_pose(item, false);
             if ((object.strategy_flags[0] & 0x20U) != 0U) {
-                auto size_adjustment = static_cast<std::int16_t>(
-                    std::bit_cast<std::int8_t>(object.texture_scroll_x));
-                for (std::uint8_t shift = 0; shift < base_header.shift; ++shift) {
-                    size_adjustment = starfox::simulation::add16(
-                        size_adjustment, size_adjustment);
-                }
-                auto diameter = starfox::simulation::add16(
-                    base_header.size, size_adjustment);
-                diameter = starfox::simulation::add16(diameter, diameter);
-                if (diameter == 0) diameter = 1;
                 pose.simple_scaled_sprite = true;
                 pose.simple_sprite_colour = object.extended[21];
-                pose.simple_sprite_world_size = diameter;
+                pose.simple_sprite_world_size = decoder.simple_sprite_diameter(
+                    base_header, std::bit_cast<std::int8_t>(object.texture_scroll_x));
             }
             if (std::getenv("STARFOX_DUMP_OBJECTS") != nullptr || diagnostics++ < 12) {
                 std::cout << "object=" << handle << " shape=$" << std::hex << object.shape

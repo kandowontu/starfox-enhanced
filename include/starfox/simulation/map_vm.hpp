@@ -81,6 +81,9 @@ public:
     // Import WORLD.ASM interpreter registers after an original routine such
     // as RESTART_L has advanced the native map directly.
     void restore_map_state_from_native();
+    // Import only at a settled gameplay yield; a native restart can clear
+    // the pool before handing control to a host-owned front-end screen.
+    void restore_objects_from_native() { sync_objects_from_cpu(); }
     void write_native_byte(std::uint32_t address, std::uint8_t value);
     [[nodiscard]] std::uint8_t read_native_byte(std::uint32_t address) const noexcept;
     [[nodiscard]] std::uint16_t read_native_word(std::uint32_t address) const noexcept;
@@ -184,7 +187,8 @@ public:
         Wdc65816Registers& registers,
         std::span<const std::uint32_t> stop_addresses,
         std::size_t instruction_limit = 1'000'000,
-        bool service_transfer_flag = false);
+        bool service_transfer_flag = false,
+        bool sync_returned_objects = false);
     Wdc65816TaskResult begin_native_near_task(
         std::uint32_t address,
         Wdc65816Registers& registers,

@@ -518,6 +518,7 @@ int main() {
     auto ex_effect_shape = shape;
     ex_effect_shape.bsp_root_address = 0U;
     ex_effect_shape.frames.clear();
+    ex_effect_shape.vertex_encodings.clear();
     ex_effect_shape.vertices = {
         {0, -30, 0}, {-30, 0, 0}, {0, 30, 0}, {30, 30, 0},
     };
@@ -651,6 +652,7 @@ int main() {
     auto clipped_shape = shape;
     clipped_shape.bsp_root_address = 0;
     clipped_shape.frames.clear();
+    clipped_shape.vertex_encodings.clear();
     clipped_shape.vertices = {
         {-20, -10, -10},
         {20, -10, 10},
@@ -721,6 +723,7 @@ int main() {
     auto bottom_clipped_shape = shape;
     bottom_clipped_shape.bsp_root_address = 0;
     bottom_clipped_shape.frames.clear();
+    bottom_clipped_shape.vertex_encodings.clear();
     bottom_clipped_shape.vertices = {
         {-20, 90, 0},
         {0, 110, 0},
@@ -734,16 +737,22 @@ int main() {
     bottom_pose.forced_colour = 0x55U;
     starfox::render::Framebuffer bottom_clipped_frame{224, 192};
     starfox::render::SoftwareRenderer source_projection{{256.0, false, 0}};
+    auto source_clip_pose = bottom_pose;
+    source_clip_pose.use_rotation_matrix = true;
+    source_clip_pose.rotation_matrix = {32767, 0, 0, 0, 32767, 0, 0, 0, 32767};
     source_projection.draw(
-        bottom_clipped_shape, bottom_pose, bottom_clipped_frame);
-    require(std::any_of(bottom_clipped_frame.pixels().begin() + 191U * 224U,
+        bottom_clipped_shape, source_clip_pose, bottom_clipped_frame);
+    require(std::none_of(bottom_clipped_frame.pixels().begin() + 191U * 224U,
                 bottom_clipped_frame.pixels().end(),
                 [](std::uint8_t pixel) { return pixel == 5U; }),
-            "exclusive source bottom clip dropped scanline 191");
+            "source polygon raster drew its terminal bottom scanline");
+    require(bottom_clipped_frame.get(100, 190) == 5U,
+            "source bottom clipping discarded the preceding scanline");
 
     auto expanded_side_shape = shape;
     expanded_side_shape.bsp_root_address = 0;
     expanded_side_shape.frames.clear();
+    expanded_side_shape.vertex_encodings.clear();
     expanded_side_shape.vertices = {
         {112, -20, 0},
         {140, 0, 0},
@@ -808,6 +817,7 @@ int main() {
     auto expanded_top_shape = shape;
     expanded_top_shape.bsp_root_address = 0;
     expanded_top_shape.frames.clear();
+    expanded_top_shape.vertex_encodings.clear();
     expanded_top_shape.vertices = {
         {-20, -120, 0},
         {0, -100, 0},
@@ -829,22 +839,24 @@ int main() {
     auto source_line_shape = shape;
     source_line_shape.bsp_root_address = 0;
     source_line_shape.frames.clear();
+    source_line_shape.vertex_encodings.clear();
     source_line_shape.vertices = {{-12, 4, 0}, {-8, 6, 0}};
     source_line_shape.faces[0].visibility_index = -1;
     source_line_shape.faces[0].vertex_indices = {0, 1};
     starfox::render::Framebuffer source_line_frame{224, 192};
     source_projection.draw(source_line_shape, bottom_pose, source_line_frame);
     require(source_line_frame.get(100, 100) == 5U
-                && source_line_frame.get(101, 100) == 5U
+                && source_line_frame.get(101, 101) == 5U
                 && source_line_frame.get(102, 101) == 5U
-                && source_line_frame.get(103, 101) == 5U
+                && source_line_frame.get(103, 102) == 5U
                 && source_line_frame.get(104, 102) == 5U
-                && source_line_frame.get(101, 101) == 0U,
+                && source_line_frame.get(101, 100) == 0U,
             "source mline half-slope tie rule diverged");
 
     auto sprite_face_shape = shape;
     sprite_face_shape.bsp_root_address = 0;
     sprite_face_shape.frames.clear();
+    sprite_face_shape.vertex_encodings.clear();
     sprite_face_shape.vertices = {{0, 0, 0}};
     sprite_face_shape.faces[0].visibility_index = -1;
     sprite_face_shape.faces[0].vertex_indices = {0};

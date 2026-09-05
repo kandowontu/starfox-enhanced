@@ -480,10 +480,12 @@ Wdc65816TaskResult MapVm::begin_native_task(
     Wdc65816Registers& registers,
     std::span<const std::uint32_t> stop_addresses,
     std::size_t instruction_limit,
-    bool service_transfer_flag) {
+    bool service_transfer_flag,
+    bool sync_returned_objects) {
     sync_objects_to_cpu();
     const auto result = cpu_.begin_long_task(address, registers,
         stop_addresses, instruction_limit, service_transfer_flag);
+    if (sync_returned_objects && result.returned) sync_objects_from_cpu();
     sync_display_from_cpu();
     return result;
 }

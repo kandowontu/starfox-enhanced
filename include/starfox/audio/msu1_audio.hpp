@@ -25,6 +25,11 @@ public:
     [[nodiscard]] bool enabled() const noexcept { return enabled_; }
     [[nodiscard]] bool paused() const noexcept { return paused_; }
     [[nodiscard]] bool playing() const noexcept { return playing_; }
+    // The optional staff-roll recording ends before the cartridge's hidden
+    // delayed jingle. Its SPC driver keeps the source timeline running.
+    [[nodiscard]] bool use_native_music_tail() const noexcept {
+        return enabled_ && !paused_ && completed_ && selected_track_ == 49U;
+    }
     [[nodiscard]] std::uint16_t selected_track() const noexcept {
         return selected_track_;
     }
@@ -52,6 +57,7 @@ private:
     bool enabled_{};
     bool paused_{};
     bool playing_{};
+    bool completed_{};
     bool repeat_{};
 };
 

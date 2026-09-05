@@ -4580,11 +4580,16 @@ int main(int argc, char** argv) {
 
         starfox::simulation::GameSimulation completed_credits{
             upstream_rom, upstream_symbols, "CREDITSMAP"};
-        completed_credits.map().write_native_word(level_finished.front(), 8U);
-        static_cast<void>(completed_credits.tick({}));
         if (starfox_ex_cartridge) {
-            static_cast<void>(completed_credits.tick(
-                {0, starfox::input::start, 0}));
+            // Completion is a source map/input gate, not a host flag that
+            // permits skipping directly into FOXY_CONTINUE. Include its fade.
+            for (unsigned tick = 0; tick < 4000
+                    && completed_credits.flow_state()
+                        != starfox::simulation::GameFlowState::ex_pregame_menu; ++tick) {
+                const auto button = static_cast<starfox::input::ButtonMask>(
+                    tick >= 3500 ? starfox::input::start : 0);
+                static_cast<void>(completed_credits.tick({button, button, 0}));
+            }
             if (completed_credits.flow_state()
                     != starfox::simulation::GameFlowState::ex_pregame_menu) {
                 std::cerr << "EX credits return diagnostic: flow="
@@ -4597,6 +4602,8 @@ int main(int argc, char** argv) {
                             == starfox::simulation::GameFlowState::ex_pregame_menu,
                     "EX completed credits did not return to its source menu");
         } else {
+            completed_credits.map().write_native_word(level_finished.front(), 8U);
+            static_cast<void>(completed_credits.tick({}));
             for (std::size_t frame = 0; frame < 500U
                     && completed_credits.flow_state()
                         != starfox::simulation::GameFlowState::finished;

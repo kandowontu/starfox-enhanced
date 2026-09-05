@@ -2167,10 +2167,17 @@ std::uint32_t GameSimulation::resolve_route_stage(std::uint16_t remaining_stage)
     }
     auto cursor = stage_paths_ + rom_->read16(
         stage_paths_ + static_cast<std::uint32_t>(route) * 2U);
+    std::uint32_t last_map{};
 
     for (std::size_t guard = 0; guard < 512U; ++guard) {
         const auto record = rom_->read8(cursor);
         if (record == 0U) {
+            // DRAWPLANETLINES_L returns carry at the terminator and leaves
+            // NEWMAP/CURRENTPLANET on the last PATHSTART. EX's L+R+Select
+            // cheat can reach this boundary without the usual ending exit.
+            // Preserve that source destination instead of treating a valid
+            // route end as corrupt data and aborting the application.
+            if (last_map != 0U) return last_map;
             throw std::runtime_error{"planet route ended before the requested stage"};
         }
         if (record == 1U) {
@@ -2179,7 +2186,7 @@ std::uint32_t GameSimulation::resolve_route_stage(std::uint16_t remaining_stage)
         }
         if (record == 2U) {
             const auto slot = rom_->read16(cursor + 1U);
-            if (slot >= 8U || (slot & 1U) != 0U) {
+            if (slot >= (starfox_ex_cartridge_ ? 12U : 8U) || (slot & 1U) != 0U) {
                 throw std::runtime_error{"invalid planet route-choice slot"};
             }
             cursor = stage_paths_ + map_.read_native_word(routes_ + slot);
@@ -2192,6 +2199,7 @@ std::uint32_t GameSimulation::resolve_route_stage(std::uint16_t remaining_stage)
         const auto map_address =
             (static_cast<std::uint32_t>(rom_->read8(cursor + 6U)) << 16U)
             | 0x8000U | (rom_->read16(cursor + 4U) & 0x7fffU);
+        last_map = map_address;
         map_.write_native_byte(current_planet_, rom_->read8(cursor + 3U));
         map_.write_native_byte(new_map_, static_cast<std::uint8_t>(map_address));
         map_.write_native_byte(new_map_ + 1U, static_cast<std::uint8_t>(map_address >> 8U));
@@ -2926,10 +2934,25 @@ GameTickResult GameSimulation::tick_end_game_sequence(
     }
 
     const std::array stops{ending_transfer_, ending_end_transfer_,
-        credits_entry_ != 0U ? credits_entry_ : ending_transfer_};
+        credits_entry_ != 0U ? credits_entry_ : ending_transfer_,
+        ending_final_score_ ? rom_symbol("BRIEFING_L") : ending_transfer_,
+        ending_final_score_ ? rom_symbol("TITLESEQ_L") : ending_transfer_};
     const auto task = map_.resume_native_task(ending_registers_, stops,
-        50'000'000U, true, true);
+        50'000'000U, true, false);
     result.prelude_instructions += task.instructions;
+    if (ending_final_score_
+        && (task.stop_address == stops[3] || task.stop_address == stops[4])) {
+        // Held START can leave CREDITSMAP inside MAKETOTALSCORE2's own
+        // TRANSFER before that short-lived score task has returned.
+        ending_task_active_ = false;
+        ending_final_score_ = false;
+        credits_complete_ = false;
+        if (task.stop_address == stops[4]) enter_title();
+        else enter_controls(GameFlowState::controls_type);
+        result.audio_port_writes = map_.take_apu_port_writes();
+        return result;
+    }
+    map_.restore_objects_from_native();
     const auto native_map =
         (static_cast<std::uint32_t>(map_.read_native_byte(ram_symbol("MAPBANK")))
             << 16U)
@@ -4756,25 +4779,6 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
     if (ending_task_active_) {
         return tick_end_game_sequence(input);
     }
-    if (flow_state_ == GameFlowState::credits && credits_complete_
-        && starfox_ex_cartridge_
-        && (input.pressed & starfox::input::start) != 0U) {
-        // EX's completed CREDITSMAP tail-jumps into FOXY_CONTINUE_L. A native
-        // tail jump cannot return to the host's bounded map-code call, so make
-        // that exact ownership handoff here once the source prompt accepts
-        // START.
-        queue_sound_effect(0xabU);
-        Wdc65816Registers registers;
-        registers.status = 0x24U;
-        map_.call_native_routine(
-            ex_randomize_background_, registers, 5'000'000U, true);
-        map_.write_native_byte(ex_fade_palette_fx_pink_, 33U);
-        map_.write_native_byte(ex_fade_palette_yamao_, 33U);
-        enter_ex_pregame_menu(false);
-        GameTickResult result;
-        result.audio_port_writes = map_.take_apu_port_writes();
-        return result;
-    }
     if (starfox_ex_cartridge_) {
         // EX's source MAX FPS experiment is intentionally disabled. Keep the
         // cartridge on its stable/default 20-transfer path regardless of an
@@ -5240,8 +5244,42 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
         // bytecode dispatch, native call stacks and loop state during gameplay.
         registers = {};
         registers.status = 0x24U;
-        result.prelude_instructions += map_.call_native_routine(
-            update_objects_, registers, 10'000'000, true);
+        if (flow_state_ == GameFlowState::credits
+            || (flow_state_ == GameFlowState::finished && credits_complete_)) {
+            // The credits map can tail-jump out of UPDATE_OBJECTS_L on the
+            // very transfer that sets LE_ENDOFCREDS, including held START.
+            // Let its source input gate and restart initialization run, then
+            // hand control back at the next host-owned screen's entry.
+            const std::array stops = starfox_ex_cartridge_
+                ? std::array{ex_foxy_continue_, rom_symbol("GAMESTART")}
+                : std::array{rom_symbol("BRIEFING_L"), rom_symbol("TITLESEQ_L")};
+            const auto task = map_.begin_native_task(update_objects_, registers,
+                stops, 50'000'000U, true, true);
+            result.prelude_instructions += task.instructions;
+            if (!task.returned) {
+                ending_task_active_ = false;
+                ending_final_score_ = false;
+                credits_complete_ = false;
+                if (!starfox_ex_cartridge_) {
+                    if (task.stop_address == stops[1]) enter_title();
+                    else enter_controls(GameFlowState::controls_type);
+                } else if (task.stop_address == ex_foxy_continue_) {
+                    enter_ex_pregame_menu(false);
+                } else {
+                    const auto destination =
+                        (static_cast<std::uint32_t>(map_.read_native_byte(
+                            ram_symbol("MAPBANK"))) << 16U)
+                        | 0x8000U | map_.read_native_word(ram_symbol("MAPPTR"));
+                    initialize_native_map(destination);
+                    flow_state_ = GameFlowState::gameplay;
+                }
+                result.audio_port_writes = map_.take_apu_port_writes();
+                return result;
+            }
+        } else {
+            result.prelude_instructions += map_.call_native_routine(
+                update_objects_, registers, 10'000'000, true);
+        }
         map_.restore_map_state_from_native();
         refresh_player_reference();
         apply_god_mode_state();

@@ -78,6 +78,21 @@ private:
     std::uint64_t phase_units_{};
 };
 
+// The output limiter never owes catch-up presentations. Once rendering misses
+// its deadline, start the next interval at that completion time. The separate
+// realtime raster clock continues to account for elapsed simulation time.
+class PresentationDeadlineClock {
+public:
+    using clock = std::chrono::steady_clock;
+    using time_point = clock::time_point;
+    [[nodiscard]] time_point next_deadline(time_point now, std::uint32_t presentation_hz);
+
+private:
+    time_point epoch_{};
+    std::uint64_t frame_{};
+    std::uint32_t presentation_hz_{};
+};
+
 // Measures completed host presentations independently of the requested
 // presentation rate. A short sample window makes missed-frame hot spots
 // visible without allowing single-frame timing noise to make the readout

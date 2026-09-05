@@ -32,7 +32,10 @@ Msu1Audio::Msu1Audio(TrackLoader loader) : loader_(std::move(loader)) {}
 
 void Msu1Audio::set_enabled(bool enabled) noexcept {
     enabled_ = enabled;
-    if (!enabled_) playing_ = false;
+    if (!enabled_) {
+        playing_ = false;
+        completed_ = false;
+    }
 }
 
 void Msu1Audio::process_register_writes(
@@ -52,6 +55,7 @@ void Msu1Audio::process_register_writes(
             volume_ = write.value;
             break;
         case 0x2007U:
+            completed_ = false;
             if ((write.value & 0x01U) == 0U) {
                 playing_ = false;
                 source_cursor_ = 0.0;
@@ -127,6 +131,7 @@ std::span<const std::int16_t> Msu1Audio::render(
         while (source_cursor_ >= static_cast<double>(source_frames_)) {
             if (!repeat_) {
                 playing_ = false;
+                completed_ = true;
                 return output_;
             }
             source_cursor_ = static_cast<double>(loop)

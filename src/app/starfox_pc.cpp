@@ -2602,6 +2602,11 @@ public:
             throw std::runtime_error{
                 std::string{"SDL_OpenAudioDeviceStream: "} + SDL_GetError()};
         }
+        if (const auto* trace = std::getenv("STARFOX_TRACE_AUDIO")) {
+            audio_trace_.open(trace);
+            if (audio_trace_) audio_trace_ << "audio_tick,seconds,msu_enabled,msu_track,"
+                "msu_playing,native_tail,music_peak,effects_peak,mixed_peak\n";
+        }
     }
 
     ~AudioOutput() { SDL_DestroyAudioStream(stream_); }
@@ -2673,11 +2678,13 @@ public:
         std::uint32_t speed_multiplier, bool queue_output = true) {
         static_cast<void>(emulator_.render_logic_tick(writes));
         msu1_.process_register_writes(msu_writes);
-        const auto music = msu1_.enabled()
+        const auto lossless_music = msu1_.enabled()
             ? std::span<const std::int16_t>{msu1_.render(
                 starfox::audio::Spc700Audio::stereo_frames_per_logic_tick,
                 starfox::audio::Spc700Audio::sample_rate)}
             : emulator_.last_music_samples();
+        const auto music = msu1_.use_native_music_tail()
+            ? emulator_.last_music_samples() : lossless_music;
         const auto effects = emulator_.last_effect_samples();
         mixed_samples_.resize(std::min(music.size(), effects.size()));
         for (std::size_t index = 0U; index < mixed_samples_.size(); ++index) {
@@ -2693,6 +2700,18 @@ public:
                     std::numeric_limits<std::int16_t>::max())));
         }
         auto& samples = mixed_samples_;
+        if (audio_trace_.is_open() && audio_trace_) {
+            const auto peak = [](std::span<const std::int16_t> pcm) {
+                int value = 0;
+                for (const auto sample : pcm) value = std::max(value, std::abs(static_cast<int>(sample)));
+                return value;
+            };
+            ++audio_trace_tick_;
+            audio_trace_ << audio_trace_tick_ << ',' << audio_trace_tick_ / 20.0 << ','
+                << msu1_.enabled() << ',' << msu1_.selected_track() << ',' << msu1_.playing()
+                << ',' << msu1_.use_native_music_tail() << ',' << peak(music) << ','
+                << peak(effects) << ',' << peak(samples) << '\n';
+        }
         std::span<const std::int16_t> queued_samples{samples};
         speed_multiplier = std::max(1U, speed_multiplier);
         if (speed_multiplier != previous_speed_multiplier_) {
@@ -2754,6 +2773,8 @@ private:
     SDL_AudioStream* stream_{};
     std::vector<std::int16_t> fast_samples_;
     std::vector<std::int16_t> mixed_samples_;
+    std::ofstream audio_trace_;
+    std::uint64_t audio_trace_tick_{};
     std::uint8_t music_volume_{100U};
     std::uint8_t sfx_volume_{100U};
     std::uint32_t fast_sample_phase_{};
@@ -2868,36 +2889,15 @@ class PresentationPacer {
 public:
     void wait_for_next_frame(
         std::uint32_t presentation_hz = starfox::timing::kPresentationHz) {
-        if (presentation_hz == 0U) {
-            throw std::invalid_argument{"presentation FPS cannot be zero"};
-        }
-        auto now = std::chrono::steady_clock::now();
-        if (presentation_hz != presentation_hz_) {
-            epoch_ = now;
-            frame_ = 0U;
-            presentation_hz_ = presentation_hz;
-        }
-        ++frame_;
-        auto deadline = epoch_ + std::chrono::nanoseconds{
-            static_cast<std::chrono::nanoseconds::rep>(
-                frame_ * 1'000'000'000ULL / presentation_hz_)};
-        now = std::chrono::steady_clock::now();
+        const auto now = std::chrono::steady_clock::now();
+        const auto deadline = clock_.next_deadline(now, presentation_hz);
         if (now < deadline) {
             std::this_thread::sleep_until(deadline);
-            return;
-        }
-        // Do not emit a burst of catch-up presentations after a debugger stop
-        // or suspended laptop; the simulation clock already clamps that gap.
-        if (now - deadline > std::chrono::milliseconds{250}) {
-            epoch_ = now;
-            frame_ = 0;
         }
     }
 
 private:
-    std::chrono::steady_clock::time_point epoch_{std::chrono::steady_clock::now()};
-    std::uint64_t frame_{};
-    std::uint32_t presentation_hz_{starfox::timing::kPresentationHz};
+    starfox::timing::PresentationDeadlineClock clock_;
 };
 
 struct RemapMenuState {
@@ -6257,19 +6257,10 @@ int main(int argc, char** argv) {
                 }
                 auto pose = make_pose(item, false);
                 if ((object.strategy_flags[0] & 0x20U) != 0U) {
-                    auto size_adjustment = static_cast<std::int16_t>(
-                        std::bit_cast<std::int8_t>(object.texture_scroll_x));
-                    for (std::uint8_t shift = 0; shift < base_header.shift; ++shift) {
-                        size_adjustment = starfox::simulation::add16(
-                            size_adjustment, size_adjustment);
-                    }
-                    auto diameter = starfox::simulation::add16(
-                        base_header.size, size_adjustment);
-                    diameter = starfox::simulation::add16(diameter, diameter);
-                    if (diameter == 0) diameter = 1;
                     pose.simple_scaled_sprite = true;
                     pose.simple_sprite_colour = object.extended[21];
-                    pose.simple_sprite_world_size = diameter;
+                    pose.simple_sprite_world_size = decoder.simple_sprite_diameter(
+                        base_header, std::bit_cast<std::int8_t>(object.texture_scroll_x));
                 }
                 renderer.draw(found->second, pose, target, false,
                     &target == &superfx_frame

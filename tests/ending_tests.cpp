@@ -209,7 +209,12 @@ void run_ending(const starfox::assets::RomImage& rom,
             if (++terminal_frames == 120) break;
         }
         if (ex && credits_tick && tick - credits_tick > 3400) {
-            static_cast<void>(game->tick({0, starfox::input::start, 0}));
+            static_cast<void>(game->tick({starfox::input::start, starfox::input::start, 0}));
+            // The source clears weapon/music state and fades before its
+            // FOXY_CONTINUE_L handoff; the old host shortcut skipped that.
+            for (unsigned fade = 0; fade < 120
+                && game->flow_state() == GameFlowState::credits; ++fade)
+                static_cast<void>(game->tick({}));
             require(game->flow_state() == GameFlowState::ex_pregame_menu, "EX credits do not accept Start after THE END");
             finished_tick = tick;
             break;

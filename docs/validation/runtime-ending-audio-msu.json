@@ -1,0 +1,11 @@
+{
+  "variant": "msu",
+  "audio_batches": 30030,
+  "seconds": 1501.5,
+  "silence_start": 333.8,
+  "jingle_start": 904.0,
+  "jingle_end": 965.5,
+  "silence_seconds": 570.2,
+  "mixed_output_verified": true,
+  "msu_native_tail": true
+}

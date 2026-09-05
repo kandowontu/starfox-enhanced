@@ -1843,10 +1843,13 @@ struct Wdc65816::Impl {
         const auto palette = static_cast<std::uint8_t>(read_superfx16(mspr_pal) & 15U);
         for (std::int32_t y = 0; y < 32; ++y) {
             for (std::int32_t x = 0; x < 32; ++x) {
+                const auto packed = texture_byte(sprite, source,
+                    static_cast<std::uint32_t>(y) * 256U
+                        + static_cast<std::uint32_t>(x));
+                // MDSPRITE sets CMODE's nibble selector from sprite bit 5.
+                // SPACE4 (Sector Y) and BLACKHOLE share the packed sheet.
                 const auto texel = static_cast<std::uint8_t>(
-                    texture_byte(sprite, source,
-                        static_cast<std::uint32_t>(y) * 256U
-                            + static_cast<std::uint32_t>(x)) >> 4U);
+                    (sprite & 0x20U) != 0U ? packed >> 4U : packed & 0x0fU);
                 if (texel != 0U) {
                     write_planet_pixel(left + x, top + y,
                         static_cast<std::uint8_t>((palette << 4U) | texel));
@@ -1884,10 +1887,11 @@ struct Wdc65816::Impl {
             for (std::int32_t x = 0; x < output_size; ++x) {
                 const auto source_x = std::clamp(
                     x * source_size / output_size, 0, 31);
+                const auto packed = texture_byte(sprite, source,
+                    static_cast<std::uint32_t>(source_y) * 256U
+                        + static_cast<std::uint32_t>(source_x));
                 const auto texel = static_cast<std::uint8_t>(
-                    texture_byte(sprite, source,
-                        static_cast<std::uint32_t>(source_y) * 256U
-                            + static_cast<std::uint32_t>(source_x)) >> 4U);
+                    (sprite & 0x20U) != 0U ? packed >> 4U : packed & 0x0fU);
                 if (texel != 0U) {
                     write_planet_pixel(left + x, top + y,
                         static_cast<std::uint8_t>((palette << 4U) | texel));
