@@ -21,6 +21,8 @@ one version-bound `Starfox-Assets.BIN` companion beside the executable. Later
 launches use that validated companion without requiring the retail ROM to stay
 present. `v0.0.4` is the current public alpha release.
 
+This project utilizes Codex GPT 5.6 Sol at Ex-High thought.
+
 ## What is preserved
 
 - Gameplay, PATH/map bytecode, strategies, collision, damage, RNG, animation,
@@ -172,8 +174,7 @@ as described by its own build instructions. The helper idempotently applies
 and rumble events while retaining stock SPC music for the runtime ON/OFF
 switch and routing the physical rumble transmitter through SDL.
 
-The Star Fox EX 1.11.03 source revision is pinned separately in
-`config/upstream-ex.json`:
+The Star Fox EX 1.11.03 source revision is here: https://github.com/kandowontu/star-fox-ex
 
 ```powershell
 git clone https://github.com/sunlitspace542/star-fox-ex.git upstream-star-fox-ex
