@@ -19,6 +19,7 @@ changes inside upstream-ultrastarfox were preserved.
 
 | Report / audit finding | Evidence and result |
 | --- | --- |
+| Gameplay fade cadence and stores | Normal IRQBIT3 advances fades once per completed bitmap transfer. The host advanced on every raster and also omitted QFADEDOWN's second decrement. Corrected gameplay/training cadence, fade-up completion edges and all three display aliases; preserved Continue's manual fade completion. Native SETINIDISP matches 768 cases per game. A new continuous, seeded reference compares 1,200 route-2/3 opening updates and 2,125,112 state values with zero differences. It fails incomplete runs and does not certify host pace or campaigns. See FADE-PARITY-VALIDATION.md. |
 | Camera word layout and crosshair | WMAT11 names a matrix word's high byte; the host wrote full words there instead of WMAT11W. The earlier view fixture shared that mistake. Correcting the reference first exposed 2,772 differences among 3,028 Original route-2 object views. The host now uses WMAT11W and executes GETVIEW_L directly, preserving the source's camera offsets, target angles, byte-angle aiming and integer crosshair projection. All 12,204 sampled object views match with the corrected layout. The new full-system Ares reference independently compares complete camera calls; see CAMERA-PARITY-VALIDATION.md. |
 | Full-system timing reference | Added a separately built pinned Ares SNES core with CPU frame boundaries, actual GSU launch/configuration traces and camera comparisons. The harness fixes its own MinGW scheduler lifetime and joins video before teardown; these are reference-tool changes. The pinned Original input writes CLSR=1, while EX writes CLSR=0. Both request fast multiply. Primary MC1 measurements contradict the source comment about a fixed clock and expose different multiplier/cache behavior. Added explicit diagnostic register policies and requested/effective write traces; none is claimed as a physical MC1 implementation. See TIMING-PROFILE-VALIDATION.md. Hardware identity and CPU/GSU overlap must be resolved before replacing the production slowdown approximation. |
 | Native CPU execution and timing | Corrected hidden accumulator restoration, missing decimal arithmetic, SBC's wrapped-zero flag, program-bank operand wrapping, 16-bit read-modify-write order, MVN/MVP behavior and XCE. Added missing instruction/bus clocks and FastROM accounting. An independent pinned Ares CPU agrees on 12,192 instruction cases, 524,288 decimal ALU cases and 1,048,576 complete arithmetic routines. See CPU-PARITY-VALIDATION.md for the patch, reproducibility and scope. These counts exclude translated work and concurrent hardware timing; Original pacing still needs integration. |
@@ -105,6 +106,13 @@ campaign playthroughs. Stage trace's extra raw-RAM diagnostics are Original
 addresses; do not interpret those particular diagnostic fields as EX state.
 
 ## Validation and local candidate
+
+- Fade follow-up: all 61 checks have passing results. The full run passed 59;
+  the two simulation suites passed after correcting their obsolete training
+  fade timeout (2/2, 136.89 seconds). Native fade coverage adds 768 cases per
+  variant; four continuous opening comparisons add 1,200 updates with zero
+  differences among 2,125,112 checked state values. See
+  `FADE-PARITY-VALIDATION.md` for the exact scope and retained logs.
 
 - Timing-profile follow-up: **8/8 full-system cases passed**, then repeated
   with all 40 trace hashes unchanged. Checks cover safe stage entry, every
@@ -241,12 +249,15 @@ addresses; do not interpret those particular diagnostic fields as EX state.
   300-update preroll and 180-presentation fixture. Both captures were inspected;
   these are direct-entry/respawn smoke images, not continuous campaign or
   physical-console comparisons. The source timing approximation remains open.
+- The current candidate also includes the gameplay/training fade fixes and
+  Continue manual-fade completion correction. Its SHA256SUMS file was refreshed
+  with the executable; the previous file still listed an older candidate hash.
 
 SHA-256:
 
 ```text
 starfox_pc.exe
-470E495CEA88EFCB36FC753325893C24E29FC29DC64DFC75013CCF83F9A85291
+4287155279244FA6F08B8281B958232D9D4B26105A56BC194A5DD3C6EAF5EBFA
 Starfox-Assets.BIN
 2F9A261C87F032F553952588E2EEB5DB747CBAF5FF0E5FCE7AF1862C9FC6541E
 Starfox-MSU1.PAK

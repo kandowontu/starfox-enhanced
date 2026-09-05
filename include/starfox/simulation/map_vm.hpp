@@ -76,7 +76,9 @@ public:
     }
     [[nodiscard]] const std::vector<std::uint8_t>& messages() const noexcept { return messages_; }
     void clear_messages() noexcept { messages_.clear(); }
-    void tick_video_phase();
+    void tick_video_phase(bool advance_display = true);
+    // IRQ.ASM SETINIDISP: one call per completed normal bitmap transfer.
+    void tick_display_transfer();
     void complete_background_request();
     // Import WORLD.ASM interpreter registers after an original routine such
     // as RESTART_L has advanced the native map directly.
@@ -84,6 +86,8 @@ public:
     // Import only at a settled gameplay yield; a native restart can clear
     // the pool before handing control to a host-owned front-end screen.
     void restore_objects_from_native() { sync_objects_from_cpu(); }
+    // Import the display cache after restoring an external native snapshot.
+    void restore_display_from_native() noexcept { sync_display_from_cpu(); }
     void write_native_byte(std::uint32_t address, std::uint8_t value);
     [[nodiscard]] std::uint8_t read_native_byte(std::uint32_t address) const noexcept;
     [[nodiscard]] std::uint16_t read_native_word(std::uint32_t address) const noexcept;
@@ -274,6 +278,8 @@ private:
     std::uint32_t fade_direction_address_{0x001930U};
     std::uint32_t fade_address_{0x001931U};
     std::uint32_t display_address_{0x7e4655U};
+    std::uint32_t display_second_address_{};
+    std::uint32_t display_alternate_address_{};
     std::uint32_t game_frame_address_{0x001640U};
     std::uint32_t background_flags_address_{0x001a16U};
     std::uint32_t background_dma_list_address_{0x001764U};

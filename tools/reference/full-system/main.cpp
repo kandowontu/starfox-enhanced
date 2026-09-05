@@ -9,6 +9,7 @@
 #include <regex>
 
 namespace sfc = ares::SuperFamicom;
+#include "gameplay_audit.hpp"
 namespace {
 std::function<void(unsigned, unsigned)> cpu_hook;
 std::function<unsigned(unsigned, unsigned)> gsu_write_hook;
@@ -129,13 +130,16 @@ struct SystemGuard {
 }
 
 int main(int argc, char** argv) { try {
-    if (argc != 6 && argc != 7) throw std::runtime_error(
-        "Usage: full_reference ROM SYMBOLS MAP VIDEO_FRAMES OUTPUT_PREFIX [source|divided-standard|divided-fast]");
-    const std::string policy = argc == 7 ? argv[6] : "source";
+    if (argc < 6 || argc > 8) throw std::runtime_error(
+        "Usage: full_reference ROM SYMBOLS MAP VIDEO_FRAMES OUTPUT_PREFIX [source|divided-standard|divided-fast [GAMEPLAY_UPDATES]]");
+    const std::string policy = argc >= 7 ? argv[6] : "source";
     if (policy != "source" && policy != "divided-standard" && policy != "divided-fast")
         throw std::runtime_error("Unknown GSU register policy: " + policy);
     const auto frames = std::stoul(argv[4]);
     if (frames < 120 || frames > 100000) throw std::runtime_error("VIDEO_FRAMES must be 120..100000");
+    const auto gameplay_updates = argc == 8 ? std::stoul(argv[7]) : 0U;
+    if (argc == 8 && (gameplay_updates < 1U || gameplay_updates > 10000U))
+        throw std::runtime_error("GAMEPLAY_UPDATES must be 1..10000");
     const auto rom = starfox::assets::RomImage::load(argv[1]);
     const auto symbols = starfox::assets::SymbolMap::load(argv[2]);
     const auto address = [&](const char* name) { return symbols.find(name).at(0); };
@@ -149,6 +153,8 @@ int main(int argc, char** argv) { try {
     };
     starfox::simulation::Wdc65816 host_cpu(rom, &symbols);
     const std::string prefix = argv[5], map = argv[3];
+    std::unique_ptr<GameplayAudit> gameplay;
+    if (gameplay_updates) gameplay = std::make_unique<GameplayAudit>(rom,symbols,map,prefix,gameplay_updates);
     std::ofstream registers(prefix + "-registers.csv");
     std::ofstream entry(prefix + "-entry.csv");
     if (!registers || !entry) throw std::runtime_error("Cannot create register/entry traces");
@@ -219,6 +225,15 @@ int main(int argc, char** argv) { try {
     const auto player_pointer = address("PLAYPT"), world_x = address("AL_WORLDX"), world_y = address("AL_WORLDY"), world_z = address("AL_WORLDZ");
     const auto view_z = address("VIEWPOSZ"), frame_c = address("FRAMEC"), frame_r = address("FRAMER"), draw = address("M_NUMSHAPES") & 65535;
     const auto player_flags = address("PSHIPFLAGS3");
+    unsigned settled_transfer = 0;
+    for (unsigned offset = 0; gameplay && offset < 32; ++offset) {
+        if (rom.read8(transfer + offset) == 0x9cU
+            && rom.read16(transfer + offset + 1) == address("NOIRQBIT3")) {
+            if (settled_transfer) throw std::runtime_error("Ambiguous transfer boundary");
+            settled_transfer = transfer + offset;
+        }
+    }
+    if (gameplay && !settled_transfer) throw std::runtime_error("Missing settled transfer boundary");
     std::vector<std::pair<std::string, unsigned>> camera_fields;
     for (const auto name : {"VIEWPOSX", "VIEWPOSY", "VIEWPOSZ", "VIEWROTXW", "VIEWROTYW", "VIEWROTZW", "ARSEBANDX", "ARSEBANDY",
         "WMAT11W", "WMAT12W", "WMAT13W", "WMAT21W", "WMAT22W", "WMAT23W", "WMAT31W", "WMAT32W", "WMAT33W"})
@@ -249,6 +264,7 @@ int main(int argc, char** argv) { try {
                 camera_differences += actual != expected;
             }
         }
+        if (gameplay && pc == settled_transfer) gameplay->transfer();
         if (pc != transfer) return;
         unsigned active = 0, object = read(all_objects);
         while (object && active < 100) { ++active; object = read(object); }
@@ -273,6 +289,7 @@ int main(int argc, char** argv) { try {
         write(player_flags, read(player_flags, 1) | 8, 1);
         system->run();
         if (!camera_error.empty()) break;
+        if (gameplay && (!gameplay->error.empty() || gameplay->differences || gameplay->complete())) break;
     }
     sfc::ppu.screen()->quit();
     sfc::ppu.screen()->refresh();
@@ -281,6 +298,7 @@ int main(int argc, char** argv) { try {
     std::cout << camera_calls << " complete camera calls, " << camera_differences << " field differences\n";
     guard.close();
     if (!camera_error.empty()) throw std::runtime_error(camera_error);
+    if (gameplay) gameplay->finish();
     return camera_differences || camera_calls == 0 ? 1 : 0;
 } catch (const std::exception& error) {
     cpu_hook = {}; gsu_hook = {};

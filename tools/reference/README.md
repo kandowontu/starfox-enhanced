@@ -287,6 +287,17 @@ presentation to check that EX's line history advances only once per source frame
 
 A separate mutation restoring the 15×15 EX grid fails the first reference frame.
 
+## Continuous gameplay state
+
+`python tools/reference/verify-gameplay.py` compares 300 consecutive updates of
+LEVEL2_1 and LEVEL3_1 in both games, after one native RAM seed. The full-system
+CLI accepts a final `GAMEPLAY_UPDATES` argument after its GSU policy. It requires
+that count and fails on any checked state difference or incomplete run. The
+comparison waits for the preceding display interrupt; native `TRANSFER_L` entry
+alone is not a settled display boundary. It uses observed raster counts and
+neutral input, so it does not certify host pacing, input, rendering or campaigns.
+See `docs/FADE-PARITY-VALIDATION.md` for fields, results and remaining limitations.
+
 ## Desktop audio output trace
 
 `pwsh -NoProfile -File tools/reference/run-runtime-ending-audio.ps1 -Experience ORIGINAL -Msu 0 -OutputDirectory tmp/runtime-audio-original`

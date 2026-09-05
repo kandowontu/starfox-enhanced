@@ -3660,7 +3660,9 @@ void GameSimulation::begin_planet_selection_sequence() {
 }
 
 void GameSimulation::present_frame() {
-    map_.tick_video_phase();
+    map_.tick_video_phase(ending_task_active_
+        || (flow_state_ != GameFlowState::gameplay
+            && flow_state_ != GameFlowState::training));
     if (deferred_msu_track_) {
         if (deferred_msu_frames_ != 0U) --deferred_msu_frames_;
         if (deferred_msu_frames_ == 0U) {
@@ -3686,8 +3688,10 @@ void GameSimulation::present_frame() {
             // writing brightness 1. Starting here, after this presentation's
             // SETINIDISP phase, preserves that first black frame.
             map_.start_display_fade(1);
-        } else if (map_.fade_direction() == 0
-                   && map_.display_brightness() == 15U) {
+        } else if (map_.display_brightness() == 15U) {
+            // CONTINUE's manual FADELOOP accepts input as soon as it stores
+            // 15. It does not take SETINIDISP's extra completion-only call.
+            map_.set_display_brightness(15U);
             frontend_frames_ = 0U;
             frontend_phase_ = FrontendPhase::none;
         }
@@ -5381,6 +5385,10 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
     registers.status = 0x24U;
     result.prelude_instructions += map_.call_native_routine(
         resolve_collisions_, registers, 10'000'000);
+    if (flow_state_ == GameFlowState::gameplay
+        || flow_state_ == GameFlowState::training) {
+        map_.tick_display_transfer();
+    }
     service_transfer_request();
     if (flow_state_ == GameFlowState::title) {
         // TITLE.ASM prints the current EX version through PRINTT_L into the

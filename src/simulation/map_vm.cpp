@@ -109,6 +109,8 @@ MapVm::MapVm(
           symbols, "FADEDIR", kOriginalFadeDirection)),
       fade_address_(symbol_or(symbols, "FADE", kOriginalFade)),
       display_address_(symbol_or(symbols, "XINIDISP1", kOriginalDisplay)),
+      display_second_address_(symbol_or(symbols, "XINIDISP2", kOriginalDisplay + 2U)),
+      display_alternate_address_(symbol_or(symbols, "XINIDISP1A", kOriginalDisplay + 4U)),
       game_frame_address_(symbol_or(symbols, "GAMEFRAME", kOriginalGameFrame)),
       background_flags_address_(symbol_or(symbols, "BGFLAGS", kOriginalBackgroundFlags)),
       background_dma_list_address_(symbol_or(
@@ -237,20 +239,10 @@ void MapVm::set_display_brightness(std::uint8_t brightness) {
 }
 
 void MapVm::start_display_fade(std::int8_t direction) {
-    fade_direction_ = direction;
-    // Map streams change FADEDIR independently of INIDISP. FADE can still
-    // contain zero from the preceding forced-black setup even though native
-    // code has since restored a fully bright display. IRQ.ASM starts a
-    // fade-down from the brightness that is actually visible; retaining the
-    // stale counter turns that transition into an immediate black cut.
-    if (direction < 0 && screen_enabled_) {
-        fade_value_ = display_brightness_;
-    }
-    if (direction > 0 && !screen_enabled_) {
-        fade_value_ = 0U;
-        screen_enabled_ = true;
-    }
-    sync_display_to_cpu();
+    // WORLD.ASM writes only the direction. In particular INITBLACK_L may
+    // intentionally reset FADE without changing the current display byte.
+    write_native_byte(fade_direction_address_, std::bit_cast<std::uint8_t>(direction));
+    sync_display_from_cpu();
 }
 
 std::optional<std::array<std::int16_t, 2>> MapVm::background_scroll_override() const {
@@ -262,7 +254,7 @@ std::optional<std::array<std::int16_t, 2>> MapVm::background_scroll_override() c
         std::bit_cast<std::int16_t>(read_native_word(background_scroll_requested_y_))};
 }
 
-void MapVm::tick_video_phase() {
+void MapVm::tick_video_phase(bool advance_display) {
     cpu_.tick_ending_video_phase();
     cpu_.tick_background_video_phase();
     // Standard FOXIRQ3's SETBG2VOFS owns this override, not CALCBGSCROLL's
@@ -273,49 +265,48 @@ void MapVm::tick_video_phase() {
             cpu_.set_bg2_scroll((*scroll)[0], (*scroll)[1]);
         }
     }
-    if (fade_direction_ == 0) {
-        return;
-    }
-    if (fade_direction_ < 0) {
-        // Native work later in the same transfer can restore the cartridge's
-        // stale FADE byte while leaving INIDISP and FADEDIR intact. Reconcile
-        // that split state at the raster boundary where IRQ.ASM consumes it.
-        if (fade_value_ == 0U && screen_enabled_ && display_brightness_ != 0U) {
-            fade_value_ = display_brightness_;
+    if (advance_display) tick_display_transfer();
+}
+
+void MapVm::tick_display_transfer() {
+    sync_display_from_cpu();
+    if (fade_direction_ == 0) return;
+    // Preserve SETINIDISP's stores, including the fade-up completion path
+    // that clears FADEDIR without rewriting any XINIDISP alias.
+    const auto publish = [this](std::uint8_t display) {
+        for (const auto address : {display_address_, display_second_address_,
+                                   display_alternate_address_}) {
+            write_native_byte(address, display);
         }
-        // IRQ.ASM's -3 path branches around the decrement while GAMEFRAME is
-        // odd. SETINIDISP still runs once per raster, so all three 60 Hz
-        // presentations belonging to an even 20 Hz source frame decrement
-        // FADE. Do not collapse those three calls into one source-frame step.
+    };
+    if (fade_direction_ < 0) {
         if (fade_direction_ == -3) {
             const auto game_frame = cpu_.read8(game_frame_address_);
             if ((game_frame & 1U) != 0U) return;
         }
-        // -2 selects QFADEDOWN in IRQ.ASM. Despite the name it has a single
-        // DEC before sharing the normal store path; unlike +2, it does not
-        // perform multiple brightness changes in one raster.
-        constexpr auto steps = 1U;
+        // QFADEDOWN decrements once before branching to SETDOWN's DEC.
+        const auto steps = fade_direction_ == -2 ? 2U : 1U;
         if (fade_value_ <= steps) {
             fade_value_ = 0;
             fade_direction_ = 0;
-            screen_enabled_ = false;
+            publish(0x80U);
         } else {
             fade_value_ = static_cast<std::uint8_t>(fade_value_ - steps);
-            screen_enabled_ = true;
+            publish(fade_value_);
         }
-    } else if (fade_direction_ > 0) {
-        // IRQ.ASM's quick fade-up path increments twice before falling into
-        // the normal increment/store path, for three brightness steps total.
-        const auto steps = fade_direction_ == 2 ? 3U : 1U;
-        if (fade_value_ + steps >= 15U) {
+    } else {
+        const auto before_setup = fade_direction_ == 2 ? 2U : 0U;
+        if (fade_value_ + before_setup >= 15U) {
             fade_value_ = 15;
             fade_direction_ = 0;
         } else {
-            fade_value_ = static_cast<std::uint8_t>(fade_value_ + steps);
+            fade_value_ = static_cast<std::uint8_t>(fade_value_ + before_setup + 1U);
+            publish(fade_value_);
         }
-        screen_enabled_ = true;
     }
-    sync_display_to_cpu();
+    write_native_byte(fade_address_, fade_value_);
+    write_native_byte(fade_direction_address_, std::bit_cast<std::uint8_t>(fade_direction_));
+    sync_display_from_cpu();
 }
 
 void MapVm::complete_background_request() {

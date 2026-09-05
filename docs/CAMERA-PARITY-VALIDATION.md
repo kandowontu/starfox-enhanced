@@ -76,12 +76,13 @@ fixes; instruction execution and emulated frame timing are unchanged.
   Logs are `validation/ctest-20260905-native-camera*.log`.
 - After caching the camera entry and removing unused fields, the rebuilt
   binaries passed **9/9** affected view, hit-list and desktop smoke checks.
-- The refreshed local Windows candidate has SHA-256
+- The Windows candidate at this camera follow-up had SHA-256
   `470E495CEA88EFCB36FC753325893C24E29FC29DC64DFC75013CCF83F9A85291`.
   Its `validation/native-camera-{original,ex}.bmp` images were inspected.
   They use direct LEVEL3_1, 300 source preroll updates, 180 presentations,
   Original pace, 90 FPS target/4x and unpaced dummy devices. Their displayed
   FPS is not an old-PC performance measurement.
+  See `FADE-PARITY-VALIDATION.md` for the subsequent runtime follow-up.
 - The user's saved pregame configuration is unchanged.
 
 The Original input writes CLSR=1 and EX writes CLSR=0; both use CFGR=$a0 in

@@ -2095,11 +2095,15 @@ int main(int argc, char** argv) {
                 if (scramble_fade_game.map().fade_direction() < 0) {
                     saw_scramble_fade = true;
                     require(scramble_fade_game.map().screen_enabled()
-                                && scramble_fade_game.map().display_brightness() == 15U,
-                            "scramble fade started from stale forced-black state");
-                    scramble_fade_game.present_frame();
+                                && scramble_fade_game.map().display_brightness() == 14U,
+                            "scramble transfer did not perform its first native fade step");
+                    for (unsigned raster = 0; raster < 7U; ++raster)
+                        scramble_fade_game.present_frame();
                     require(scramble_fade_game.map().display_brightness() == 14U,
-                            "scramble fade did not advance through a visible step");
+                            "scramble fade advanced while its bitmap transfer was pending");
+                    static_cast<void>(scramble_fade_game.tick({}));
+                    require(scramble_fade_game.map().display_brightness() == 13U,
+                            "scramble fade did not advance once after seven raster phases");
                     break;
                 }
             }
@@ -2706,8 +2710,11 @@ int main(int argc, char** argv) {
         require(!current_background.empty()
                     && game.map().read_native_word(current_background.front()) == 3,
                 "transfer bridge did not run Corneria's original background request");
-        require(game.map().display_brightness() == 15,
-                "player-opening strategy did not drive the original quick fade-up");
+        // PLAYEROPENING arms the fade on update three: four completed
+        // SETINIDISP calls have published 3, 6, 9, 12 by update six.
+        require(game.map().display_brightness() == 12
+                    && game.map().fade_direction() == 2,
+                "player-opening quick fade did not preserve its source transfer cadence");
         require(!player_opening.empty()
                     && (game.objects().at(game.player()).strategy_address >> 16U)
                         == (player_opening.front() >> 16U),
@@ -5655,11 +5662,15 @@ int main(int argc, char** argv) {
             static_cast<void>(title_game.tick({}));
         }
         static_cast<void>(title_game.tick({0, starfox::input::start, 0}));
-        for (std::size_t tick = 0; tick < 12U
-             && title_game.flow_state()
-                 == starfox::simulation::GameFlowState::training; ++tick) {
+        require(title_game.map().display_brightness() == 15U
+                    && title_game.map().fade_direction() == -1,
+                "training exit did not arm its fifteen-transfer fade");
+        for (std::size_t tick = 0; tick < 14U; ++tick) {
             static_cast<void>(title_game.tick({}));
+            require(title_game.flow_state() == starfox::simulation::GameFlowState::training,
+                    "training exit skipped a native fade transfer");
         }
+        static_cast<void>(title_game.tick({}));
         require(title_game.flow_state()
                     == starfox::simulation::GameFlowState::controls_choice,
                 "training START exit did not return to the source GAME/TRAINING choice");

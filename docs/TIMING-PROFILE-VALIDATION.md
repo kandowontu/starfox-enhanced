@@ -87,11 +87,12 @@ entry method; those earlier traces are not silently replaced by this fixture.
 
 ## Scope
 
-This follow-up changes reference tooling and documentation. The Windows
-candidate remains SHA-256
+This follow-up changed reference tooling and documentation. At that point the
+Windows candidate remained SHA-256
 `470E495CEA88EFCB36FC753325893C24E29FC29DC64DFC75013CCF83F9A85291`;
 the prior 61-test runtime validation still applies. No new runtime timing
-formula has been installed from these bounded samples.
+formula was installed from these bounded samples. The later runtime and
+continuous-state follow-up is recorded in `FADE-PARITY-VALIDATION.md`.
 
 The clock policies can change the preceding frontend state and entry phase.
 GSU traces begin after the 600-frame boot and can include the end of that

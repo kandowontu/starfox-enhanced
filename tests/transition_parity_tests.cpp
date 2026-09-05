@@ -46,24 +46,63 @@ int main(int argc, char** argv) {
     starfox::simulation::MapVm map{rom, database, objects, &symbols};
     const auto game_frame = symbols.find("GAMEFRAME").front();
 
-    // IRQ.ASM's QFADEDOWN has one DEC and no fall-through second step.
+    // Compare every valid FADE counter against the assembled SETINIDISP.
+    // Use independent display values to catch stores that the source skips.
+    starfox::simulation::Wdc65816 reference{rom, &symbols};
+    starfox::simulation::Wdc65816Registers registers;
+    registers.status = 0x24U;
+    reference.call_long(symbols.find("COPY_TO_0101_L").front(), registers, 5'000'000U);
+    const auto fade = symbols.find("FADE").front();
+    const auto fade_direction = symbols.find("FADEDIR").front();
+    for (const auto frame : {2U, 3U}) {
+        for (const auto direction : {-4, -3, -2, -1, 0, 1, 2, 3}) {
+            for (unsigned value = 0U; value <= 15U; ++value) {
+                for (const auto display : {0x80U, 7U, 15U}) {
+                    const auto write = [&](std::uint32_t address, std::uint8_t byte) {
+                        reference.write8(address, byte);
+                        map.write_native_byte(address, byte);
+                    };
+                    write(game_frame, frame);
+                    write(fade, value);
+                    write(fade_direction, static_cast<std::uint8_t>(direction));
+                    for (const auto name : {"XINIDISP1", "XINIDISP2", "XINIDISP1A"}) {
+                        write(symbols.find(name).front(), display);
+                    }
+                    registers = {};
+                    registers.status = 0x34U;
+                    reference.call_near(symbols.find("SETINIDISP").front(), registers);
+                    map.tick_display_transfer();
+                    for (const auto name : {"FADE", "FADEDIR", "XINIDISP1", "XINIDISP2", "XINIDISP1A"}) {
+                        const auto address = symbols.find(name).front();
+                        if (map.read_native_byte(address) != reference.read8(address)) {
+                            std::cerr << name << " differs: direction=" << direction
+                                << " fade=" << value << " display=" << display
+                                << " GAMEFRAME=" << frame << '\n';
+                            require(false, "display transfer differs from native SETINIDISP");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // IRQ.ASM's QFADEDOWN branches into SETDOWN for its second DEC.
     map.set_display_brightness(11U);
     map.start_display_fade(-2);
     map.tick_video_phase();
-    require(map.display_brightness() == 10U,
-        "quick fade-down did not decrement by one raster step");
-    for (std::uint8_t brightness = 9U; brightness != 0U; --brightness) {
+    require(map.display_brightness() == 9U,
+        "quick fade-down did not decrement twice");
+    for (const auto brightness : {7U, 5U, 3U, 1U}) {
         map.tick_video_phase();
         require(map.display_brightness() == brightness,
             "quick fade-down skipped a native brightness value");
     }
     map.tick_video_phase();
     require(map.display_brightness() == 0U && map.fade_direction() == 0,
-        "quick fade-down did not finish on its eleventh raster");
+        "quick fade-down did not finish on its sixth transfer");
 
-    // SFADEDOWN skips odd GAMEFRAME values. SETINIDISP is still invoked on
-    // every raster, so the three presentations of an even source frame each
-    // consume a brightness value.
+    // SFADEDOWN skips odd GAMEFRAME values, irrespective of how the caller
+    // schedules completed display transfers.
     map.set_display_brightness(15U);
     map.write_native_byte(game_frame, 2U);
     map.start_display_fade(-3);
@@ -121,7 +160,7 @@ int main(int argc, char** argv) {
         {starfox::input::start, starfox::input::start, 0U});
     require(game->map().fade_direction() == -2
             && game->map().display_brightness() == 11U,
-        "intro did not arm its 11-step quick fade at the source threshold");
+        "intro did not arm its quick fade at brightness 11 at the source threshold");
 
     auto continue_game = std::make_unique<starfox::simulation::GameSimulation>(
         rom, symbols, "CONTINUE");
