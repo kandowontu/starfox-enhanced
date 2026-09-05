@@ -93,8 +93,13 @@ save(generated / "system.cpp", system)
 
 # The GSU hooks record launches, STOP, and elapsed coprocessor clocks. They
 # leave the stock instruction, memory, refresh, DMA and scheduling bodies intact.
+# The I/O callback preserves writes by default; explicit diagnostic policies
+# may override only the two clock/multiply selection bits (see README).
 gsu_root = source / "ares/sfc/coprocessor/superfx"
 io = (gsu_root / "io.cpp").read_text()
+io = observe(io, "auto SuperFX::writeIO(n24 address, n8 data) -> void {\n  cpu.synchronize(*this);\n  address = 0x3000 | address.bit(0,9);",
+             "auto SuperFX::writeIO(n24 address, n8 data) -> void {\n  cpu.synchronize(*this);\n  address = 0x3000 | address.bit(0,9);\n"
+             "  data = sfc_audit_gsu_write(address, data);")
 launch = "sfc_audit_gsu_start((regs.pbr << 16) | regs.r[15], regs.clsr, regs.cfgr, regs.scmr);"
 io = observe(io, "    if(address == 0x301f) regs.sfr.g = 1;",
              "    if(address == 0x301f) { regs.sfr.g = 1; " + launch + " }")
@@ -117,6 +122,7 @@ coprocessor = (source / "ares/sfc/coprocessor/coprocessor.cpp").read_text()
 coprocessor = re.sub(r'#include "([^"]+)"', r'#include <sfc/coprocessor/\1>', coprocessor)
 coprocessor = coprocessor.replace("#include <sfc/coprocessor/superfx/superfx.cpp>", '#include "gsu.cpp"')
 coprocessor = observe(coprocessor, "namespace ares::SuperFamicom {", '''extern "C" void sfc_audit_gsu_start(unsigned, unsigned, unsigned, unsigned);
+extern "C" unsigned sfc_audit_gsu_write(unsigned, unsigned);
 extern "C" void sfc_audit_gsu_step(unsigned);
 extern "C" void sfc_audit_gsu_stop();
 namespace ares::SuperFamicom {''')

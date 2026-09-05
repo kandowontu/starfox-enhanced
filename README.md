@@ -343,8 +343,9 @@ change the deterministic game pace.
 
 Unlocked 20 FPS uses one logic/strategy update for every three fixed 60 Hz
 cartridge raster phases. Original Speed additionally retains source frames
-according to the measured 10.7 MHz workload schedule, reproducing the
-characteristic cartridge slowdown. The independently selected render FPS
+using a workload estimate with separate launch and boss handling. It is not
+yet a cycle-exact reproduction of cartridge slowdown; the outstanding timing
+work is recorded in `docs/PARITY-AUDIT-2026-09-05.md`. The selected render FPS
 changes only how often frames are presented: an exact rational scheduler
 services the same raster phases, logic ticks, frontend timing, and audio pace
 at 20, 30, 60, 90, 120, 240, 360, and 480 FPS. Object and camera

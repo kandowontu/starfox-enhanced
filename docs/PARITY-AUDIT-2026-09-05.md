@@ -20,7 +20,7 @@ changes inside upstream-ultrastarfox were preserved.
 | Report / audit finding | Evidence and result |
 | --- | --- |
 | Camera word layout and crosshair | WMAT11 names a matrix word's high byte; the host wrote full words there instead of WMAT11W. The earlier view fixture shared that mistake. Correcting the reference first exposed 2,772 differences among 3,028 Original route-2 object views. The host now uses WMAT11W and executes GETVIEW_L directly, preserving the source's camera offsets, target angles, byte-angle aiming and integer crosshair projection. All 12,204 sampled object views match with the corrected layout. The new full-system Ares reference independently compares complete camera calls; see CAMERA-PARITY-VALIDATION.md. |
-| Full-system timing reference | Added a separately built pinned Ares SNES core with CPU frame boundaries, actual GSU launch/configuration traces and camera comparisons. The harness fixes its own MinGW scheduler lifetime and joins video before teardown; these are reference-tool changes. The pinned Original input writes CLSR=1, while EX writes CLSR=0. Ares honors that selector, so this is not a fixed-clock physical MARIO profile. That distinction and CPU/GSU overlap must be resolved before replacing the production slowdown approximation. |
+| Full-system timing reference | Added a separately built pinned Ares SNES core with CPU frame boundaries, actual GSU launch/configuration traces and camera comparisons. The harness fixes its own MinGW scheduler lifetime and joins video before teardown; these are reference-tool changes. The pinned Original input writes CLSR=1, while EX writes CLSR=0. Both request fast multiply. Primary MC1 measurements contradict the source comment about a fixed clock and expose different multiplier/cache behavior. Added explicit diagnostic register policies and requested/effective write traces; none is claimed as a physical MC1 implementation. See TIMING-PROFILE-VALIDATION.md. Hardware identity and CPU/GSU overlap must be resolved before replacing the production slowdown approximation. |
 | Native CPU execution and timing | Corrected hidden accumulator restoration, missing decimal arithmetic, SBC's wrapped-zero flag, program-bank operand wrapping, 16-bit read-modify-write order, MVN/MVP behavior and XCE. Added missing instruction/bus clocks and FastROM accounting. An independent pinned Ares CPU agrees on 12,192 instruction cases, 524,288 decimal ALU cases and 1,048,576 complete arithmetic routines. See CPU-PARITY-VALIDATION.md for the patch, reproducibility and scope. These counts exclude translated work and concurrent hardware timing; Original pacing still needs integration. |
 | Object view flags | Native SHOWVIEW_L resets flags before the invisible-object branch. Native ALIENFLAGS_L still sets AFINVIEWPL/AFLEFTPL for behind-camera objects taking `.dontkill`; only AFFRONTPL stays clear. Corrected both translated paths. The before/after Original route-2 comparison goes from 239 mismatches among 3,028 object views to zero. Sampled native CPU/GSU checks cover routes 2/3 in both games; the regular EX cockpit regression also asserts the invisible-player state. |
 | Isolated GSU timing audit | A second, pinned Ares GSU implementation agrees with all 70,980 reference rows and records 73,536 isolated calls. The comparison preserves all previously classified mesh-fixture differences. It exposed the MSSPRITE fixture's reliance on an implicit pixel-cache flush; both engines now execute the cartridge's RPIX/STOP. The adapter also completes pending SRAM writes before returning CPU-visible results. These development tools do not enter game packages. Full frame cadence still needs CPU overlap, DMA and video-phase accounting. |
@@ -106,6 +106,14 @@ addresses; do not interpret those particular diagnostic fields as EX state.
 
 ## Validation and local candidate
 
+- Timing-profile follow-up: **8/8 full-system cases passed**, then repeated
+  with all 40 trace hashes unchanged. Checks cover safe stage entry, every
+  clock-register override, unchanged EX source/divided-fast traces and the
+  aligned opening state. There are 1,368 camera calls / 23,256 matching words
+  and 12,720 GSU intervals per run. Summary and logs are
+  `docs/validation/timing-profile-audit*`; see TIMING-PROFILE-VALIDATION.md for
+  the hardware-source correction. This changes development tooling and
+  documentation, not the candidate's runtime or Original-pace formula.
 - Native camera follow-up: **61/61 passed in 452.37 seconds**, including both
   simulation/ending suites, SPC/MSU audio, all six live Wolf encounters and
   route timing checks. Logs: `ctest-20260905-native-camera.log` and its detailed

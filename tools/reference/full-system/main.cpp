@@ -11,6 +11,7 @@
 namespace sfc = ares::SuperFamicom;
 namespace {
 std::function<void(unsigned, unsigned)> cpu_hook;
+std::function<unsigned(unsigned, unsigned)> gsu_write_hook;
 std::function<void(unsigned, unsigned, unsigned, unsigned,
     std::uint64_t, std::uint64_t, bool)> gsu_hook;
 std::uint64_t gsu_clocks{}, gsu_started{};
@@ -21,6 +22,9 @@ extern "C" void sfc_audit_cpu(unsigned pc, unsigned clocks) {
     if (cpu_hook) cpu_hook(pc, clocks);
 }
 extern "C" void sfc_audit_gsu_step(unsigned clocks) { gsu_clocks += clocks; }
+extern "C" unsigned sfc_audit_gsu_write(unsigned address, unsigned data) {
+    return gsu_write_hook ? gsu_write_hook(address, data) : data;
+}
 extern "C" void sfc_audit_gsu_start(unsigned pc, unsigned clsr, unsigned cfgr, unsigned scmr) {
     if (gsu_active && gsu_hook)
         gsu_hook(gsu_entry, gsu_clsr, gsu_cfgr, gsu_scmr, gsu_started, gsu_clocks, false);
@@ -46,6 +50,8 @@ struct AuditPlatform : ares::Platform {
     std::mutex video_mutex;
     std::vector<std::uint32_t> pixels;
     unsigned width{}, height{}, pending_jump{};
+    unsigned jump_boundary{};
+    std::function<void()> before_jump;
 
     explicit AuditPlatform(const std::string& rom_path) {
         const std::string root = STARFOX_REFERENCE_ARES_ROOT;
@@ -58,8 +64,8 @@ struct AuditPlatform : ares::Platform {
         cartridge_pak->setAttribute("region", "NTSC");
         cartridge_pak->setAttribute("board", "GSU-RAM");
         // Use the shared NTSC oscillator, not the generic board's separate
-        // 21.44 MHz crystal. Ares still honors CLSR/CFGR; this does not impose
-        // a physical MARIO chip's fixed-clock restrictions (see README).
+        // 21.44 MHz crystal. This is the generic Ares GSU; optional register
+        // overrides measure timing sensitivity, not a physical MC1 revision.
         const auto work = rom[0x7fbd] ? 1024U << (rom[0x7fbd] & 7) : 0x8000U;
         const auto save = rom[0x7fd8] ? 1024U << rom[0x7fd8] : 0U;
         cartridge_pak->append("program.rom", rom);
@@ -76,13 +82,17 @@ struct AuditPlatform : ares::Platform {
         while (stream->pending()) stream->read(samples.data());
     }
     void log(ares::Node::Debugger::Tracer::Tracer, nall::string_view) override {
-        if (!pending_jump) return;
-        // A video yield can suspend an instruction. The tracer places this
-        // diagnostic direct-stage entry at the next instruction boundary.
+        if (!pending_jump || sfc::cpu.r.pc.d != jump_boundary
+            || sfc::superfx.regs.sfr.g || sfc::superfx.regs.ramcl) return;
+        // TRANSFER_L begins after the previous scene update has returned.
+        // A random instruction boundary can still be inside RUNMARIO's wait
+        // loop, with the GSU overwriting RAM that GAMESTART is initializing.
+        if (before_jump) before_jump();
         auto& r = sfc::cpu.r;
         r.pc = pending_jump; r.p = 0x34; r.e = false; r.b = 0; r.d = 0; r.s = 0x2ff;
         r.a = r.x = r.y = 0; r.wai = r.stp = false;
         pending_jump = 0;
+        before_jump = {};
         sfc::cpu.debugger.tracer.instruction->setEnabled(false);
     }
     void video(ares::Node::Video::Screen, const std::uint32_t* data,
@@ -106,7 +116,7 @@ struct SystemGuard {
     ares::Node::System& system;
     ~SystemGuard() { close(); }
     void close() {
-        cpu_hook = {}; gsu_hook = {};
+        cpu_hook = {}; gsu_hook = {}; gsu_write_hook = {};
         if (system) {
             // The reference's asynchronous colour conversion can still be
             // using PPU settings. Join it before the system unloads them.
@@ -119,7 +129,11 @@ struct SystemGuard {
 }
 
 int main(int argc, char** argv) { try {
-    if (argc != 6) throw std::runtime_error("Usage: full_reference ROM SYMBOLS MAP VIDEO_FRAMES OUTPUT_PREFIX");
+    if (argc != 6 && argc != 7) throw std::runtime_error(
+        "Usage: full_reference ROM SYMBOLS MAP VIDEO_FRAMES OUTPUT_PREFIX [source|divided-standard|divided-fast]");
+    const std::string policy = argc == 7 ? argv[6] : "source";
+    if (policy != "source" && policy != "divided-standard" && policy != "divided-fast")
+        throw std::runtime_error("Unknown GSU register policy: " + policy);
     const auto frames = std::stoul(argv[4]);
     if (frames < 120 || frames > 100000) throw std::runtime_error("VIDEO_FRAMES must be 120..100000");
     const auto rom = starfox::assets::RomImage::load(argv[1]);
@@ -134,6 +148,14 @@ int main(int argc, char** argv) { try {
         for (unsigned i = 0; i < size; ++i) sfc::cpu.wram[(address + i) & 0x1ffff] = value >> (8 * i);
     };
     starfox::simulation::Wdc65816 host_cpu(rom, &symbols);
+    const std::string prefix = argv[5], map = argv[3];
+    std::ofstream registers(prefix + "-registers.csv");
+    std::ofstream entry(prefix + "-entry.csv");
+    if (!registers || !entry) throw std::runtime_error("Cannot create register/entry traces");
+    registers << "period,video_frame,cpu_pc,register,requested,effective\n";
+    entry << "policy,map,video_frame,cpu_pc,gsu_running,pending_ram_clocks\n";
+    unsigned register_video = 0;
+    bool booting = true;
     AuditPlatform platform(argv[1]);
     ares::platform = &platform;
     ares::Node::System system;
@@ -142,26 +164,46 @@ int main(int argc, char** argv) { try {
     if (!sfc::load(system, "[Nintendo] Super Famicom (NTSC)"))
         throw std::runtime_error("System load failed");
     SystemGuard guard{system};
+    gsu_write_hook = [&](unsigned location, unsigned requested) {
+        if (location != 0x3037 && location != 0x3039) return requested;
+        auto effective = requested;
+        if (policy != "source") {
+            if (location == 0x3039) effective = requested & ~1U;
+            else if (policy == "divided-standard") effective = requested & ~0x20U;
+            else effective = requested | 0x20U;
+        }
+        registers << (booting ? "boot" : "stage") << ',' << register_video << ','
+            << unsigned(sfc::cpu.r.pc.d) << ',' << location << ',' << requested << ',' << effective << '\n';
+        return effective;
+    };
     sfc::cartridgeSlot.port->allocate(); sfc::cartridgeSlot.port->connect();
     sfc::controllerPort1.port->allocate("Gamepad"); sfc::controllerPort1.port->connect();
     system->power();
-    for (unsigned i = 0; i < 600; ++i) system->run();
-    const std::string prefix = argv[5], map = argv[3];
+    for (register_video = 0; register_video < 600; ++register_video) system->run();
+    booting = false;
     sfc::ppu.screen()->refresh();
     platform.capture(prefix + "-boot.ppm");
     std::cout << "Boot PC $" << std::hex << unsigned(sfc::cpu.r.pc.d) << std::dec << '\n';
+    std::cout << "GSU register policy: " << policy << " (generic Ares GSU, shared NTSC oscillator)\n";
     if (map != "boot") {
         std::smatch match;
         if (!std::regex_match(map, match, std::regex("LEVEL([1-7])_([1-9][0-9]*)")))
             throw std::runtime_error("MAP must be boot or a numeric LEVEL route/stage symbol");
         const auto route = std::stoul(match[1].str()) - 1;
-        write(address("MAPBANK"), address(map.c_str()) >> 16, 1);
-        write(address("MAPPTR"), address(map.c_str()) & 0x7fff);
-        write(address("WHICHROUTE"), route, 1);
-        write(address("CURRENTLEVEL"), route, 1);
-        if (!symbols.find("ACTUALROUTE").empty()) write(address("ACTUALROUTE"), route, 1);
-        write(address("STAGE"), std::stoul(match[2].str()) - 1);
+        const auto target = address(map.c_str()), stage = static_cast<unsigned>(std::stoul(match[2].str()) - 1);
+        platform.before_jump = [&, target, route, stage] {
+            entry << policy << ',' << map << ',' << register_video << ',' << unsigned(sfc::cpu.r.pc.d)
+                << ',' << unsigned(sfc::superfx.regs.sfr.g) << ',' << unsigned(sfc::superfx.regs.ramcl) << '\n';
+            write(address("MAPBANK"), target >> 16, 1);
+            write(address("MAPPTR"), target & 0x7fff);
+            write(address("WHICHROUTE"), route, 1);
+            write(address("CURRENTLEVEL"), route, 1);
+            if (!symbols.find("ACTUALROUTE").empty()) write(address("ACTUALROUTE"), route, 1);
+            write(address("STAGE"), stage);
+            std::cout << "Stage entry at video frame " << register_video << ", GSU idle\n";
+        };
         platform.pending_jump = address("GAMESTART");
+        platform.jump_boundary = address("TRANSFER_L");
         sfc::cpu.debugger.tracer.instruction->setEnabled(true);
     }
     std::ofstream complete(prefix + "-frames.csv"), camera(prefix + "-camera.csv"), launches(prefix + "-gsu.csv");
@@ -182,6 +224,7 @@ int main(int argc, char** argv) { try {
         "WMAT11W", "WMAT12W", "WMAT13W", "WMAT21W", "WMAT22W", "WMAT23W", "WMAT31W", "WMAT32W", "WMAT33W"})
         camera_fields.emplace_back(name, address(name));
     cpu_hook = [&](unsigned pc, unsigned clocks) {
+        if (platform.pending_jump) return;
         if (pc == get_view && camera_calls < 200 && camera_error.empty()) {
             for (unsigned i = 0; i < 0x20000; ++i) host_cpu.write8(0x7e0000 + i, sfc::cpu.wram[i]);
             for (unsigned i = 0; i < 0x10000; ++i) host_cpu.write8(0x700000 + i, sfc::superfx.ram.read(i));
@@ -224,6 +267,7 @@ int main(int argc, char** argv) { try {
     };
     for (unsigned frame = 0; frame < frames; ++frame) {
         video_index = frame;
+        register_video = frame;
         // This source flag suppresses some damage, but does not establish a
         // death-free playthrough. Respawns must remain visible in the trace.
         write(player_flags, read(player_flags, 1) | 8, 1);

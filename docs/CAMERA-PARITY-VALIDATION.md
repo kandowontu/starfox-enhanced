@@ -85,10 +85,10 @@ fixes; instruction execution and emulated frame timing are unchanged.
 - The user's saved pregame configuration is unchanged.
 
 The Original input writes CLSR=1 and EX writes CLSR=0; both use CFGR=$a0 in
-these traces. Ares's general GSU honors those registers. UltraStarFox's own
-ROM.INC notes that its `fast` selector has no effect on the physical MARIO
-chip, so the current reference is not a fixed-clock MARIO hardware profile.
-That distinction must be resolved before using these traces as stock-hardware
+these traces. Ares's general GSU honors those registers. A follow-up checked
+UltraStarFox's fixed-clock MARIO comment against primary hardware tests and
+found conflicting evidence: see [timing profile validation](TIMING-PROFILE-VALIDATION.md).
+These reconstructed-ROM timings must not be described as stock-hardware
 cadence. GSU intervals also overlap CPU work, and pending SRAM writes can
 complete after STOP. They cannot simply be added to CPU frame deltas.
 

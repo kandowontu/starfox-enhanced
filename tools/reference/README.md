@@ -204,15 +204,19 @@ tmp/full-reference-build/full_reference.exe upstream-ultrastarfox/SF.SFC upstrea
 tmp/full-reference-build/full_reference.exe tmp/runtime-inputs/starfox-ex/SFES.SFC assets/symbols/starfox-ex.txt LEVEL3_1 1200 tmp/full-ex-3
 ```
 
-This boots the cartridge for 600 NTSC video frames, then enters GAMESTART at
-a CPU instruction boundary with the requested map and zero-based route/stage
+This boots the cartridge for 600 NTSC video frames, then waits for TRANSFER_L
+with the GSU stopped and its RAM write buffer empty. At that instruction
+boundary it enters GAMESTART with the requested map and zero-based route/stage
 variables. The GSU core uses the shared NTSC oscillator and honors the
 cartridge's CLSR/CFGR/SCMR writes. The pinned Original ROM writes CLSR=1 and
-CFGR=$a0; EX writes CLSR=0 and CFGR=$a0 in the sampled stages. In particular,
-this is **not** an enforced, fixed-10.7-MHz MARIO chip profile: UltraStarFox's
-ROM.INC documents that its `fast` option has no effect on that physical chip,
-whereas Ares's general GSU model honors the selector. Resolve that hardware
-profile difference before treating these timings as stock-cartridge cadence.
+CFGR=$a0; EX writes CLSR=0 and CFGR=$a0 in the sampled stages. These are the
+reconstructed inputs' settings, not proof of retail cartridge timing.
+UltraStarFox's ROM.INC comment about a fixed-clock MARIO chip conflicts with
+[nocash's direct MC1 measurements](https://forums.nesdev.org/viewtopic.php?start=45&t=5964):
+CLSR changed measured speed, while fast multiply had no effect on that chip.
+The same report describes different cache behavior, so forcing two registers
+does not establish an accurate MC1 model. See
+[timing profile validation](../../docs/TIMING-PROFILE-VALIDATION.md).
 EX maps its expansion work RAM
 and header-declared save RAM contiguously. Input is neutral, and the harness
 sets PSHIPFLAGS3 bit 3 each video frame. That flag does not prevent every form
@@ -233,8 +237,33 @@ The output prefix receives:
   elapsed coprocessor clocks through STOP. A zero `stopped` flag records a
   superseding launch. These intervals exclude any SRAM write that finishes
   after STOP. They overlap CPU work and cannot simply be added to CPU clocks.
+- `-registers.csv`: every CLSR/CFGR write during boot and the stage, including
+  the CPU PC, requested value and effective value. With the default `source`
+  policy, every write is unchanged.
+- `-entry.csv`: the selected policy/map and actual stage-entry boundary,
+  including assertions' evidence that the GSU and RAM write buffer were idle.
 - `-boot.ppm` / `-final.ppm`: reference display captures for checking entry
   context. A successful camera comparison is not a full-scene RGB comparison.
+
+An optional final argument selects a diagnostic register policy:
+`source` preserves writes; `divided-standard` clears CLSR bit 0 and CFGR bit 5;
+`divided-fast` clears CLSR bit 0 and sets CFGR bit 5. Other bits, including the
+IRQ mask, are preserved. Overrides apply from boot and do not alter ROM bytes.
+They measure configuration sensitivity in the generic Ares GSU, **not** a
+physical MARIO revision. Never label an override run as a stock-ROM or hardware
+capture. For example:
+
+```powershell
+tmp/full-reference-build/full_reference.exe upstream-ultrastarfox/SF.SFC upstream-ultrastarfox/SYMBOLS.TXT LEVEL2_1 1200 tmp/divided-original divided-standard
+python tools/reference/verify-timing-profiles.py
+```
+
+The verification script runs all three policies on route 2 in both variants,
+plus source-policy route 3. It checks completed gameplay, camera comparisons,
+safe entry and every requested/effective register write. EX's source and
+divided-fast policies must produce identical frame/camera/GSU/register traces,
+because this input already selects the divided clock with fast multiply.
+Logs and a checksum summary go to `tmp/timing-profile-audit` by default.
 
 These traces supply a full-system oracle for the unfinished Original-pace
 integration. The runtime's current object-count estimate is still not a
