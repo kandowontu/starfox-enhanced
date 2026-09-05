@@ -1,0 +1,132 @@
+[OUTPUT]
+Internal ctest changing into directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+
+[HANDLER_OUTPUT]
+Test project C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+
+      Start 10: starfox_cpu_timing_tests
+      Start 58: starfox_ex_level_clear
+      Start 31: starfox_upstream_level_clear
+      Start 48: starfox_ex_port_regressions
+ 1/61 Test #10: starfox_cpu_timing_tests ..................   Passed    0.12 sec
+      Start 56: starfox_ex_timing_parity
+ 2/61 Test #56: starfox_ex_timing_parity ..................   Passed   49.64 sec
+      Start 59: starfox_ex_simulation_data
+ 3/61 Test #48: starfox_ex_port_regressions ...............   Passed   88.83 sec
+      Start 26: starfox_upstream_ending_audio
+ 4/61 Test #58: starfox_ex_level_clear ....................   Passed   93.37 sec
+      Start 47: starfox_ex_orchestra_audio
+ 5/61 Test #31: starfox_upstream_level_clear ..............   Passed  106.41 sec
+      Start 46: starfox_ex_ending_audio
+ 6/61 Test #26: starfox_upstream_ending_audio .............   Passed   29.30 sec
+      Start 29: starfox_upstream_msu_ending_audio
+ 7/61 Test #47: starfox_ex_orchestra_audio ................   Passed   27.50 sec
+      Start 28: starfox_upstream_timing_parity
+ 8/61 Test #46: starfox_ex_ending_audio ...................   Passed   26.26 sec
+      Start 44: starfox_ex_ending
+ 9/61 Test #44: starfox_ex_ending .........................   Passed   11.97 sec
+      Start 18: starfox_upstream_ending
+10/61 Test #18: starfox_upstream_ending ...................   Passed    5.59 sec
+      Start 41: starfox_embedded_asset_lifecycle
+11/61 Test #29: starfox_upstream_msu_ending_audio .........   Passed   32.48 sec
+      Start 60: starfox_ex_intro_runtime_smoke
+12/61 Test #28: starfox_upstream_timing_parity ............   Passed   30.34 sec
+      Start 53: starfox_ex_reference_view_2
+13/61 Test #53: starfox_ex_reference_view_2 ...............   Passed    2.79 sec
+      Start 54: starfox_ex_reference_view_3
+14/61 Test #54: starfox_ex_reference_view_3 ...............   Passed    2.80 sec
+      Start 19: starfox_upstream_port_regressions
+15/61 Test #19: starfox_upstream_port_regressions .........   Passed    3.95 sec
+      Start 15: starfox_upstream_simulation_data
+16/61 Test #60: starfox_ex_intro_runtime_smoke ............   Passed   16.32 sec
+      Start 24: starfox_upstream_reference_view_2
+17/61 Test #24: starfox_upstream_reference_view_2 .........   Passed    2.45 sec
+      Start 25: starfox_upstream_reference_view_3
+18/61 Test #25: starfox_upstream_reference_view_3 .........   Passed    2.38 sec
+      Start 57: starfox_ex_hitlist
+19/61 Test #15: starfox_upstream_simulation_data ..........   Passed   11.82 sec
+      Start 30: starfox_upstream_hitlist
+20/61 Test #30: starfox_upstream_hitlist ..................   Passed    2.68 sec
+      Start 49: starfox_ex_reference_render
+21/61 Test #57: starfox_ex_hitlist ........................   Passed    3.84 sec
+      Start 39: starfox_exit_confirmation_smoke
+22/61 Test #39: starfox_exit_confirmation_smoke ...........   Passed    1.04 sec
+      Start 20: starfox_upstream_reference_render
+23/61 Test #49: starfox_ex_reference_render ...............   Passed    2.59 sec
+      Start 38: starfox_runtime_smoke
+24/61 Test #20: starfox_upstream_reference_render .........   Passed    1.67 sec
+      Start 40: starfox_embedded_runtime_smoke
+25/61 Test #38: starfox_runtime_smoke .....................   Passed    2.74 sec
+      Start 42: starfox_ex_direct_audio
+26/61 Test #40: starfox_embedded_runtime_smoke ............   Passed    2.56 sec
+      Start 16: starfox_upstream_direct_audio
+27/61 Test #41: starfox_embedded_asset_lifecycle ..........   Passed   31.53 sec
+      Start 37: starfox_upstream_route_lifecycle
+28/61 Test #42: starfox_ex_direct_audio ...................   Passed    1.63 sec
+      Start 13: starfox_uwp_input_tests
+29/61 Test #13: starfox_uwp_input_tests ...................   Passed    0.19 sec
+      Start 55: starfox_ex_reference_sprites
+30/61 Test #16: starfox_upstream_direct_audio .............   Passed    1.50 sec
+      Start 12: starfox_audio_queue_tests
+31/61 Test #12: starfox_audio_queue_tests .................   Passed    0.19 sec
+      Start 21: starfox_upstream_reference_math
+32/61 Test #55: starfox_ex_reference_sprites ..............   Passed    0.27 sec
+      Start 45: starfox_ex_shape_coverage
+33/61 Test #37: starfox_upstream_route_lifecycle ..........   Passed    0.91 sec
+      Start 61: starfox_shape_audit_tests
+34/61 Test #21: starfox_upstream_reference_math ...........   Passed    0.15 sec
+      Start 22: starfox_upstream_reference_dust
+35/61 Test #45: starfox_ex_shape_coverage .................   Passed    0.13 sec
+      Start 23: starfox_upstream_reference_grid
+36/61 Test #22: starfox_upstream_reference_dust ...........   Passed    0.10 sec
+      Start 52: starfox_ex_reference_grid
+37/61 Test #23: starfox_upstream_reference_grid ...........   Passed    0.11 sec
+      Start 51: starfox_ex_reference_dust
+38/61 Test #52: starfox_ex_reference_grid .................   Passed    0.09 sec
+      Start 50: starfox_ex_reference_math
+39/61 Test #51: starfox_ex_reference_dust .................   Passed    0.07 sec
+      Start  5: starfox_retail_variant_canonicalization
+40/61 Test #50: starfox_ex_reference_math .................   Passed    0.09 sec
+      Start 43: starfox_ex_transition_parity
+41/61 Test #61: starfox_shape_audit_tests .................   Passed    0.40 sec
+      Start 27: starfox_upstream_reference_sprites
+42/61 Test #27: starfox_upstream_reference_sprites ........   Passed    0.05 sec
+      Start 35: starfox_upstream_stage_trace
+43/61 Test  #5: starfox_retail_variant_canonicalization ...   Passed    0.23 sec
+      Start  4: starfox_retail_v12_reconstruction
+44/61 Test #43: starfox_ex_transition_parity ..............   Passed    0.19 sec
+      Start 11: starfox_runtime_input_tests
+45/61 Test #35: starfox_upstream_stage_trace ..............   Passed    0.16 sec
+      Start  1: starfox_reference_ares_adapter
+46/61 Test  #4: starfox_retail_v12_reconstruction .........   Passed    0.14 sec
+      Start 17: starfox_upstream_transition_parity
+47/61 Test  #1: starfox_reference_ares_adapter ............   Passed    0.03 sec
+      Start  7: starfox_msu1_pack_tests
+48/61 Test #11: starfox_runtime_input_tests ...............   Passed    0.17 sec
+      Start 34: starfox_upstream_game_init
+49/61 Test #17: starfox_upstream_transition_parity ........   Passed    0.11 sec
+      Start 36: starfox_upstream_planet_probe
+50/61 Test  #7: starfox_msu1_pack_tests ...................   Passed    0.14 sec
+      Start 14: starfox_upstream_shape_coverage
+51/61 Test #34: starfox_upstream_game_init ................   Passed    0.11 sec
+      Start 33: starfox_upstream_strategy_trace
+52/61 Test #36: starfox_upstream_planet_probe .............   Passed    0.11 sec
+      Start 32: starfox_upstream_map_trace
+53/61 Test #14: starfox_upstream_shape_coverage ...........   Passed    0.11 sec
+      Start  6: starfox_core_tests
+54/61 Test #33: starfox_upstream_strategy_trace ...........   Passed    0.14 sec
+      Start  3: starfox_bps_tests
+55/61 Test #32: starfox_upstream_map_trace ................   Passed    0.10 sec
+      Start  8: starfox_shape_decoder_tests
+56/61 Test  #3: starfox_bps_tests .........................   Passed    0.05 sec
+      Start  9: starfox_simulation_tests
+57/61 Test  #6: starfox_core_tests ........................   Passed    0.10 sec
+      Start  2: starfox_reference_cpu
+58/61 Test  #9: starfox_simulation_tests ..................   Passed    0.03 sec
+59/61 Test  #8: starfox_shape_decoder_tests ...............   Passed    0.09 sec
+60/61 Test  #2: starfox_reference_cpu .....................   Passed   11.68 sec
+61/61 Test #59: starfox_ex_simulation_data ................   Passed  147.63 sec
+
+100% tests passed, 0 tests failed out of 61
+
+Total Test time (real) = 197.41 sec

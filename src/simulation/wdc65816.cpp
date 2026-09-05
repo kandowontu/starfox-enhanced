@@ -1,6 +1,7 @@
 #include "starfox/simulation/wdc65816.hpp"
 
 #include "starfox/assets/decrunch.hpp"
+#include "starfox/simulation/cpu_timing.hpp"
 
 #include "cpu/65816/cpu_65c816.h"
 
@@ -20,7 +21,9 @@ namespace starfox::simulation {
 namespace {
 
 constexpr std::uint32_t kAddressSpaceSize = 1U << 24U;
-constexpr std::uint32_t kPageBits = 12U;
+// Bus timing changes at $4200, within the former 4 KiB I/O page. 512-byte
+// pages retain the native access length without modifying the RetroCPU core.
+constexpr std::uint32_t kPageBits = 9U;
 constexpr std::uint32_t kPageSize = 1U << kPageBits;
 constexpr std::uint32_t kPageCount = kAddressSpaceSize / kPageSize;
 constexpr std::uint32_t kBootstrap = 0x7e0100U;
@@ -84,6 +87,8 @@ struct Wdc65816::Impl {
     SystemBus bus{};
     std::vector<Page> pages{static_cast<std::size_t>(kPageCount)};
     std::uint32_t rom_bank_count{};
+    bool fast_rom{};
+    std::uint64_t host_setup_master_clocks{};
     std::map<std::uint8_t, std::vector<std::uint8_t>> compatible_rom_banks;
     std::vector<std::uint8_t> wram = std::vector<std::uint8_t>(0x20000U);
     std::array<std::uint8_t, 8> controller{};
@@ -309,7 +314,7 @@ struct Wdc65816::Impl {
             || (low >= 0x2100U && low < 0x2140U)
             || (low >= 0x4202U && low <= 0x4206U)
             || (low >= 0x4214U && low <= 0x4217U)
-            || low == 0x420bU || low == 0x420cU
+            || low == 0x420bU || low == 0x420cU || low == 0x420dU
             || (low >= 0x2180U && low <= 0x2183U)
             || (low >= 0x4300U && low < 0x4380U)
             || (low >= 0x3000U && low < 0x3300U);
@@ -443,6 +448,14 @@ struct Wdc65816::Impl {
             self.dma_registers[low - 0x4300U] = *data;
         } else if (low == 0x420bU) {
             self.run_dma(*data);
+        } else if (low == 0x420dU) {
+            const bool fast = (*data & 1U) != 0U;
+            if (self.fast_rom != fast) {
+                self.fast_rom = fast;
+                for (std::uint32_t page = 0; page < kPageCount; ++page)
+                    self.pages[page].cycles_per_access =
+                        cpu_access_master_clocks(page << kPageBits, fast);
+            }
         } else if (low == 0x4202U) {
             self.multiply_a = *data;
         } else if (low == 0x4203U) {
@@ -654,12 +667,13 @@ struct Wdc65816::Impl {
             mode_reset_bytes[i] = find_symbol(symbols, byte_names[i]);
         for (unsigned i = 0; i < word_names.size(); ++i)
             mode_reset_words[i] = find_symbol(symbols, word_names[i]);
-        for (auto& page : pages) {
+        for (std::uint32_t index = 0; index < kPageCount; ++index) {
+            auto& page = pages[index];
             page.ptr = nullptr;
             page.flags = 0;
             page.io_mask = 0;
             page.io_eq = 1;
-            page.cycles_per_access = 1;
+            page.cycles_per_access = cpu_access_master_clocks(index << kPageBits, false);
         }
         bus.Init(kPageBits, 24, pages.data());
         bus.open_bus_is_data = true;
@@ -675,24 +689,28 @@ struct Wdc65816::Impl {
         for (std::uint32_t bank = 0; bank < 0x40U; ++bank) {
             bus.Map(bank << 16U, wram.data(), 0x2000U);
             bus.Map((bank | 0x80U) << 16U, wram.data(), 0x2000U);
-            auto& low_io_page = pages[((bank << 16U) | 0x4000U) >> kPageBits];
-            low_io_page.io_mask = 0xf000U;
-            low_io_page.io_eq = 0x4000U;
-            auto& high_io_page = pages[(((bank | 0x80U) << 16U) | 0x4000U) >> kPageBits];
-            high_io_page.io_mask = 0xf000U;
-            high_io_page.io_eq = 0x4000U;
+            for (std::uint32_t low = 0x4000U; low < 0x5000U; low += kPageSize) {
+                auto& low_io_page = pages[((bank << 16U) | low) >> kPageBits];
+                low_io_page.io_mask = 0xf000U;
+                low_io_page.io_eq = 0x4000U;
+                auto& high_io_page = pages[(((bank | 0x80U) << 16U) | low) >> kPageBits];
+                high_io_page.io_mask = 0xf000U;
+                high_io_page.io_eq = 0x4000U;
+            }
             auto& low_apu_page = pages[((bank << 16U) | 0x2000U) >> kPageBits];
             low_apu_page.io_mask = 0xfe00U;
             low_apu_page.io_eq = 0x2000U;
             auto& high_apu_page = pages[(((bank | 0x80U) << 16U) | 0x2000U) >> kPageBits];
             high_apu_page.io_mask = 0xfe00U;
             high_apu_page.io_eq = 0x2000U;
-            auto& low_superfx_page = pages[((bank << 16U) | 0x3000U) >> kPageBits];
-            low_superfx_page.io_mask = 0xfc00U;
-            low_superfx_page.io_eq = 0x3000U;
-            auto& high_superfx_page = pages[(((bank | 0x80U) << 16U) | 0x3000U) >> kPageBits];
-            high_superfx_page.io_mask = 0xfc00U;
-            high_superfx_page.io_eq = 0x3000U;
+            for (std::uint32_t low = 0x3000U; low < 0x3400U; low += kPageSize) {
+                auto& low_superfx_page = pages[((bank << 16U) | low) >> kPageBits];
+                low_superfx_page.io_mask = 0xfc00U;
+                low_superfx_page.io_eq = 0x3000U;
+                auto& high_superfx_page = pages[(((bank | 0x80U) << 16U) | low) >> kPageBits];
+                high_superfx_page.io_mask = 0xfc00U;
+                high_superfx_page.io_eq = 0x3000U;
+            }
         }
 
         auto* rom_bytes = const_cast<std::uint8_t*>(rom_image.bytes().data());
@@ -756,11 +774,13 @@ struct Wdc65816::Impl {
         // third-party core's private emulation flag changes normally.
         write8(kBootstrap + 0U, 0x18U); // CLC
         write8(kBootstrap + 1U, 0xfbU); // XCE
+        cpu.internal_cycle_timing = 6U;
         cpu.PowerOn();
         cpu.SetRegister("pc", kBootstrap);
         cpu.SingleStep();
         cpu.SingleStep();
         write8(kReturnSentinel, 0xeaU); // NOP; execution stops before this byte.
+        host_setup_master_clocks = cpu.cpu_state.cycle;
     }
 
     std::uint8_t read8(std::uint32_t address) const {
@@ -2597,6 +2617,10 @@ std::uint16_t Wdc65816::read16(std::uint32_t address) const {
         | (static_cast<std::uint16_t>(read8(address + 1U)) << 8U);
 }
 
+std::uint64_t Wdc65816::executed_master_clocks() const noexcept {
+    return impl_->cpu.cpu_state.cycle - impl_->host_setup_master_clocks;
+}
+
 void Wdc65816::write8(std::uint32_t address, std::uint8_t value) {
     impl_->write8(address, value);
 }
@@ -2782,7 +2806,7 @@ std::size_t Wdc65816::call(
     impl_->task_active = false;
     auto& cpu = impl_->cpu;
     cpu.SetRegister("p", registers.status);
-    cpu.SetRegister("a", registers.a);
+    cpu.SetRegister("c", registers.a); // restore A and its hidden high byte
     cpu.SetRegister("x", registers.x);
     cpu.SetRegister("y", registers.y);
     cpu.SetRegister("d", registers.direct);
@@ -2791,10 +2815,12 @@ std::size_t Wdc65816::call(
     const auto return_sentinel = long_return
         ? kReturnSentinel
         : (address & 0xff0000U) | (kReturnSentinel & 0xffffU);
+    const auto setup_start = cpu.cpu_state.cycle;
     if (long_return) {
         cpu.Push(static_cast<std::uint8_t>(return_sentinel >> 16U));
     }
     cpu.Push(static_cast<std::uint16_t>((kReturnSentinel & 0xffffU) - 1U));
+    impl_->host_setup_master_clocks += cpu.cpu_state.cycle - setup_start;
     cpu.SetRegister("pb", address >> 16U);
     cpu.SetRegister("pc", address);
 
@@ -2884,14 +2910,16 @@ Wdc65816TaskResult Wdc65816::begin_long_task(
     impl_->task_entry = address;
     impl_->task_return_sentinel = kReturnSentinel;
     cpu.SetRegister("p", registers.status);
-    cpu.SetRegister("a", registers.a);
+    cpu.SetRegister("c", registers.a); // restore A and its hidden high byte
     cpu.SetRegister("x", registers.x);
     cpu.SetRegister("y", registers.y);
     cpu.SetRegister("d", registers.direct);
     cpu.SetRegister("sp", registers.stack);
     cpu.SetRegister("db", registers.data_bank);
+    const auto setup_start = cpu.cpu_state.cycle;
     cpu.Push(static_cast<std::uint8_t>(kReturnSentinel >> 16U));
     cpu.Push(static_cast<std::uint16_t>((kReturnSentinel & 0xffffU) - 1U));
+    impl_->host_setup_master_clocks += cpu.cpu_state.cycle - setup_start;
     cpu.SetRegister("pb", address >> 16U);
     cpu.SetRegister("pc", address);
     return run_task(registers, stop_addresses, instruction_limit,
@@ -2910,14 +2938,16 @@ Wdc65816TaskResult Wdc65816::begin_near_task(
     impl_->task_return_sentinel =
         (address & 0xff0000U) | (kReturnSentinel & 0xffffU);
     cpu.SetRegister("p", registers.status);
-    cpu.SetRegister("a", registers.a);
+    cpu.SetRegister("c", registers.a); // restore A and its hidden high byte
     cpu.SetRegister("x", registers.x);
     cpu.SetRegister("y", registers.y);
     cpu.SetRegister("d", registers.direct);
     cpu.SetRegister("sp", registers.stack);
     cpu.SetRegister("db", registers.data_bank);
+    const auto setup_start = cpu.cpu_state.cycle;
     cpu.Push(static_cast<std::uint16_t>(
         (impl_->task_return_sentinel & 0xffffU) - 1U));
+    impl_->host_setup_master_clocks += cpu.cpu_state.cycle - setup_start;
     cpu.SetRegister("pb", address >> 16U);
     cpu.SetRegister("pc", address);
     return run_task(registers, stop_addresses, instruction_limit,

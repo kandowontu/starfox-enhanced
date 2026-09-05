@@ -1,0 +1,321 @@
+diff --git a/cpu/65816/cpu_65c816.h b/cpu/65816/cpu_65c816.h
+index a722927..4197573 100644
+--- a/cpu/65816/cpu_65c816.h
++++ b/cpu/65816/cpu_65c816.h
+@@ -103,7 +103,7 @@ public:
+ 	}
+ 	void ReadPBR(uint32_t addr, uint16_t& v)
+ 	{
+-		ReadRaw(cpu_state.code_segment_base | (addr & 0xFFFF), v);
++		ReadU16NoCrossBank(cpu_state.code_segment_base, addr, v);
+ 	}
+ 	void ReadDBR(uint32_t addr, uint8_t& v)
+ 	{
+@@ -224,8 +224,6 @@ public:
+ 
+ 	bool BlockMove(uint32_t src_bank, uint32_t dest_bank, uint16_t increment)
+ 	{
+-		if(cpu_state.regs.a.u16 == 0xFFFF)
+-			return true;
+ 		if(fast_block_moves) {
+ 			FastBlockMove(src_bank, dest_bank, increment);
+ 			return true;
+@@ -234,8 +232,13 @@ public:
+ 		dest_bank <<= 16;
+ 		uint32_t src = src_bank | cpu_state.regs.x.u16;
+ 		uint32_t dst = dest_bank | cpu_state.regs.y.u16;
+-		cpu_state.regs.x.u16 += increment;
+-		cpu_state.regs.y.u16 += increment;
++		if(mode_long_xy) {
++			cpu_state.regs.x.u16 += increment;
++			cpu_state.regs.y.u16 += increment;
++		} else {
++			cpu_state.regs.x.u8[0] += increment;
++			cpu_state.regs.y.u8[0] += increment;
++		}
+ 		cpu_state.regs.a.u16--;
+ 
+ 		uint8_t byte;
+@@ -243,7 +246,8 @@ public:
+ 		WriteU8(dst, byte);
+ 		cpu_state.data_segment_base = dest_bank;
+ 
+-		return false;
++		InternalOp(2);
++		return cpu_state.regs.a.u16 == 0xffff;
+ 	}
+ 
+ 	void OnUpdateMode();
+diff --git a/cpu/65816/cpu_65c816_instructions.inl b/cpu/65816/cpu_65c816_instructions.inl
+index 37b6b86..db8de78 100644
+--- a/cpu/65816/cpu_65c816_instructions.inl
++++ b/cpu/65816/cpu_65c816_instructions.inl
+@@ -1,3 +1,5 @@
++#include "starfox/simulation/bcd_arithmetic.hpp"
++
+ enum {
+ 	// This must match the order of CpuStateImpl::Registers in the header
+ 	RA, RX, RY, RD, RSP, REG_MAX
+@@ -23,7 +25,13 @@ struct Addr24bitOp
+ 		auto addr = U::CalcEffectiveAddress(cpu);
+ 		typename U::Base::A ret;
+ 		cpu->ReadRaw(addr, ret);
+-		cpu->WriteRaw(addr, fn(ret));
++		const auto result = fn(ret);
++        if constexpr(sizeof(typename U::Base::A) == 2) {
++            cpu->WriteRaw(addr + 1, static_cast<uint8_t>(result >> 8));
++            cpu->WriteRaw(addr, static_cast<uint8_t>(result));
++        } else {
++            cpu->WriteRaw(addr, result);
++        }
+ 	}
+ 
+ 	template<uint32_t reg>
+@@ -65,7 +73,13 @@ struct Addr16bitDataOp
+ 		auto addr = U::CalcEffectiveAddress(cpu);
+ 		typename U::Base::A ret;
+ 		cpu->ReadDBR(addr, ret);
+-		cpu->WriteDBR(addr, fn(ret));
++		const auto result = fn(ret);
++        if constexpr(sizeof(typename U::Base::A) == 2) {
++            cpu->WriteDBR(addr + 1, static_cast<uint8_t>(result >> 8));
++            cpu->WriteDBR(addr, static_cast<uint8_t>(result));
++        } else {
++            cpu->WriteDBR(addr, result);
++        }
+ 	}
+ 
+ 	template<uint32_t reg>
+@@ -119,7 +133,13 @@ struct Addr16bitZeroOp
+ 		auto addr = U::CalcEffectiveAddress(cpu);
+ 		typename U::Base::A ret;
+ 		cpu->ReadZero(addr, ret);
+-		cpu->WriteZero(addr, fn(ret));
++		const auto result = fn(ret);
++        if constexpr(sizeof(typename U::Base::A) == 2) {
++            cpu->WriteZero(addr + 1, static_cast<uint8_t>(result >> 8));
++            cpu->WriteZero(addr, static_cast<uint8_t>(result));
++        } else {
++            cpu->WriteZero(addr, result);
++        }
+ 	}
+ 
+ 	template<uint32_t reg>
+@@ -267,7 +287,7 @@ struct AddrAbsBase : public Addr24bitOp<AddrAbsBase<offset_reg, T, check_extra_c
+ 		uint32_t eff_addr = addr;
+ 		if constexpr(offset_reg != REG_MAX) {
+ 			eff_addr += cpu->cpu_state.regs.reglist[offset_reg].u16;
+-			if(check_extra_cycle && ((eff_addr ^ addr) & 0xFF00))
++			if(check_extra_cycle && (cpu->mode_long_xy || ((eff_addr ^ addr) & 0xFF00)))
+ 				cpu->cpu_state.cycle += cpu->internal_cycle_timing;
+ 		}
+ 		return eff_addr + cpu->cpu_state.data_segment_base;
+@@ -542,6 +562,7 @@ struct AddrDirectIndirect : Addr24bitOp<AddrDirectIndirect<AType, XYType>>
+ 	{
+ 		uint8_t addr;
+ 		cpu->ReadPBR(cpu->cpu_state.ip + 1, addr);
++		if(cpu->cpu_state.regs.d.u8[0]) cpu->InternalOp();
+ 		uint16_t ret;
+ 		cpu->ReadZero(cpu->cpu_state.regs.d.u16 + addr, ret);
+ 		return cpu->cpu_state.data_segment_base + ret;
+@@ -618,7 +639,7 @@ struct AddrDirectIndirectY : Addr24bitOp<AddrDirectIndirectY<AType, XYType, chec
+ 		uint16_t ret;
+ 		AddrDirect<AType, XYType, emulation>::Read(cpu, ret);
+ 		uint32_t sum = (uint32_t)ret + (uint32_t)cpu->cpu_state.regs.y.u16;
+-		if(check_extra_cycle && !cpu->mode_long_xy && ((sum ^ ret) & 0x100))
++		if(check_extra_cycle && (cpu->mode_long_xy || ((sum ^ ret) & 0xFF00)))
+ 			cpu->cpu_state.cycle += cpu->internal_cycle_timing;
+ 		return cpu->cpu_state.data_segment_base + sum;
+ 	}
+@@ -657,6 +678,7 @@ struct AddrDirectIndirectLong : Addr24bitOp<AddrDirectIndirectLong<AType, XYType
+ 	{
+ 		uint8_t addr;
+ 		cpu->ReadPBR(cpu->cpu_state.ip + 1, addr);
++		if(cpu->cpu_state.regs.d.u8[0]) cpu->InternalOp();
+ 		uint16_t effective_addr = cpu->cpu_state.regs.d.u16 + addr;
+ 		uint16_t zp_addr;
+ 		cpu->ReadZero(effective_addr, zp_addr);
+@@ -698,6 +720,7 @@ struct AddrDirectIndirectLongY : Addr24bitOp<AddrDirectIndirectLongY<AType, XYTy
+ 	{
+ 		uint8_t addr;
+ 		cpu->ReadPBR(cpu->cpu_state.ip + 1, addr);
++		if(cpu->cpu_state.regs.d.u8[0]) cpu->InternalOp();
+ 		uint16_t direct_addr = cpu->cpu_state.regs.d.u16 + addr;
+ 		uint16_t zp_addr;
+ 		cpu->ReadZero(direct_addr, zp_addr);
+@@ -740,6 +763,7 @@ struct AddrStack : Addr16bitZeroOp<AddrStack<AType, XYType>>
+ 	{
+ 		uint8_t addr;
+ 		cpu->ReadPBR(cpu->cpu_state.ip + 1, addr);
++		cpu->InternalOp(1);
+ 		return cpu->cpu_state.regs.sp.u16 + addr;
+ 	}
+ 
+@@ -776,6 +800,7 @@ struct AddrStackY : Addr24bitOp<AddrStackY<AType, XYType>>
+ 	{
+ 		uint8_t addr;
+ 		cpu->ReadPBR(cpu->cpu_state.ip + 1, addr);
++		cpu->InternalOp(2);
+ 		uint16_t pointer_addr = cpu->cpu_state.regs.sp.u16 + addr;
+ 		uint16_t pointer;
+ 		cpu->ReadZero(pointer_addr, pointer);
+@@ -825,6 +850,7 @@ struct OpTsb
+ 			cpu->cpu_state.zero = a & mem;
+ 			return (A)(mem | a);
+ 		});
++		cpu->InternalOp(1);
+ 		cpu->cpu_state.ip += kBytes;
+ 	}
+ 	static void Disassemble(WDC65C816 *cpu, uint32_t& addr, const char **str, char *formatted_str)
+@@ -856,6 +882,7 @@ struct OpTrb
+ 			cpu->cpu_state.zero = a & mem;
+ 			return (A)(mem & ~a);
+ 		});
++		cpu->InternalOp(1);
+ 		cpu->cpu_state.ip += kBytes;
+ 	}
+ 	static void Disassemble(WDC65C816 *cpu, uint32_t& addr, const char **str, char *formatted_str)
+@@ -1356,6 +1383,7 @@ struct REP
+ 	{
+ 		uint8_t flags;
+ 		cpu->ReadPBR(cpu->cpu_state.ip + 1, flags);
++		cpu->InternalOp(1);
+ 		cpu->cpu_state.ip += kBytes;
+ 		cpu->cpu_state.other_flags &= ~flags;
+ 		cpu->cpu_state.zero |= flags & 2;
+@@ -1395,6 +1423,7 @@ struct SEP
+ 	{
+ 		uint8_t flags;
+ 		cpu->ReadPBR(cpu->cpu_state.ip + 1, flags);
++		cpu->InternalOp(1);
+ 		cpu->cpu_state.ip += kBytes;
+ 		cpu->cpu_state.other_flags |= flags;
+ 		if(flags & 1)
+@@ -1626,6 +1655,7 @@ struct PHB
+ 	{
+ 		uint8_t v = cpu->cpu_state.data_segment_base >> 16;
+ 		cpu->Push(v);
++		cpu->InternalOp(1);
+ 		cpu->cpu_state.ip += kBytes;
+ 	}
+ 	static void Disassemble(WDC65C816 *cpu, uint32_t& addr, const char **str, char *formatted_str)
+@@ -1704,7 +1734,7 @@ struct JmpImpl
+ 	static constexpr bool pop_pc = false;
+ 	static constexpr const char kMnemonic[] = "JMP";
+ 	static constexpr uint8_t opcode = op;
+-	static constexpr uint32_t kInternalCycles = 0;
++	static constexpr uint32_t kInternalCycles = (op == 0x7c) ? 1 : 0;
+ };
+ template<uint8_t op>
+ struct JsrImpl
+@@ -2005,6 +2035,7 @@ struct BRL
+ 	{
+ 		uint16_t offset;
+ 		cpu->ReadPBR(cpu->cpu_state.ip + 1, offset);
++		cpu->InternalOp(1);
+ 		cpu->cpu_state.ip += offset + 3;
+ 	}
+ 
+@@ -2291,6 +2322,7 @@ struct STZ
+ 	{
+ 		typename AddrMode::A reg = 0;
+ 		AddrMode::Write(cpu, reg);
++		if constexpr(AddrMode::kMaybeHasConditionalCycle) cpu->InternalOp();
+ 		cpu->cpu_state.ip += kBytes;
+ 	}
+ 
+@@ -2330,7 +2362,13 @@ struct OpAdc
+ 	{
+ 		EffectiveSize reg;
+ 		cpu->cpu_state.regs.a.get(reg);
+-		panic();
++		const auto result = starfox::simulation::decimal_arithmetic<EffectiveSize, false>(
++            reg, data, ((cpu->cpu_state.carry >> 1) & 1) != 0);
++        cpu->cpu_state.regs.a.set(result.value);
++        cpu->SetNZ(result.value);
++        cpu->cpu_state.carry = result.carry ? 2 : 0;
++        cpu->cpu_state.other_flags = (cpu->cpu_state.other_flags & 0xffbf)
++            | (result.overflow ? 0x40 : 0);
+ 	}
+ 	template<typename EffectiveSize>
+ 	static void AddBin(WDC65C816 *cpu, EffectiveSize data)
+@@ -2384,7 +2422,13 @@ struct OpSbc
+ 	{
+ 		EffectiveSize reg;
+ 		cpu->cpu_state.regs.a.get(reg);
+-		panic();
++		const auto result = starfox::simulation::decimal_arithmetic<EffectiveSize, true>(
++            reg, data, ((cpu->cpu_state.carry >> 1) & 1) != 0);
++        cpu->cpu_state.regs.a.set(result.value);
++        cpu->SetNZ(result.value);
++        cpu->cpu_state.carry = result.carry ? 2 : 0;
++        cpu->cpu_state.other_flags = (cpu->cpu_state.other_flags & 0xffbf)
++            | (result.overflow ? 0x40 : 0);
+ 	}
+ 	template<typename EffectiveSize>
+ 	static void SubBin(WDC65C816 *cpu, EffectiveSize data)
+@@ -2395,7 +2439,7 @@ struct OpSbc
+ 
+ 		uint32_t result = reg - data - 1 + ((cpu->cpu_state.carry >> 1) & 1);
+ 		uint32_t cn = result >> (8 * sizeof(data) - 1);
+-		cpu->cpu_state.zero = result;
++		cpu->cpu_state.zero = static_cast<EffectiveSize>(result);
+ 		cpu->cpu_state.carry = ~cn;
+ 		cpu->cpu_state.negative = cn;
+ 		cpu->cpu_state.other_flags = (cpu->cpu_state.other_flags & 0xFFBF) |
+@@ -2758,6 +2802,7 @@ struct XBA
+ 
+ 	static void Exec(WDC65C816 *cpu)
+ 	{
++		cpu->InternalOp(2);
+ 		cpu->cpu_state.ip += kBytes;
+ 		std::swap(cpu->cpu_state.regs.a.u8[0], cpu->cpu_state.regs.a.u8[1]);
+ 		cpu->SetNZ(cpu->cpu_state.regs.a.u8[0]);
+@@ -2783,10 +2828,12 @@ struct XCE
+ 
+ 	static void Exec(WDC65C816 *cpu)
+ 	{
++		cpu->InternalOp();
+ 		cpu->cpu_state.ip += kBytes;
+ 		if(!!(cpu->cpu_state.carry & 2) == cpu->mode_emulation) {
+ 			return;
+ 		}
++		cpu->cpu_state.carry = cpu->mode_emulation ? 2 : 0;
+ 		cpu->mode_emulation = !cpu->mode_emulation;
+ 		cpu->OnUpdateMode();
+ 	}
+@@ -2838,6 +2885,8 @@ struct OpWDM
+ 
+ 	static void Exec(WDC65C816 *cpu)
+ 	{
++		uint8_t signature;
++		cpu->ReadPBR(cpu->cpu_state.ip + 1, signature);
+ 		cpu->cpu_state.ip += kBytes;
+ 	}
+ 
+@@ -2917,6 +2966,7 @@ struct PER
+ 		cpu->ReadPBR(cpu->cpu_state.ip + 1, v);
+ 		cpu->cpu_state.ip += kBytes;
+ 		v += cpu->cpu_state.ip;
++		cpu->InternalOp();
+ 		cpu->Push(v);
+ 	}
+ 
+@@ -2987,6 +3037,8 @@ struct BRK
+ 
+ 	static void Exec(WDC65C816 *cpu)
+ 	{
++		uint8_t signature;
++		cpu->ReadPBR(cpu->cpu_state.ip + 1, signature);
+ 		cpu->cpu_state.ip += kBytes;
+ 		cpu->DoInterrupt(WDC65C816::BRK);
+ 	}
+@@ -3011,6 +3063,8 @@ struct COP
+ 
+ 	static void Exec(WDC65C816 *cpu)
+ 	{
++		uint8_t signature;
++		cpu->ReadPBR(cpu->cpu_state.ip + 1, signature);
+ 		cpu->cpu_state.ip += kBytes;
+ 		cpu->DoInterrupt(WDC65C816::COP);
+ 	}

@@ -1,15 +1,16 @@
 # Third-party notices
 
-## Ares GSU audit adapter (development tool only)
+## Ares CPU/GSU audit adapters (development tools only)
 
 Source: <https://github.com/ares-emulator/ares>
 
 Pinned revision: `0aafd85789215e84e1e43415c07d4c88461b7899` (v148).
 
-The optional `starfox_reference_ares_*` tools use the GSU component and nall
+The optional `starfox_reference_ares_*` and `starfox_reference_cpu*` tools use the CPU/GSU components and nall
 headers from an independently downloaded checkout. They are not linked into
 the game or included in game packages. `tools/reference/ares_gsu.cpp` adapts
-GSU initialization and retains the following ISC notice. Other project-owned
+GSU initialization; `tools/reference/ares_cpu.cpp` adapts the bus timing expression.
+Both retain the following ISC notice. Other project-owned
 files remain under the repository's MIT license.
 
 Copyright (c) 2004-2025 ares team, Near et al
@@ -31,6 +32,10 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 Source: <https://github.com/achaulk/retro_cpu>
 
 Pinned revision: `ea9049ab25084334f7cc1907b3a98bf1c2604a03`
+
+The build applies `cmake/retro-cpu-parity.patch` for native arithmetic, operand
+bank wrapping, read-modify-write order, block transfers and instruction cycles.
+These project-owned corrections retain the MIT license.
 
 Copyright (c) 2019 Albert Chaulk
 

@@ -98,6 +98,9 @@ public:
     [[nodiscard]] std::vector<ApuPortWrite> take_apu_port_writes() {
         return cpu_.take_apu_port_writes();
     }
+    [[nodiscard]] std::uint64_t native_master_clocks() const noexcept {
+        return cpu_.executed_master_clocks();
+    }
     [[nodiscard]] std::vector<MsuRegisterWrite> take_msu_register_writes() {
         return cpu_.take_msu_register_writes();
     }

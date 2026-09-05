@@ -19,6 +19,7 @@ changes inside upstream-ultrastarfox were preserved.
 
 | Report / audit finding | Evidence and result |
 | --- | --- |
+| Native CPU execution and timing | Corrected hidden accumulator restoration, missing decimal arithmetic, SBC's wrapped-zero flag, program-bank operand wrapping, 16-bit read-modify-write order, MVN/MVP behavior and XCE. Added missing instruction/bus clocks and FastROM accounting. An independent pinned Ares CPU agrees on 12,192 instruction cases, 524,288 decimal ALU cases and 1,048,576 complete arithmetic routines. See CPU-PARITY-VALIDATION.md for the patch, reproducibility and scope. These counts exclude translated work and concurrent hardware timing; Original pacing still needs integration. |
 | Object view flags | Native SHOWVIEW_L resets flags before the invisible-object branch. Native ALIENFLAGS_L still sets AFINVIEWPL/AFLEFTPL for behind-camera objects taking `.dontkill`; only AFFRONTPL stays clear. Corrected both translated paths. The before/after Original route-2 comparison goes from 239 mismatches among 3,028 object views to zero. Sampled native CPU/GSU checks cover routes 2/3 in both games; the regular EX cockpit regression also asserts the invisible-player state. |
 | Isolated GSU timing audit | A second, pinned Ares GSU implementation agrees with all 70,980 reference rows and records 73,536 isolated calls. The comparison preserves all previously classified mesh-fixture differences. It exposed the MSSPRITE fixture's reliance on an implicit pixel-cache flush; both engines now execute the cartridge's RPIX/STOP. The adapter also completes pending SRAM writes before returning CPU-visible results. These development tools do not enter game packages. Full frame cadence still needs CPU overlap, DMA and video-phase accounting. |
 | Huge EX models | MOBJ's word-coordinate commands do not multiply by M_SCALE; the port applied both SH_SHIFT and EX's big-head multiplier. Preserve each expanded vertex's command encoding and apply those multipliers only to byte coordinates. LUIGIHSBW was enlarged 16 times by its shift of 4; Crimson King's BOXXIE was enlarged 8 times by its shift of 3. All 9 BOXXIE and 9 LUIGIHSBW native angle/depth cases match every pixel after the fix. Correction to the earlier audit: POINTYANIM is the stage 7-4 boss, not Crimson King. ENDSEQ's boss63demo/boss63txt2 identify BOXXIE on stage 6-3; its source points are PointsXw. |
@@ -47,6 +48,7 @@ changes inside upstream-ultrastarfox were preserved.
 | Area | Exercised | Not established by these checks |
 | --- | --- | --- |
 | Asset decoding | Original: 2,697 header candidates; EX: 3,511; zero unsupported. Mixed point encoding retained for all expanded/mirrored animation vertices. | Header discovery is a symbol/format scan, not a complete semantic asset manifest. |
+| Native CPU | 254 opcode samples across twelve status values, two direct-page alignments and two ROM speeds; exhaustive 8-bit ADC/SBC and sampled 16-bit operands; bank, transfer and I/O order regressions. | All addressing/operand combinations, emulation-mode execution, hardware interrupt/wait scheduling, complete bus ordering or concurrent hardware timing. |
 | Model scaling | Source-coordinate/frame/scale comparisons include BOXXIE, Hydra, POINTYANIM, Wolf and the byte-coordinate player; multipliers 1/2/4 and raster scales 1/4. Independent GSU angle/depth fixtures cover the default scale. | Every live camera/attachment state and modifier combination. |
 | Route art | 52 complete flat/zoom icon comparisons across Original and both EX map tables; existing real black-hole exit tests in both variants. | A hardware screenshot comparison of every route animation frame. |
 | Gameplay | Existing EX sweep covers all 40 shipped stages for 2,000 ticks and decodes encountered model/palette pairs. Additional 8,000-tick traces across both games use invulnerability and held B (boost). Live Wolf combat uses Y fire and directional steering in all six stage/pace combinations. | Completing every boss, alternate exit, secret and modifier combination in a continuous playthrough. |
@@ -102,6 +104,12 @@ addresses; do not interpret those particular diagnostic fields as EX state.
 
 ## Validation and local candidate
 
+- Native CPU follow-up: **61/61 passed in 197.41 seconds**, including both
+  simulation suites, all endings/audio/MSU checks, six live Wolf encounters,
+  route-timing replays, view/pixel comparisons and the new independent CPU
+  checks. Summary: `docs/validation/ctest-20260905-native-cpu.log`; detailed
+  output is retained alongside it. The CPU patch also passed fresh-apply and
+  repeat-apply checks against the pinned dependency.
 - View/timing follow-up: **58/59 passed in the full 340.04-second run**,
   `docs/validation/ctest-20260905-view-flags.log`, with detailed output beside
   it. The sole failure was the synthetic grid fixture missing the newer
@@ -203,12 +211,18 @@ addresses; do not interpret those particular diagnostic fields as EX state.
   person; cockpit behavior is established by the source simulation test,
   not inferred from that image. The user's saved pregame configuration is
   unchanged (SHA-256 `8B6727CD87174ABFCF8455D4A78E5B33CEA189E09D6F9F42A77F57489DB0A720`).
+- The latest candidate includes the native CPU corrections. Fresh
+  `validation/native-cpu-{original,ex}.bmp` captures exercise direct LEVEL3_1
+  entry with a 300-update preroll and 180 presentations, 90 FPS target/4x,
+  Original pace, MSU off and an unpaced dummy-device test loop. Both were
+  inspected as smoke checks; their displayed FPS is not a live limiter or
+  old-PC performance result. The saved user configuration remains unchanged.
 
 SHA-256:
 
 ```text
 starfox_pc.exe
-04BAB639E47CB1D06CE92D488D8CDB0C18FC71834FA2F01A03625C1434A64611
+6EA2C7A9E7082F40D4350A9D83188EE1C92B632C47B8FEAC13F060BAF4D6A0F0
 Starfox-Assets.BIN
 2F9A261C87F032F553952588E2EEB5DB747CBAF5FF0E5FCE7AF1862C9FC6541E
 Starfox-MSU1.PAK

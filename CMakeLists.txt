@@ -110,6 +110,21 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(retro_cpu)
 
+# Retain the pinned dependency, with the independently audited native-mode
+# arithmetic, bus-order and instruction-timing corrections in a reviewable patch.
+find_package(Git REQUIRED)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/retro-cpu-parity.patch")
+execute_process(COMMAND "${CMAKE_COMMAND}"
+    "-DGIT_EXECUTABLE=${GIT_EXECUTABLE}"
+    "-DSOURCE_DIR=${retro_cpu_SOURCE_DIR}"
+    "-DPATCH_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/retro-cpu-parity.patch"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/apply_git_patch_once.cmake"
+    RESULT_VARIABLE retro_cpu_patch_result)
+if(NOT retro_cpu_patch_result EQUAL 0)
+    message(FATAL_ERROR "Could not apply the pinned RetroCPU parity patch")
+endif()
+
 FetchContent_Declare(
     snes_spc
     GIT_REPOSITORY https://github.com/blarggs-audio-libraries/snes_spc.git
@@ -149,6 +164,7 @@ add_library(retro_cpu_65816 STATIC
     "${retro_cpu_SOURCE_DIR}/cpu/65816/cpu_65c816.cc"
 )
 target_include_directories(retro_cpu_65816 SYSTEM PUBLIC "${retro_cpu_SOURCE_DIR}")
+target_include_directories(retro_cpu_65816 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(retro_cpu_65816 PUBLIC retro_cpu_core)
 target_compile_features(retro_cpu_65816 PUBLIC cxx_std_17)
 if(MINGW)
@@ -225,6 +241,14 @@ if(STARFOX_BUILD_TOOLS)
             target_link_libraries(starfox_reference_ares_tests PRIVATE starfox_reference_ares)
             add_executable(starfox_reference_view tools/reference/view_audit.cpp)
             target_link_libraries(starfox_reference_view PRIVATE starfox_core starfox_reference_ares)
+            if(EXISTS "${STARFOX_REFERENCE_ARES_DIR}/ares/component/processor/wdc65816/wdc65816.hpp")
+                add_library(starfox_reference_cpu STATIC tools/reference/ares_cpu.cpp)
+                target_include_directories(starfox_reference_cpu SYSTEM PRIVATE
+                    "${STARFOX_REFERENCE_ARES_DIR}" "${STARFOX_REFERENCE_ARES_DIR}/nall")
+                target_link_libraries(starfox_reference_cpu PRIVATE starfox_core)
+                add_executable(starfox_reference_cpu_tests tools/reference/cpu_audit.cpp)
+                target_link_libraries(starfox_reference_cpu_tests PRIVATE starfox_core starfox_reference_cpu)
+            endif()
         endif()
     endif()
 
@@ -705,6 +729,11 @@ if(STARFOX_BUILD_TESTS)
     if(TARGET starfox_reference_ares_tests)
         add_test(NAME starfox_reference_ares_adapter COMMAND starfox_reference_ares_tests)
     endif()
+    if(TARGET starfox_reference_cpu_tests)
+        add_test(NAME starfox_reference_cpu COMMAND starfox_reference_cpu_tests
+            "${CMAKE_CURRENT_BINARY_DIR}/reference-cpu.csv")
+        set_tests_properties(starfox_reference_cpu PROPERTIES TIMEOUT 120)
+    endif()
     add_executable(starfox_bps_tests tests/bps_tests.cpp)
     target_link_libraries(starfox_bps_tests PRIVATE starfox_core)
     add_test(NAME starfox_bps_tests COMMAND starfox_bps_tests)
@@ -781,6 +810,10 @@ if(STARFOX_BUILD_TESTS)
         target_link_options(starfox_simulation_tests PRIVATE "/STACK:16777216")
     endif()
     add_test(NAME starfox_simulation_tests COMMAND starfox_simulation_tests)
+
+    add_executable(starfox_cpu_timing_tests tests/cpu_timing_tests.cpp)
+    target_link_libraries(starfox_cpu_timing_tests PRIVATE starfox_core)
+    add_test(NAME starfox_cpu_timing_tests COMMAND starfox_cpu_timing_tests)
 
     add_executable(starfox_direct_audio_tests tests/direct_audio_tests.cpp)
     target_link_libraries(starfox_direct_audio_tests PRIVATE starfox_core)

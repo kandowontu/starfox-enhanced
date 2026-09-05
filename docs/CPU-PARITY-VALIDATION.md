@@ -1,0 +1,99 @@
+# Native CPU audit
+
+This follow-up checks the native instruction engine used by both ports. It
+does not establish complete-game or cycle-exact frame pacing.
+
+The production dependency remains RetroCPU
+`ea9049ab25084334f7cc1907b3a98bf1c2604a03`, with the reviewable MIT patch
+`cmake/retro-cpu-parity.patch`. CMake checks and applies it, accepting an
+already-applied patch. A fresh application and a second application were
+checked in a disposable checkout; the resulting files match the tested
+dependency. The unrelated dirty game-source submodule was preserved.
+
+## Corrections
+
+- Restore the whole 16-bit accumulator when entering a native routine, even
+  when M selects 8-bit operations. The previous debugger-register setter
+  restored only A and left its hidden high byte from the preceding call.
+- Implement decimal ADC/SBC for 8- and 16-bit words. The pinned dependency's
+  decimal paths were unimplemented. Decimal adjustment also preserves the
+  processor's behavior for invalid BCD digits and its distinct overflow rule.
+- Derive binary SBC's zero flag from the truncated result. For example,
+  8-bit `0 - $ff - 1` yields zero with a borrow; the old full-width temporary
+  incorrectly kept Z clear. The equivalent 16-bit boundary is covered too.
+- Wrap 16-bit instruction-operand fetches within the program bank. A fixture
+  at `$3f:fffe` distinguishes `$3f:0000` from `$40:0000`.
+- Write the high byte first during a 16-bit read-modify-write. A port-write
+  regression observes the order through the APU registers, not just the
+  final value in ordinary RAM.
+- Correct MVN/MVP termination, 8-bit index wrapping, and per-byte internal
+  clocks. The old engine performed an extra instruction after the last byte
+  and let 8-bit indices carry into their high bytes. The unused fast-block-
+  move shortcut is not enabled by the game adapter or reference tests.
+- Correct XCE's exchange of carry and emulation mode.
+- Supply missing internal clocks for indexed reads, indirect and stack
+  addressing, TSB/TRB, STZ indexed, REP/SEP, BRL, XBA, XCE, PHB, PER and
+  indexed-indirect JMP; fetch the signature byte for BRK, COP and WDM.
+- Measure 6-, 8- and 12-master-clock bus accesses, including FastROM changes
+  through MEMSEL and the `$41ff/$4200` boundary. Memory pages are now 512
+  bytes so the CPU core can distinguish that boundary. Internal cycles cost
+  six master clocks. Host inspection, bootstrap and synthetic call-stack
+  pushes do not add to `executed_master_clocks()`.
+
+## Independent comparisons
+
+`tools/reference/ares_cpu.cpp` includes unmodified CPU instruction bodies
+from Ares v148, pinned at
+`0aafd85789215e84e1e43415c07d4c88461b7899`. Its bus timing expression is
+independent of the production timing helper. It uses a separate Wdc65816
+instance for memory and peripheral callbacks; therefore these comparisons
+test the instruction engines, not the accuracy of those shared callbacks.
+The Ares adapter is an optional development tool, retains its ISC notice,
+and is not linked into the game or copied into packages.
+
+- **12,192 instruction cases agree in registers, WRAM and master clocks**:
+  254 opcodes, twelve initial status values, aligned/unaligned direct pages,
+  and slow/high-bank FastROM instruction fetches. WAI/STP waiting and
+  interrupt scheduling are outside the bounded-call adapter. XCE covers
+  the transition instruction, not general emulation-mode execution.
+- **524,288 decimal ALU cases agree**: exhaustive 8-bit operands, carry and
+  add/subtract; every 16-bit accumulator paired with a deterministic sample
+  operand, both carries and both operations.
+- **1,048,576 complete native ADC/SBC routines agree in registers and clocks**:
+  exhaustive 8-bit operands in binary and decimal modes, plus all 16-bit
+  accumulators paired with deterministic sample operands. These exercise the
+  patched dependency and actual call adapter, including the hidden high byte,
+  rather than testing only the decimal helper.
+- Ordinary `starfox_cpu_timing_tests` checks hand-counted routines, bus
+  boundaries/mirrors, live FastROM switching, call/task accounting, arithmetic
+  boundary results, operand-bank wrapping, I/O write order and MVN/MVP index
+  wrapping. It requires neither Ares nor game assets.
+
+The first timing-aware bridge run found 2,064 register-state differences and
+1,792 timing differences in its original 7,360 cases; some overlap. The final
+corpus includes those cases and additional control/arithmetic coverage. The
+initial run is not a measurement of release 0.0.4's frame pacing.
+
+To reproduce, run `tools/reference/build-ares-reference.ps1`, then CTest's
+`starfox_reference_cpu` and `starfox_cpu_timing_tests`. The first requires the
+pinned optional reference checkout. CSVs and a hash manifest are retained in
+`docs/validation/cpu-*`; the normal CTest output is in
+`docs/validation/ctest-20260905-native-cpu.log`.
+
+## Timing limits
+
+The full game regression suite passed **61/61 tests in 197.41 seconds** after
+these changes. Both packaged Windows route-3 smoke captures were inspected.
+
+`MapVm::native_master_clocks()` measures instructions actually executed by
+the bridge. It includes real RTS/RTL bodies but excludes the synthetic JSL
+entry, translated CPU/GSU work, DMA, WRAM refresh, concurrent CPU/GSU work,
+hardware waits and video-phase alignment. The peripheral callbacks still
+complete some work immediately. The sampled opcode tests do not prove
+all bus-access ordering, all operand combinations, emulation mode or hardware
+interrupt behavior.
+
+The production Original-pace scheduler still uses its documented workload
+approximation. Substituting this partial CPU count for the complete cartridge
+timeline would not establish native pacing. CPU/GSU overlap, transfer timing
+and full-frame reference alignment remain the next timing work.
