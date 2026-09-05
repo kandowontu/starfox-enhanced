@@ -174,8 +174,7 @@ as described by its own build instructions. The helper idempotently applies
 and rumble events while retaining stock SPC music for the runtime ON/OFF
 switch and routing the physical rumble transmitter through SDL.
 
-The Star Fox EX 1.11.03 source revision is pinned separately in
-`config/upstream-ex.json`:
+The Star Fox EX 1.11.03 source revision is here: https://github.com/kandowontu/star-fox-ex
 
 ```powershell
 git clone https://github.com/sunlitspace542/star-fox-ex.git upstream-star-fox-ex
