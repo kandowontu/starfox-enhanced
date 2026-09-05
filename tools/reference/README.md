@@ -99,6 +99,80 @@ Separate mutation builds restoring general multiplication for every model
 orientation or the old dust recycling fail at the first affected reference row.
 These checks do not validate cycle timing, every full scene, or physical output.
 
+## Second GSU engine and isolated cycle measurements
+
+The optional Ares adapter executes the same fixtures with the unmodified GSU
+instruction, cache, pixel and transfer implementations from
+[Ares v148](https://github.com/ares-emulator/ares/tree/0aafd85789215e84e1e43415c07d4c88461b7899),
+revision `0aafd85789215e84e1e43415c07d4c88461b7899`. The build script checks the
+revision and refuses a modified checkout. Only the audit targets link Ares;
+the game has no Ares dependency. The adapted initialization retains its ISC
+notice in `ares_gsu.cpp` and `THIRD_PARTY_NOTICES.md`.
+
+```powershell
+pwsh -NoProfile -File tools/reference/build-ares-reference.ps1
+python tools/reference/verify-ares.py
+```
+
+Run `build-reference.ps1` first if the bootstrap DLL is absent. Both GSU engines
+start from the same Snes9x 600-frame boot SRAM, so this is an independent GSU
+comparison, not a second independent boot/CPU/PPU implementation. The verifier
+compares every native result with the existing Snes9x CSV, preserving the
+237 previously documented mesh-fixture differences from the port. All
+**70,980 rows agree**, covering meshes, sprites, matrices, world points, dust
+and grid. It also records **73,536 isolated GSU calls** in
+`tmp/ares-audit/*-clocks.csv`; `summary.json` records hashes and ranges.
+
+The Ares executable accepts the same arguments as `starfox_reference_render`
+plus an optional final timing CSV path. Each timing row contains the call
+sequence, entry address, R10/R11, instruction count and oscillator clocks.
+CLSR and CFGR are zero, both buses are available, and each call starts with a cold
+pipeline/cache. With the MARIO CHIP 1 clock source these are SNES master-clock
+units; cached instructions cost two clocks at CLSR=0. Counts include completion
+of an outstanding SRAM write after STOP. That completion normally occurs on
+the emulator's idle coprocessor thread and is essential before reading results.
+They do not automatically flush a pending pixel-cache tile.
+
+This second implementation exposed the sprite fixture's implicit pixel flush.
+MSSPRITE now returns through the cartridge's RPIX/STOP, as the dust/grid fixtures
+do, giving the same golden pixels in both engines. The adapter's microprogram
+checks independently count cold fetches, cache fills/hits and multiplication,
+and verify pending SRAM writes, bounds and reset after an instruction timeout.
+
+These measurements exclude CPU execution/overlap, DMA, bus contention and
+video phase alignment. Live software can change CLSR and CFGR; those settings
+must also be captured before applying these counts to gameplay.
+**They are not a cycle-exact frame scheduler.** Summing
+them or dividing by a nominal frame time is insufficient to establish the
+Original pace cadence. That integration remains open.
+
+## Live object view flags
+
+`starfox_reference_view` samples a direct stage every ten source updates. It
+copies CPU/Super FX RAM into a disposable snapshot, executes SHOWVIEW_L,
+Ares MALLROTZSORT and ALIENFLAGS_L, and compares their flags with the port.
+Because GETVIEW is host-translated, the fixture explicitly supplies the
+current CPU WMAT11 to M_WMAT11 before the GSU transform. It does not use the
+stale GSU scratch matrix left by another translated call.
+
+```powershell
+build/current/starfox_reference_view.exe upstream-ultrastarfox/SF.SFC upstream-ultrastarfox/SYMBOLS.TXT LEVEL2_1 1800 tmp/view-original.csv
+build/current/starfox_reference_view.exe tmp/runtime-inputs/starfox-ex/SFES.SFC assets/symbols/starfox-ex.txt LEVEL3_1 1800 tmp/view-ex.csv
+```
+
+The optional CTest cases sample routes 2 and 3 in both games. Before the fix,
+Original LEVEL2_1 had 239 mismatches among 3,028 object views: invisible objects
+retained old flags, and surviving behind-camera objects lost AFINVIEWPL/AFLEFTPL.
+The source resets flags before the invisible branch, then sets the left/in-view
+bits for every object taking `.dontkill`, even when AFFRONTPL is clear.
+The corrected port matches these source results. A regular EX simulation
+regression also checks the invisible player's flags after entering the cockpit.
+
+The comparison uses the post-tick list: it does not establish that objects
+already removed by the host should have been removed, or that the first
+object's entry carry at an exact clipping boundary always matches hardware.
+Nor is it a full-scene pixel comparison or a successful campaign playthrough.
+
 The `grid` mode executes the cartridge's camera/origin transforms followed by
 MSHOWGRID or EX's MSHOWGRID2, retaining the latter's line origin across updates.
 It verifies the CPU's 1,920-unit origin constant directly from its assembled

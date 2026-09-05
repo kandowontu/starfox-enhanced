@@ -1,0 +1,51 @@
+Start testing: Sep 05 16:32 Eastern Daylight Time
+----------------------------------------------------------
+7/59 Testing: starfox_shape_decoder_tests
+7/59 Test: starfox_shape_decoder_tests
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_shape_decoder_tests.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_shape_decoder_tests" start time: Sep 05 16:32 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+All shape decoder tests passed.
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_shape_decoder_tests" end time: Sep 05 16:32 Eastern Daylight Time
+"starfox_shape_decoder_tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+21/59 Testing: starfox_upstream_reference_grid
+21/59 Test: starfox_upstream_reference_grid
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_grid_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/reference-grid-original.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_reference_grid" start time: Sep 05 16:32 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+192 ground-grid frames match independent cartridge pixels
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_reference_grid" end time: Sep 05 16:32 Eastern Daylight Time
+"starfox_upstream_reference_grid" time elapsed: 00:00:00
+----------------------------------------------------------
+
+50/59 Testing: starfox_ex_reference_grid
+50/59 Test: starfox_ex_reference_grid
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_grid_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/reference-grid-ex.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_reference_grid" start time: Sep 05 16:32 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+384 ground-grid frames match independent cartridge pixels
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_reference_grid" end time: Sep 05 16:32 Eastern Daylight Time
+"starfox_ex_reference_grid" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Sep 05 16:32 Eastern Daylight Time

@@ -19,6 +19,8 @@ changes inside upstream-ultrastarfox were preserved.
 
 | Report / audit finding | Evidence and result |
 | --- | --- |
+| Object view flags | Native SHOWVIEW_L resets flags before the invisible-object branch. Native ALIENFLAGS_L still sets AFINVIEWPL/AFLEFTPL for behind-camera objects taking `.dontkill`; only AFFRONTPL stays clear. Corrected both translated paths. The before/after Original route-2 comparison goes from 239 mismatches among 3,028 object views to zero. Sampled native CPU/GSU checks cover routes 2/3 in both games; the regular EX cockpit regression also asserts the invisible-player state. |
+| Isolated GSU timing audit | A second, pinned Ares GSU implementation agrees with all 70,980 reference rows and records 73,536 isolated calls. The comparison preserves all previously classified mesh-fixture differences. It exposed the MSSPRITE fixture's reliance on an implicit pixel-cache flush; both engines now execute the cartridge's RPIX/STOP. The adapter also completes pending SRAM writes before returning CPU-visible results. These development tools do not enter game packages. Full frame cadence still needs CPU overlap, DMA and video-phase accounting. |
 | Huge EX models | MOBJ's word-coordinate commands do not multiply by M_SCALE; the port applied both SH_SHIFT and EX's big-head multiplier. Preserve each expanded vertex's command encoding and apply those multipliers only to byte coordinates. LUIGIHSBW was enlarged 16 times by its shift of 4; Crimson King's BOXXIE was enlarged 8 times by its shift of 3. All 9 BOXXIE and 9 LUIGIHSBW native angle/depth cases match every pixel after the fix. Correction to the earlier audit: POINTYANIM is the stage 7-4 boss, not Crimson King. ENDSEQ's boss63demo/boss63txt2 identify BOXXIE on stage 6-3; its source points are PointsXw. |
 | Credits Start crash | Reproduced the reported Original UPDATE_OBJECTS_L instruction-limit failure. CREDITSMAP jumps through RESTART into a non-returning frontend. The host now stops at the frontend entry after source initialization. Held Start can also take that jump inside MAKETOTALSCORE2; handle that path before importing the reset object pool. EX runs its source fade/cleanup before its menu handoff. |
 | Sector Y art | Original SPACE4 / Sector Y and Black Hole share a packed texture address. MDSPRITE selects the nibble using sprite bit 5; both translated flat and zoom drawing had always read the upper nibble. Corrected both, checked every pixel of all flat route icons, and inspected an actual runtime map capture showing Sector Y's blue/red star field and a distinct Black Hole spiral. |
@@ -100,6 +102,26 @@ addresses; do not interpret those particular diagnostic fields as EX state.
 
 ## Validation and local candidate
 
+- View/timing follow-up: **58/59 passed in the full 340.04-second run**,
+  `docs/validation/ctest-20260905-view-flags.log`, with detailed output beside
+  it. The sole failure was the synthetic grid fixture missing the newer
+  SNOW_COLS/ZTAB symbols and assembled grid parameters. After updating that
+  fixture, **3/3 affected checks passed in 0.15 seconds**, including both
+  real-cartridge grid references (`ctest-20260905-grid-fixture.log`). The game
+  code did not need a further change. All 59 checks therefore have passing
+  results for the current implementation; the full run itself is retained
+  with its original failure rather than rewritten as an all-green run.
+- The four new view comparisons cover **12,204 object views**, including
+  **370 invisible** and **309 behind-camera** observations, with no differences.
+  The old implementation fails 239 of 3,028 Original route-2 observations.
+  Raw before/after rows are in `docs/validation/view-flags-*.csv`; these checks
+  sample 1,800 source updates per stage and do not certify entire campaigns.
+- The optional Ares audit agrees with every one of **70,980 native result
+  rows** across both games and records **73,536 isolated calls**. Provenance,
+  checksums and cycle ranges are in `docs/validation/ares-gsu-audit-summary.json`;
+  the run log is `ares-gsu-audit.log`. Cold-cache CLSR=0/CFGR=0 measurements
+  exclude CPU/GSU overlap, DMA and live clock-register changes. The runtime's
+  Original pace scheduler remains the documented approximation.
 - Ground-grid follow-up: **13/13 affected tests passed in 9.69 seconds**,
   `docs/validation/ctest-20260905-ground-grid.log`, with detailed output beside
   it. Includes all model, matrix, point, star-field and ground-grid references,
@@ -114,7 +136,7 @@ addresses; do not interpret those particular diagnostic fields as EX state.
   is removed. Four fresh desktop captures exercise LEVEL2_1 ground/shadows
   and LEVEL2_2 stars in both games; these are smoke/visual checks, not native
   full-scene pixel comparisons or FPS-limiter measurements.
-- Latest full suite: **48/48 passed in 362.62 seconds**,
+- Earlier full suite: **48/48 passed in 362.62 seconds**,
   `docs/validation/ctest-20260905-pacing-and-sprites.log`. This includes the
   40,578 mesh/2,100 sprite goldens and all 56 route timing replays. The latest
   desktop build also exposes optional STARFOX_TRACE_AUDIO mixer peaks for
@@ -173,12 +195,20 @@ addresses; do not interpret those particular diagnostic fields as EX state.
 - `validation/grid-final-ex.bmp` is a fresh actual desktop LEVEL2_1 capture
   after the grid correction (90 FPS/4x, unpaced fixture). It supplements the
   independent pixel comparisons; it is not an old-PC performance measurement.
+- The candidate now also includes the object-view-flag correction.
+  `validation/view-flags-original.bmp` and `validation/view-flags-ex.bmp` are
+  fresh desktop captures of LEVEL2_1 and LEVEL1_3 after 300 source preroll
+  updates and 180 presentations (90 FPS target, 4x rendering, unpaced,
+  MSU off). They were inspected as smoke checks. The EX capture shows third
+  person; cockpit behavior is established by the source simulation test,
+  not inferred from that image. The user's saved pregame configuration is
+  unchanged (SHA-256 `8B6727CD87174ABFCF8455D4A78E5B33CEA189E09D6F9F42A77F57489DB0A720`).
 
 SHA-256:
 
 ```text
 starfox_pc.exe
-9CA4809262216C84F534D66033114CCF978681EC86956ADC583DE0DE3BFB5436
+04BAB639E47CB1D06CE92D488D8CDB0C18FC71834FA2F01A03625C1434A64611
 Starfox-Assets.BIN
 2F9A261C87F032F553952588E2EEB5DB747CBAF5FF0E5FCE7AF1862C9FC6541E
 Starfox-MSU1.PAK

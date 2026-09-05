@@ -1,0 +1,383 @@
+{
+  "ares_revision": "0aafd85789215e84e1e43415c07d4c88461b7899",
+  "tool_sha256": "8517844C8AC5C205E1BC552022F6AB3B0DFF33D763C14D73954DAB2C4AECC466",
+  "bootstrap_core_sha256": "4F2CC529CBEA6493539104BC98AAD91254F54B7C66C6AF410A38B9EFDE1D415B",
+  "cold_cache": true,
+  "clsr": 0,
+  "cpu_bus_contention": false,
+  "video_dma": false,
+  "cases": [
+    {
+      "game": "original",
+      "mode": "render",
+      "rows": 15957,
+      "calls": 15957,
+      "oracle_differences": 0,
+      "rom_sha256": "E79D7F08C9191701C43F427D8BB85D6804A4B7C05EB6E585698FD2E1B2932E32",
+      "symbols_sha256": "66F0124B38FBFE63913BA99E07A91D944A0479664A23DD2528CDE3D68DA62A84",
+      "golden_sha256": "0C56A6EEFA86844FD69CC973F91B9E3D8CFB832186807825896ABA922168CFEE",
+      "output_sha256": "0C56A6EEFA86844FD69CC973F91B9E3D8CFB832186807825896ABA922168CFEE",
+      "timing_sha256": "62A779CF18480BE67AE93DCE04F3A87D654B0C67D04983977C75FD9626505C01",
+      "port_different_rows": 9,
+      "routine_clocks": [
+        {
+          "address": 99338,
+          "calls": 15957,
+          "min": 7646,
+          "max": 1292424,
+          "median": 59696
+        }
+      ]
+    },
+    {
+      "game": "original",
+      "mode": "sprites",
+      "rows": 150,
+      "calls": 150,
+      "oracle_differences": 0,
+      "rom_sha256": "E79D7F08C9191701C43F427D8BB85D6804A4B7C05EB6E585698FD2E1B2932E32",
+      "symbols_sha256": "66F0124B38FBFE63913BA99E07A91D944A0479664A23DD2528CDE3D68DA62A84",
+      "golden_sha256": "8E69A40A058496D371DABBEBDE2C36D221E0910481DF37DA35CF3CFAE8DB3160",
+      "output_sha256": "8E69A40A058496D371DABBEBDE2C36D221E0910481DF37DA35CF3CFAE8DB3160",
+      "timing_sha256": "F099E4A10468AF7A894ADB3B13E9ADF9F8ECE7E2B5F41F2E9216C23F6E07D70F",
+      "port_different_rows": 0,
+      "routine_clocks": [
+        {
+          "address": 117944,
+          "calls": 150,
+          "min": 3172,
+          "max": 500984,
+          "median": 8024.0
+        }
+      ]
+    },
+    {
+      "game": "original",
+      "mode": "matrices",
+      "rows": 3726,
+      "calls": 3933,
+      "oracle_differences": 0,
+      "rom_sha256": "E79D7F08C9191701C43F427D8BB85D6804A4B7C05EB6E585698FD2E1B2932E32",
+      "symbols_sha256": "66F0124B38FBFE63913BA99E07A91D944A0479664A23DD2528CDE3D68DA62A84",
+      "golden_sha256": "EE78124CA8DA68F0BD633BE2B6C475A4507342B344862EF0331A2A59FB3BA645",
+      "output_sha256": "EE78124CA8DA68F0BD633BE2B6C475A4507342B344862EF0331A2A59FB3BA645",
+      "timing_sha256": "3ED35A5089EC148D8AE812E327A00FA795CCF4C656C3AFF18CC2643825B52C19",
+      "port_different_rows": 0,
+      "routine_clocks": [
+        {
+          "address": 98965,
+          "calls": 207,
+          "min": 2268,
+          "max": 2268,
+          "median": 2268
+        },
+        {
+          "address": 99338,
+          "calls": 1863,
+          "min": 79686,
+          "max": 148782,
+          "median": 118648
+        },
+        {
+          "address": 99435,
+          "calls": 1863,
+          "min": 41966,
+          "max": 138044,
+          "median": 99644
+        }
+      ]
+    },
+    {
+      "game": "original",
+      "mode": "points",
+      "rows": 9729,
+      "calls": 9936,
+      "oracle_differences": 0,
+      "rom_sha256": "E79D7F08C9191701C43F427D8BB85D6804A4B7C05EB6E585698FD2E1B2932E32",
+      "symbols_sha256": "66F0124B38FBFE63913BA99E07A91D944A0479664A23DD2528CDE3D68DA62A84",
+      "golden_sha256": "BF996A2690C92A9D059C5C7216E19B57B9B42D517350F1E69A281EE20D513ABE",
+      "output_sha256": "BF996A2690C92A9D059C5C7216E19B57B9B42D517350F1E69A281EE20D513ABE",
+      "timing_sha256": "349539BE1BD07462C75E961C0F37992613D77419031480C9E1AF09377C4282F6",
+      "port_different_rows": 0,
+      "routine_clocks": [
+        {
+          "address": 98878,
+          "calls": 9729,
+          "min": 894,
+          "max": 894,
+          "median": 894
+        },
+        {
+          "address": 98965,
+          "calls": 207,
+          "min": 2268,
+          "max": 2268,
+          "median": 2268
+        }
+      ]
+    },
+    {
+      "game": "original",
+      "mode": "dust",
+      "rows": 193,
+      "calls": 385,
+      "oracle_differences": 0,
+      "rom_sha256": "E79D7F08C9191701C43F427D8BB85D6804A4B7C05EB6E585698FD2E1B2932E32",
+      "symbols_sha256": "66F0124B38FBFE63913BA99E07A91D944A0479664A23DD2528CDE3D68DA62A84",
+      "golden_sha256": "A061257837DBC0118A51E7D112738A62B218AAA805C8E9A316A3B767451EE121",
+      "output_sha256": "A061257837DBC0118A51E7D112738A62B218AAA805C8E9A316A3B767451EE121",
+      "timing_sha256": "430488A4A5178BED0DBC6FD7E1812F9C54444D2F14557089794FDA35EAEAF68F",
+      "port_different_rows": 0,
+      "routine_clocks": [
+        {
+          "address": 98965,
+          "calls": 192,
+          "min": 2268,
+          "max": 2268,
+          "median": 2268.0
+        },
+        {
+          "address": 108645,
+          "calls": 1,
+          "min": 29658,
+          "max": 29658,
+          "median": 29658
+        },
+        {
+          "address": 108714,
+          "calls": 192,
+          "min": 97096,
+          "max": 157254,
+          "median": 117464.0
+        }
+      ]
+    },
+    {
+      "game": "original",
+      "mode": "grid",
+      "rows": 192,
+      "calls": 576,
+      "oracle_differences": 0,
+      "rom_sha256": "E79D7F08C9191701C43F427D8BB85D6804A4B7C05EB6E585698FD2E1B2932E32",
+      "symbols_sha256": "66F0124B38FBFE63913BA99E07A91D944A0479664A23DD2528CDE3D68DA62A84",
+      "golden_sha256": "BAEE384B9D2A219245176DF17237547ACDC8AAD6CB42AFE6DC3DD7774BBC1143",
+      "output_sha256": "BAEE384B9D2A219245176DF17237547ACDC8AAD6CB42AFE6DC3DD7774BBC1143",
+      "timing_sha256": "303E4FF4CF90D7440C4E93ED41E91BCC56DEB79F9DA582A9EA30E8C377DB301D",
+      "port_different_rows": 0,
+      "routine_clocks": [
+        {
+          "address": 98878,
+          "calls": 192,
+          "min": 894,
+          "max": 894,
+          "median": 894.0
+        },
+        {
+          "address": 98965,
+          "calls": 192,
+          "min": 2268,
+          "max": 2268,
+          "median": 2268.0
+        },
+        {
+          "address": 108429,
+          "calls": 192,
+          "min": 19360,
+          "max": 25882,
+          "median": 23006.0
+        }
+      ]
+    },
+    {
+      "game": "ex",
+      "mode": "render",
+      "rows": 24858,
+      "calls": 24858,
+      "oracle_differences": 0,
+      "rom_sha256": "ECA6CE47B19D14BEFE7170E613A127E4D174F24B7F9625CDF688D814DE6BD7CB",
+      "symbols_sha256": "36BA8A5CD028297FDB49C31830673433BB997167B7E489EBC983B0C416FA9FF6",
+      "golden_sha256": "8D93B52D47ACAA5EC07ADDECE9381333EF849576C28AF3B7FFB656946F1D1FA3",
+      "output_sha256": "8D93B52D47ACAA5EC07ADDECE9381333EF849576C28AF3B7FFB656946F1D1FA3",
+      "timing_sha256": "60BF61F4A20D99CF436728AF34B04A3DFA32AA83D9B89E8C5AF98332D9185D78",
+      "port_different_rows": 228,
+      "routine_clocks": [
+        {
+          "address": 99338,
+          "calls": 24858,
+          "min": 7638,
+          "max": 2142088,
+          "median": 75078.0
+        }
+      ]
+    },
+    {
+      "game": "ex",
+      "mode": "sprites",
+      "rows": 1950,
+      "calls": 1950,
+      "oracle_differences": 0,
+      "rom_sha256": "ECA6CE47B19D14BEFE7170E613A127E4D174F24B7F9625CDF688D814DE6BD7CB",
+      "symbols_sha256": "36BA8A5CD028297FDB49C31830673433BB997167B7E489EBC983B0C416FA9FF6",
+      "golden_sha256": "413006DE8EA8F9D8039127D3D99C1254294CD03BA08E8010F67BE0E0911BF3EF",
+      "output_sha256": "413006DE8EA8F9D8039127D3D99C1254294CD03BA08E8010F67BE0E0911BF3EF",
+      "timing_sha256": "689EFC464400B875EDD925BCA2457AEF05A123E14F7B03BD91BE47E2A5F4A8AA",
+      "port_different_rows": 0,
+      "routine_clocks": [
+        {
+          "address": 119611,
+          "calls": 1950,
+          "min": 3056,
+          "max": 269768,
+          "median": 5970.0
+        }
+      ]
+    },
+    {
+      "game": "ex",
+      "mode": "matrices",
+      "rows": 3726,
+      "calls": 3933,
+      "oracle_differences": 0,
+      "rom_sha256": "ECA6CE47B19D14BEFE7170E613A127E4D174F24B7F9625CDF688D814DE6BD7CB",
+      "symbols_sha256": "36BA8A5CD028297FDB49C31830673433BB997167B7E489EBC983B0C416FA9FF6",
+      "golden_sha256": "EE78124CA8DA68F0BD633BE2B6C475A4507342B344862EF0331A2A59FB3BA645",
+      "output_sha256": "EE78124CA8DA68F0BD633BE2B6C475A4507342B344862EF0331A2A59FB3BA645",
+      "timing_sha256": "C826B1794504992F0B37D7ACCB1E4A2832F161D0CC137F873FD1FBA5C2113BB8",
+      "port_different_rows": 0,
+      "routine_clocks": [
+        {
+          "address": 98965,
+          "calls": 207,
+          "min": 2268,
+          "max": 2268,
+          "median": 2268
+        },
+        {
+          "address": 99338,
+          "calls": 1863,
+          "min": 86784,
+          "max": 170994,
+          "median": 137822
+        },
+        {
+          "address": 99474,
+          "calls": 1863,
+          "min": 41938,
+          "max": 161796,
+          "median": 113258
+        }
+      ]
+    },
+    {
+      "game": "ex",
+      "mode": "points",
+      "rows": 9729,
+      "calls": 9936,
+      "oracle_differences": 0,
+      "rom_sha256": "ECA6CE47B19D14BEFE7170E613A127E4D174F24B7F9625CDF688D814DE6BD7CB",
+      "symbols_sha256": "36BA8A5CD028297FDB49C31830673433BB997167B7E489EBC983B0C416FA9FF6",
+      "golden_sha256": "BF996A2690C92A9D059C5C7216E19B57B9B42D517350F1E69A281EE20D513ABE",
+      "output_sha256": "BF996A2690C92A9D059C5C7216E19B57B9B42D517350F1E69A281EE20D513ABE",
+      "timing_sha256": "349539BE1BD07462C75E961C0F37992613D77419031480C9E1AF09377C4282F6",
+      "port_different_rows": 0,
+      "routine_clocks": [
+        {
+          "address": 98878,
+          "calls": 9729,
+          "min": 894,
+          "max": 894,
+          "median": 894
+        },
+        {
+          "address": 98965,
+          "calls": 207,
+          "min": 2268,
+          "max": 2268,
+          "median": 2268
+        }
+      ]
+    },
+    {
+      "game": "ex",
+      "mode": "dust",
+      "rows": 386,
+      "calls": 770,
+      "oracle_differences": 0,
+      "rom_sha256": "ECA6CE47B19D14BEFE7170E613A127E4D174F24B7F9625CDF688D814DE6BD7CB",
+      "symbols_sha256": "36BA8A5CD028297FDB49C31830673433BB997167B7E489EBC983B0C416FA9FF6",
+      "golden_sha256": "ABBA53BEFC2487F1A6A1634B3981F3E1CA0DA85C4091604AB4A465BFEA367979",
+      "output_sha256": "ABBA53BEFC2487F1A6A1634B3981F3E1CA0DA85C4091604AB4A465BFEA367979",
+      "timing_sha256": "0A3F6726CA3A3C21C93D24267B70BC1865F1C812A3E63ED628234B55727A546F",
+      "port_different_rows": 0,
+      "routine_clocks": [
+        {
+          "address": 98965,
+          "calls": 384,
+          "min": 2268,
+          "max": 2268,
+          "median": 2268.0
+        },
+        {
+          "address": 109723,
+          "calls": 2,
+          "min": 29736,
+          "max": 125922,
+          "median": 77829.0
+        },
+        {
+          "address": 109812,
+          "calls": 384,
+          "min": 97074,
+          "max": 656826,
+          "median": 294106.0
+        }
+      ]
+    },
+    {
+      "game": "ex",
+      "mode": "grid",
+      "rows": 384,
+      "calls": 1152,
+      "oracle_differences": 0,
+      "rom_sha256": "ECA6CE47B19D14BEFE7170E613A127E4D174F24B7F9625CDF688D814DE6BD7CB",
+      "symbols_sha256": "36BA8A5CD028297FDB49C31830673433BB997167B7E489EBC983B0C416FA9FF6",
+      "golden_sha256": "6326F1558219976D16BEC2103507A63451AC7977C3D73BBD387E145185CE5BEC",
+      "output_sha256": "6326F1558219976D16BEC2103507A63451AC7977C3D73BBD387E145185CE5BEC",
+      "timing_sha256": "F7DB9BCDABF72EE048CD297E85288ABAF04F024E74CBBDDEC0589A65E58C48B6",
+      "port_different_rows": 0,
+      "routine_clocks": [
+        {
+          "address": 98878,
+          "calls": 384,
+          "min": 894,
+          "max": 894,
+          "median": 894.0
+        },
+        {
+          "address": 98965,
+          "calls": 384,
+          "min": 2268,
+          "max": 2268,
+          "median": 2268.0
+        },
+        {
+          "address": 109218,
+          "calls": 192,
+          "min": 40446,
+          "max": 246402,
+          "median": 109253.0
+        },
+        {
+          "address": 109507,
+          "calls": 192,
+          "min": 28980,
+          "max": 104400,
+          "median": 55474.0
+        }
+      ]
+    }
+  ],
+  "compared_rows": 70980,
+  "isolated_calls": 73536,
+  "cfgr": 0
+}

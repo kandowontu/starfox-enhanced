@@ -1,0 +1,38 @@
+Ares isolated GSU: pipeline/cache/multiply clocks, SRAM, bounds and reset checks passed
+Map_SuperFXLoROMMap
+Independent GSU: 540 shapes, 15957 cases, 15948 exact, 9 different
+original/render: 15957 rows agree, 15957 cycle measurements
+Map_SuperFXLoROMMap
+Independent GSU: 2 shapes, 150 cases, 150 exact, 0 different
+original/sprites: 150 rows agree, 150 cycle measurements
+Map_SuperFXLoROMMap
+207 worlds, 0 different; 3726 models/shadows, 0 different
+original/matrices: 3726 rows agree, 3933 cycle measurements
+Map_SuperFXLoROMMap
+207 worlds, 0 different; 9729 points, 0 different
+original/points: 9729 rows agree, 9936 cycle measurements
+Map_SuperFXLoROMMap
+193 dust states, 0 point mismatches, 0 framebuffer mismatches
+original/dust: 193 rows agree, 385 cycle measurements
+Map_SuperFXLoROMMap
+192 grid frames, 0 different
+original/grid: 192 rows agree, 576 cycle measurements
+Map_SuperFXLoROMMap
+Independent GSU: 827 shapes, 24858 cases, 24630 exact, 228 different
+ex/render: 24858 rows agree, 24858 cycle measurements
+Map_SuperFXLoROMMap
+Independent GSU: 26 shapes, 1950 cases, 1950 exact, 0 different
+ex/sprites: 1950 rows agree, 1950 cycle measurements
+Map_SuperFXLoROMMap
+207 worlds, 0 different; 3726 models/shadows, 0 different
+ex/matrices: 3726 rows agree, 3933 cycle measurements
+Map_SuperFXLoROMMap
+207 worlds, 0 different; 9729 points, 0 different
+ex/points: 9729 rows agree, 9936 cycle measurements
+Map_SuperFXLoROMMap
+386 dust states, 0 point mismatches, 0 framebuffer mismatches
+ex/dust: 386 rows agree, 770 cycle measurements
+Map_SuperFXLoROMMap
+384 grid frames, 0 different
+ex/grid: 384 rows agree, 1152 cycle measurements
+All 70980 rows agree; 73536 isolated calls measured.

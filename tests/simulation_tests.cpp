@@ -2151,6 +2151,9 @@ int main(int argc, char** argv) {
                                 & 0x08U) != 0U,
                         "Star Fox EX Select view did not enter its immediate "
                         "invisible-player cockpit mode");
+                require((first_person_game.objects().at(
+                            first_person_game.player()).flags & 0x1eU) == 0x08U,
+                    "EX invisible player retained stale view flags instead of the source reset state");
                 for (std::size_t tick = 0U; tick < 240U; ++tick) {
                     static_cast<void>(first_person_game.tick({
                         starfox::input::right,

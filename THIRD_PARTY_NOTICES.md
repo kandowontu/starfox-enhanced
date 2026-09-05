@@ -1,5 +1,31 @@
 # Third-party notices
 
+## Ares GSU audit adapter (development tool only)
+
+Source: <https://github.com/ares-emulator/ares>
+
+Pinned revision: `0aafd85789215e84e1e43415c07d4c88461b7899` (v148).
+
+The optional `starfox_reference_ares_*` tools use the GSU component and nall
+headers from an independently downloaded checkout. They are not linked into
+the game or included in game packages. `tools/reference/ares_gsu.cpp` adapts
+GSU initialization and retains the following ISC notice. Other project-owned
+files remain under the repository's MIT license.
+
+Copyright (c) 2004-2025 ares team, Near et al
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
 ## RetroCPU
 
 Source: <https://github.com/achaulk/retro_cpu>

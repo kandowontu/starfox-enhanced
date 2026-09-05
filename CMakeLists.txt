@@ -208,6 +208,24 @@ if(STARFOX_BUILD_TOOLS)
         target_include_directories(starfox_reference_render PRIVATE
             "${STARFOX_REFERENCE_CORE_DIR}/libretro")
         target_link_libraries(starfox_reference_render PRIVATE starfox_core)
+        set(STARFOX_REFERENCE_ARES_DIR "" CACHE PATH
+            "Optional pinned Ares checkout for isolated GSU cycle measurements")
+        if(EXISTS "${STARFOX_REFERENCE_ARES_DIR}/ares/component/processor/gsu/gsu.hpp")
+            add_library(starfox_reference_ares STATIC tools/reference/ares_gsu.cpp)
+            target_include_directories(starfox_reference_ares SYSTEM PRIVATE
+                "${STARFOX_REFERENCE_ARES_DIR}" "${STARFOX_REFERENCE_ARES_DIR}/nall")
+            target_compile_features(starfox_reference_ares PRIVATE cxx_std_20)
+            add_executable(starfox_reference_ares_render tools/reference/render_audit.cpp)
+            target_include_directories(starfox_reference_ares_render PRIVATE
+                "${STARFOX_REFERENCE_CORE_DIR}/libretro")
+            target_compile_definitions(starfox_reference_ares_render PRIVATE STARFOX_REFERENCE_ARES=1)
+            target_link_libraries(starfox_reference_ares_render PRIVATE starfox_core starfox_reference_ares)
+            add_executable(starfox_reference_ares_tests tools/reference/ares_gsu_tests.cpp)
+            target_compile_features(starfox_reference_ares_tests PRIVATE cxx_std_20)
+            target_link_libraries(starfox_reference_ares_tests PRIVATE starfox_reference_ares)
+            add_executable(starfox_reference_view tools/reference/view_audit.cpp)
+            target_link_libraries(starfox_reference_view PRIVATE starfox_core starfox_reference_ares)
+        endif()
     endif()
 
     add_executable(starfox_timing_demo src/app/timing_demo.cpp)
@@ -684,6 +702,9 @@ endif()
 
 if(STARFOX_BUILD_TESTS)
     enable_testing()
+    if(TARGET starfox_reference_ares_tests)
+        add_test(NAME starfox_reference_ares_adapter COMMAND starfox_reference_ares_tests)
+    endif()
     add_executable(starfox_bps_tests tests/bps_tests.cpp)
     target_link_libraries(starfox_bps_tests PRIVATE starfox_core)
     add_test(NAME starfox_bps_tests COMMAND starfox_bps_tests)
@@ -867,6 +888,14 @@ if(STARFOX_BUILD_TESTS)
             "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
             "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/reference-grid-original.csv")
+        if(TARGET starfox_reference_view)
+            foreach(route IN ITEMS 2 3)
+                add_test(NAME starfox_upstream_reference_view_${route} COMMAND starfox_reference_view
+                    "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT"
+                    "LEVEL${route}_1" 1800 "${CMAKE_CURRENT_BINARY_DIR}/reference-view-original-${route}.csv")
+            endforeach()
+        endif()
         add_test(NAME starfox_upstream_ending_audio COMMAND starfox_ending_audio_tests
             "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
             "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT")
@@ -1048,6 +1077,13 @@ if(STARFOX_BUILD_TESTS)
         add_test(NAME starfox_ex_reference_grid COMMAND starfox_reference_grid_tests
             "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/reference-grid-ex.csv")
+        if(TARGET starfox_reference_view)
+            foreach(route IN ITEMS 2 3)
+                add_test(NAME starfox_ex_reference_view_${route} COMMAND starfox_reference_view
+                    "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}"
+                    "LEVEL${route}_1" 1800 "${CMAKE_CURRENT_BINARY_DIR}/reference-view-ex-${route}.csv")
+            endforeach()
+        endif()
         add_test(NAME starfox_ex_reference_sprites COMMAND starfox_reference_render_tests
             "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/reference-sprites-ex.csv")

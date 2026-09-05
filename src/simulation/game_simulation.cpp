@@ -4662,10 +4662,12 @@ std::size_t GameSimulation::update_view_flags_and_cull() {
     std::vector<ObjectHandle> removals;
     for (const auto handle : objects_.active_handles()) {
         auto& object = objects_.at(handle);
-        // showview jumps over invisible objects before touching their cached
-        // player-relative flags or considering behind-view removal.
+        // MARIOSHOWVIEW resets these flags and provisionally sets AFFRONTPL
+        // before its invisible-object branch. ALIENFLAGS skips invisible
+        // objects later, so they retain that reset state for strategies.
+        object.flags = static_cast<std::uint8_t>(
+            (object.flags & ~view_flag_mask) | 0x08U);
         if ((object.strategy_flags[3] & 0x08U) != 0U) continue;
-        object.flags &= static_cast<std::uint8_t>(~view_flag_mask);
         const auto position = transform_q15(world, {
             subtract16(object.world_x, camera[0]),
             subtract16(object.world_y, camera[1]),
@@ -4705,9 +4707,15 @@ std::size_t GameSimulation::update_view_flags_and_cull() {
             if (position[0] < 0) object.flags |= left_of_view;
             continue;
         }
+        object.flags &= static_cast<std::uint8_t>(~0x08U);
         if ((map_.read_native_byte(game_flags_) & 0x01U) != 0U
             || (object.collision_flags & first_frame) != 0U
             || (object.type & remove_behind) == 0U) {
+            // Behind-view objects which survive still take .dontkill and
+            // receive AFINVIEWPL/AFLEFTPL. Only AFFRONTPL distinguishes them
+            // from objects in front; strategies read these independently.
+            object.flags |= 0x10U;
+            if (position[0] < 0) object.flags |= left_of_view;
             continue;
         }
         removals.push_back(handle);

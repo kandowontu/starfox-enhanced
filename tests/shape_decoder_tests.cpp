@@ -595,9 +595,27 @@ int main() {
                 == colour_warp_frame.pixels(),
             "EX COLOR WARP changed between presentations of one source state");
 
+    // This synthetic ground-grid fixture must provide the constructor's
+    // complete ROM layout, including the assembled EX grid parameters.
+    // Star/snow/reciprocal data are unused by these grid-only assertions.
+    auto grid_bytes = rom.bytes();
+    auto grid_code = std::uint32_t{0x018400};
+    put8(grid_bytes, grid_code, 0xf0); // IWT R0,25
+    put16(grid_bytes, grid_code, 25);
+    put8(grid_bytes, grid_code, 0x3e); // ALT2; SMS [M_GRIDZSIZE],R0
+    put8(grid_bytes, grid_code, 0xa0);
+    put8(grid_bytes, grid_code, 0xc0); // SRAM $0180 / 2
+    auto grid_threshold = std::uint32_t{0x018440};
+    put8(grid_bytes, grid_threshold, 0xf5); // IWT R5,96; FROM R9; TO R5; SUB R5
+    put16(grid_bytes, grid_threshold, 96);
+    put8(grid_bytes, grid_threshold, 0xb9);
+    put8(grid_bytes, grid_threshold, 0x15);
+    put8(grid_bytes, grid_threshold, 0x65);
+    const starfox::assets::RomImage grid_rom{std::move(grid_bytes)};
     const auto dust_symbols = starfox::assets::SymbolMap::parse(
-        "STAR_COLS $018300\n");
-    const starfox::render::DustRenderer dust_renderer{rom, dust_symbols};
+        "STAR_COLS $018300\nSNOW_COLS $018320\nZTAB $019000\n"
+        "MSHOWGRID $018400\nM_GRIDZSIZE $700180\nMGRDRAWDOT3 $01844b\n");
+    const starfox::render::DustRenderer dust_renderer{grid_rom, dust_symbols};
     const starfox::timing::RenderTransform grid_camera{};
     const starfox::simulation::MatrixQ15 identity_matrix{
         32'767, 0, 0,

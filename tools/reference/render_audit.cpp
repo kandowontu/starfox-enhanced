@@ -15,9 +15,26 @@
 #include "math_audit.hpp"
 #include "dust_audit.hpp"
 #include "grid_audit.hpp"
+#ifdef STARFOX_REFERENCE_ARES
+#include "ares_gsu.hpp"
+#endif
 
 using namespace starfox;
 namespace {
+#ifdef STARFOX_REFERENCE_ARES
+reference::AresGsu* ares_core{};
+std::ofstream timing_output;
+unsigned call_sequence{};
+unsigned call_ares(unsigned address, unsigned stack, unsigned return_address) {
+    const auto result = ares_core->run(address, stack, return_address);
+    if (timing_output.is_open()) {
+        timing_output << call_sequence++ << ',' << address << ',' << stack << ','
+            << return_address << ',' << result.instructions << ',' << result.master_clocks << '\n';
+    }
+    return result.instructions;
+}
+unsigned run_ares(unsigned address, unsigned) { return call_ares(address, 0, 0); }
+#endif
 bool environment(unsigned command, void* data) {
     switch (command) {
     case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
@@ -52,8 +69,15 @@ uint64_t hash(const render::Framebuffer& frame) {
 
 int main(int argc, char** argv) {
     try {
-        if (argc != 6) {
+        if (argc != 6
+#ifdef STARFOX_REFERENCE_ARES
+            && argc != 7
+#endif
+        ) {
             std::cerr << "Usage: render_audit CORE_DLL ROM SYMBOLS all|all-frames|matrices|points|dust|grid|[sprites:]NAME,NAME OUTPUT.csv\n";
+#ifdef STARFOX_REFERENCE_ARES
+            std::cerr << "Ares build also accepts an optional final TIMING.csv path.\n";
+#endif
             return 2;
         }
         auto rom = assets::RomImage::load(argv[2]);
@@ -78,11 +102,21 @@ int main(int argc, char** argv) {
         API(retro_run); API(retro_get_memory_data); API(retro_get_memory_size);
         API(retro_unload_game); API(retro_deinit);
 #undef API
+#ifdef STARFOX_REFERENCE_ARES
+        const auto gsu = &run_ares;
+        const auto gsu_call = &call_ares;
+        if (argc == 7) {
+            timing_output.open(argv[6]);
+            if (!timing_output) throw std::runtime_error("Cannot create timing CSV");
+            timing_output << "call,address,stack,return_address,instructions,master_clocks\n";
+        }
+#else
         const auto gsu = reinterpret_cast<unsigned(*)(unsigned, unsigned)>(
             GetProcAddress(core, "retro_reference_gsu"));
         if (!gsu) throw std::runtime_error("Reference bridge is not installed");
         const auto gsu_call = reinterpret_cast<unsigned(*)(unsigned, unsigned, unsigned)>(
             GetProcAddress(core, "retro_reference_gsu_call"));
+#endif
         retro_set_environment(environment);
         retro_set_video_refresh(video);
         retro_set_audio_sample(sample);
@@ -96,6 +130,10 @@ int main(int argc, char** argv) {
         auto* ram = static_cast<uint8_t*>(retro_get_memory_data(RETRO_MEMORY_SAVE_RAM));
         if (!ram || retro_get_memory_size(RETRO_MEMORY_SAVE_RAM) < 0x10000)
             throw std::runtime_error("Cartridge does not expose the expected GSU RAM");
+#ifdef STARFOX_REFERENCE_ARES
+        reference::AresGsu engine(rom.bytes(), std::span<uint8_t>(ram, 0x10000));
+        ares_core = &engine;
+#endif
         const std::vector<uint8_t> baseline(ram, ram + 0x10000);
         const auto word = [&](unsigned location) {
             location &= 65535;
@@ -195,8 +233,14 @@ int main(int argc, char** argv) {
                         put(address("M_SHAPEBANK"), shape.header.points_address >> 16);
                         put(address("M_SPRA"), shape.header.size);
                         put(address("M_SPR0"), 0); put(address("M_SPRXSCALE"), adjustment);
-                        const auto stop = address("MPRTDEC") - 2;
-                        if (rom.read16(stop) != 0x0100) throw std::runtime_error("Missing return STOP");
+                        // MSSPRITE returns to its caller without flushing the
+                        // final pixel-cache tile. In-game MDO_3D_DISPLAY does
+                        // that explicitly. Use the cartridge's own RPIX/STOP
+                        // here, as the dust/grid fixtures do, rather than
+                        // depending on a particular core's STOP behavior.
+                        const auto stop = address("MSHOW") - 4;
+                        if (rom.read16(stop) != 0x4c3d || rom.read16(stop + 2) != 0x0100)
+                            throw std::runtime_error("Missing return pixel-cache flush/STOP");
                         instructions = gsu_call(address("MSSPRITE"),
                             address("M_STACK") & 65535, stop & 65535);
                     } else instructions = gsu(address("MSHOWOBJ3"), 0);
