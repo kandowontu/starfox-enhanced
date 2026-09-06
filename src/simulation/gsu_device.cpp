@@ -116,6 +116,7 @@ std::uint64_t GsuDevice::instructions() const noexcept { return impl_->core.inst
 bool GsuDevice::running() const noexcept { return impl_->core.regs.sfr.g; }
 bool GsuDevice::owns_rom() const noexcept { return impl_->core.regs.sfr.g && impl_->core.regs.scmr.ron; }
 bool GsuDevice::owns_ram() const noexcept { return impl_->core.regs.sfr.g && impl_->core.regs.scmr.ran; }
+std::uint32_t GsuDevice::ram_size() const noexcept { return impl_->core.ramMask + 1U; }
 bool GsuDevice::irq() const noexcept { return impl_->core.irq_line; }
 std::uint32_t GsuDevice::pending_ram_clocks() const noexcept { return impl_->core.regs.ramcl; }
 std::uint8_t GsuDevice::read_io(std::uint32_t address) { impl_->core.require_idle(); return impl_->core.readIO(address,0U); }

@@ -28,6 +28,7 @@ public:
     [[nodiscard]] bool running() const noexcept;
     [[nodiscard]] bool owns_rom() const noexcept;
     [[nodiscard]] bool owns_ram() const noexcept;
+    [[nodiscard]] std::uint32_t ram_size() const noexcept;
     [[nodiscard]] bool irq() const noexcept;
     [[nodiscard]] std::uint32_t pending_ram_clocks() const noexcept;
     std::uint8_t read_io(std::uint32_t address);

@@ -2830,6 +2830,37 @@ Wdc65816::~Wdc65816() = default;
 Wdc65816::Wdc65816(Wdc65816&&) noexcept = default;
 Wdc65816& Wdc65816::operator=(Wdc65816&&) noexcept = default;
 
+std::optional<std::uint8_t> NativePresentationSnapshot::read_ram(std::uint32_t address) const noexcept {
+    address &= 0xffffffU;
+    const auto bank = address >> 16U;
+    const auto low = address & 0xffffU;
+    if (bank == 0x7eU || bank == 0x7fU) return wram[address & 0x1ffffU];
+    if ((bank & 0x7fU) < 0x40U && low < 0x2000U) return wram[low];
+    if (live_gsu) {
+        if ((bank & 0x7fU) < 0x40U && low >= 0x6000U && low < 0x8000U)
+            return gsu_ram[low & 0x1fffU];
+        if ((bank & 0x7fU) == 0x70U) return gsu_ram[low];
+        if ((bank & 0x7fU) == 0x71U)
+            return extended_gsu_ram ? cartridge_ram[low] : gsu_ram[low];
+    } else {
+        if (bank == 0x70U) return gsu_ram[low];
+        if (bank == 0x71U) return cartridge_ram[low];
+    }
+    return std::nullopt;
+}
+
+void Wdc65816::capture_presentation(NativePresentationSnapshot& snapshot) const {
+    if (impl_->bus_clock_active)
+        throw std::logic_error{"Capture presentation only at a native execution boundary"};
+    std::copy(impl_->wram.begin(),impl_->wram.end(),snapshot.wram.begin());
+    std::copy(impl_->superfx_ram.begin(),impl_->superfx_ram.end(),snapshot.gsu_ram.begin());
+    snapshot.cartridge_ram = impl_->cartridge_ram;
+    snapshot.ppu = impl_->ppu;
+    snapshot.model = impl_->native_model_draw;
+    snapshot.live_gsu = bool(impl_->gsu);
+    snapshot.extended_gsu_ram = snapshot.live_gsu && impl_->gsu->ram_size() == 0x20000U;
+}
+
 std::uint8_t Wdc65816::read8(std::uint32_t address) const {
     return impl_->read8(address);
 }

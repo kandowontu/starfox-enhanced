@@ -62,6 +62,7 @@ int main(int argc, char** argv) try {
                 game->map().call_native_routine(symbols.find("SETBLACK_L").at(0),registers,5'000'000U);
                 if (!sliced) game->map().call_native_routine(symbols.find("TRANSFER_L").at(0),registers,5'000'000U);
                 else {
+                    game->map().hold_native_presentation();
                     game->map().set_task_clock_deadline(timeline->raster().elapsed()+4096U);
                     auto result = game->map().begin_native_task(
                         symbols.find("TRANSFER_L").at(0),registers,{},5'000'000U);
@@ -72,6 +73,7 @@ int main(int argc, char** argv) try {
                         result = game->map().resume_native_task(registers,{},5'000'000U,false,false);
                     }
                     game->map().set_task_clock_deadline({});
+                    game->map().release_native_presentation();
                     game->map().restore_objects_from_native();
                 }
             } else static_cast<void>(game->tick({}));

@@ -110,6 +110,18 @@ struct NativeModelDrawState {
     std::uint16_t colour_table{};
 };
 
+// Presentation data only: not a CPU/GSU save state. Capturing it has no bus
+// side effects, including when a paused GSU still owns cartridge RAM.
+struct NativePresentationSnapshot {
+    std::array<std::uint8_t,0x20000U> wram{};
+    std::array<std::uint8_t,0x10000U> gsu_ram{};
+    std::array<std::uint8_t,0x10000U> cartridge_ram{};
+    SnesPpuState ppu;
+    NativeModelDrawState model;
+    bool live_gsu{}, extended_gsu_ram{};
+    [[nodiscard]] std::optional<std::uint8_t> read_ram(std::uint32_t address) const noexcept;
+};
+
 // Project-owned adapter around the pinned MIT RetroCPU core. It supplies the
 // SNES LoROM/WRAM address map and bounded native-mode subroutine execution.
 class Wdc65816 {
@@ -127,6 +139,7 @@ public:
 
     [[nodiscard]] std::uint8_t read8(std::uint32_t address) const;
     [[nodiscard]] std::uint16_t read16(std::uint32_t address) const;
+    void capture_presentation(NativePresentationSnapshot& snapshot) const;
     // Cumulative native-instruction/interrupt-entry bus and internal clocks. Excludes the host's
     // synthetic call-stack setup, DMA, refresh and translated GSU execution.
     // This is a measurement input, not the game's current pace scheduler.

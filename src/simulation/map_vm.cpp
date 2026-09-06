@@ -193,11 +193,26 @@ std::int16_t MapVm::player_world_z() const noexcept {
 }
 
 std::uint8_t MapVm::read_native_byte(std::uint32_t address) const noexcept {
+    if (presentation_held_)
+        if (const auto value = presentation_->read_ram(address)) return *value;
     return cpu_.read8(address);
 }
 
 std::uint16_t MapVm::read_native_word(std::uint32_t address) const noexcept {
-    return cpu_.read16(address);
+    return static_cast<std::uint16_t>(read_native_byte(address))
+        | (static_cast<std::uint16_t>(read_native_byte(address+1U)) << 8U);
+}
+
+void MapVm::hold_native_presentation() {
+    if (presentation_held_) throw std::logic_error{"Native presentation is already held"};
+    if (!presentation_) presentation_ = std::make_unique<NativePresentationSnapshot>();
+    cpu_.capture_presentation(*presentation_);
+    presentation_held_ = true;
+}
+
+void MapVm::release_native_presentation() noexcept {
+    presentation_held_ = false;
+    sync_display_from_cpu();
 }
 
 std::int8_t MapVm::dots_mode() const noexcept {
@@ -219,6 +234,7 @@ void MapVm::write_native_word(std::uint32_t address, std::uint16_t value) {
 }
 
 void MapVm::sync_display_from_cpu() noexcept {
+    if (presentation_held_) return;
     fade_direction_ = std::bit_cast<std::int8_t>(cpu_.read8(fade_direction_address_));
     fade_value_ = static_cast<std::uint8_t>(cpu_.read8(fade_address_) & 0x0fU);
     const auto display = cpu_.read8(display_address_);

@@ -55,6 +55,10 @@ The complete native TRANSFER_L also executes in the development probe with
 timer-driven IRQ/DMA. CPU task clock deadlines now permit cooperative yields
 without abandoning live GSU work; see TASK-CLOCK-DEADLINES.md. The surrounding
 GameSimulation input, presentation and main-loop integration remains pending.
+MapVm can now hold completed presentation RAM/PPU/model data during native
+task yields without changing execution or bus state. The sliced transfer
+probe uses that hold; see NATIVE-PRESENTATION-HOLD.md. GameSimulation must
+adopt this publication boundary before it exposes partially advanced frames.
 Production last-cycle hooks now match reference sample clocks and the I flag
 for 254 native opcodes, including both initial I states. A callback can select
 the pending-interrupt dummy read used by idleIRQ instructions. Timeline binding

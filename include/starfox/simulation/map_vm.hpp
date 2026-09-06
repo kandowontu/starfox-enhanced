@@ -91,6 +91,12 @@ public:
     [[nodiscard]] ObjectHandle native_object_handle(std::uint16_t pointer) const noexcept;
     // Import the display cache after restoring an external native snapshot.
     void restore_display_from_native() noexcept { sync_display_from_cpu(); }
+    // Hold completed presentation data while resumable native work runs.
+    // Native CPU execution and writes keep using live memory. Release only
+    // at a settled publication boundary, then import objects/map state.
+    void hold_native_presentation();
+    void release_native_presentation() noexcept;
+    [[nodiscard]] bool native_presentation_held() const noexcept { return presentation_held_; }
     void write_native_byte(std::uint32_t address, std::uint8_t value);
     [[nodiscard]] std::uint8_t read_native_byte(std::uint32_t address) const noexcept;
     [[nodiscard]] std::uint16_t read_native_word(std::uint32_t address) const noexcept;
@@ -100,6 +106,7 @@ public:
         return cpu_.load_cartridge_ram(bytes);
     }
     [[nodiscard]] std::span<const std::uint8_t> cartridge_ram() const noexcept {
+        if (presentation_held_) return presentation_->cartridge_ram;
         return cpu_.cartridge_ram();
     }
     [[nodiscard]] std::vector<ApuPortWrite> take_apu_port_writes() {
@@ -139,9 +146,11 @@ public:
         cpu_.set_apu_output_ports(ports);
     }
     [[nodiscard]] const SnesPpuState& ppu_state() const noexcept {
+        if (presentation_held_) return presentation_->ppu;
         return cpu_.ppu_state();
     }
     [[nodiscard]] const NativeModelDrawState& native_model_draw() const noexcept {
+        if (presentation_held_) return presentation_->model;
         return cpu_.native_model_draw();
     }
     void set_native_model_draw(const NativeModelDrawState& state) noexcept {
@@ -331,6 +340,8 @@ private:
     std::uint32_t number_map_loops_address_{0x0017d8U};
     std::uint32_t map_bank_address_{0x001af7U};
     Wdc65816 cpu_;
+    std::unique_ptr<NativePresentationSnapshot> presentation_;
+    bool presentation_held_{};
 };
 
 } // namespace starfox::simulation
