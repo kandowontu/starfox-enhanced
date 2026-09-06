@@ -31,6 +31,27 @@ starfox::assets::RomImage fixture(std::initializer_list<std::uint8_t> code) {
 }
 
 int main() try {
+    for (const unsigned direct : {0x1000U, 0x1001U}) {
+        for (const unsigned index : {7U, 0xdfU, 0xe0U, 0xffU, 0x100U, 0x7ffU, 0xffffU}) {
+            for (const bool fast : {false, true}) {
+                const auto rom = fixture({0xb5, 0x20, 0x95, 0x22, 0x6b});
+                Wdc65816 cpu{rom};
+                Wdc65816Registers registers;
+                registers.direct = static_cast<std::uint16_t>(direct);
+                registers.x = static_cast<std::uint16_t>(index);
+                cpu.write16(static_cast<std::uint16_t>(direct + index + 0x20), 0x1234);
+                cpu.write8(0x420d, fast);
+                cpu.call_long(fast ? 0x808000 : 0x008000, registers);
+                require(registers.a == 0x1234
+                    && cpu.read16(static_cast<std::uint16_t>(direct + index + 0x22)) == 0x1234,
+                    "Indexed direct load/store changed data or bank-local wrapping");
+                // Both word operations have one indexing idle, regardless of
+                // crossing $ff. Only nonzero DL adds another idle per access.
+                clocks(cpu, (fast ? 110U : 120U) + (direct & 255U ? 12U : 0U),
+                    "Indexed direct addressing added an unsupported page-cross cycle");
+            }
+        }
+    }
     {
         const auto rom = fixture({0xea, 0xab, 0x60}); // NOP; PLB; RTS
         Wdc65816 cpu{rom};

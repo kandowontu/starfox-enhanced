@@ -1,0 +1,12 @@
+--- a/cpu/65816/cpu_65c816_instructions.inl
++++ b/cpu/65816/cpu_65c816_instructions.inl
+@@ -466,8 +466,7 @@
+ 		}
+ 		if constexpr(offset_reg != REG_MAX) {
+ 			cpuaddr_t sum = (uint32_t)cpu->cpu_state.regs.reglist[offset_reg].u16 + addr;
+-			if(sum > 0xFF)
+-				cpu->cpu_state.cycle += cpu->internal_cycle_timing;
++			// Indexed direct addressing has no page-cross cycle.
+ 			return direct + sum;
+ 		} else {
+ 			return direct + addr;

@@ -74,8 +74,9 @@ cpu = (source / "ares/sfc/cpu/cpu.cpp").read_text()
 cpu = re.sub(r'#include "([^"]+)"', r'#include <sfc/cpu/\1>', cpu)
 cpu = observe(cpu, "namespace ares::SuperFamicom {",
               'extern "C" void sfc_audit_cpu(unsigned, unsigned);\n'
-              'extern "C" void sfc_audit_cpu_step(unsigned, unsigned);\n'
-              'namespace ares::SuperFamicom {\nstatic unsigned audit_refresh_depth = 0;')
+              'extern "C" void sfc_audit_cpu_step(unsigned, unsigned, unsigned);\n'
+              'namespace ares::SuperFamicom {\nstatic unsigned audit_refresh_depth = 0;\n'
+              'static unsigned audit_dma_depth = 0;')
 cpu = observe(cpu, '#include <sfc/cpu/timing.cpp>', '#include "cpu-timing.cpp"')
 cpu = observe(cpu, "    debugger.instruction();",
               "    sfc_audit_cpu(r.pc.d, counter.cpu);\n    debugger.instruction();")
@@ -88,7 +89,14 @@ save(generated / "cpu.cpp", cpu)
 timing = (source / "ares/sfc/cpu/timing.cpp").read_text()
 timing = observe(timing, "auto CPU::step(u32 clocks) -> void {",
     "auto CPU::step(u32 clocks) -> void {\n"
-    "  sfc_audit_cpu_step(clocks, audit_refresh_depth ? 2 : status.dmaActive ? 1 : 0);")
+    "  sfc_audit_cpu_step(clocks, audit_refresh_depth ? 2 : status.dmaActive ? 1 : 0,\n"
+    "    audit_refresh_depth ? 2 : audit_dma_depth ? 1 : 0);")
+timing = observe(timing, "alwaysinline auto CPU::dmaEdge() -> void {",
+    "alwaysinline auto CPU::dmaEdge() -> void {\n"
+    "  struct AuditDmaScope {\n"
+    "    AuditDmaScope() { ++audit_dma_depth; }\n"
+    "    ~AuditDmaScope() { --audit_dma_depth; }\n"
+    "  } audit_dma_scope;")
 timing = observe(timing,
     "  if(!status.dramRefresh && hcounter() >= status.dramRefreshPosition) {",
     "  if(!status.dramRefresh && hcounter() >= status.dramRefreshPosition) {\n"

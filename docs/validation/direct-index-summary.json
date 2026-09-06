@@ -1,0 +1,58 @@
+{
+  "baseline_commit": "76417d3",
+  "baseline_cases": 17952,
+  "baseline_timing_failures": 4480,
+  "baseline_state_failures": 0,
+  "fixed_cases": 20256,
+  "fixed_timing_failures": 0,
+  "fixed_state_failures": 0,
+  "matched_baseline_clock_changes": {
+    "0": 13472,
+    "-6": 4480
+  },
+  "standalone_indexed_load_store_routines": 28,
+  "baseline_sha256": "39C675A0BC4441168F29BA597B1ABEC98B92C5E3A58FFDE4D92F218D4D6CF876",
+  "fixed_sha256": "BB606A2BCDF87D73EB65AD2A242C4E5A21325A13B873B1C6895004C7E0EEA9F2",
+  "scoped_clock_checks": [
+    {
+      "prefix": "tmp\\dma-work-audit\\original-LEVEL2_1",
+      "phase_rows": 3077,
+      "accounting_passed": true,
+      "maximum_clocks_per_category": {
+        "cpu": 27954226,
+        "dma_work": 1231212,
+        "refresh": 881760
+      },
+      "sha256": {
+        "original-LEVEL2_1-clock-work.csv": "EB74CE0C151E97784994A5D73ACCE4019461460C10CACD00820B9AAB232C1228",
+        "original-LEVEL2_1-transfer-phases.csv": "CE89F357510A906AEAC4E5F59D8433FE98BB3ED0020C1BB5B9C4D20E3E1293D3"
+      },
+      "scope": "Reference elapsed-clock partition only. DMA work is scoped to dmaEdge execution, including nested DMA/HDMA and alignment. CPU includes wait-loop instructions. Not host parity or hardware certification."
+    },
+    {
+      "prefix": "tmp\\dma-work-audit\\ex-LEVEL7_2",
+      "phase_rows": 2052,
+      "accounting_passed": true,
+      "maximum_clocks_per_category": {
+        "cpu": 35107792,
+        "dma_work": 1416586,
+        "refresh": 1103480
+      },
+      "sha256": {
+        "ex-LEVEL7_2-clock-work.csv": "E5AC002582EC05C08E87014E847577CC3062A7163D9F27ADECD108466ADE6FB6",
+        "ex-LEVEL7_2-transfer-phases.csv": "4D758EAED5BDC74CF88A17AD78DABABFD8A45128083C35CB4DC9D9677A8A9711"
+      },
+      "scope": "Reference elapsed-clock partition only. DMA work is scoped to dmaEdge execution, including nested DMA/HDMA and alignment. CPU includes wait-loop instructions. Not host parity or hardware certification."
+    }
+  ],
+  "rejected_scoped_clock_mutations": [
+    "extra-cycle",
+    "double-refresh",
+    "missing-phase",
+    "wrong-phase"
+  ],
+  "unchanged_native_and_gameplay_traces": 11,
+  "ex_failure_update": 200,
+  "host_parity_passed": false,
+  "scope": "Native instruction timing correction and disjoint reference DMA-work accounting. The live transfer scheduler and full campaigns remain unverified."
+}

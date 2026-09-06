@@ -1,0 +1,3 @@
+20256 CPU cases; 0 differences (0 state, 0 timing)
+524288 decimal ALU cases agree, including all 8-bit inputs
+1048576 native ADC/SBC routines agree, including all 8-bit inputs

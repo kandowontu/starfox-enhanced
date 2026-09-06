@@ -6,10 +6,10 @@ import json
 from pathlib import Path
 
 
-def validate(prefix):
+def validate(prefix, work=False):
     prefix = str(prefix)
     paths = [Path(prefix + suffix) for suffix in
-             ("-clock-parts.csv", "-transfer-phases.csv")]
+             ("-clock-work.csv" if work else "-clock-parts.csv", "-transfer-phases.csv")]
     rows, phases = [list(csv.DictReader(path.open(newline=""))) for path in paths]
     if not rows or len(rows) != len(phases):
         raise ValueError("Clock accounting must cover every reference phase")
@@ -21,7 +21,7 @@ def validate(prefix):
                 raise ValueError(f"Clock accounting phase differs: {field}")
         elapsed = int(row["transfer_clocks"])
         parts = [int(row[key]) for key in
-                 ("cpu_clocks", "dma_active_clocks", "refresh_clocks")]
+                 ("cpu_clocks", "dma_work_clocks" if work else "dma_active_clocks", "refresh_clocks")]
         if elapsed < 0 or min(parts) < 0 or sum(parts) != elapsed:
             raise ValueError("Clock categories do not partition elapsed master clocks")
         if parts[2] % 40:
@@ -40,10 +40,13 @@ def validate(prefix):
     return {
         "prefix": prefix, "phase_rows": len(rows), "accounting_passed": True,
         "maximum_clocks_per_category": dict(zip(
-            ("cpu", "dma_active", "refresh"), totals)),
+            ("cpu", "dma_work" if work else "dma_active", "refresh"), totals)),
         "sha256": {path.name: hashlib.sha256(path.read_bytes()).hexdigest().upper()
                    for path in paths},
-        "scope": "Reference elapsed-clock partition only. DMA-active includes arbitration and alignment; CPU includes wait-loop instructions. Not host parity or hardware certification.",
+        "scope": ("Reference elapsed-clock partition only. "
+                  + ("DMA work is scoped to dmaEdge execution, including nested DMA/HDMA and alignment. "
+                     if work else "DMA-active includes arbitration and alignment and CPU cycles while DMA is pending. ")
+                  + "CPU includes wait-loop instructions. Not host parity or hardware certification."),
     }
 
 
@@ -51,8 +54,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("prefix", nargs="+", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--work", action="store_true", help="Validate execution-scoped DMA clocks")
     args = parser.parse_args()
-    result = [validate(prefix) for prefix in args.prefix]
+    result = [validate(prefix, args.work) for prefix in args.prefix]
     text = json.dumps(result, indent=2) + "\n"
     if args.output:
         args.output.write_text(text)

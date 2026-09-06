@@ -113,7 +113,7 @@ FetchContent_MakeAvailable(retro_cpu)
 # Retain the pinned dependency, with the independently audited native-mode
 # arithmetic, bus-order and instruction-timing corrections in a reviewable patch.
 find_package(Git REQUIRED)
-foreach(retro_cpu_patch IN ITEMS retro-cpu-parity.patch retro-cpu-interrupts.patch)
+foreach(retro_cpu_patch IN ITEMS retro-cpu-parity.patch retro-cpu-interrupts.patch retro-cpu-direct-index.patch)
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/cmake/${retro_cpu_patch}")
     execute_process(COMMAND "${CMAKE_COMMAND}"

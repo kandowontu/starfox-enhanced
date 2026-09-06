@@ -431,6 +431,51 @@ corrections, so it is not presented as final-build all-stage coverage. Its full
 report is `validation/source-dispatch-intermediate-stage-summary.json`. The final
 build's focused LEVEL7_2 trace and 67/67 regression result are separate evidence.
 
+## Indexed direct-page timing correction
+
+The reference now also measures DMA work by the dynamic `dmaEdge` execution
+scope, including nested DMA/HDMA and alignment. Refresh remains a separate
+category. This distinguishes actual DMA work from ordinary CPU cycles executed
+while the DMA-active flag is pending. The earlier flag-based accounting remains
+available unchanged. `verify-clock-parts.py --work` verifies the new disjoint
+partition; both variants pass 5,129 observations, and four corrupted traces
+(extra DMA cycle, double refresh, missing phase, wrong phase) are rejected.
+
+That refinement exposed an unsupported page-cross penalty in RetroCPU's shared
+indexed direct-page address calculation. It charged an extra internal cycle
+when operand+X/Y exceeded $ff. The source processor adds the indexing idle and,
+when DL is nonzero, a direct-page alignment idle; it does not add that page-cross
+penalty. CMake now applies `cmake/retro-cpu-direct-index.patch` after the two
+existing pinned dependency patches. The original dependency checkout is not
+modified, and the fetched build dependency remains patch-checkable.
+
+The prior opcode audit used X=7/Y=9 and missed this boundary. Additional indexes
+$df, $e0, $ff, $100, $7ff and $ffff reproduce 4,480 timing failures in 17,952
+cases, all exactly six master clocks too long and none with a state difference.
+After the fix, the final expanded matrix (including indexed-indirect operations
+that share the same address helper) passes all 20,256 cases. All prior cases
+match the reference, and the 2,304 additional indexed-indirect cases pass as well.
+The existing 524,288 decimal checks and 1,048,576 native arithmetic routines also
+pass. A separate 28-routine load/store check covers alignment, page and 16-bit
+address wrap boundaries with slow and fast ROM, without requiring the oracle.
+
+The post-fix EX run retains eleven native/gameplay traces byte-for-byte and
+still fails at update 200 with the same Y mismatch. Host instruction clocks
+change as expected; the live bitmap-transfer scheduler remains incomplete.
+This correction supplies more accurate timing inputs without changing the
+enhanced input collection or rendering/interpolation policy.
+
+Evidence: `validation/direct-index-summary.json`,
+`validation/direct-index-baseline.log`, `validation/direct-index-fixed.log` and
+`validation/dma-work-failure-frame.csv`. Native-mode opcode checks establish
+the reported timing correction; they do not certify every emulation-mode case,
+full campaigns, or physical hardware performance.
+
+The final rebuilt suite passes 67/67 checks in 373.39 seconds, including the
+expanded CPU matrix, input/pacing, transitions and normal/MSU ending audio.
+See `validation/direct-index-regression-validation.txt`. The desktop executable
+is rebuilt; the packaged candidate is unchanged.
+
 ## Regression and candidate status
 
 The rebuilt full suite passed 60/61 checks in 238.33 seconds; its sole failure

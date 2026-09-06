@@ -37,7 +37,7 @@ int main(int argc, char** argv) try {
     std::ofstream file;
     if (argc == 2) file.open(argv[1]);
     auto& out = file.is_open() ? file : std::cout;
-    out << "opcode,status,direct,fast,registers_equal,memory_equal,port_clocks,ares_clocks\n";
+    out << "opcode,status,direct,fast,registers_equal,memory_equal,port_clocks,ares_clocks,index\n";
     std::vector<Operation> ops;
     for (unsigned group = 0; group < 8; ++group) {
         for (const auto mode : std::array<Operation, 15>{{
@@ -73,8 +73,15 @@ int main(int argc, char** argv) try {
         if (std::none_of(ops.begin(),ops.end(),[&](auto item){return item.opcode == mode.opcode;}))
             ops.push_back(mode);
     unsigned failures{}, cases{}, functional{}, timing{};
+    const std::array direct_indexed_ops{0x01U,0x21U,0x41U,0x61U,0x81U,0xa1U,0xc1U,0xe1U,
+        0x15U,0x16U,0x34U,0x35U,0x36U,
+        0x55U,0x56U,0x74U,0x75U,0x76U,0x94U,0x95U,0x96U,0xb4U,0xb5U,
+        0xb6U,0xd5U,0xd6U,0xf5U,0xf6U};
     for (const auto op : ops) for (unsigned flags : {0x04U,0x05U,0x0cU,0x0dU,
             0x14U,0x24U,0x34U,0xc5U,0x2cU,0x2dU,0x3cU,0x3dU}) for (unsigned direct : {0x1000U,0x1001U})
+        for (const auto index : (std::find(direct_indexed_ops.begin(), direct_indexed_ops.end(), op.opcode)
+                != direct_indexed_ops.end() ? std::vector<unsigned>{7,0xdf,0xe0,0xff,0x100,0x7ff,0xffff}
+                                           : std::vector<unsigned>{7}))
         for (const bool fast : {false,true}) {
         const auto size = op.size == 0 ? (flags & 0x20U ? 2U : 3U)
             : op.size == 5 ? (flags & 0x10U ? 2U : 3U) : op.size;
@@ -119,6 +126,11 @@ int main(int argc, char** argv) try {
                 cpu->write16(base, 0x1020);
                 cpu->write8(base + 2, 0x7e);
             }
+            if ((op.opcode & 0x1fU) == 1U) {
+                const auto base = static_cast<std::uint16_t>(direct + 0x20U
+                    + (index & (flags & 0x10U ? 0xffU : 0xffffU)));
+                cpu->write16(base, 0x1020U);
+            }
             cpu->write8(0x00420d, fast);
             cpu->write8(0x0200, 1); // bank pulled by the isolated RTI case
             if (op.opcode == 0x6c || op.opcode == 0xdc) {
@@ -128,6 +140,8 @@ int main(int argc, char** argv) try {
         }
         simulation::Wdc65816Registers regs;
         regs.a = 0x8799; regs.x = 7; regs.y = 9;
+        if (index != 7) regs.x = regs.y = static_cast<std::uint16_t>(
+            index & (flags & 0x10U ? 0xffU : 0xffffU));
         if (op.opcode == 0x44 || op.opcode == 0x54) regs.a = 2;
         regs.status = static_cast<std::uint8_t>(flags);
         regs.direct = static_cast<std::uint16_t>(direct);
@@ -151,7 +165,7 @@ int main(int argc, char** argv) try {
         if (!registers_equal || !memory_equal || !clocks_equal) ++failures;
         out << op.opcode << ',' << flags << ',' << direct << ',' << fast << ','
             << registers_equal << ',' << memory_equal << ','
-            << port.executed_master_clocks() << ',' << expected.master_clocks << '\n';
+            << port.executed_master_clocks() << ',' << expected.master_clocks << ',' << index << '\n';
         if (actual.instructions != expected.instructions)
             throw std::runtime_error("CPU audit did not compare the same instruction count");
     }
