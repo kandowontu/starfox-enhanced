@@ -13,6 +13,11 @@ GSU initialization; `tools/reference/ares_cpu.cpp` adapts the bus timing express
 Both retain the following ISC notice. Other project-owned
 files remain under the repository's MIT license.
 
+`starfox_reference_timer_tests` compiles `ares/sfc/cpu/irq.cpp` directly from
+that pinned checkout with a minimal development harness in
+`tools/reference/timer_audit.cpp`. Its independent interrupt-controller oracle
+also retains the ISC notice below and is not linked into game builds.
+
 `tools/reference/full-system` also builds the pinned full SNES accuracy core,
 libco, nall and SLJIT as a separate development reference. It generates source
 copies with observation hooks and a reproducible power-on RAM seed outside

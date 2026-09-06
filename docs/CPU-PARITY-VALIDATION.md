@@ -170,3 +170,36 @@ The local packaged candidate has not been refreshed for this source correction.
 This establishes those address-counter behaviors only. Reverse DMA, prohibited
 A-bus/WRAM-to-WRAM transfers, DMA clock scheduling, HDMA and refresh interactions
 remain unaudited or incomplete. It does not resolve the live EX transfer read.
+
+## S-CPU timer/NMI controller groundwork
+
+`SnesInterrupts` now implements the comparator, hold and acknowledgement state
+needed between the raster scheduler and the architectural CPU entry API.
+It accepts delayed beam samples from the scheduler instead of generating a
+second video clock. Its polling point must be supplied once per four master
+clocks, and instruction sampling must occur at the native last-cycle point.
+Timer writes perform an immediate IRQ comparison; NMITIMEN/DMA inhibit polling
+until a CPU clock step. TIMEUP preserves open-bus bits and cannot clear the
+IRQ hold prematurely. RDNMI preserves a pending NMI edge after acknowledging
+the register. External IRQ remains independent of the timer acknowledgement.
+
+The development oracle compiles the pinned Ares `ares/sfc/cpu/irq.cpp` directly,
+including its boolean edge primitives, against a minimal register/beam harness.
+One million deterministic events produce **332,915 acknowledgement/poll
+comparisons with zero differences**. These include deliberately discontinuous
+counter samples to exercise state transitions; this is not a chronological
+console trace. Timer-register decoding is supplied by the harness; the original
+comparator, hold, acknowledgement and lastCycle functions are compiled unchanged.
+The normal test independently exercises specific hold, immediate-write, vblank,
+masked-IRQ wake and polling-lock cases without the reference dependency.
+
+Three isolated mutations are rejected: acknowledgement during hold (event 130),
+omitted HTIME +1 adjustment (event 42), and ignored polling lock (event 5).
+The reproducible script is `tools/reference/verify-timer-mutations.py`.
+Evidence is in `validation/timer-controller-validation.txt`.
+
+The controller is **not yet connected to the production CPU's bus clock or
+instruction polling point**. No runtime pacing or EX trajectory correction is
+claimed by these tests. The packaged candidate remains unchanged. Connecting
+this unit requires accounting for bus-read/write ordering, DMA/refresh clocks,
+delayed beam history and interrupt polling before the final instruction cycle.

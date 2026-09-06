@@ -330,6 +330,17 @@ EX LEVEL7_2 difference. A failing stage is not filtered from that result.
 
 ## Native interrupt entry
 
+The optional `starfox_reference_timers` CTest separately compares the new
+S-CPU timer/NMI controller against the unmodified pinned `ares/sfc/cpu/irq.cpp`.
+One million deterministic events exercise comparator polls, timer/control
+writes, held acknowledgements, external IRQ and instruction polling locks.
+This tests the controller with supplied counter history; it does not generate
+video timing or connect the controller to the production instruction loop.
+`build-ares-reference.ps1` includes this audit. From the repository root,
+`python tools/reference/verify-timer-mutations.py` compiles three isolated
+controller mutations and requires the reference audit to reject each one.
+It uses the local pinned checkout and `C:/Strawberry/c/bin/g++.exe`.
+
 The optional `starfox_reference_interrupts` CTest compares 6,912 architectural
 native IRQ/NMI entries against the pinned Ares CPU, including handler PC,
 registers, stack writes and clocks. `starfox_cpu_timing_tests` covers signal

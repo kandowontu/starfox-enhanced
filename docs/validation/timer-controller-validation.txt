@@ -1,0 +1,25 @@
+Pinned Ares revision: 0aafd85789215e84e1e43415c07d4c88461b7899
+Reference checkout was clean during the audit.
+
+1000000 timer events, 332915 acknowledgement/poll comparisons, zero differences against pinned Ares irq.cpp
+
+ack-during-hold: exit=1;  TIMEUP differs at event 130
+htime-off-by-one: exit=1;  TIMEUP differs at event 42
+ignore-poll-lock: exit=1;  interrupt polling differs at event 5
+
+Internal ctest changing into directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+Test project C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+    Start  3: starfox_reference_interrupts
+1/5 Test  #3: starfox_reference_interrupts .....   Passed    1.77 sec
+    Start  4: starfox_reference_timers
+2/5 Test  #4: starfox_reference_timers .........   Passed    0.04 sec
+    Start 12: starfox_cpu_timing_tests
+3/5 Test #12: starfox_cpu_timing_tests .........   Passed    0.02 sec
+    Start 13: starfox_dma_tests
+4/5 Test #13: starfox_dma_tests ................   Passed    0.02 sec
+    Start 14: starfox_snes_interrupt_tests
+5/5 Test #14: starfox_snes_interrupt_tests .....   Passed    0.01 sec
+
+100% tests passed, 0 tests failed out of 5
+
+Total Test time (real) =   1.87 sec
