@@ -22,6 +22,70 @@ struct Sample {
     friend bool operator==(const Sample&, const Sample&) = default;
 };
 
+void short_tap_replay(const assets::RomImage& rom, const assets::SymbolMap& symbols,
+    const char* level, simulation::TimingMode mode, unsigned schedule,
+    input::ButtonMask shoulder, unsigned tap_count) {
+    using namespace std::chrono;
+    auto game = std::make_unique<simulation::GameSimulation>(rom, symbols, level);
+    game->set_timing_mode(mode);
+    game->set_god_mode(true);
+    timing::FixedStepClock clock{60};
+    input::InputLatch latch;
+    nanoseconds elapsed{};
+    std::array<nanoseconds, 4> tap_times{};
+    bool scheduled{};
+    constexpr std::array<unsigned, 8> rates{47, 59, 51, 48, 57, 53, 49, 58};
+    unsigned frame{}, event{}, delivered_presses{};
+    input::ButtonMask held{};
+    bool rolled{};
+    std::string tap_state;
+    while (elapsed < seconds{30}) {
+        ++frame;
+        auto delta = schedule < 2
+            ? nanoseconds{frame * 1'000'000'000ULL / (schedule == 0 ? 60 : 90)} - elapsed
+            : nanoseconds{1'000'000'000ULL / rates[frame % rates.size()]};
+        if (schedule == 3 && frame % 29 == 0) delta = milliseconds{100};
+        elapsed += delta;
+        input::ButtonMask pressed{}, released{};
+        while (scheduled && event < tap_count * 2 && tap_times[event] <= elapsed) {
+            if ((event & 1) == 0) held = pressed = shoulder;
+            else { held = 0; released = shoulder; }
+            ++event;
+        }
+        // Match the desktop path: event collection and held sampling happen
+        // once per presentation, including frames that service several rasters.
+        latch.sample(held, pressed, released);
+        const auto batch = clock.advance(delta);
+        for (unsigned phase = 0; phase < batch.simulation_steps; ++phase) {
+            game->present_frame();
+            if (!game->logic_tick_ready()) continue;
+            const auto controls = latch.consume();
+            if (controls.pressed & shoulder) ++delivered_presses;
+            static_cast<void>(game->tick(controls));
+            if (!scheduled && (game->map().read_native_byte(
+                    symbols.find("PSHIPFLAGS").at(0)) & 0xe0U) == 0U) {
+                scheduled = true;
+                tap_times = {elapsed + milliseconds{25}, elapsed + milliseconds{26},
+                    elapsed + milliseconds{145}, elapsed + milliseconds{146}};
+            }
+            if (controls.pressed) {
+                tap_state += " flags=" + std::to_string(game->map().read_native_byte(symbols.find("PSHIPFLAGS").at(0)))
+                    + " cont=" + std::to_string(game->map().read_native_byte(symbols.find("CONTL0").at(0)))
+                    + " delay=" + std::to_string(game->map().read_native_byte(symbols.find("PLAYER_ROLLDELAY").at(0)));
+            }
+            if (scheduled && event > 0) rolled |= game->map().read_native_byte(
+                symbols.find("PLAYER_ROLLZVEL").at(0)) != 0;
+        }
+        if (scheduled && elapsed > tap_times[tap_count * 2 - 1] + seconds{1}) break;
+    }
+    if (delivered_presses != tap_count || rolled != (tap_count == 2))
+        throw std::runtime_error(std::string{level} + " short-tap roll failed: mode="
+            + std::to_string(static_cast<unsigned>(mode)) + " schedule="
+            + std::to_string(schedule) + " presses=" + std::to_string(delivered_presses)
+            + " shoulder=" + std::to_string(shoulder)
+            + " rolled=" + std::to_string(rolled) + tap_state);
+}
+
 std::vector<Sample> replay(const assets::RomImage& rom, const assets::SymbolMap& symbols,
     const char* level, simulation::TimingMode mode, unsigned schedule, bool show_fps) {
     using namespace std::chrono;
@@ -89,12 +153,20 @@ std::vector<Sample> replay(const assets::RomImage& rom, const assets::SymbolMap&
 
 int main(int argc, char** argv) {
     try {
-        if (argc != 3) throw std::runtime_error("Expected ROM and symbols");
+        const bool short_only = argc == 4 && std::string{argv[3]} == "--short-taps-only";
+        if (argc != 3 && !short_only) throw std::runtime_error("Expected ROM and symbols [--short-taps-only]");
         const auto rom = assets::RomImage::load(argv[1]);
         const auto symbols = assets::SymbolMap::load(argv[2]);
         for (const auto* level : {"LEVEL2_1", "LEVEL3_1"}) {
             for (const auto mode : {simulation::TimingMode::original_speed,
                      simulation::TimingMode::unlocked_20_fps}) {
+                for (unsigned schedule = 0; schedule < 4; ++schedule)
+                    for (const auto shoulder : {input::left_shoulder, input::right_shoulder})
+                        for (const auto count : {1U, 2U})
+                            short_tap_replay(rom, symbols, level, mode, schedule, shoulder, count);
+                std::cout << level << ' ' << static_cast<unsigned>(mode)
+                    << ": 16 presentation-sampled short-tap cases pass\n";
+                if (short_only) continue;
                 const auto expected = replay(rom, symbols, level, mode, 0, false);
                 for (unsigned schedule = 1; schedule <= 3; ++schedule) {
                     for (const auto show_fps : {false, true}) {

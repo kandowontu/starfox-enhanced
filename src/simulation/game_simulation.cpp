@@ -1751,18 +1751,28 @@ void GameSimulation::refresh_player_reference() {
 }
 
 void GameSimulation::write_input(const input::TickInput& input) {
+    // A complete shoulder tap can arrive between paced simulation updates.
+    // Roll strategies inspect current/previous held bits rather than TRIG.
+    // Present that edge for this update, and preserve the physical release
+    // before a new press even when no intervening simulation sample saw it.
+    const auto roll_presses = static_cast<input::ButtonMask>(
+        (flow_state_ == GameFlowState::gameplay || flow_state_ == GameFlowState::training)
+            ? input.pressed & (input::left_shoulder | input::right_shoulder) : 0U);
     const auto control_type = static_cast<std::uint8_t>(
         map_.read_native_byte(control_type_) & 3U);
     const auto mapped_held = map_control_type_buttons(
-        input.held, control_type);
+        static_cast<input::ButtonMask>(input.held | roll_presses), control_type);
     const auto mapped_pressed = map_control_type_buttons(
         input.pressed, control_type);
+    if (roll_presses != 0U)
+        map_.write_native_byte(last_controller_low_, static_cast<std::uint8_t>(
+            map_.read_native_byte(last_controller_low_) & ~roll_presses));
     // IRQ.ASM stores old/current high and low bytes interleaved rather than
     // as one contiguous 16-bit word: CONT0L, CONT0, CONTL0L, CONTL0.
     map_.write_native_byte(previous_controller_high_,
                            map_.read_native_byte(controller_high_));
     map_.write_native_byte(previous_controller_low_,
-                           map_.read_native_byte(controller_low_));
+        static_cast<std::uint8_t>(map_.read_native_byte(controller_low_) & ~roll_presses));
     map_.write_native_byte(controller_high_,
                            static_cast<std::uint8_t>(mapped_held >> 8U));
     map_.write_native_byte(controller_low_,

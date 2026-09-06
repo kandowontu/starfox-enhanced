@@ -27,21 +27,52 @@ both games' pacing replays and normal/MSU ending audio. The log is preserved in
 `validation/input-tap-regression-validation.txt`. The desktop executable was
 rebuilt; the existing packaged test candidate has not been refreshed.
 
+## Shoulder taps reaching the native roll strategy
+
+PSTRATS.ASM reads current/last held shoulder bits, so a captured press edge with
+held=0 still disappeared from its roll logic. During gameplay/training the
+primary input bridge now presents a fresh shoulder press for one source update.
+It clears that shoulder's previous/last bit on a fresh press, preserving a
+physical release that occurred between simulation samples. Subsequent updates
+return to the actual held state. The source strategy still owns the roll window,
+roll speed and recovery; no extra simulation update or presentation delay is
+introduced. Menu controls and non-shoulder button handling are unchanged.
+
+The new replay polls inputs once per presentation. It waits until PSHIPFLAGS
+enables player control, then supplies one-millisecond shoulder taps. Paired taps
+are 120 milliseconds apart. For each port, 64 cases cover routes 2/3, both pace
+modes, both shoulders, single/paired taps and four presentation schedules: 60 FPS,
+90 FPS, variable 47–59 FPS and the same variable schedule with 100 ms stalls.
+Single taps must not roll; paired taps must roll; the consumed press count must
+match the physical tap count.
+
+`tools/reference/verify-short-roll-baseline.py` compiles the previous
+`a85dceb` GameSimulation implementation separately and links it with the current
+replay and other core objects. It does not change the worktree or normal build.
+Both games fail the paired-tap check with that implementation while player
+control is enabled: two delivered presses, CONT L=0, roll delay=0, no roll.
+An earlier test attempt fired during launch (PSHIPFLAGS=96); that fixture was
+corrected and is not evidence of a gameplay-input defect.
+
+After the bridge correction, the rebuilt suite passed **65/65 checks in
+277.34 seconds**. That includes all 128 new short-tap scenarios across both
+ports and the existing 56 one-minute pacing replays. The baseline rejection
+and full-suite log are in `validation/short-roll-regression-validation.txt`.
+The packaged candidate remains unchanged; these changes are in the current
+source and rebuilt desktop executable.
+
 ## Limits and next checks
 
-This change preserves digital edges; it does not manufacture held samples or
-queue multiple presses of the same button inside one simulation tick. Analog
+The event latch still does not queue multiple presses of the same button inside
+one simulation tick. Two taps compressed into a single pending press bit remain
+an open case. The shoulder-pulse correction currently covers the primary native
+controller; EX secondary/multitap roll handling needs its own verification. Analog
 axis events, fixed remapping-menu navigation, and touch taps are not addressed
 by this change. Existing held-state sampling for those paths is unchanged.
 
-Original PSTRATS.ASM's barrel-roll block uses current/previous held shoulder bits.
-Thus preserving a complete tap's press edge alone does not prove that tap can
-trigger a roll. The source input bridge and short-tap roll behavior still need
-validation against the enhanced-input requirement. Do not describe this fix as
-complete barrel-roll responsiveness or independent player-control cadence.
-
-The existing timing replay samples scripted input at each simulated raster and
+The original timing replay samples scripted input at each simulated raster and
 checks source movement/roll/cadence across host FPS schedules. It remains useful
 for pacing regression, but does not replace event-path or held-transition tests.
 No rendering, interpolation, simulation-frequency or input-consumption gate was
-changed in this correction.
+changed in either correction. These checks do not prove independent player-control
+cadence or complete responsiveness under all input/event combinations.
