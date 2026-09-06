@@ -274,4 +274,38 @@ int main(int argc, char** argv) {
     }
     require(pause_changed_music,
         "global PAUSE ON command did not reach the isolated music driver");
+
+    // With MSU disabled, player death must replace an active boss track on
+    // the SPC music bus, not merely play the explosion on the effects stem.
+    control->set_msu1_music(false);
+    const auto music_command = symbols.find("BGM_MUSIC").front();
+    const auto music_count = symbols.find("BGMCNT").front();
+    control->map().write_native_byte(music_command, 0x66U);
+    control->map().write_native_byte(music_count, 0U);
+    bool boss_submitted{};
+    for (unsigned tick=0; tick<30U; ++tick) {
+        const auto update=control->tick({});
+        for (const auto& write : update.audio_port_writes)
+            boss_submitted |= write.port==0U && write.value==0x66U;
+        static_cast<void>(control_audio.render_logic_tick(update.audio_port_writes));
+        control->synchronize_apu_output_ports(control_audio.output_ports());
+    }
+    require(boss_submitted && control->objects().is_active(control->player()),
+        "boss-death audio fixture did not establish an active ship and boss track");
+    control->objects().at(control->player()).strategy_address =
+        symbols.find("PLAYERDEAD_ISTRAT").front();
+    bool death_submitted{}, death_acknowledged{};
+    for (unsigned tick=0; tick<20U; ++tick) {
+        const auto update=control->tick({});
+        for (const auto& write : update.audio_port_writes) {
+            require(!(death_submitted && write.port==0U && write.value==0x66U),
+                "boss music restarted during the player death tumble");
+            death_submitted |= write.port==0U && write.value==0x11U;
+        }
+        static_cast<void>(control_audio.render_logic_tick(update.audio_port_writes));
+        death_acknowledged |= control_audio.output_ports()[0]==0x11U;
+        control->synchronize_apu_output_ports(control_audio.output_ports());
+    }
+    require(death_submitted && death_acknowledged,
+        "MSU-off player death did not replace boss music in the live SPC driver");
 }

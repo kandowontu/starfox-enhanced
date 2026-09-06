@@ -1,0 +1,83 @@
+Start testing: Sep 06 12:04 Eastern Daylight Time
+----------------------------------------------------------
+51/95 Testing: starfox_upstream_native_msu_audio
+51/95 Test: starfox_upstream_native_msu_audio
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_native_audio_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "LEVEL2_1" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/msu-tone-320.flac"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_native_msu_audio" start time: Sep 06 12:04 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+12 MAIN updates: 35688482 master clocks, 1703693 SPC clocks, 42354 reads, 84753 writes, 33 audio packets; identical across execution quanta
+<end of output>
+Test time =   1.99 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_native_msu_audio" end time: Sep 06 12:04 Eastern Daylight Time
+"starfox_upstream_native_msu_audio" time elapsed: 00:00:01
+----------------------------------------------------------
+
+67/95 Testing: starfox_ex_direct_audio
+67/95 Test: starfox_ex_direct_audio
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_direct_audio_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_direct_audio" start time: Sep 06 12:04 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   1.11 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_direct_audio" end time: Sep 06 12:04 Eastern Daylight Time
+"starfox_ex_direct_audio" time elapsed: 00:00:01
+----------------------------------------------------------
+
+32/95 Testing: starfox_upstream_direct_audio
+32/95 Test: starfox_upstream_direct_audio
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_direct_audio_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_direct_audio" start time: Sep 06 12:04 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.99 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_direct_audio" end time: Sep 06 12:04 Eastern Daylight Time
+"starfox_upstream_direct_audio" time elapsed: 00:00:00
+----------------------------------------------------------
+
+50/95 Testing: starfox_upstream_native_audio
+50/95 Test: starfox_upstream_native_audio
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_native_audio_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "LEVEL2_1"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_native_audio" start time: Sep 06 12:04 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+MSU-off native death replaced boss music and received SPC acknowledgement
+12 MAIN updates: 35688482 master clocks, 1703693 SPC clocks, 42354 reads, 84753 writes, 33 audio packets; identical across execution quanta
+<end of output>
+Test time =   5.53 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_native_audio" end time: Sep 06 12:04 Eastern Daylight Time
+"starfox_upstream_native_audio" time elapsed: 00:00:05
+----------------------------------------------------------
+
+87/95 Testing: starfox_ex_native_audio
+87/95 Test: starfox_ex_native_audio
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_native_audio_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt" "LEVEL7_2"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_native_audio" start time: Sep 06 12:04 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+MSU-off native death replaced boss music and received SPC acknowledgement
+12 MAIN updates: 46469778 master clocks, 2218369 SPC clocks, 58424 reads, 116904 writes, 43 audio packets; identical across execution quanta
+<end of output>
+Test time =   7.03 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_native_audio" end time: Sep 06 12:04 Eastern Daylight Time
+"starfox_ex_native_audio" time elapsed: 00:00:07
+----------------------------------------------------------
+
+End testing: Sep 06 12:04 Eastern Daylight Time

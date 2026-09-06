@@ -68,3 +68,18 @@ ACCURATE setting/default still require integration.
 
 For subsequent desktop integration and ACCURATE selection, see
 `NATIVE-DESKTOP-SCHEDULER.md`.
+
+## MSU-off boss music during player death
+
+The 0.0.4 report was not reproduced in the current host or native scheduler.
+Both cartridges now have regressions that submit encounter command $66, then
+invoke PLAYERDEAD_ISTRAT with MSU disabled. They require the source to submit
+death command $11 on APU port 0, require the running SPC driver to acknowledge
+it, and reject a subsequent $66 command during the tested death tumble.
+The native replay writes the source player's strategy pointer at an idle
+MAIN boundary and services live audio throughout the following updates.
+
+Five targeted audio tests pass in 7.09 seconds, including the existing MSU
+fixture. See `validation/boss-death-audio-regressions.txt`. These are injected
+death/track checks, not every naturally reached boss or a listening comparison
+against 0.0.4. No production audio fix was needed for these cases.

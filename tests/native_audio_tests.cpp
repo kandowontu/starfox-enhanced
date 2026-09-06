@@ -218,7 +218,7 @@ void handoff_audio_test(const assets::RomImage& rom,const assets::SymbolMap& sym
     require(rejected && host.spc_clock()==before,"Invalid frontend audio advanced the timeline");
 }
 Result run(const assets::RomImage& rom,const assets::SymbolMap& symbols,const char* map,std::uint64_t quantum,
-    std::span<const std::uint8_t> msu_fixture) {
+    std::span<const std::uint8_t> msu_fixture,bool death_test=false) {
     auto game=std::make_unique<simulation::GameSimulation>(rom,symbols,map,
         std::span<const std::uint8_t>{},true);
     audio::Spc700Audio sound;
@@ -241,11 +241,37 @@ Result run(const assets::RomImage& rom,const assets::SymbolMap& symbols,const ch
             result.pcm_hash*=1099511628211ULL;
         }
     });
-    for (unsigned frame=0;frame<12U;++frame) {
+    bool boss_started{},death_started{},boss_submitted{},death_submitted{},death_acknowledged{};
+    for (unsigned frame=0;frame<(death_test ? 40U : 12U);++frame) {
+        if (death_test && frame==12U) {
+            boss_started=true;
+            game->set_msu1_music(false);
+            game->map().write_native_byte(symbols.find("BGM_MUSIC").at(0),0x66U);
+            game->map().write_native_byte(symbols.find("BGMCNT").at(0),0U);
+        }
+        if (death_test && frame==20U) {
+            death_started=true;
+            require(boss_submitted,"Native death fixture did not submit boss music");
+            const auto player=game->map().read_native_word(symbols.find("PLAYPT").at(0));
+            require(player!=0U,"Native death fixture has no player");
+            const auto strategy=symbols.find("PLAYERDEAD_ISTRAT").at(0);
+            const auto address=player+symbols.find("AL_STRATPTR").at(0);
+            game->map().write_native_word(address,static_cast<std::uint16_t>(strategy));
+            game->map().write_native_byte(address+2U,static_cast<std::uint8_t>(strategy>>16U));
+        }
         game->begin_native_gameplay_update({});
         if (!frame) game->map().set_apu_bus_callback([&](auto time,auto port,auto value) {
             if (value) ++result.writes; else ++result.reads;
-            return clock.access_apu(time,port,value);
+            if (death_test && port==0U && value) {
+                require(!(death_submitted && *value==0x66U),
+                    "Native boss music restarted during death tumble");
+                boss_submitted |= boss_started && *value==0x66U;
+                death_submitted |= death_started && *value==0x11U;
+            }
+            const auto response=clock.access_apu(time,port,value);
+            if (death_test && death_submitted && port==0U && !value)
+                death_acknowledged |= response==0x11U;
+            return response;
         });
         if (!frame && !msu_fixture.empty()) game->map().set_msu_bus_callback([&](auto time,auto address,auto value) {
             if (value) ++result.msu_writes; else ++result.msu_reads;
@@ -255,6 +281,8 @@ Result run(const assets::RomImage& rom,const assets::SymbolMap& symbols,const ch
         while (true) {
             const auto completed=game->advance_native_transfer(quantum);
             clock.advance_to(game->native_transfer_clock());
+            if (death_test && death_submitted)
+                death_acknowledged |= sound.output_ports()[0]==0x11U;
             if (completed) break;
             if (++slices>100000U) throw std::runtime_error{"Native audio gameplay exceeded its execution budget"};
         }
@@ -262,6 +290,16 @@ Result run(const assets::RomImage& rom,const assets::SymbolMap& symbols,const ch
     }
     game->map().set_apu_bus_callback({});
     game->map().set_msu_bus_callback({});
+    if (death_test) {
+        if (!death_submitted || !death_acknowledged)
+            std::cerr << "Native death diagnostic: submitted=" << death_submitted
+                << " ack=" << death_acknowledged << " flags="
+                << unsigned(game->map().read_native_byte(symbols.find("GAMEFLAGS").at(0)))
+                << " music=" << unsigned(game->map().read_native_byte(symbols.find("BGM_MUSIC").at(0)))
+                << " player-active=" << game->objects().is_active(game->player()) << '\n';
+        require(death_submitted && death_acknowledged,
+            "Native MSU-off death did not replace boss music in the live SPC driver");
+    }
     result.master=game->native_transfer_clock(); result.spc=clock.spc_clock();
     result.state=sound.state();
     result.msu_track=msu.selected_track(); result.msu_status=msu.status();
@@ -289,6 +327,10 @@ int main(int argc,char** argv) try {
     const auto small=run(rom,symbols,argv[3],4096U,msu_fixture);
     const auto large=run(rom,symbols,argv[3],100'000'000U,msu_fixture);
     require(small==large,"Native CPU/audio clocks, traffic, PCM or state depend on execution quantum");
+    if (msu_fixture.empty()) {
+        static_cast<void>(run(rom,symbols,argv[3],32768U,{},true));
+        std::cout << "MSU-off native death replaced boss music and received SPC acknowledgement\n";
+    }
     std::cout << "12 MAIN updates: " << small.master << " master clocks, " << small.spc
         << " SPC clocks, " << small.reads << " reads, " << small.writes << " writes, "
         << small.packets << " audio packets; identical across execution quanta\n";
