@@ -118,6 +118,27 @@ source. The unfiltered reads and phase counts are preserved in
 `validation/stage-state-native-transfer-{reads.csv,summary.json}`. These are
 native observations, not additional passing host updates.
 
+## Current-runtime revalidation and affected strategies
+
+The reference executable was rebuilt against host revision `446691c` after the
+input changes. The 300-update LEVEL7_2 check still rejects update 200 with the
+same world-Y difference (45 versus 46), after 163,460 comparisons and 200
+matching camera calls. This is a failing bounded audit, not 300 passing updates.
+The rebuilt executable hash, input hashes, failure log and differing field are
+preserved in `validation/stage-state-current-446691c.*` and the companion CSV.
+
+A source search at EX revision `b5e2d837a15a72a532cd019bfe332b7a4b660924`
+identifies a second affected expression: `SCORPION1_STRAT` in GA2STRAT.ASM
+line 2491 chases world Y using address `0` with divisor shift 3;
+`SCORPION4_STRAT` at line 2646 uses address `0` with shift 4. Both strategy
+initializers are referenced in LEVEL7_2's two repeated groups (lines 40/42
+and 246/248). No other EX `s_achase_alvar` expression with this zero-address
+operand was found by that source search. This bounds the identified macro
+instances; it is not proof that no other instruction reads transfer state.
+SCORPION1 therefore needs coverage alongside SCORPION4 when correcting the
+transfer-state exposure. Hardcoding one enemy's coordinate or one flag value
+would not cover the observed dependency.
+
 ## Regression and candidate status
 
 The rebuilt full suite passed 60/61 checks in 238.33 seconds; its sole failure
