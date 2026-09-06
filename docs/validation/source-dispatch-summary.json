@@ -1,0 +1,39 @@
+{
+  "scope": "Corrected source dispatcher; exact strategy-list opcode counts for one EX update after removing repeated pause/resume boundaries. Not a live transfer-phase fix.",
+  "reference_executable_sha256": "BDF122BCA5E32F721B071DB9EE5E41C1C78C7E52D6F558B2DFAC6D20E87081CA",
+  "instruction_trace_sha256": "C1EDC7DC2D3F54CDF57E8D01D95B9438B767F43AA4DCA501903FF9FE8B801C22",
+  "game_frame": 306,
+  "unchanged_native_and_gameplay_traces": 11,
+  "dispatcher_instruction_counts_match": true,
+  "remaining_pc_count_differences": [
+    {
+      "pc": "0C9EE5",
+      "native": 0,
+      "host": 1
+    },
+    {
+      "pc": "0C9EEA",
+      "native": 0,
+      "host": 1
+    },
+    {
+      "pc": "2201F0",
+      "native": 0,
+      "host": 1
+    },
+    {
+      "pc": "2294B1",
+      "native": 1,
+      "host": 0
+    },
+    {
+      "pc": "7E01F0",
+      "native": 0,
+      "host": 1
+    }
+  ],
+  "host_parity_passed": false,
+  "failure_update": 200,
+  "comparisons": 163460,
+  "differences": 1
+}

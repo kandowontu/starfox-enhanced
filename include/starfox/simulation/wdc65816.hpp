@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -206,12 +207,16 @@ public:
     // Starts a same-bank RTS routine as a resumable task. This is the task
     // counterpart of call_near() and is used by source screen sequences such
     // as END_LEVEL_SEQ that yield once per TRANSFER_L call.
+    // A saved_data_bank seeds a prior PHB stack frame when entering a source
+    // block after its prologue. Its PLB/RTS still execute normally; synthetic
+    // frame setup is excluded from native execution clocks.
     Wdc65816TaskResult begin_near_task(
         std::uint32_t address,
         Wdc65816Registers& registers,
         std::span<const std::uint32_t> stop_addresses,
         std::size_t instruction_limit = 1'000'000,
-        bool service_transfer_flag = false);
+        bool service_transfer_flag = false,
+        std::optional<std::uint8_t> saved_data_bank = std::nullopt);
 
     // Continues the active task. The instruction at the address where the
     // previous call paused is executed before stop addresses are considered

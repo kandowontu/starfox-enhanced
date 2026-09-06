@@ -1947,6 +1947,7 @@ int main(int argc, char** argv) {
         // it as a direct native-dispatch fixture so the compatibility core
         // cannot regress into an instruction-limit crash here again.
         if (!starfox_ex_cartridge) {
+          for (const bool whole_list : {false, true}) {
             starfox::simulation::ObjectPool reported_crash_objects;
             starfox::simulation::ObjectHandle reported_object{};
             for (std::size_t index = 0; index < 7U; ++index) {
@@ -1975,11 +1976,12 @@ int main(int argc, char** argv) {
             }
             starfox::simulation::NativeStrategyScheduler reported_crash_scheduler{
                 upstream_symbols, reported_crash_objects,
-                reported_crash_map, 1U};
-            static_cast<void>(
-                reported_crash_scheduler.tick_object(reported_object));
+                reported_crash_map, whole_list ? 100U : 1U};
+            if (whole_list) static_cast<void>(reported_crash_scheduler.tick_all());
+            else static_cast<void>(reported_crash_scheduler.tick_object(reported_object));
             require(!reported_crash_objects.is_active(reported_object),
                     "failed PATH_ISTRAT object was not recovered and removed");
+          }
         }
 
         const auto map1_1b = upstream_symbols.find("MAP1_1B");

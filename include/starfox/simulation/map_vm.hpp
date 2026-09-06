@@ -87,6 +87,8 @@ public:
     // Import only at a settled gameplay yield; a native restart can clear
     // the pool before handing control to a host-owned front-end screen.
     void restore_objects_from_native() { sync_objects_from_cpu(); }
+    [[nodiscard]] std::uint16_t original_object_pointer(ObjectHandle handle) const noexcept;
+    [[nodiscard]] ObjectHandle native_object_handle(std::uint16_t pointer) const noexcept;
     // Import the display cache after restoring an external native snapshot.
     void restore_display_from_native() noexcept { sync_display_from_cpu(); }
     void write_native_byte(std::uint32_t address, std::uint8_t value);
@@ -209,7 +211,8 @@ public:
         Wdc65816Registers& registers,
         std::span<const std::uint32_t> stop_addresses,
         std::size_t instruction_limit = 1'000'000,
-        bool service_transfer_flag = false);
+        bool service_transfer_flag = false,
+        std::optional<std::uint8_t> saved_data_bank = std::nullopt);
     Wdc65816TaskResult resume_native_task(
         Wdc65816Registers& registers,
         std::span<const std::uint32_t> stop_addresses,
@@ -226,8 +229,6 @@ private:
     [[nodiscard]] std::uint32_t read_map_pointer(std::uint32_t address) const;
     [[nodiscard]] std::int16_t player_world_z() const noexcept;
     [[nodiscard]] std::uint32_t skip_inline_65816(std::uint32_t address) const;
-    [[nodiscard]] std::uint16_t original_object_pointer(ObjectHandle handle) const noexcept;
-    [[nodiscard]] ObjectHandle native_object_handle(std::uint16_t pointer) const noexcept;
     [[nodiscard]] ObjectHandle object_handle(std::uint16_t pointer) const noexcept;
     [[nodiscard]] std::uint8_t read_native_object_byte(
         ObjectHandle handle, std::uint16_t offset) const;

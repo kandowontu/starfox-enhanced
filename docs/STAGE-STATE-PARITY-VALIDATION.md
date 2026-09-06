@@ -381,6 +381,56 @@ tmp/full-reference-build/full_reference.exe tmp/runtime-inputs/starfox-ex/SFES.S
 The command still reports the known gameplay failure; this is diagnostic
 evidence toward its correction, not a passing parity result.
 
+## Source strategy dispatcher integration
+
+The normal strategy update now executes the cartridge's LDX ALLST / STRATLP
+block through its PLB/RTS. The adapter verifies the compiled entry and its
+DO_STRAT_L / REMOVEDEADAL_L call sites before using them. Pauses occur at those
+dispatcher call sites, so calls made inside a strategy are not mistaken for
+another top-level object update. Native register and stack state continue
+between pauses. The partial-routine entry supplies the saved caller DB byte
+above its near return address; a native PLB/RTS test verifies restoration and
+that artificial stack setup adds no native execution clocks.
+
+The bridge retains the port's once-per-generation update guard and imports
+objects at each settled strategy/removal boundary. That prevents a removed
+tail's recycled cursor from repeating completed player/boss logic and preserves
+presentation identity when a freed slot is reused. The existing narrowly scoped
+corrupt-path recovery is shared with individual-object dispatch; after cleanup,
+the source loop resumes at an unvisited live object. Its regression now covers
+both individual dispatch and the whole source loop. EX's explicit no-objects
+entry retains its existing protected-object implementation.
+
+The first prototype passed 65/67 CTest checks but failed the two existing
+self-removal checks. Restoring the once-per-generation guard fixes both; the
+Original whole-loop corrupt-path fixture also passes. These tests are retained,
+not weakened to accept repeated strategy execution.
+
+The corrected EX GAMEFRAME-306 trace matches every instruction count in the
+source dispatcher range $229780..$2297b8 after deduplicating repeated pause/resume
+boundaries. Remaining count differences are the existing SETSHIP NOP patch,
+unexecuted host return sentinels and a source caller instruction outside the
+dispatcher. Eleven pre-existing native/gameplay CSV traces remain byte-identical.
+The known Y=45 versus 46 discrepancy still occurs at update 200, after 163,460
+comparisons. Source instruction execution alone does not schedule the live
+bitmap DMA, refresh or GSU overlap, so this is not a resolution of LEVEL7_2.
+
+Evidence: `validation/source-dispatch-summary.json` and
+`validation/source-dispatch-instructions.csv`. The desktop executable is rebuilt;
+the packaged candidate remains unchanged. The corrected build passes all 67
+CTest checks in 421.42 seconds, including primary/multiplayer input and pacing,
+both self-removal checks, corrupt-path recovery, level clears, and normal/MSU
+ending audio. Logs are preserved in
+`validation/source-dispatch-final-regression-validation.txt`; the initial
+65/67 prototype result and separate recovery check are retained alongside it.
+
+The intermediate source-loop build also completed the 59-stage opening audit:
+58 passed, and only the existing EX LEVEL7_2 mismatch failed. This run includes
+per-boundary object imports but predates the final generation guard and recovery
+corrections, so it is not presented as final-build all-stage coverage. Its full
+report is `validation/source-dispatch-intermediate-stage-summary.json`. The final
+build's focused LEVEL7_2 trace and 67/67 regression result are separate evidence.
+
 ## Regression and candidate status
 
 The rebuilt full suite passed 60/61 checks in 238.33 seconds; its sole failure

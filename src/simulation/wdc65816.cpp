@@ -2993,7 +2993,7 @@ Wdc65816TaskResult Wdc65816::begin_near_task(
     Wdc65816Registers& registers,
     std::span<const std::uint32_t> stop_addresses,
     std::size_t instruction_limit,
-    bool service_transfer_flag) {
+    bool service_transfer_flag, std::optional<std::uint8_t> saved_data_bank) {
     auto& cpu = impl_->cpu;
     impl_->task_active = true;
     impl_->task_entry = address;
@@ -3009,6 +3009,7 @@ Wdc65816TaskResult Wdc65816::begin_near_task(
     const auto setup_start = cpu.cpu_state.cycle;
     cpu.Push(static_cast<std::uint16_t>(
         (impl_->task_return_sentinel & 0xffffU) - 1U));
+    if (saved_data_bank) cpu.Push(*saved_data_bank);
     impl_->host_setup_master_clocks += cpu.cpu_state.cycle - setup_start;
     cpu.SetRegister("pb", address >> 16U);
     cpu.SetRegister("pc", address);

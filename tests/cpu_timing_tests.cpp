@@ -31,6 +31,23 @@ starfox::assets::RomImage fixture(std::initializer_list<std::uint8_t> code) {
 }
 
 int main() try {
+    {
+        const auto rom = fixture({0xea, 0xab, 0x60}); // NOP; PLB; RTS
+        Wdc65816 cpu{rom};
+        Wdc65816Registers registers;
+        registers.status = 0x24;
+        registers.data_bank = 0x7e;
+        const std::array stops{0x008001U};
+        const auto paused = cpu.begin_near_task(0x008000, registers, stops,
+            100, false, std::uint8_t{0x42});
+        require(!paused.returned && registers.stack == 0x1fc,
+            "Saved DB frame was not placed above the near return address");
+        const auto finished = cpu.resume_task(registers, {}, 100);
+        require(finished.returned && registers.stack == 0x1ff
+            && registers.data_bank == 0x42,
+            "Source PLB/RTS failed to restore its supplied caller frame");
+        clocks(cpu, 14 + 28 + 42, "Saved DB frame setup leaked into native clocks");
+    }
     using starfox::simulation::cpu_access_master_clocks;
     // Independently listed SNES memory regions, including both sides of each
     // timing boundary and all low/high-bank mirrors. Data accesses to WRAM

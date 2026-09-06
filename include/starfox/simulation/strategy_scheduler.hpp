@@ -5,6 +5,7 @@
 #include "starfox/simulation/object_pool.hpp"
 
 #include <cstddef>
+#include <array>
 #include <cstdint>
 #include <span>
 
@@ -35,9 +36,12 @@ public:
     [[nodiscard]] std::size_t begin_tick();
 
 private:
+    std::size_t recover_strategy_failure(ObjectHandle object, const std::exception& error);
     ObjectPool* objects_{};
     MapVm* native_state_{};
     std::uint32_t do_strategy_{};
+    std::uint32_t dispatch_loop_{};
+    std::array<std::uint32_t, 2> dispatch_calls_{};
     std::uint32_t initialize_strategies_{};
     std::uint32_t remove_dead_{};
     std::uint32_t path_strategy_begin_{};

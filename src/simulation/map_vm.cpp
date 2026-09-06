@@ -512,10 +512,10 @@ Wdc65816TaskResult MapVm::begin_native_near_task(
     Wdc65816Registers& registers,
     std::span<const std::uint32_t> stop_addresses,
     std::size_t instruction_limit,
-    bool service_transfer_flag) {
+    bool service_transfer_flag, std::optional<std::uint8_t> saved_data_bank) {
     sync_objects_to_cpu();
     const auto result = cpu_.begin_near_task(address, registers,
-        stop_addresses, instruction_limit, service_transfer_flag);
+        stop_addresses, instruction_limit, service_transfer_flag, saved_data_bank);
     sync_objects_from_cpu();
     sync_display_from_cpu();
     return result;
