@@ -31,8 +31,8 @@ not replace a full-system live instruction-stream comparison.
 The existing independent timer, last-cycle and architectural entry audits
 remain separate evidence for those components. WAI/STP scheduling is now
 covered by HALT-VALIDATION.md, and general DMA by GENERAL-DMA-VALIDATION.md.
-HDMA arbitration, GSU overlap and installation
-in GameSimulation remain unfinished.
+HDMA arbitration is covered by HDMA-VALIDATION.md. GSU overlap and
+installation in GameSimulation remain unfinished.
 The EX live-transfer mismatch and whole-campaign parity remain unresolved;
 ACCURATE is not yet exposed or the default, and the packaged candidate is
 unchanged. Evidence is archived under `docs/validation/live-interrupt-*`.

@@ -161,8 +161,8 @@ public:
     // Native IRQ/NMI requests are sampled at lastCycle and delivered at the
     // next CPU step. Accepted requests and halt states survive detach. Live
     // WAI/STP yield through the task API; STP needs CPU reconstruction to reset.
-    // General DMA owns bus cycles after its startup delay. HDMA arbitration
-    // is not supplied. Pending DMA must finish before replacing the timeline.
+    // DMA and scanline HDMA share bus ownership after their startup delay.
+    // Disable HDMA and finish pending DMA before replacing the timeline.
     void set_cpu_timeline(std::shared_ptr<SnesCpuTimeline> timeline);
     // Without a timeline, hardware signals use legacy instruction-boundary
     // sampling; with one they use the live last-cycle polling point. IRQ is

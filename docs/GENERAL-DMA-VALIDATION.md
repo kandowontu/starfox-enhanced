@@ -35,9 +35,9 @@ instruction's sampling point: the fixture executes four instructions and
 enters its handler at 138 CPU clocks / 174 total clocks.
 
 The DMA engine has not yet been installed in GameSimulation's pace path.
-HDMA setup, scanline transfers and interruption of general DMA remain
-unfinished, as do GSU overlap, the EX live-transfer discrepancy and complete
-campaign verification. ACCURATE is not yet exposed or the default. The
+HDMA setup, scanline transfers and interruption of general DMA are now
+covered by HDMA-VALIDATION.md. GSU overlap, the EX live-transfer discrepancy
+and complete campaign verification remain unfinished. ACCURATE is not yet exposed or the default. The
 packaged candidate is unchanged.
 
 Evidence is archived under `docs/validation/general-dma-*`. Reproduce the

@@ -578,6 +578,8 @@ struct Wdc65816::Impl {
         } else if (low == 0x420bU) {
             if (self.timeline) self.dma.request(*data);
             else self.run_dma(*data);
+        } else if (low == 0x420cU) {
+            self.dma.enable_hdma(*data);
         } else if (low == 0x420dU) {
             const bool fast = (*data & 1U) != 0U;
             if (self.fast_rom != fast) {
@@ -2861,9 +2863,13 @@ void Wdc65816::set_bus_clock_callback(BusClockCallback callback) {
 void Wdc65816::set_cpu_timeline(std::shared_ptr<SnesCpuTimeline> timeline) {
     if (impl_->bus_clock_active)
         throw std::logic_error{"Cannot replace the CPU timeline during execution"};
-    if (impl_->timeline != timeline && impl_->dma.requested())
+    if (impl_->timeline && impl_->timeline != timeline && impl_->dma.requested())
         throw std::logic_error{"Cannot replace the CPU timeline while DMA is requested"};
-    impl_->timeline = std::move(timeline);
+    if (impl_->timeline != timeline) {
+        if (timeline) timeline->set_hdma_state(impl_->dma.hdma_state());
+        if (impl_->timeline) impl_->timeline->set_hdma_state({});
+        impl_->timeline = std::move(timeline);
+    }
     set_bus_clock_callback(std::move(impl_->bus_clock_callback));
 }
 void Wdc65816::set_interrupt_sample_callback(InterruptSampleCallback callback) {

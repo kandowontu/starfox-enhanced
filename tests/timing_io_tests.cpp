@@ -17,6 +17,48 @@ void advance_to(SnesCpuTimeline& clock, unsigned vertical, unsigned horizontal) 
 int main() try {
     {
         std::vector<std::uint8_t> bytes(0x8000U, 0xeaU);
+        bytes[1024] = 0x6bU;
+        bytes[0x1000] = 0x82U; bytes[0x1001] = 0x31U; bytes[0x1002] = 0x72U;
+        bytes[0x1003] = 0U;
+        const starfox::assets::RomImage rom{bytes};
+        Wdc65816 cpu{rom};
+        auto clock = std::make_shared<SnesCpuTimeline>();
+        cpu.write8(0x4301U, 0x40U); cpu.write16(0x4302U, 0x9000U);
+        cpu.write8(0x420cU, 1U);
+        cpu.set_cpu_timeline(clock); // binding can follow initial register setup
+        bool guarded{};
+        try { cpu.set_cpu_timeline({}); } catch (const std::logic_error&) { guarded = true; }
+        require(guarded, "HDMA ownership was lost while enabled");
+        std::vector<std::uint8_t> values;
+        std::uint8_t previous = cpu.read8(0x2140U);
+        cpu.set_bus_clock_callback([&](std::uint32_t) {
+            const auto value = cpu.read8(0x2140U);
+            if (value != previous) { values.push_back(value); previous = value; }
+        });
+        Wdc65816Registers registers;
+        cpu.call_long(0x8000U, registers, 2000U);
+        require(values == std::vector<std::uint8_t>{0x31U, 0x72U}
+                && cpu.read16(0x4308U) == 0x9004U && cpu.read8(0x430aU) == 0U
+                && clock->totals().dma > 0U && clock->totals().cpu == cpu.executed_master_clocks(),
+            "native HDMA did not follow its repeat table and stop at the terminator");
+        cpu.write8(0x420cU, 0U);
+        cpu.set_cpu_timeline({});
+        // An expired owner cannot leave callbacks or prevent timeline reuse.
+        {
+            Wdc65816 temporary{rom};
+            temporary.set_cpu_timeline(clock);
+        }
+        cpu.set_cpu_timeline(clock);
+        Wdc65816 contender{rom};
+        bool collision_rejected{};
+        try { contender.set_cpu_timeline(clock); } catch (const std::logic_error&) { collision_rejected = true; }
+        require(collision_rejected, "two CPUs were allowed to own one timeline's HDMA state");
+        cpu.set_cpu_timeline({});
+        contender.set_cpu_timeline(clock);
+    }
+
+    {
+        std::vector<std::uint8_t> bytes(0x8000U, 0xeaU);
         const std::array<std::uint8_t, 7> code{0xa9U,1U,0x8dU,0x0bU,0x42U,0xeaU,0x6bU};
         std::copy(code.begin(), code.end(), bytes.begin());
         bytes[0x10] = 0xabU; bytes[0x11] = 0xcdU;

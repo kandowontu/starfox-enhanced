@@ -1,7 +1,9 @@
 #pragma once
 
 #include "starfox/simulation/snes_interrupts.hpp"
+#include "starfox/simulation/snes_hdma.hpp"
 #include <cstdint>
+#include <memory>
 #include <stdexcept>
 
 namespace starfox::simulation {
@@ -90,11 +92,17 @@ class SnesCpuTimeline {
 public:
     explicit SnesCpuTimeline(SnesRegion region = SnesRegion::ntsc,
         std::uint8_t cpu_version = 2U)
-        : raster_(region), cpu_version_(cpu_version), refresh_position_(cpu_version == 1U ? 530U : 538U) {
+        : raster_(region), cpu_version_(cpu_version), refresh_position_(cpu_version == 1U ? 530U : 538U),
+          hdma_setup_position_(cpu_version == 1U ? 20U : 12U) {
         if (cpu_version != 1U && cpu_version != 2U)
             throw std::invalid_argument{"Unsupported S-CPU timing version"};
     }
 
+    void set_hdma_state(const std::shared_ptr<SnesHdmaState>& state) {
+        if (const auto existing = hdma_.lock(); existing && state && existing != state)
+            throw std::logic_error{"CPU timeline already has an HDMA owner"};
+        hdma_ = state;
+    }
     void set_display(bool interlace, std::uint16_t vblank_start = 225U) noexcept {
         ppu_interlace_ = interlace;
         vblank_start_ = vblank_start;
@@ -112,10 +120,13 @@ public:
             for (unsigned phase = 0; phase < 5U; ++phase) {
                 refresh_active_ = true;
                 advance(6U);
+                hdma_events();
                 refresh_active_ = false;
                 advance(2U);
+                hdma_events();
             }
         }
+        hdma_events();
     }
 
     [[nodiscard]] const SnesRasterClock& raster() const noexcept { return raster_; }
@@ -128,9 +139,25 @@ public:
     [[nodiscard]] std::uint16_t vblank_start() const noexcept { return vblank_start_; }
 
 private:
+    void hdma_events() noexcept {
+        if (!hdma_setup_triggered_ && raster_.horizontal() >= hdma_setup_position_) {
+            hdma_setup_triggered_ = true;
+            if (const auto state = hdma_.lock()) state->setup();
+        }
+        if (!hdma_triggered_ && raster_.horizontal() >= 1104U) {
+            hdma_triggered_ = true;
+            if (const auto state = hdma_.lock()) state->scanline();
+        }
+    }
     void advance(std::uint32_t clocks) noexcept {
         for (std::uint32_t remaining = clocks; remaining != 0U; remaining -= 2U) {
             if (raster_.tick(ppu_interlace_)) {
+                if (raster_.vertical() == 0U) {
+                    const auto divider = static_cast<std::uint32_t>(raster_.elapsed() & 7U);
+                    hdma_setup_position_ = cpu_version_ == 1U ? 20U - divider : 12U + divider;
+                    hdma_setup_triggered_ = false;
+                }
+                if (raster_.vertical() < vblank_start_) hdma_triggered_ = false;
                 refreshed_ = false;
                 if (cpu_version_ == 2U)
                     refresh_position_ = 538U - static_cast<std::uint32_t>(raster_.elapsed() & 7U);
@@ -145,6 +172,9 @@ private:
     std::uint8_t cpu_version_;
     std::uint32_t refresh_position_;
     std::uint16_t vblank_start_{225U};
+    std::weak_ptr<SnesHdmaState> hdma_;
+    std::uint32_t hdma_setup_position_;
+    bool hdma_setup_triggered_{}, hdma_triggered_{};
     bool ppu_interlace_{}, refreshed_{}, refresh_active_{};
 };
 

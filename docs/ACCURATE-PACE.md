@@ -38,8 +38,9 @@ timer control and interrupt status registers. Both ports' native WAITDMA_L
 routine passes scanline waits across a field boundary. This binding now
 delivers sampled IRQ/NMI requests at the next CPU step, preserving accepted
 requests across flag changes and timeline detach. General DMA now takes bus
-ownership after its startup delay; HDMA arbitration remains scheduler work.
-See GENERAL-DMA-VALIDATION.md and LIVE-INTERRUPT-VALIDATION.md for coverage.
+ownership after its startup delay and shares that ownership with raster-triggered
+HDMA. See HDMA-VALIDATION.md, GENERAL-DMA-VALIDATION.md and
+LIVE-INTERRUPT-VALIDATION.md for coverage. GSU overlap remains unfinished.
 Production last-cycle hooks now match reference sample clocks and the I flag
 for 254 native opcodes, including both initial I states. A callback can select
 the pending-interrupt dummy read used by idleIRQ instructions. Timeline binding
