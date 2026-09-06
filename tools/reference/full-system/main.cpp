@@ -136,8 +136,8 @@ struct SystemGuard {
 }
 
 int main(int argc, char** argv) { try {
-    if (argc < 6 || argc > 9) throw std::runtime_error(
-        "Usage: full_reference ROM SYMBOLS MAP VIDEO_FRAMES OUTPUT_PREFIX [source|divided-standard|divided-fast [GAMEPLAY_UPDATES [zero-frame|first-transfer]]]");
+    if (argc < 6 || argc > 10) throw std::runtime_error(
+        "Usage: full_reference ROM SYMBOLS MAP VIDEO_FRAMES OUTPUT_PREFIX [source|divided-standard|divided-fast [GAMEPLAY_UPDATES [zero-frame|first-transfer [INSTRUCTION_GAMEFRAME]]]]");
     const std::string policy = argc >= 7 ? argv[6] : "source";
     if (policy != "source" && policy != "divided-standard" && policy != "divided-fast")
         throw std::runtime_error("Unknown GSU register policy: " + policy);
@@ -146,7 +146,10 @@ int main(int argc, char** argv) { try {
     const auto gameplay_updates = argc >= 8 ? std::stoul(argv[7]) : 0U;
     if (argc >= 8 && (gameplay_updates < 1U || gameplay_updates > 10000U))
         throw std::runtime_error("GAMEPLAY_UPDATES must be 1..10000");
-    const std::string seed_mode = argc == 9 ? argv[8] : "zero-frame";
+    const std::string seed_mode = argc >= 9 ? argv[8] : "zero-frame";
+    const auto instruction_frame = argc == 10 ? std::stoul(argv[9]) : 0U;
+    if (argc == 10 && (instruction_frame < 1 || instruction_frame > 65535))
+        throw std::runtime_error("INSTRUCTION_GAMEFRAME must be 1..65535");
     if (seed_mode != "zero-frame" && seed_mode != "first-transfer")
         throw std::runtime_error("Unknown gameplay seed mode: " + seed_mode);
     const auto rom = starfox::assets::RomImage::load(argv[1]);
@@ -164,7 +167,7 @@ int main(int argc, char** argv) { try {
     const std::string prefix = argv[5], map = argv[3];
     std::unique_ptr<GameplayAudit> gameplay;
     if (gameplay_updates) gameplay = std::make_unique<GameplayAudit>(rom,symbols,map,prefix,
-        gameplay_updates,seed_mode == "first-transfer");
+        gameplay_updates,seed_mode == "first-transfer", instruction_frame);
     std::ofstream registers(prefix + "-registers.csv");
     std::ofstream entry(prefix + "-entry.csv");
     if (!registers || !entry) throw std::runtime_error("Cannot create register/entry traces");
@@ -299,6 +302,7 @@ int main(int argc, char** argv) { try {
         camera_fields.emplace_back(name, address(name));
     cpu_hook = [&](unsigned pc, unsigned clocks) {
         if (platform.pending_jump) return;
+        if (gameplay) gameplay->capture_strategy_instruction(false, pc, clocks);
         if (pc == settled_transfer) {
             transfer_started_clocks = clocks;
             transfer_clock_categories = cpu_clock_categories;

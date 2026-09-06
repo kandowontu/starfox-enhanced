@@ -18,6 +18,9 @@ class GameplayAudit {
     std::map<unsigned, std::string> host_phase_addresses;
     std::uint64_t host_tick_start = 0;
     bool tracing_host_tick = false;
+    unsigned instruction_frame = 0;
+    std::array<bool, 2> strategy_trace_active{};
+    std::ofstream strategy_trace;
     bool started = false;
     unsigned count = 0;
     unsigned required;
@@ -36,7 +39,7 @@ public:
     unsigned differences = 0;
     GameplayAudit(const starfox::assets::RomImage& rom, const starfox::assets::SymbolMap& s,
         const std::string& map, const std::string& prefix, unsigned updates,
-        bool first_transfer = false) : symbols(s),
+        bool first_transfer = false, unsigned trace_frame = 0) : symbols(s),
         game(std::make_unique<starfox::simulation::GameSimulation>(rom,s,map,std::span<const std::uint8_t>{},true)),
         output_prefix(prefix),
         output(prefix+"-gameplay-differences.csv"), frames(prefix+"-gameplay.csv"),
@@ -45,6 +48,12 @@ public:
         output << "transfer,field,host,native\n";
         frames << "transfer,gameframe,raster_phases,host_raster_phases,objects,comparisons,submitted_flags,hitflashes,differences\n";
         seed << "mode,gameframe,map,player\n";
+        instruction_frame = trace_frame;
+        if (instruction_frame) {
+            strategy_trace.open(prefix + "-strategy-instructions.csv");
+            if (!strategy_trace) throw std::runtime_error("Cannot create strategy instruction trace");
+            strategy_trace << "engine,pc,clocks\n";
+        }
         host_phase_trace.open(prefix + "-host-phases.csv");
         if (!host_phase_trace) throw std::runtime_error("Cannot create host phase trace");
         host_phase_trace << "transfer,game_frame,phase,pc,instruction_clocks,transfer_flag,noirqbit3\n";
@@ -72,6 +81,7 @@ public:
         game->map().set_native_instruction_boundary_callback([this](std::uint64_t clocks) {
             if (!tracing_host_tick) return;
             const auto pc = game->map().native_program_address();
+            capture_strategy_instruction(true, pc, clocks);
             const auto phase = host_phase_addresses.find(pc);
             if (phase == host_phase_addresses.end()) return;
             host_phase_trace << count + 1 << ',' << game->map().read_native_word(address("GAMEFRAME"))
@@ -81,6 +91,18 @@ public:
         });
     }
     bool complete() const { return count == required; }
+    void capture_strategy_instruction(bool host, unsigned pc, std::uint64_t clocks) {
+        if (!instruction_frame) return;
+        auto& active = strategy_trace_active[host ? 1 : 0];
+        if (pc == address("UPDATE_OBJECTS_L")) {
+            const auto frame = host ? game->map().read_native_word(address("GAMEFRAME"))
+                                    : native(address("GAMEFRAME"));
+            active = frame == instruction_frame;
+        }
+        if (pc == address("GETVIEW_L")) active = false;
+        if (active) strategy_trace << (host ? "host-boundary" : "native-instruction")
+                                   << ',' << pc << ',' << clocks << '\n';
+    }
     void capture_submitted_flags() { try {
         if (!started || complete() || differences || !error.empty()) return;
         const auto object = unsigned(sfc::cpu.r.y.w);

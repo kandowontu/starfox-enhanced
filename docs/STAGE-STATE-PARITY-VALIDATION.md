@@ -345,6 +345,42 @@ python tools/reference/verify-clock-parts.py tmp/clock-parts-audit/ex-LEVEL7_2 t
 The gameplay command currently returns failure for the known EX difference;
 successful clock accounting does not override that result or establish parity.
 
+## Strategy dispatcher instruction comparison
+
+An optional final `INSTRUCTION_GAMEFRAME` argument on `full_reference` records
+the selected frame's interval from UPDATE_OBJECTS_L (included) to GETVIEW_L
+(excluded). Native rows are instruction entries; host rows are instruction
+boundaries and include synthetic return sentinels. This is opt-in diagnostic
+output, with no CPU, RAM or scheduler changes.
+
+For EX GAMEFRAME 306, the source executes 3,224 instructions. The host reports
+3,097 boundaries, including eleven unexecuted return sentinels. The differing
+PC counts identify the missing TRANSFER_L/DOSTRATS/STRATLP dispatch instructions
+at $2294b1 and $229780..$2297b8. `NativeStrategyScheduler::tick_all` replaces this
+source linked-list dispatcher with C++ calls to individual DO_STRAT_L routines.
+Their source dispatch overhead therefore never enters the native clock counter.
+
+The two additional host entries at $0c9ee5 and $0c9eea are the intentional
+SETSHIP scratch/countdown-preservation patch's NOPs, not an unexpected source
+branch. That patch replaces the temporary store/reload while retaining the
+live clear countdown. Its timing difference must also be distinguished from
+missing dispatcher execution. This trace locates the differences; it does not
+yet replace the dispatcher or derive a complete transfer schedule.
+
+All twelve pre-existing CSV traces remain byte-identical to the preceding
+clock-accounting run, including the update-200 Y mismatch. Evidence is in
+`validation/strategy-instruction-difference.json` and
+`validation/strategy-instructions-frame306.csv`. The trace starts at the same
+UPDATE_OBJECTS_L address in both engines and has monotonic clocks within each
+engine. Reproduce with the existing EX inputs and:
+
+```powershell
+tmp/full-reference-build/full_reference.exe tmp/runtime-inputs/starfox-ex/SFES.SFC assets/symbols/starfox-ex.txt LEVEL7_2 5000 tmp/strategy-clock-306 source 300 first-transfer 306
+```
+
+The command still reports the known gameplay failure; this is diagnostic
+evidence toward its correction, not a passing parity result.
+
 ## Regression and candidate status
 
 The rebuilt full suite passed 60/61 checks in 238.33 seconds; its sole failure
