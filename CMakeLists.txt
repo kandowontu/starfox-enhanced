@@ -114,7 +114,7 @@ FetchContent_MakeAvailable(retro_cpu)
 # arithmetic, bus-order and instruction-timing corrections in a reviewable patch.
 find_package(Git REQUIRED)
 set(retro_cpu_patch_files)
-foreach(retro_cpu_patch IN ITEMS retro-cpu-parity.patch retro-cpu-interrupts.patch retro-cpu-direct-index.patch retro-cpu-bus-clock.patch retro-cpu-bus-order.patch retro-cpu-interrupt-status.patch)
+foreach(retro_cpu_patch IN ITEMS retro-cpu-parity.patch retro-cpu-interrupts.patch retro-cpu-direct-index.patch retro-cpu-bus-clock.patch retro-cpu-bus-order.patch retro-cpu-interrupt-status.patch retro-cpu-last-cycle.patch)
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/cmake/${retro_cpu_patch}")
     list(APPEND retro_cpu_patch_files "${CMAKE_CURRENT_SOURCE_DIR}/cmake/${retro_cpu_patch}")
@@ -752,7 +752,7 @@ if(STARFOX_BUILD_TESTS)
     if(TARGET starfox_reference_cpu_tests)
         add_test(NAME starfox_reference_cpu COMMAND starfox_reference_cpu_tests
             "${CMAKE_CURRENT_BINARY_DIR}/reference-cpu.csv")
-        set_tests_properties(starfox_reference_cpu PROPERTIES TIMEOUT 120)
+        set_tests_properties(starfox_reference_cpu PROPERTIES TIMEOUT 180)
     endif()
     if(TARGET starfox_reference_interrupt_tests)
         add_test(NAME starfox_reference_interrupts COMMAND starfox_reference_interrupt_tests

@@ -11,11 +11,7 @@ struct CpuInterruptRun {
     std::uint32_t program_address{};
     std::uint64_t master_clocks{};
 };
-struct CpuInterruptSample {
-    std::uint32_t instruction_address{};
-    std::uint64_t master_clocks{};
-    bool masked{};
-};
+using CpuInterruptSample = simulation::Wdc65816InterruptSample;
 
 // Development-only independent instruction engine, using a separate adapter
 // instance for memory/I/O. No concurrent DMA, automatic interrupt delivery or

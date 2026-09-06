@@ -16,7 +16,7 @@ int main(int argc, char** argv) try {
     if (argc == 2) file.open(argv[1]);
     if (argc == 2 && !file) throw std::runtime_error("Cannot create interrupt audit CSV");
     auto& out = file.is_open() ? file : std::cout;
-    out << "nmi,status,pc,stack,fast,registers_equal,memory_equal,port_clocks,ares_clocks,bus_equal,status_bus_equal\n";
+    out << "nmi,status,pc,stack,fast,registers_equal,memory_equal,port_clocks,ares_clocks,bus_equal,status_bus_equal,samples_equal\n";
     std::vector<std::uint8_t> bytes(0x8000U, 0xeaU);
     bytes[0x7fea] = 0x60; bytes[0x7feb] = 0x80;
     bytes[0x7fee] = 0x40; bytes[0x7fef] = 0x80;
@@ -40,6 +40,11 @@ int main(int argc, char** argv) try {
             auto expected_regs=regs;
             std::vector<std::uint32_t> port_bus, reference_bus;
             std::vector<std::uint8_t> port_status, reference_status;
+            std::vector<reference::CpuInterruptSample> port_samples, reference_samples;
+            port.set_interrupt_sample_callback([&](const reference::CpuInterruptSample& sample) {
+                port_samples.push_back(sample);
+                return false;
+            });
             port.set_bus_clock_callback([&](std::uint32_t clocks) {
                 port_bus.push_back(clocks);
                 port_status.push_back(port.status_register());
@@ -49,6 +54,10 @@ int main(int argc, char** argv) try {
             const std::array stops{handler};
             const auto task=port.begin_long_task(entry,regs,stops,1);
             reference::AresCpu reference{memory};
+            reference.set_interrupt_sample_callback([&](const reference::CpuInterruptSample& sample) {
+                reference_samples.push_back(sample);
+                return false;
+            });
             reference.set_bus_clock_callback([&](std::uint32_t clocks) {
                 reference_bus.push_back(clocks);
                 reference_status.push_back(reference.status_register());
@@ -62,12 +71,13 @@ int main(int argc, char** argv) try {
                 if (port.read8(p)!=memory.read8(p)) {memory_equal=false;break;}
             const bool bus_equal=port_bus==reference_bus;
             const bool status_bus_equal=port_status==reference_status;
+            const bool samples_equal=port_samples==reference_samples && port_samples.size()==1;
             const bool clock_equal=port.executed_master_clocks()==expected.master_clocks && bus_equal;
-            failures += !registers_equal || !memory_equal || !clock_equal || !status_bus_equal;
+            failures += !registers_equal || !memory_equal || !clock_equal || !status_bus_equal || !samples_equal;
             ++cases;
             out << nmi << ',' << flags << ',' << entry << ',' << stack << ',' << fast << ','
                 << registers_equal << ',' << memory_equal << ',' << port.executed_master_clocks()
-                << ',' << expected.master_clocks << ',' << bus_equal << ',' << status_bus_equal << '\n';
+                << ',' << expected.master_clocks << ',' << bus_equal << ',' << status_bus_equal << ',' << samples_equal << '\n';
         }
     }
     out.flush();

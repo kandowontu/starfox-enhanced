@@ -22,6 +22,36 @@ int main() try {
     const starfox::assets::RomImage rom{std::move(bytes)};
     {
         Wdc65816 cpu{rom};
+        cpu.write8(0x1000U, 0xeaU);
+        cpu.write8(0x1001U, 0x6bU);
+        std::vector<Wdc65816InterruptSample> samples;
+        unsigned rejected{};
+        cpu.set_interrupt_sample_callback([&](const Wdc65816InterruptSample& sample) {
+            samples.push_back(sample);
+            try { cpu.set_interrupt_sample_callback({}); }
+            catch (const std::logic_error&) { ++rejected; }
+            try { cpu.set_bus_clock_callback({}); }
+            catch (const std::logic_error&) { ++rejected; }
+            return false;
+        });
+        Wdc65816Registers registers;
+        cpu.call_long(0x1000U, registers);
+        require(samples.size() == 2U && rejected == 4U
+            && samples[0] == Wdc65816InterruptSample{0x1000U, 8U, true},
+            "sampling-only callback included setup clocks or allowed replacement during execution");
+        std::uint64_t bus_clocks{};
+        cpu.set_bus_clock_callback([&](std::uint32_t clocks) { bus_clocks += clocks; });
+        cpu.call_long(0x1000U, registers);
+        require(samples.size() == 4U && rejected == 8U && bus_clocks != 0U,
+            "installing a bus observer discarded the sampling callback");
+        cpu.set_interrupt_sample_callback({});
+        const auto before = bus_clocks;
+        cpu.call_long(0x1000U, registers);
+        require(samples.size() == 4U && bus_clocks > before,
+            "detaching sampling discarded the bus observer");
+    }
+    {
+        Wdc65816 cpu{rom};
         auto clock = std::make_shared<SnesCpuTimeline>();
         std::uint64_t observed{};
         cpu.set_bus_clock_callback([&](std::uint32_t clocks) { observed += clocks; });

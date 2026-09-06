@@ -56,6 +56,12 @@ struct Wdc65816Registers {
     // Native mode, 16-bit accumulator and index registers, IRQ disabled.
     std::uint8_t status{0x04};
 };
+struct Wdc65816InterruptSample {
+    std::uint32_t instruction_address{};
+    std::uint64_t master_clocks{};
+    bool masked{};
+    bool operator==(const Wdc65816InterruptSample&) const = default;
+};
 
 struct ApuPortWrite {
     std::uint8_t port{};
@@ -140,6 +146,12 @@ public:
     // Excludes synthetic call setup, DMA and translated GSU work. The callback
     // may update device state but must not reenter CPU execution or replace itself.
     void set_bus_clock_callback(BusClockCallback callback);
+    using InterruptSampleCallback = std::function<bool(const Wdc65816InterruptSample&)>;
+    // Observe the native last-cycle polling point. A true return selects the
+    // pending-interrupt dummy read on idleIRQ instructions. This does not
+    // itself enter a handler; WAI/STP scheduling is not provided by this hook.
+    // Like bus callbacks, it must not reenter execution or replace callbacks.
+    void set_interrupt_sample_callback(InterruptSampleCallback callback);
     // Bind live timer/blanking/counter registers and advance their shared
     // timeline during native bus operations. Null restores bounded-call I/O.
     // Interrupt delivery and DMA arbitration are still scheduler-owned.

@@ -28,8 +28,9 @@ void check_interrupt_polling() {
         bytes[0] = static_cast<std::uint8_t>(test.opcode);
         bytes[1] = 4;
         const assets::RomImage rom{std::move(bytes)};
-        simulation::Wdc65816 memory{rom};
+        simulation::Wdc65816 memory{rom}, port{rom};
         memory.write8(0x200U, 1); // RTI's bank after the synthetic caller frame
+        port.write8(0x200U, 1);
         reference::AresCpu cpu{memory};
         std::vector<reference::CpuInterruptSample> samples;
         cpu.set_interrupt_sample_callback([&](const reference::CpuInterruptSample& sample) {
@@ -38,11 +39,20 @@ void check_interrupt_polling() {
         });
         simulation::Wdc65816Registers regs;
         regs.status = static_cast<std::uint8_t>(test.initial_status);
+        auto actual_regs = regs;
+        std::vector<reference::CpuInterruptSample> actual_samples;
+        port.set_interrupt_sample_callback([&](const reference::CpuInterruptSample& sample) {
+            actual_samples.push_back(sample);
+            return false;
+        });
         cpu.run(0x8000U, regs, test.opcode == 0x40 ? 0x017e01U : 0x8000U + test.size, 1);
+        const std::array stops{test.opcode == 0x40 ? 0x017e01U : 0x8000U + test.size};
+        port.begin_long_task(0x8000U, actual_regs, stops, 1);
         if (samples.size() != 1 || samples[0].instruction_address != 0x8000U
                 || samples[0].master_clocks != test.clocks
                 || samples[0].masked != bool(test.sampled_mask)
-                || bool(regs.status & 4U) != bool(test.final_mask))
+                || bool(regs.status & 4U) != bool(test.final_mask)
+                || actual_samples != samples || state(actual_regs) != state(regs))
             throw std::runtime_error("Reference interrupt polling phase or status mismatch");
     }
     // A pending interrupt turns idleIRQ into a bus read of the next opcode.
@@ -52,14 +62,22 @@ void check_interrupt_polling() {
     simulation::Wdc65816 memory{rom};
     reference::AresCpu cpu{memory};
     for (const bool pending : {true, false}) {
+        simulation::Wdc65816 port{rom};
         std::vector<std::uint32_t> bus;
+        std::vector<std::uint32_t> port_bus;
         cpu.set_bus_clock_callback([&](std::uint32_t clocks) { bus.push_back(clocks); });
         cpu.set_interrupt_sample_callback([&](const reference::CpuInterruptSample&) { return pending; });
+        port.set_bus_clock_callback([&](std::uint32_t clocks) { port_bus.push_back(clocks); });
+        port.set_interrupt_sample_callback([&](const reference::CpuInterruptSample&) { return pending; });
         simulation::Wdc65816Registers regs;
+        auto actual_regs = regs;
         const auto run = cpu.run(0x8000U, regs, 0x8001U, 1);
+        const std::array stops{0x8001U};
+        port.begin_long_task(0x8000U, actual_regs, stops, 1);
         const auto expected = pending ? std::vector<std::uint32_t>{4,4,4,4}
                                       : std::vector<std::uint32_t>{4,4,6};
-        if (run.master_clocks != (pending ? 16U : 14U) || bus != expected)
+        if (run.master_clocks != (pending ? 16U : 14U) || bus != expected
+                || port_bus != expected || port.executed_master_clocks() != run.master_clocks)
             throw std::runtime_error("Reference pending interrupt did not select the final dummy read");
     }
     std::cerr << "10 interrupt polling phase/status and pending-bus cases agree\n";
@@ -90,7 +108,7 @@ int main(int argc, char** argv) try {
     if (argc == 2) file.open(argv[1]);
     if (argc == 2 && !file) throw std::runtime_error("Cannot create CPU audit CSV");
     auto& out = file.is_open() ? file : std::cout;
-    out << "opcode,status,direct,fast,registers_equal,memory_equal,port_clocks,ares_clocks,index,bus_equal,port_bus_steps,ares_bus_steps,ares_interrupt_samples,interrupt_status_bus_equal\n";
+    out << "opcode,status,direct,fast,registers_equal,memory_equal,port_clocks,ares_clocks,index,bus_equal,port_bus_steps,ares_bus_steps,ares_interrupt_samples,interrupt_status_bus_equal,port_interrupt_samples,samples_equal,pending\n";
     std::vector<Operation> ops;
     for (unsigned group = 0; group < 8; ++group) {
         for (const auto mode : std::array<Operation, 15>{{
@@ -130,6 +148,7 @@ int main(int argc, char** argv) try {
         0x15U,0x16U,0x34U,0x35U,0x36U,
         0x55U,0x56U,0x74U,0x75U,0x76U,0x94U,0x95U,0x96U,0xb4U,0xb5U,
         0xb6U,0xd5U,0xd6U,0xf5U,0xf6U};
+    for (const bool pending : {false,true})
     for (const bool masked : {true,false})
     for (const auto op : ops) for (unsigned base_flags : {0x04U,0x05U,0x0cU,0x0dU,
             0x14U,0x24U,0x34U,0xc5U,0x2cU,0x2dU,0x3cU,0x3dU}) for (unsigned direct : {0x1000U,0x1001U})
@@ -205,6 +224,11 @@ int main(int argc, char** argv) try {
         std::vector<std::uint32_t> port_bus, reference_bus;
         const bool software_interrupt = op.opcode == 0 || op.opcode == 2;
         std::vector<std::uint8_t> port_status, reference_status;
+        std::vector<reference::CpuInterruptSample> port_samples;
+        port.set_interrupt_sample_callback([&](const reference::CpuInterruptSample& sample) {
+            port_samples.push_back(sample);
+            return pending;
+        });
         port.set_bus_clock_callback([&](std::uint32_t clocks) {
             port_bus.push_back(clocks);
             if (software_interrupt) port_status.push_back(port.status_register());
@@ -215,7 +239,7 @@ int main(int argc, char** argv) try {
         std::vector<reference::CpuInterruptSample> samples;
         reference.set_interrupt_sample_callback([&](const reference::CpuInterruptSample& sample) {
             samples.push_back(sample);
-            return false;
+            return pending;
         });
         reference.set_bus_clock_callback([&](std::uint32_t clocks) {
             reference_bus.push_back(clocks);
@@ -231,8 +255,9 @@ int main(int argc, char** argv) try {
             }
         const bool bus_equal = port_bus == reference_bus;
         const bool status_bus_equal = port_status == reference_status;
+        const bool samples_equal = port_samples == samples;
         const bool clocks_equal = port.executed_master_clocks() == expected.master_clocks && bus_equal
-            && status_bus_equal;
+            && status_bus_equal && samples_equal;
         ++cases;
         if (!registers_equal || !memory_equal) ++functional;
         if (!clocks_equal) ++timing;
@@ -249,6 +274,10 @@ int main(int argc, char** argv) try {
             out << sample.instruction_address << ':' << sample.master_clocks << ':' << sample.masked << '|';
         out << ',';
         if (software_interrupt) out << status_bus_equal;
+        out << ',';
+        for (const auto& sample : port_samples)
+            out << sample.instruction_address << ':' << sample.master_clocks << ':' << sample.masked << '|';
+        out << ',' << samples_equal << ',' << pending;
         out << '\n';
         if (samples.size() != expected.instructions)
             throw std::runtime_error("Missing source interrupt sampling point");

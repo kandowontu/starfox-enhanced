@@ -93,6 +93,8 @@ struct Wdc65816::Impl {
     std::uint64_t interrupt_entries{};
     InstructionBoundaryCallback instruction_boundary_callback;
     BusClockCallback bus_clock_callback;
+    InterruptSampleCallback interrupt_sample_callback;
+    std::uint32_t sampled_instruction_address{};
     std::shared_ptr<SnesCpuTimeline> timeline;
     bool bus_clock_active{};
     bool scheduled_gameplay_bitmap_dma{};
@@ -290,7 +292,7 @@ struct Wdc65816::Impl {
     WDC65C816 cpu{&bus};
 
     void step_cpu() {
-        if (!bus_clock_callback && !timeline) {
+        if (!bus_clock_callback && !timeline && !interrupt_sample_callback) {
             cpu.SingleStep();
             return;
         }
@@ -299,6 +301,7 @@ struct Wdc65816::Impl {
             explicit ClockScope(bool& flag) : active(flag) { active = true; }
             ~ClockScope() { active = false; }
         } scope{bus_clock_active};
+        sampled_instruction_address = cpu.program_address();
         cpu.SingleStep();
     }
 
@@ -2753,8 +2756,14 @@ void Wdc65816::set_bus_clock_callback(BusClockCallback callback) {
     impl_->bus_clock_callback = std::move(callback);
     auto& hooks = impl_->cpu.timed_bus;
     hooks = {};
-    if (!impl_->bus_clock_callback && !impl_->timeline) return;
+    if (!impl_->bus_clock_callback && !impl_->timeline && !impl_->interrupt_sample_callback) return;
     hooks.context = impl_.get();
+    hooks.last_cycle = [](void* context, std::uint8_t status) {
+        auto& state = *static_cast<Impl*>(context);
+        return state.bus_clock_active && state.interrupt_sample_callback
+            && state.interrupt_sample_callback({state.sampled_instruction_address,
+                state.cpu.cpu_state.cycle - state.host_setup_master_clocks, bool(status & 4U)});
+    };
     hooks.idle = [](void* context, std::uint32_t clocks) {
         auto& state = *static_cast<Impl*>(context);
         if (state.bus_clock_active) state.advance_cpu_clocks(clocks);
@@ -2782,6 +2791,12 @@ void Wdc65816::set_cpu_timeline(std::shared_ptr<SnesCpuTimeline> timeline) {
     if (impl_->bus_clock_active)
         throw std::logic_error{"Cannot replace the CPU timeline during execution"};
     impl_->timeline = std::move(timeline);
+    set_bus_clock_callback(std::move(impl_->bus_clock_callback));
+}
+void Wdc65816::set_interrupt_sample_callback(InterruptSampleCallback callback) {
+    if (impl_->bus_clock_active)
+        throw std::logic_error{"Cannot replace the interrupt sampling callback during execution"};
+    impl_->interrupt_sample_callback = std::move(callback);
     set_bus_clock_callback(std::move(impl_->bus_clock_callback));
 }
 

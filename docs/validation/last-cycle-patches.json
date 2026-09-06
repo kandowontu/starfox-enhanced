@@ -1,0 +1,9 @@
+{
+  "scratch": "C:\\Users\\kando\\Documents\\ChatGPT\\Starfox Enhanced\\tmp\\last-cycle-patches-_t901mgc",
+  "checks": {
+    "fresh": "matches production after apply and repeat",
+    "fresh-drift": "rejected without modifying file",
+    "upgrade-six": "matches production after apply and repeat",
+    "upgrade-six-drift": "rejected without modifying file"
+  }
+}
