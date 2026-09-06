@@ -2133,6 +2133,9 @@ void GameSimulation::complete_video_phases_for_tick() {
 }
 
 void GameSimulation::start_map(const std::string& symbol) {
+    if (native_transfer_timeline_)
+        throw std::logic_error{"Native transfer scene changes require a scheduler handoff"};
+    native_transfer_initialized_ = false;
     reset_scene_transition_state();
     map_.start(rom_symbol(symbol), player_);
     map_.advance_distance(1);
@@ -2309,6 +2312,8 @@ void GameSimulation::reset_scene_transition_state() {
 }
 
 void GameSimulation::initialize_native_map(std::uint32_t address) {
+    if (native_transfer_timeline_)
+        throw std::logic_error{"Native transfer scene changes require a scheduler handoff"};
     reset_scene_transition_state();
     map_.write_native_word(ram_symbol("MAPPTR"),
         static_cast<std::uint16_t>(address & 0x7fffU));
@@ -2341,6 +2346,7 @@ void GameSimulation::initialize_native_map(std::uint32_t address) {
     refresh_player_reference();
     draw_order_ = objects_.active_handles();
     ++scene_revision_;
+    native_transfer_initialized_ = true;
 }
 
 void GameSimulation::clear_communications() {
@@ -3691,6 +3697,8 @@ void GameSimulation::begin_planet_selection_sequence() {
 }
 
 void GameSimulation::present_frame() {
+    if (native_transfer_timeline_)
+        throw std::logic_error{"Native transfer pacing owns source video advancement"};
     map_.tick_video_phase(ending_task_active_
         || (flow_state_ != GameFlowState::gameplay
             && flow_state_ != GameFlowState::training));
@@ -4648,6 +4656,8 @@ std::size_t GameSimulation::update_view_flags_and_cull() {
 }
 
 GameTickResult GameSimulation::tick(const input::TickInput& input) {
+    if (native_transfer_timeline_)
+        throw std::logic_error{"Native transfer execution cannot mix with host ticks"};
     // MAIN.ASM's final-score loop keeps calling TRANSFER_L. The text paths
     // still need to fade in and settle, and the space backdrop keeps moving.
     // Only non-credits terminal states stop the simulation outright.

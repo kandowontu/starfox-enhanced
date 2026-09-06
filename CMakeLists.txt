@@ -201,6 +201,7 @@ add_library(starfox_core
     src/simulation/math.cpp
     src/simulation/dust_system.cpp
     src/simulation/game_simulation.cpp
+    src/simulation/native_transfer.cpp
     src/simulation/gsu_device.cpp
     src/simulation/map_vm.cpp
     src/simulation/object_pool.cpp
@@ -979,6 +980,8 @@ if(STARFOX_BUILD_TESTS)
     add_executable(starfox_timing_parity_tests tests/timing_parity_tests.cpp)
     target_link_libraries(starfox_timing_parity_tests PRIVATE starfox_core)
     add_executable(starfox_multiplayer_input_tests tests/multiplayer_input_tests.cpp)
+    add_executable(starfox_native_transfer_tests tests/native_transfer_tests.cpp)
+    target_link_libraries(starfox_native_transfer_tests PRIVATE starfox_core)
     target_link_libraries(starfox_multiplayer_input_tests PRIVATE starfox_core)
     add_executable(starfox_ending_audio_tests tests/ending_audio_tests.cpp)
     target_link_libraries(starfox_ending_audio_tests PRIVATE starfox_core)
@@ -1084,6 +1087,10 @@ if(STARFOX_BUILD_TESTS)
             "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
             "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT")
         set_tests_properties(starfox_upstream_timing_parity PROPERTIES TIMEOUT 180)
+        add_test(NAME starfox_upstream_native_transfer COMMAND starfox_native_transfer_tests
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT" LEVEL2_1)
+        set_tests_properties(starfox_upstream_native_transfer PROPERTIES TIMEOUT 120)
         set(STARFOX_TEST_MSU_PACK "${STARFOX_MSU1_PACK}")
         if(NOT STARFOX_TEST_MSU_PACK AND EXISTS "${CMAKE_CURRENT_BINARY_DIR}/Starfox-MSU1.PAK")
             set(STARFOX_TEST_MSU_PACK "${CMAKE_CURRENT_BINARY_DIR}/Starfox-MSU1.PAK")
@@ -1267,6 +1274,9 @@ if(STARFOX_BUILD_TESTS)
         add_test(NAME starfox_ex_timing_parity COMMAND starfox_timing_parity_tests
             "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}")
         set_tests_properties(starfox_ex_timing_parity PROPERTIES TIMEOUT 180)
+        add_test(NAME starfox_ex_native_transfer COMMAND starfox_native_transfer_tests
+            "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}" LEVEL7_2)
+        set_tests_properties(starfox_ex_native_transfer PROPERTIES TIMEOUT 120)
         add_test(NAME starfox_ex_multiplayer_input COMMAND starfox_multiplayer_input_tests
             "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}")
         set_tests_properties(starfox_ex_multiplayer_input PROPERTIES TIMEOUT 120)

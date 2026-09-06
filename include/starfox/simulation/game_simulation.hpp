@@ -222,6 +222,16 @@ public:
         bool source_initialize_direct_map = false);
 
     [[nodiscard]] GameTickResult tick(const input::TickInput& input);
+    // Internal native-transfer lifecycle for the accurate scheduler. Requires
+    // a source-initialized gameplay/training scene. This is TRANSFER_L, not
+    // the complete MAIN/front-end flow; it is not yet a selectable pace.
+    void begin_native_transfer(const input::TickInput& input);
+    [[nodiscard]] std::optional<GameTickResult> advance_native_transfer(std::uint64_t master_clocks);
+    [[nodiscard]] bool native_transfer_active() const noexcept;
+    [[nodiscard]] std::uint64_t native_transfer_clock() const noexcept;
+    [[nodiscard]] const SnesCpuTimeline* native_transfer_timeline() const noexcept {
+        return native_transfer_timeline_.get();
+    }
     void present_frame();
     void start_map(const std::string& symbol);
     void synchronize_apu_output_ports(
@@ -433,6 +443,9 @@ private:
     void service_transfer_request();
     void calculate_view();
     [[nodiscard]] std::size_t update_view_flags_and_cull();
+    void capture_native_draw_candidates();
+    void capture_native_draw_order();
+    void publish_native_transfer();
     void calculate_meters();
     void draw_ex_transfer_overlay(GameTickResult& result);
     void service_audio_irq(std::vector<std::uint8_t>& commands);
@@ -902,6 +915,17 @@ private:
     std::uint8_t current_tick_video_phases_{3U};
     std::uint8_t planet_rotation_video_phases_{};
     std::uint32_t source_update_sequence_{};
+    enum class NativeTransferPhase { idle, black, transfer, failed };
+    NativeTransferPhase native_transfer_phase_{NativeTransferPhase::idle};
+    std::shared_ptr<SnesCpuTimeline> native_transfer_timeline_;
+    std::unique_ptr<NativePresentationSnapshot> native_transfer_capture_;
+    std::vector<ObjectHandle> native_draw_candidates_;
+    std::vector<std::pair<ObjectHandle,std::uint8_t>> native_draw_order_;
+    bool native_draw_order_captured_{};
+    Wdc65816Registers native_transfer_registers_{};
+    GameTickResult native_transfer_result_;
+    bool native_transfer_task_started_{};
+    bool native_transfer_initialized_{};
     std::array<std::int32_t, 6> planet_spin_remainders_{};
     std::uint8_t planet_route_blink_frames_{};
     std::uint32_t pending_map_{};

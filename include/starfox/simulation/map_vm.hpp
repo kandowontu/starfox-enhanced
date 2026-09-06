@@ -95,6 +95,9 @@ public:
     // Native CPU execution and writes keep using live memory. Release only
     // at a settled publication boundary, then import objects/map state.
     void hold_native_presentation();
+    void capture_live_presentation(NativePresentationSnapshot& snapshot) const {
+        cpu_.capture_presentation(snapshot);
+    }
     void release_native_presentation() noexcept;
     [[nodiscard]] bool native_presentation_held() const noexcept { return presentation_held_; }
     void write_native_byte(std::uint32_t address, std::uint8_t value);
