@@ -2,6 +2,7 @@
 
 #include "starfox/assets/decrunch.hpp"
 #include "starfox/simulation/cpu_timing.hpp"
+#include "starfox/simulation/snes_timeline.hpp"
 
 #include "cpu/65816/cpu_65c816.h"
 
@@ -92,6 +93,7 @@ struct Wdc65816::Impl {
     std::uint64_t interrupt_entries{};
     InstructionBoundaryCallback instruction_boundary_callback;
     BusClockCallback bus_clock_callback;
+    std::shared_ptr<SnesCpuTimeline> timeline;
     bool bus_clock_active{};
     bool scheduled_gameplay_bitmap_dma{};
     std::map<std::uint8_t, std::vector<std::uint8_t>> compatible_rom_banks;
@@ -208,6 +210,9 @@ struct Wdc65816::Impl {
     std::uint32_t spriteblk{};
     bool vertical_counter_high_byte{};
     bool horizontal_counter_high_byte{};
+    std::uint16_t latched_horizontal{}, latched_vertical{};
+    std::uint8_t timing_pio{0xffU}, ppu2_bus{};
+    bool counters_latched{};
     std::uint32_t wram_port_address{};
     std::uint8_t multiply_a{};
     std::uint16_t divide_dividend{};
@@ -285,7 +290,7 @@ struct Wdc65816::Impl {
     WDC65C816 cpu{&bus};
 
     void step_cpu() {
-        if (!bus_clock_callback) {
+        if (!bus_clock_callback && !timeline) {
             cpu.SingleStep();
             return;
         }
@@ -295,6 +300,17 @@ struct Wdc65816::Impl {
             ~ClockScope() { active = false; }
         } scope{bus_clock_active};
         cpu.SingleStep();
+    }
+
+    void advance_cpu_clocks(std::uint32_t clocks) {
+        if (timeline) timeline->step(clocks);
+        if (bus_clock_callback) bus_clock_callback(clocks);
+    }
+
+    void latch_timing_counters() {
+        latched_horizontal = static_cast<std::uint16_t>(timeline->raster().dot());
+        latched_vertical = static_cast<std::uint16_t>(timeline->raster().vertical());
+        counters_latched = true;
     }
 
     bool service_zero_projection(std::uint32_t pc) {
@@ -324,9 +340,13 @@ struct Wdc65816::Impl {
         return true;
     }
 
-    static bool is_io_device_address(void*, cpuaddr_t address) {
+    static bool is_io_device_address(void* context, cpuaddr_t address) {
         const auto low = address & 0xffffU;
-        return (low >= 0x4218U && low <= 0x421fU)
+        const auto& self = *static_cast<Impl*>(context);
+        return (self.timeline && (low == 0x4200U || low == 0x4201U
+                || (low >= 0x4207U && low <= 0x420aU)
+                || (low >= 0x4210U && low <= 0x4213U)))
+            || (low >= 0x4218U && low <= 0x421fU)
             || (low >= 0x2000U && low <= 0x2007U)
             || (low & 0xfffcU) == 0x2140U
             || (low >= 0x2100U && low < 0x2140U)
@@ -341,6 +361,42 @@ struct Wdc65816::Impl {
     static void read_io(void* context, cpuaddr_t address, std::uint8_t* data, std::uint32_t) {
         auto& self = *static_cast<Impl*>(context);
         const auto low = address & 0xffffU;
+        if (self.timeline) {
+            const auto& raster = self.timeline->raster();
+            switch (low) {
+            case 0x4210U:
+                *data = self.timeline->interrupts().read_nmi(*data, self.timeline->cpu_version()); return;
+            case 0x4211U:
+                *data = self.timeline->interrupts().read_irq(*data); return;
+            case 0x4212U:
+                // Enhanced input is already available; no auto-joypad latency.
+                *data = static_cast<std::uint8_t>((*data & 0x3eU)
+                    | (raster.horizontal() <= 2U || raster.horizontal() >= 1096U ? 0x40U : 0U)
+                    | (raster.vertical() >= self.timeline->vblank_start() ? 0x80U : 0U)); return;
+            case 0x4213U: *data = self.timing_pio; return;
+            case 0x2137U:
+                if (self.timing_pio & 0x80U) self.latch_timing_counters();
+                return;
+            case 0x213cU:
+            case 0x213dU: {
+                auto& high = low == 0x213cU ? self.horizontal_counter_high_byte : self.vertical_counter_high_byte;
+                const auto value = low == 0x213cU ? self.latched_horizontal : self.latched_vertical;
+                self.ppu2_bus = high ? static_cast<std::uint8_t>((self.ppu2_bus & 0xfeU) | ((value >> 8U) & 1U))
+                                    : static_cast<std::uint8_t>(value);
+                high = !high;
+                *data = self.ppu2_bus; return;
+            }
+            case 0x213fU:
+                self.horizontal_counter_high_byte = self.vertical_counter_high_byte = false;
+                self.ppu2_bus = static_cast<std::uint8_t>((self.ppu2_bus & 0x20U) | 3U
+                    | (raster.region() == SnesRegion::pal ? 0x10U : 0U)
+                    | (!(self.timing_pio & 0x80U) || self.counters_latched ? 0x40U : 0U)
+                    | (raster.field() ? 0x80U : 0U));
+                if (self.timing_pio & 0x80U) self.counters_latched = false;
+                *data = self.ppu2_bus; return;
+            default: break;
+            }
+        }
         if (low >= 0x2000U && low <= 0x2007U) {
             if (low == 0x2000U) {
                 // Audio/data are immediately available. Revision 2 is enough
@@ -403,6 +459,18 @@ struct Wdc65816::Impl {
         void* context, cpuaddr_t address, const std::uint8_t* data, std::uint32_t) {
         auto& self = *static_cast<Impl*>(context);
         const auto low = address & 0xffffU;
+        if (self.timeline) {
+            if (low == 0x4200U) {
+                self.timeline->interrupts().write_control(*data); return;
+            }
+            if (low >= 0x4207U && low <= 0x420aU) {
+                self.timeline->interrupts().write_timer(low - 0x4207U, *data, self.timeline->beam()); return;
+            }
+            if (low == 0x4201U) {
+                if ((self.timing_pio & 0x80U) && !(*data & 0x80U)) self.latch_timing_counters();
+                self.timing_pio = *data; return;
+            }
+        }
         if (low >= 0x2000U && low <= 0x2007U) {
             self.msu_registers[low - 0x2000U] = *data;
             if (low >= 0x2004U) {
@@ -2682,29 +2750,36 @@ void Wdc65816::set_bus_clock_callback(BusClockCallback callback) {
     impl_->bus_clock_callback = std::move(callback);
     auto& hooks = impl_->cpu.timed_bus;
     hooks = {};
-    if (!impl_->bus_clock_callback) return;
+    if (!impl_->bus_clock_callback && !impl_->timeline) return;
     hooks.context = impl_.get();
     hooks.idle = [](void* context, std::uint32_t clocks) {
         auto& state = *static_cast<Impl*>(context);
-        if (state.bus_clock_active) state.bus_clock_callback(clocks);
+        if (state.bus_clock_active) state.advance_cpu_clocks(clocks);
     };
     hooks.read = [](void* context, std::uint32_t address, std::uint8_t* value) {
         auto& state = *static_cast<Impl*>(context);
         if (!state.bus_clock_active) return state.bus.ReadByte(address, value);
         const auto clocks = cpu_access_master_clocks(address, state.fast_rom);
-        state.bus_clock_callback(clocks - 4U);
+        state.advance_cpu_clocks(clocks - 4U);
         state.bus.ReadByte(address, value);
-        state.bus_clock_callback(4U);
+        state.advance_cpu_clocks(4U);
         return static_cast<std::uint32_t>(clocks);
     };
     hooks.write = [](void* context, std::uint32_t address, std::uint8_t value) {
         auto& state = *static_cast<Impl*>(context);
         if (!state.bus_clock_active) return state.bus.WriteByte(address, value);
         const auto clocks = cpu_access_master_clocks(address, state.fast_rom);
-        state.bus_clock_callback(clocks);
+        state.advance_cpu_clocks(clocks);
         state.bus.WriteByte(address, value);
         return static_cast<std::uint32_t>(clocks);
     };
+}
+
+void Wdc65816::set_cpu_timeline(std::shared_ptr<SnesCpuTimeline> timeline) {
+    if (impl_->bus_clock_active)
+        throw std::logic_error{"Cannot replace the CPU timeline during execution"};
+    impl_->timeline = std::move(timeline);
+    set_bus_clock_callback(std::move(impl_->bus_clock_callback));
 }
 
 void Wdc65816::set_irq_line(bool asserted) noexcept {

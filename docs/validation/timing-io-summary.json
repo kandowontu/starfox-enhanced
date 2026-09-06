@@ -1,0 +1,45 @@
+{
+  "trace_comparisons": {
+    "original": {
+      "-timeline.csv": "26ffaae90d8c1c28d34be99a0ba9ba10cf28343545c2b32c53cbd1084c9deb63",
+      "-camera.csv": "f3f76303da83bc6b2dbbb833fce4820ed457ef68c618629f1c8ff798e84143f8",
+      "-clock-parts.csv": "cbd79c63b1ea135e5e8d4b36a7d268371f0e2f53744b0a9350320c67f3cbcbd3",
+      "-clock-work.csv": "eb74ce0c151e97784994a5d73acce4019461460c10cacd00820b9aab232c1228",
+      "-entry.csv": "dfebce4b4e8c0b18f80ac6cea69ccfae2c82691d24e30381d857c951cb1f51eb",
+      "-frames.csv": "e6dd29d0bfb22732f07e515665c0f95b089c9a0ea9f87e9ed86dc2595c686392",
+      "-gameplay.csv": "acf6c419576baa32e60286bb0c967a7fa4afcb103be7de05e1caa27a4cba4812",
+      "-gameplay-differences.csv": "a82c21ed56ba5df633bb133e5a0462dd906378ebd5bfd4ebd85c8d5b896ef3c0",
+      "-gsu.csv": "bfd69a154cb7db9ada59b24c4305d008b4803dcf7d46db5e79c4cd9686e0c096",
+      "-host-phases.csv": "cbb9d538f290b0378b649ee8c28b28e767f5edd7a4646facd7ea038d575fe4f2",
+      "-transfer-phases.csv": "ce89f357510a906aeac4e5f59d8433fe98bb3ed0020c1bb5b9c4d20e3e1293d3",
+      "-transfer-reads.csv": "bf0cee849e16b379aa05a0a4b1d91c06d94748fd12f9753c196731c2e16d5b21"
+    },
+    "ex": {
+      "-timeline.csv": "8671ddc4bd95b6b132a5a0f100d71d6d939fd0a4950eb72591f4d7a90b46a2ef",
+      "-camera.csv": "f1529f170a46a686480bbd2b5f5c56cae3de3195bdee6c65f09d80e2dd3d26f6",
+      "-clock-parts.csv": "db2124b75a0f47450bbdefbcb6726f57dfc4722bafdcbe7b9c97b1a3927629cc",
+      "-clock-work.csv": "e5ac002582ec05c08e87014e847577cc3062a7163d9f27adecd108466ade6fb6",
+      "-entry.csv": "499a63d9f64a5f6a4c1fa535597747576e15d17d58ff170f29c6471fe2387dcd",
+      "-frames.csv": "77768e45fdf705ec6f77da01a96c2f6b9ee27e0a3e17a9cb7314abb3421e209c",
+      "-gameplay.csv": "a7b47f32ede2edec702efe776124214f11688167198c1f72f0e3394c312bd0d0",
+      "-gameplay-differences.csv": "d9f70b0ea1900650202dad6c5e424105a8ec0878e7464814e4ae85d8be81c833",
+      "-gsu.csv": "d710336f5716a98b554481fe8ad3ad096364a9537ba3824b3c72e0be5a0d7261",
+      "-host-phases.csv": "92078dc5ed170e4068f709ab03f24b0057a67c5ed99be6ace310362d01fc8387",
+      "-transfer-phases.csv": "4d758eaed5bdc74cf88a17ad78dababfd8a45128083c35cb4dc9d9677a8a9711",
+      "-transfer-reads.csv": "1f8f8b8b9e9c1f2fed4f198c3ea46f6c948f8506df5b68e1dd326a82b7f5ae36",
+      "-host-wram.bin": "6c7207dbdc59ef51fb9a3ee292f30b815f4fce5b4835c32f72b770845b50e4c7",
+      "-native-wram.bin": "97152ff29bf742b88a7d5619043e28905303cbaa8a4451b9ad147f9043886e30"
+    }
+  },
+  "ctest": {
+    "passed": 70,
+    "total": 70,
+    "seconds": 263.06
+  },
+  "desktop_sha256": "f9ecb3c78604ec9b79e4cee674695214294288d69ff2f2c09842a0fb0842e09e",
+  "limitations": [
+    "EX LEVEL7_2 retains its existing update-200 Y mismatch",
+    "No production timeline attachment, hardware interrupt delivery or DMA arbitration",
+    "Packaged candidate unchanged"
+  ]
+}

@@ -1,0 +1,95 @@
+#include "starfox/simulation/snes_timeline.hpp"
+#include "starfox/simulation/wdc65816.hpp"
+#include <iostream>
+#include <stdexcept>
+
+using namespace starfox::simulation;
+void require(bool value, const char* message) {
+    if (!value) throw std::runtime_error{message};
+}
+void advance_to(SnesCpuTimeline& clock, unsigned vertical, unsigned horizontal) {
+    for (unsigned guard = 0; guard < 400000U; ++guard) {
+        if (clock.raster().vertical() == vertical && clock.raster().horizontal() == horizontal) return;
+        clock.step(2U);
+    }
+    throw std::runtime_error{"unreachable test beam position"};
+}
+int main() try {
+    std::vector<std::uint8_t> bytes(0x8000U);
+    // Poll live Vblank, then return. A zero-valued stub would never complete.
+    const std::array<std::uint8_t, 6> code{0xad, 0x12, 0x42, 0x10, 0xfb, 0x6b};
+    std::copy(code.begin(), code.end(), bytes.begin());
+    const starfox::assets::RomImage rom{std::move(bytes)};
+    {
+        Wdc65816 cpu{rom};
+        auto clock = std::make_shared<SnesCpuTimeline>();
+        std::uint64_t observed{};
+        cpu.set_bus_clock_callback([&](std::uint32_t clocks) { observed += clocks; });
+        cpu.set_cpu_timeline(clock);
+        Wdc65816Registers registers;
+        registers.status = 0x24U;
+        const auto instructions = cpu.call_long(0x008000U, registers, 100000U);
+        require(instructions > 1000U && clock->raster().vertical() == 225U,
+            "native blanking wait did not run to the live raster boundary");
+        require(clock->totals().cpu == observed && observed == cpu.executed_master_clocks()
+            && clock->totals().refresh != 0U, "binding lost bus observations or refresh accounting");
+        const auto elapsed = clock->raster().elapsed();
+        cpu.set_cpu_timeline({});
+        cpu.call_long(0x008005U, registers);
+        require(clock->raster().elapsed() == elapsed && observed > clock->totals().cpu,
+            "detaching the timeline lost the observer or kept advancing devices");
+    }
+    {
+        Wdc65816 cpu{rom};
+        auto clock = std::make_shared<SnesCpuTimeline>();
+        cpu.set_cpu_timeline(clock);
+        require((cpu.read8(0x4212U) & 0xc1U) == 0x40U, "initial blanking flags differ");
+        clock->step(4U);
+        require((cpu.read8(0x4212U) & 0xc1U) == 0U, "Hblank did not end after H=2");
+        advance_to(*clock, 260U, 1200U);
+        static_cast<void>(cpu.read8(0x213fU));
+        static_cast<void>(cpu.read8(0x2137U));
+        require(cpu.read8(0x213cU) == 44U, "horizontal counter was not latched in dots");
+        static_cast<void>(cpu.read8(0x2137U));
+        require(cpu.read8(0x213cU) == 45U, "SLHV reset the counter phase or lost PPU2 open-bus bits");
+        require(cpu.read8(0x213dU) == 4U && cpu.read8(0x213dU) == 5U,
+            "vertical counter lost its ninth bit or independent read phase");
+        require((cpu.read8(0x213fU) & 0x40U) != 0U && (cpu.read8(0x213fU) & 0x40U) == 0U,
+            "STAT78 did not acknowledge the counter latch");
+        advance_to(*clock, 261U, 100U);
+        cpu.write8(0x4201U, 0U);
+        clock->step(8U);
+        static_cast<void>(cpu.read8(0x2137U));
+        require(cpu.read8(0x4213U) == 0U && (cpu.read8(0x213fU) & 0x40U) != 0U
+            && cpu.read8(0x213cU) == 25U, "PIO falling-edge latch/gating differs");
+        cpu.write8(0x4201U, 0x80U);
+        static_cast<void>(cpu.read8(0x213fU));
+        cpu.set_cpu_timeline({});
+        require(cpu.read8(0x213cU) == 95U, "bounded-call counter behavior was not restored");
+    }
+    {
+        Wdc65816 cpu{rom};
+        auto clock = std::make_shared<SnesCpuTimeline>();
+        cpu.set_cpu_timeline(clock);
+        cpu.write8(0x4207U, 100U);
+        cpu.write8(0x4208U, 0U);
+        cpu.write8(0x4200U, 0x10U);
+        advance_to(*clock, 0U, 414U);
+        require((cpu.read8(0x4211U) & 0x80U) != 0U
+            && clock->interrupts().sample(false) == InterruptRequest{}, "timer hold interval differs");
+        clock->step(4U);
+        require(clock->interrupts().sample(false) == InterruptRequest{false, true, true},
+            "mapped timer writes did not produce an IRQ request");
+        require((cpu.read8(0x4211U) & 0x80U) != 0U && (cpu.read8(0x4211U) & 0x80U) == 0U,
+            "TIMEUP failed to acknowledge the live timer");
+        cpu.write8(0x4200U, 0x80U);
+        advance_to(*clock, 225U, 10U);
+        require((cpu.read8(0x4210U) & 0x8fU) == 0x82U
+            && clock->interrupts().sample(true) == InterruptRequest{true, false, true},
+            "mapped NMI acknowledgement lost the pending edge or CPU version");
+    }
+    std::cout << "live CPU blanking wait, counter latches, timer I/O and detach behavior passed\n";
+} catch (const std::exception& error) {
+    std::cerr << error.what() << '\n';
+    return 1;
+}

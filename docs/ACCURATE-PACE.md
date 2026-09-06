@@ -33,6 +33,10 @@ The new `SnesCpuTimeline` supplies raster history, field/interlace rules,
 refresh and live timer polling. Native CPU bus-clock callbacks now advance it
 at read, write and idle boundaries; synthetic call setup remains excluded.
 Those callbacks are opt-in and are not yet installed in GameSimulation.
+The opt-in CPU timeline now supplies live beam counters, blanking flags,
+timer control and interrupt status registers. Both ports' native WAITDMA_L
+routine passes scanline waits across a field boundary. This binding does not
+yet deliver hardware interrupts or arbitrate DMA; those remain scheduler work.
 See STAGE-STATE-PARITY-VALIDATION.md and TIMING-PROFILE-VALIDATION.md for measured
 results and remaining limits, and BUS-TIMELINE-VALIDATION.md for the shared
 clock and bus-order validation.

@@ -46,6 +46,7 @@ public:
     [[nodiscard]] std::uint64_t fields() const noexcept { return fields_; }
     [[nodiscard]] bool field() const noexcept { return field_; }
     [[nodiscard]] bool interlace() const noexcept { return interlace_; }
+    [[nodiscard]] SnesRegion region() const noexcept { return region_; }
     [[nodiscard]] std::uint32_t horizontal_period() const noexcept { return horizontal_period_; }
     [[nodiscard]] std::uint32_t horizontal(std::uint32_t delay = 0U) const noexcept {
         return delay <= horizontal_ ? horizontal_ - delay
@@ -123,6 +124,8 @@ public:
     [[nodiscard]] InterruptBeam beam() const noexcept { return raster_.beam(vblank_start_); }
     [[nodiscard]] std::uint32_t refresh_position() const noexcept { return refresh_position_; }
     [[nodiscard]] bool refresh_active() const noexcept { return refresh_active_; }
+    [[nodiscard]] std::uint8_t cpu_version() const noexcept { return cpu_version_; }
+    [[nodiscard]] std::uint16_t vblank_start() const noexcept { return vblank_start_; }
 
 private:
     void advance(std::uint32_t clocks) noexcept {

@@ -17,6 +17,8 @@
 
 namespace starfox::simulation {
 
+class SnesCpuTimeline;
+
 class Wdc65816ExecutionError : public std::runtime_error {
 public:
     Wdc65816ExecutionError(std::string message,
@@ -135,6 +137,10 @@ public:
     // Excludes synthetic call setup, DMA and translated GSU work. The callback
     // may update device state but must not reenter CPU execution or replace itself.
     void set_bus_clock_callback(BusClockCallback callback);
+    // Bind live timer/blanking/counter registers and advance their shared
+    // timeline during native bus operations. Null restores bounded-call I/O.
+    // Interrupt delivery and DMA arbitration are still scheduler-owned.
+    void set_cpu_timeline(std::shared_ptr<SnesCpuTimeline> timeline);
     // Hardware signals are sampled at native instruction boundaries. IRQ is
     // level-sensitive; the device must release it. NMI is a latched edge and
     // is acknowledged on entry. Neither API replaces registers or the stack.

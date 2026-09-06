@@ -1,0 +1,8 @@
+Boot PC $7e3bee
+GSU register policy: source (generic Ares GSU, shared NTSC oscillator)
+Stage entry at video frame 3, GSU idle
+Gameplay clone at GAMEFRAME=128 after the preceding display interrupt
+200 complete camera calls, 0 field differences
+CPU timeline: 181240602 bus operations, zero differences
+Live timing I/O: zero differences
+Gameplay: 300/300 updates, 562428 comparisons, 0 differences

@@ -6,6 +6,7 @@
 #include "starfox/render/software_renderer.hpp"
 #include "starfox/simulation/game_simulation.hpp"
 #include "starfox/simulation/strategy_scheduler.hpp"
+#include "starfox/simulation/snes_timeline.hpp"
 #include "starfox/timing/fixed_step.hpp"
 
 #include <algorithm>
@@ -217,6 +218,28 @@ void check_strategy_cadence(const starfox::assets::RomImage& rom,
     require(!objects.is_active(tail) && map.read_native_byte(counter) == 1
         && stats.objects_run == 2, "removed tail reran an already completed source strategy");
     std::cout << "native self-removal cannot double-tick player/boss logic\n";
+}
+
+void check_live_native_wait(const starfox::assets::RomImage& rom,
+    const starfox::assets::SymbolMap& symbols) {
+    using namespace starfox::simulation;
+    Wdc65816 cpu{rom, &symbols};
+    auto clock = std::make_shared<SnesCpuTimeline>();
+    cpu.set_cpu_timeline(clock);
+    for (const auto line : {200U, 20U}) {
+        cpu.write16(symbols.find("DMATEMP").at(0), static_cast<std::uint16_t>(line));
+        Wdc65816Registers registers;
+        registers.status = 0x24U;
+        registers.a = 0xbeefU;
+        registers.x = 0xabcdU;
+        const auto count = cpu.call_long(symbols.find("WAITDMA_L").at(0), registers, 100000U);
+        require(count > 100U && clock->raster().vertical() == line,
+            "native WAITDMA did not wait for its requested live scanline");
+        require(registers.a == 0xbeefU && registers.x == 0xabcdU && registers.status == 0x24U,
+            "live native WAITDMA failed to preserve caller registers");
+    }
+    require(clock->raster().fields() == 1U, "native WAITDMA failed across the field boundary");
+    std::cout << "native WAITDMA waits on live counters across a field boundary\n";
 }
 
 void check_dispatch_width(const starfox::assets::RomImage& rom,
@@ -446,6 +469,7 @@ int main(int argc, char** argv) {
         check_damage(rom, symbols);
         check_strategy_cadence(rom, symbols);
         check_dispatch_width(rom, symbols);
+        check_live_native_wait(rom, symbols);
         check_black_hole_music(rom, symbols);
         check_map_cadence(rom, symbols);
         check_venom_handoff(rom, symbols);

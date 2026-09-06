@@ -76,12 +76,22 @@ cpu = observe(cpu, "namespace ares::SuperFamicom {",
               'extern "C" void sfc_audit_cpu(unsigned, unsigned);\n'
               'extern "C" void sfc_audit_cpu_step(unsigned, unsigned, unsigned);\n'
               'extern "C" void sfc_audit_cpu_step_end(unsigned, unsigned);\n'
+              'extern "C" void sfc_audit_timing_read(unsigned, unsigned);\n'
+              'extern "C" void sfc_audit_timing_write(unsigned, unsigned);\n'
               'namespace ares::SuperFamicom {\nstatic unsigned audit_refresh_depth = 0;\n'
               'static unsigned audit_dma_depth = 0;')
 cpu = observe(cpu, '#include <sfc/cpu/timing.cpp>', '#include "cpu-timing.cpp"')
+cpu = observe(cpu, '#include <sfc/cpu/memory.cpp>', '#include "cpu-memory.cpp"')
 cpu = observe(cpu, "    debugger.instruction();",
               "    sfc_audit_cpu(r.pc.d, counter.cpu);\n    debugger.instruction();")
 save(generated / "cpu.cpp", cpu)
+
+memory = (source / "ares/sfc/cpu/memory.cpp").read_text()
+memory = observe(memory, "  auto data = bus.read(address, r.mdr);",
+    "  auto data = bus.read(address, r.mdr);\n  sfc_audit_timing_read(address, data);")
+memory = observe(memory, "  bus.write(address, r.mdr = data);",
+    "  bus.write(address, r.mdr = data);\n  sfc_audit_timing_write(address, data);")
+save(generated / "cpu-memory.cpp", memory)
 
 # Account for every existing step without adding or removing emulated clocks.
 # DMA-active includes arbitration/alignment and any CPU cycle while that flag

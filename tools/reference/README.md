@@ -373,6 +373,19 @@ Validate it with `python tools/reference/check-runtime-ending-audio.py tmp/runti
 Use `ex` or `msu` for the other trace variants. The checker verifies the full
 observation length, silence interval, audible reprise and actual mixed output.
 
+## Live timing register comparison
+
+Set `STARFOX_REFERENCE_TIMING_IO=1` when running `full_reference.exe` to
+compare the port's opt-in timeline register binding against native bus reads
+and writes. This also enables the shared raster timeline audit and writes
+`PREFIX-timing-io.csv`, with per-register read, write and difference counts.
+Open-bus bits outside the register's defined fields are masked; automatic
+joypad shifting is excluded to preserve enhanced input handling. Check the
+counts before interpreting a zero: these runs do not read every register.
+The Original LEVEL2_1 and EX LEVEL7_2 runs have zero timing I/O differences;
+EX retains its independent update-200 gameplay Y difference. See
+`docs/LIVE-TIMING-IO-VALIDATION.md` for coverage and remaining integration.
+
 ## Inputs and measured results (2026-09-05)
 
 SHA-256:

@@ -24,8 +24,13 @@ unsigned gsu_entry{}, gsu_clsr{}, gsu_cfgr{}, gsu_scmr{};
 bool gsu_active{};
 std::array<std::uint64_t, 3> cpu_clock_categories{};
 std::array<std::uint64_t, 3> cpu_work_clock_categories{};
-const bool timeline_enabled = std::getenv("STARFOX_REFERENCE_TIMELINE") != nullptr;
-std::unique_ptr<starfox::simulation::SnesCpuTimeline> timeline;
+const bool timing_io_enabled = std::getenv("STARFOX_REFERENCE_TIMING_IO") != nullptr;
+const bool timeline_enabled = timing_io_enabled || std::getenv("STARFOX_REFERENCE_TIMELINE") != nullptr;
+std::shared_ptr<starfox::simulation::SnesCpuTimeline> timeline;
+std::unique_ptr<starfox::simulation::Wdc65816> timing_cpu;
+std::map<unsigned, std::array<std::uint64_t, 3>> timing_io_counts;
+std::array<bool, 2> timing_counter_high{};
+std::string timing_io_error;
 std::uint64_t timeline_comparisons{};
 std::string timeline_error;
 }
@@ -34,8 +39,11 @@ extern "C" void sfc_audit_cpu_step(unsigned clocks, unsigned category, unsigned 
     cpu_work_clock_categories[work_category] += clocks;
     if (!timeline_enabled || work_category == 2U || !timeline_error.empty()) return;
     try {
-        if (!timeline) timeline = std::make_unique<starfox::simulation::SnesCpuTimeline>(
-            starfox::simulation::SnesRegion::ntsc, static_cast<std::uint8_t>(sfc::cpu.version->value()));
+        if (!timeline) {
+            timeline = std::make_shared<starfox::simulation::SnesCpuTimeline>(
+                starfox::simulation::SnesRegion::ntsc, static_cast<std::uint8_t>(sfc::cpu.version->value()));
+            if (timing_cpu) timing_cpu->set_cpu_timeline(timeline);
+        }
         timeline->set_display(sfc::ppu.interlace(), sfc::ppu.vdisp());
         timeline->step(clocks, work_category == 1U ? starfox::simulation::SnesClockWork::dma
                                                  : starfox::simulation::SnesClockWork::cpu);
@@ -62,6 +70,40 @@ extern "C" void sfc_audit_cpu_step_end(unsigned cpu_clocks, unsigned refresh_pos
         timeline_error = "CPU timeline differs at bus operation " + std::to_string(timeline_comparisons)
             + " clocks=" + std::to_string(clock_match) + " beam=" + std::to_string(beam_match)
             + " history=" + std::to_string(history_match);
+}
+extern "C" void sfc_audit_timing_read(unsigned address, unsigned expected) {
+    if (!timing_cpu || !timeline || (address & 0x400000U)) return;
+    const auto reg = address & 0xffffU;
+    unsigned mask;
+    switch (reg) {
+    case 0x2137U: mask = 0U; break;
+    case 0x213cU:
+    case 0x213dU:
+        mask = timing_counter_high[reg - 0x213cU] ? 1U : 255U;
+        timing_counter_high[reg - 0x213cU] = !timing_counter_high[reg - 0x213cU]; break;
+    case 0x213fU: mask = 0xdfU; timing_counter_high = {}; break;
+    case 0x4210U: mask = 0x8fU; break;
+    case 0x4211U: mask = 0x80U; break;
+    case 0x4212U: mask = 0xc0U; break;
+    case 0x4213U: mask = 0xffU; break;
+    default: return;
+    }
+    const auto actual = timing_cpu->read8(reg);
+    ++timing_io_counts[reg][0];
+    if ((actual & mask) != (expected & mask)) {
+        ++timing_io_counts[reg][2];
+        if (timing_io_error.empty()) timing_io_error = "Timing I/O differs at register " + std::to_string(reg)
+            + " actual=" + std::to_string(actual & mask) + " expected=" + std::to_string(expected & mask)
+            + " H=" + std::to_string(timeline->raster().horizontal())
+            + " V=" + std::to_string(timeline->raster().vertical());
+    }
+}
+extern "C" void sfc_audit_timing_write(unsigned address, unsigned value) {
+    if (!timing_cpu || !timeline || (address & 0x400000U)) return;
+    const auto reg = address & 0xffffU;
+    if (reg != 0x4200U && reg != 0x4201U && (reg < 0x4207U || reg > 0x420aU)) return;
+    timing_cpu->write8(reg, static_cast<std::uint8_t>(value));
+    ++timing_io_counts[reg][1];
 }
 extern "C" void sfc_audit_cpu(unsigned pc, unsigned clocks) {
     if (cpu_hook) cpu_hook(pc, clocks);
@@ -191,6 +233,7 @@ int main(int argc, char** argv) { try {
     if (seed_mode != "zero-frame" && seed_mode != "first-transfer")
         throw std::runtime_error("Unknown gameplay seed mode: " + seed_mode);
     const auto rom = starfox::assets::RomImage::load(argv[1]);
+    if (timing_io_enabled) timing_cpu = std::make_unique<starfox::simulation::Wdc65816>(rom);
     const auto symbols = starfox::assets::SymbolMap::load(argv[2]);
     const auto address = [&](const char* name) { return symbols.find(name).at(0); };
     const auto read = [](unsigned address, unsigned size = 2) {
@@ -448,6 +491,15 @@ int main(int argc, char** argv) { try {
         if (!timeline_error.empty()) throw std::runtime_error(timeline_error);
     }
     guard.close();
+    if (timing_io_enabled) {
+        std::ofstream report(prefix + "-timing-io.csv");
+        report << "register,reads,writes,differences\n";
+        for (const auto& [reg, counts] : timing_io_counts)
+            report << reg << ',' << counts[0] << ',' << counts[1] << ',' << counts[2] << '\n';
+        timing_cpu.reset();
+        if (!timing_io_error.empty()) throw std::runtime_error(timing_io_error);
+        std::cout << "Live timing I/O: zero differences\n";
+    }
     if (!camera_error.empty()) throw std::runtime_error(camera_error);
     if (gameplay) gameplay->finish();
     return camera_differences || camera_calls == 0 ? 1 : 0;
