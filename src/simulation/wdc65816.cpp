@@ -3,6 +3,7 @@
 #include "starfox/assets/decrunch.hpp"
 #include "starfox/simulation/cpu_timing.hpp"
 #include "starfox/simulation/snes_timeline.hpp"
+#include "starfox/simulation/snes_dma.hpp"
 
 #include "cpu/65816/cpu_65c816.h"
 
@@ -113,7 +114,8 @@ struct Wdc65816::Impl {
         std::vector<std::uint8_t>(kSuperFxRamSize);
     std::array<std::uint8_t, Wdc65816::cartridge_ram_size> cartridge_ram{};
     std::array<std::uint8_t, 0x40> ppu_registers{};
-    std::array<std::uint8_t, 0x80> dma_registers{};
+    SnesDma dma;
+    std::array<std::uint8_t, 0x80>& dma_registers{dma.registers};
     SnesPpuState ppu{};
     std::uint16_t vram_address{};
     std::uint8_t cgram_address{};
@@ -342,6 +344,11 @@ struct Wdc65816::Impl {
         if (timeline) timeline->step(clocks);
         if (bus_clock_callback) bus_clock_callback(clocks);
     }
+    void dma_edge(std::uint32_t clocks) {
+        if (timeline) dma.edge(clocks, *timeline,
+            [&](std::uint32_t address) { return bus.ReadByte(address); },
+            [&](std::uint32_t address, std::uint8_t value) { bus.WriteByte(address, value); });
+    }
 
     void latch_timing_counters() {
         latched_horizontal = static_cast<std::uint16_t>(timeline->raster().dot());
@@ -569,7 +576,8 @@ struct Wdc65816::Impl {
         } else if (low >= 0x4300U && low < 0x4380U) {
             self.dma_registers[low - 0x4300U] = *data;
         } else if (low == 0x420bU) {
-            self.run_dma(*data);
+            if (self.timeline) self.dma.request(*data);
+            else self.run_dma(*data);
         } else if (low == 0x420dU) {
             const bool fast = (*data & 1U) != 0U;
             if (self.fast_rom != fast) {
@@ -1162,15 +1170,6 @@ struct Wdc65816::Impl {
         }
     }
 
-    void write_bbus(std::uint16_t address, std::uint8_t value) noexcept {
-        if (address >= 0x2100U && address < 0x2140U) {
-            write_ppu(address, value);
-        } else if (address == 0x2180U) {
-            wram[wram_port_address & 0x1ffffU] = value;
-            wram_port_address = (wram_port_address + 1U) & 0x1ffffU;
-        }
-    }
-
     void run_dma(std::uint8_t enabled_channels) {
         static constexpr std::array<std::array<std::uint8_t, 4>, 8> patterns{{
             {{0, 0, 0, 0}}, {{0, 1, 0, 1}}, {{0, 0, 0, 0}}, {{0, 0, 1, 1}},
@@ -1199,8 +1198,14 @@ struct Wdc65816::Impl {
                 const auto ppu_address = static_cast<std::uint16_t>(0x2100U
                     | static_cast<std::uint8_t>(ppu_base
                         + patterns[mode][index % pattern_lengths[mode]]));
+                const auto address_a = source_bank | source;
+                const bool b_allowed = SnesDma::valid_b(address_a, ppu_address);
                 if ((parameters & 0x80U) == 0U) {
-                    write_bbus(ppu_address, bus.ReadByte(source_bank | source));
+                    const auto value = SnesDma::valid_a(address_a) ? bus.ReadByte(address_a) : 0U;
+                    if (b_allowed) bus.WriteByte(ppu_address, static_cast<std::uint8_t>(value));
+                } else {
+                    const auto value = b_allowed ? bus.ReadByte(ppu_address) : 0U;
+                    if (SnesDma::valid_a(address_a)) bus.WriteByte(address_a, static_cast<std::uint8_t>(value));
                 }
                 if (!fixed) source = static_cast<std::uint16_t>(
                     decrement ? source - 1U : source + 1U);
@@ -2827,12 +2832,16 @@ void Wdc65816::set_bus_clock_callback(BusClockCallback callback) {
     };
     hooks.idle = [](void* context, std::uint32_t clocks) {
         auto& state = *static_cast<Impl*>(context);
-        if (state.bus_clock_active) state.advance_cpu_clocks(clocks);
+        if (state.bus_clock_active) {
+            state.dma_edge(clocks);
+            state.advance_cpu_clocks(clocks);
+        }
     };
     hooks.read = [](void* context, std::uint32_t address, std::uint8_t* value) {
         auto& state = *static_cast<Impl*>(context);
         if (!state.bus_clock_active) return state.bus.ReadByte(address, value);
         const auto clocks = cpu_access_master_clocks(address, state.fast_rom);
+        state.dma_edge(clocks);
         state.advance_cpu_clocks(clocks - 4U);
         state.bus.ReadByte(address, value);
         state.advance_cpu_clocks(4U);
@@ -2842,6 +2851,7 @@ void Wdc65816::set_bus_clock_callback(BusClockCallback callback) {
         auto& state = *static_cast<Impl*>(context);
         if (!state.bus_clock_active) return state.bus.WriteByte(address, value);
         const auto clocks = cpu_access_master_clocks(address, state.fast_rom);
+        state.dma_edge(clocks);
         state.advance_cpu_clocks(clocks);
         state.bus.WriteByte(address, value);
         return static_cast<std::uint32_t>(clocks);
@@ -2851,6 +2861,8 @@ void Wdc65816::set_bus_clock_callback(BusClockCallback callback) {
 void Wdc65816::set_cpu_timeline(std::shared_ptr<SnesCpuTimeline> timeline) {
     if (impl_->bus_clock_active)
         throw std::logic_error{"Cannot replace the CPU timeline during execution"};
+    if (impl_->timeline != timeline && impl_->dma.requested())
+        throw std::logic_error{"Cannot replace the CPU timeline while DMA is requested"};
     impl_->timeline = std::move(timeline);
     set_bus_clock_callback(std::move(impl_->bus_clock_callback));
 }

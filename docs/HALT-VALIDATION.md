@@ -40,7 +40,8 @@ the production source. Unrelated drift is rejected without modification.
 The user's separate upstream edits are preserved.
 
 This completes the tested halt primitive, not the game-loop integration.
-DMA arbitration, overlapping GSU work, the EX live-transfer mismatch and
+General DMA is covered separately by GENERAL-DMA-VALIDATION.md. HDMA
+arbitration, overlapping GSU work, the EX live-transfer mismatch and
 whole-campaign parity remain unfinished. ACCURATE is not yet exposed or the
 default, and the packaged candidate remains unchanged. Evidence is archived
 under `docs/validation/halt-*`; reproduce the source comparison with the

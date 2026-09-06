@@ -16,6 +16,82 @@ void advance_to(SnesCpuTimeline& clock, unsigned vertical, unsigned horizontal) 
 }
 int main() try {
     {
+        std::vector<std::uint8_t> bytes(0x8000U, 0xeaU);
+        const std::array<std::uint8_t, 7> code{0xa9U,1U,0x8dU,0x0bU,0x42U,0xeaU,0x6bU};
+        std::copy(code.begin(), code.end(), bytes.begin());
+        bytes[0x10] = 0xabU; bytes[0x11] = 0xcdU;
+        const starfox::assets::RomImage rom{bytes};
+        Wdc65816 cpu{rom};
+        auto clock = std::make_shared<SnesCpuTimeline>();
+        cpu.set_cpu_timeline(clock);
+        cpu.write8(0x4301U, 0x80U); cpu.write16(0x4302U, 0x8010U);
+        cpu.write16(0x4305U, 2U); cpu.write16(0x2181U, 0x1234U);
+        std::uint64_t observed_cpu{};
+        bool deferred{}, transferred{};
+        cpu.set_bus_clock_callback([&](std::uint32_t count) {
+            observed_cpu += count;
+            if (observed_cpu == 54U) deferred = cpu.read8(0x7e1234U) == 0U;
+            if (observed_cpu == 60U) transferred = cpu.read16(0x7e1234U) == 0xcdabU;
+        });
+        Wdc65816Registers registers;
+        registers.status = 0x24U;
+        const std::array stops{0x8006U};
+        const auto task = cpu.begin_long_task(0x8000U, registers, stops, 3);
+        require(task.instructions == 3U && deferred && transferred
+            && observed_cpu == 60U && cpu.executed_master_clocks() == 60U
+            && clock->totals().dma == 36U && clock->raster().elapsed() == 96U
+            && cpu.read16(0x4302U) == 0x8012U && cpu.read16(0x4305U) == 0U,
+            "native DMA did not defer a CPU cycle, transfer at its bus edge or keep DMA clocks separate");
+        {
+            auto irq_bytes = bytes;
+            irq_bytes[6] = 0xeaU;
+            irq_bytes[0x7fee] = 0x40U; irq_bytes[0x7fef] = 0x80U;
+            const starfox::assets::RomImage irq_rom{std::move(irq_bytes)};
+            Wdc65816 irq_cpu{irq_rom};
+            auto irq_clock = std::make_shared<SnesCpuTimeline>();
+            irq_cpu.set_cpu_timeline(irq_clock);
+            irq_cpu.write8(0x4301U, 0x80U); irq_cpu.write16(0x4302U, 0x8010U);
+            irq_cpu.write16(0x4305U, 2U);
+            irq_cpu.write8(0x4207U, 15U); irq_cpu.write8(0x4208U, 0U);
+            irq_cpu.write8(0x4200U, 0x10U);
+            Wdc65816Registers irq_registers;
+            irq_registers.status = 0x20U;
+            const std::array irq_stop{0x8040U};
+            const auto interrupted = irq_cpu.begin_long_task(0x8000U, irq_registers, irq_stop, 8);
+            require(interrupted.instructions == 4U && irq_cpu.interrupts_taken() == 1U
+                && irq_cpu.executed_master_clocks() == 138U && irq_clock->raster().elapsed() == 174U,
+                "IRQ raised during DMA was delivered before the following last-cycle sample");
+        }
+        for (const bool reverse : {false,true}) for (const bool live : {false,true}) {
+            bytes[0] = 0xeaU;
+            const starfox::assets::RomImage nop_rom{bytes};
+            Wdc65816 dma_cpu{nop_rom};
+            auto dma_clock = std::make_shared<SnesCpuTimeline>();
+            if (live) dma_cpu.set_cpu_timeline(dma_clock);
+            dma_cpu.write8(0x4300U, reverse ? 0x81U : 0U);
+            dma_cpu.write8(0x4301U, reverse ? 0x40U : 0x80U);
+            dma_cpu.write16(0x4302U, 0x1234U); dma_cpu.write8(0x4304U, 0x7eU);
+            dma_cpu.write16(0x4305U, reverse ? 2U : 1U);
+            dma_cpu.write16(0x2181U, 0x1234U);
+            dma_cpu.write8(0x420bU, 1U);
+            bool guarded{};
+            try { dma_cpu.set_cpu_timeline({}); }
+            catch (const std::logic_error&) { guarded = true; }
+            const std::array done{0x8001U};
+            dma_cpu.begin_long_task(0x8000U, registers, done, 1);
+            require(guarded == live && dma_clock->totals().dma == (live ? (reverse ? 42U : 36U) : 0U),
+                "pending DMA lost its timeline or charged an incorrect synchronization delay");
+            if (reverse) require(dma_cpu.read16(0x7e1234U) == 0xbbaaU,
+                "reverse DMA did not read B-bus data into WRAM");
+            else {
+                dma_cpu.write8(0x2180U, 0x77U);
+                require(dma_cpu.read8(0x7e1234U) == 0x77U && dma_cpu.read8(0x7e1235U) == 0U,
+                    "invalid WRAM-to-WRAM DMA advanced the WRAM port");
+            }
+            dma_cpu.set_cpu_timeline({});
+        }
+    }
+    {
         for (const bool stop : {false, true}) {
             std::vector<std::uint8_t> bytes(0x8000U, 0xeaU);
             bytes[0] = stop ? 0xdbU : 0xcbU;

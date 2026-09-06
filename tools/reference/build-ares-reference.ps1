@@ -33,7 +33,7 @@ try {
     }
     & cmake -S . -B $BuildDirectory "-DSTARFOX_REFERENCE_CORE_DIR=$referencePath" "-DSTARFOX_REFERENCE_ARES_DIR=$sourcePath"
     if ($LASTEXITCODE) { throw "Ares audit configuration failed" }
-    & cmake --build $BuildDirectory --target starfox_reference_ares_render starfox_reference_ares_tests starfox_reference_view starfox_reference_cpu_tests starfox_reference_interrupt_tests starfox_reference_halt_tests starfox_reference_timer_tests starfox_reference_raster_tests -j4
+    & cmake --build $BuildDirectory --target starfox_reference_ares_render starfox_reference_ares_tests starfox_reference_view starfox_reference_cpu_tests starfox_reference_interrupt_tests starfox_reference_halt_tests starfox_reference_dma_tests starfox_reference_timer_tests starfox_reference_raster_tests -j4
     if ($LASTEXITCODE) { throw "Ares audit build failed" }
     & (Join-Path $BuildDirectory 'starfox_reference_ares_tests.exe')
     if ($LASTEXITCODE) { throw "Ares adapter checks failed" }
@@ -43,6 +43,8 @@ try {
     if ($LASTEXITCODE) { throw "Ares interrupt-entry comparisons failed" }
     & (Join-Path $BuildDirectory 'starfox_reference_halt_tests.exe')
     if ($LASTEXITCODE) { throw "Ares WAI/STP comparisons failed" }
+    & (Join-Path $BuildDirectory 'starfox_reference_dma_tests.exe')
+    if ($LASTEXITCODE) { throw "Ares general DMA comparisons failed" }
     & (Join-Path $BuildDirectory 'starfox_reference_timer_tests.exe')
     if ($LASTEXITCODE) { throw "Ares timer-controller comparisons failed" }
     & (Join-Path $BuildDirectory 'starfox_reference_raster_tests.exe')
