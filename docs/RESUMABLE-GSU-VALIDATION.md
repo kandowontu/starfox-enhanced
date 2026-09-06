@@ -70,16 +70,33 @@ python tools/reference/verify-ares.py --output-directory tmp/resumable-gsu-audit
 
 ## Remaining integration
 
-The device is compiled into the core but **Wdc65816 and GameSimulation do not
-use it yet**. CPU/DMA/refresh synchronization, mapped shared-bus access and
-GSU IRQ delivery must be connected before replacing the immediate graphics
-bridge. The EX live-transfer mismatch, ACCURATE menu/default, pace switching,
+Wdc65816 now has an opt-in live binding through `set_gsu_timing(true)` after
+installing a CPU timeline. CPU/DMA/refresh synchronize the device, cartridge
+mapping enforces shared-bus reads, and GSU IRQ participates in interrupt
+sampling and WAI wakeup. Original uses 64 KiB and EX uses two existing 64 KiB
+RAM spans. Native tests cover CPU polling, buffered stores, bank mirrors, DMA
+ownership, IRQ acknowledgement and guarded detach. First attachment starts
+cold internal GSU state with preserved RAM and imported CPU-written ports;
+it does not reconstruct a previously translated execution's warm cache.
+
+The development-only `starfox_reference_gsu_overlap` test compiles unchanged
+pinned Ares CPU step/scanline and GSU device bodies with libco. All 216 scripted
+schedules match CPU raster/thread clocks, GSU clocks/instruction counts/IRQ,
+memory and timestamped bus events. The matrix covers both CPU versions, both
+GSU clock settings, six starting raster phases, 6/8/12-clock operations and
+ROM/RAM ownership waits. HDMA is disabled in this overlap fixture; it is not
+a full-game or combined HDMA/GSU contention certification. libco remains a
+development dependency and is not linked into the production core.
+
+**GameSimulation does not use the live binding yet.** The EX live-transfer
+mismatch, ACCURATE menu/default, pace switching,
 input/render/audio validation and full campaigns remain unfinished. Existing
 pace modes still use their previous graphics path. The packaged candidate is
 unchanged. The device currently uses dynamically allocated coroutine frames;
 its cost in the integrated game loop still needs measurement.
 
-The final desktop rebuild passes 74/74 regression tests in 180.83 seconds.
+The live-binding desktop rebuild passes 76/76 regression tests in 206.50
+seconds; see `validation/live-gsu-regression-validation.txt`.
 The previous 81,024-case CPU and 6,912-case interrupt audit CSV hashes are
 unchanged. No live-game or physical-hardware parity claim follows from these
 isolated device checks.

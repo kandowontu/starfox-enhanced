@@ -121,6 +121,7 @@ public:
     void set_cpu_timeline(std::shared_ptr<SnesCpuTimeline> timeline) {
         cpu_.set_cpu_timeline(std::move(timeline));
     }
+    void set_gsu_timing(bool enabled) { cpu_.set_gsu_timing(enabled); }
     void set_interrupt_sample_callback(Wdc65816::InterruptSampleCallback callback) {
         cpu_.set_interrupt_sample_callback(std::move(callback));
     }

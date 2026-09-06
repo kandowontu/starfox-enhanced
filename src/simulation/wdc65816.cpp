@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <bitset>
 #include <cmath>
 #include <cstring>
 #include <map>
@@ -113,6 +114,8 @@ struct Wdc65816::Impl {
     std::vector<std::uint8_t> superfx_ram =
         std::vector<std::uint8_t>(kSuperFxRamSize);
     std::array<std::uint8_t, Wdc65816::cartridge_ram_size> cartridge_ram{};
+    std::shared_ptr<GsuDevice> gsu;
+    std::bitset<0x300U> written_gsu_registers;
     std::array<std::uint8_t, 0x40> ppu_registers{};
     SnesDma dma;
     std::array<std::uint8_t, 0x80>& dma_registers{dma.registers};
@@ -346,8 +349,66 @@ struct Wdc65816::Impl {
     }
     void dma_edge(std::uint32_t clocks) {
         if (timeline) dma.edge(clocks, *timeline,
-            [&](std::uint32_t address) { return bus.ReadByte(address); },
-            [&](std::uint32_t address, std::uint8_t value) { bus.WriteByte(address, value); });
+            [&](std::uint32_t address) { std::uint8_t value{}; cpu_bus_read(address, &value); return value; },
+            [&](std::uint32_t address, std::uint8_t value) { cpu_bus_write(address, value); });
+    }
+
+
+    static bool gsu_io_address(std::uint32_t address) noexcept {
+        return (address & 0x400000U) == 0U && (address & 0xffffU) >= 0x3000U
+            && (address & 0xffffU) <= 0x34ffU;
+    }
+    std::uint32_t cpu_bus_read(std::uint32_t address, std::uint8_t* value) {
+        address &= 0xffffffU;
+        if (!gsu) return bus.ReadByte(address, value);
+        const auto bank = (address >> 16U) & 0x7fU;
+        const auto low = address & 0xffffU;
+        if (gsu_io_address(address)) {
+            bus.open_bus = gsu->read_io(address);
+        } else if ((bank < 0x40U && low >= 0x8000U) || (bank >= 0x40U && bank <= 0x5fU)) {
+            const auto offset = (bank < 0x40U ? bank * 0x8000U + (low & 0x7fffU)
+                : ((bank & 0x1fU) << 16U) + low) & (rom->size() - 1U);
+            bus.open_bus = gsu->read_cpu_rom(static_cast<std::uint32_t>(offset));
+            if (!gsu->owns_rom()) {
+                const auto found = compatible_rom_banks.find(static_cast<std::uint8_t>(offset >> 15U));
+                if (found != compatible_rom_banks.end()) bus.open_bus = found->second[offset & 0x7fffU];
+            }
+        } else if ((bank < 0x40U && low >= 0x6000U && low < 0x8000U) || bank == 0x70U || bank == 0x71U) {
+            const auto offset = bank < 0x40U ? low & 0x1fffU : ((bank & 1U) << 16U) | low;
+            bus.open_bus = gsu->read_cpu_ram(offset, bus.open_bus);
+        } else return bus.ReadByte(address, value);
+        *value = bus.open_bus;
+        return cpu_access_master_clocks(address, fast_rom);
+    }
+    std::uint32_t cpu_bus_write(std::uint32_t address, std::uint8_t value) {
+        address &= 0xffffffU;
+        if (!gsu) return bus.WriteByte(address,value);
+        const auto bank = (address >> 16U) & 0x7fU;
+        const auto low = address & 0xffffU;
+        if (gsu_io_address(address)) {
+            write_gsu_register(low,value);
+        } else if ((bank < 0x40U && low >= 0x6000U && low < 0x8000U) || bank == 0x70U || bank == 0x71U) {
+            const auto offset = bank < 0x40U ? low & 0x1fffU : ((bank & 1U) << 16U) | low;
+            gsu->write_cpu_ram(offset,value);
+        } else return bus.WriteByte(address,value);
+        bus.open_bus = value;
+        return cpu_access_master_clocks(address, fast_rom);
+    }
+    void write_gsu_register(std::uint32_t address, std::uint8_t value) {
+        const auto canonical = gsu ? 0x3000U | (address & 0x3ffU) : address;
+        if (canonical < 0x3300U) {
+            superfx_registers[canonical - 0x3000U] = value;
+            written_gsu_registers.set(canonical - 0x3000U);
+        }
+        if (gsu) {
+            const auto running = gsu->running();
+            gsu->write_io(address,value);
+            if (canonical == 0x301fU || (!running && gsu->running())) {
+                const auto entry = (std::uint32_t(gsu->read_io(0x3034U)) << 16U)
+                    | gsu->read_io(0x301eU) | (std::uint32_t(gsu->read_io(0x301fU)) << 8U);
+                if (mshowobj3 && entry == mshowobj3) capture_model_draw();
+            }
+        } else if (canonical == 0x301fU) launch_superfx();
     }
 
     void latch_timing_counters() {
@@ -611,8 +672,7 @@ struct Wdc65816::Impl {
                     self.divide_dividend % *data);
             }
         } else if (low >= 0x3000U && low < 0x3300U) {
-            self.superfx_registers[low - 0x3000U] = *data;
-            if (low == 0x301fU) self.launch_superfx();
+            self.write_gsu_register(low, *data);
         }
     }
 
@@ -921,11 +981,13 @@ struct Wdc65816::Impl {
     }
 
     std::uint8_t read8(std::uint32_t address) const {
-        return const_cast<SystemBus&>(bus).ReadByte(address);
+        std::uint8_t value{};
+        const_cast<Impl*>(this)->cpu_bus_read(address, &value);
+        return value;
     }
 
     void write8(std::uint32_t address, std::uint8_t value) {
-        bus.WriteByte(address, value);
+        cpu_bus_write(address, value);
     }
 
     std::uint16_t read_wram16(std::uint16_t address) const noexcept {
@@ -2183,6 +2245,54 @@ struct Wdc65816::Impl {
         }
     }
 
+    void capture_model_draw() {
+        // MSHOWOBJ3 is CONTINUE.ASM's model-viewer draw. Capture the
+        // exact launch registers before the 65C816 advances its rotation;
+        // the PC compositor consumes this otherwise-objectless model.
+        native_model_draw = {};
+        if (m_shapeptr != 0U) {
+            native_model_draw.shape = read_superfx16(m_shapeptr);
+            native_model_draw.active = native_model_draw.shape != 0U;
+        }
+        if (m_bigx != 0U) {
+            native_model_draw.x = signed16(read_superfx16(m_bigx));
+        }
+        if (m_bigy != 0U) {
+            native_model_draw.y = signed16(read_superfx16(m_bigy));
+        }
+        if (m_bigz != 0U) {
+            native_model_draw.z = signed16(read_superfx16(m_bigz));
+        }
+        if (m_rotx != 0U) {
+            native_model_draw.rotation_x = read_superfx16(m_rotx);
+        }
+        if (m_roty != 0U) {
+            native_model_draw.rotation_y = read_superfx16(m_roty);
+        }
+        if (m_rotz != 0U) {
+            native_model_draw.rotation_z = read_superfx16(m_rotz);
+        }
+        if (m_vanishx != 0U) {
+            native_model_draw.vanish_x = signed16(
+                read_superfx16(m_vanishx));
+        }
+        if (m_vanishy != 0U) {
+            native_model_draw.vanish_y = signed16(
+                read_superfx16(m_vanishy));
+        }
+        if (m_framenum != 0U) {
+            native_model_draw.animation_frame = read_superfx16(m_framenum);
+        }
+        if (m_colframe != 0U) {
+            native_model_draw.colour_frame = read_superfx16(m_colframe);
+        }
+        // MSHOWOBJ3 itself copies sh_col_ptr from the requested shape
+        // header into M_COLOURPTR. Because this bridge replaces that GSU
+        // entry point, the word currently in M_COLOURPTR belongs to the
+        // preceding model and must not override the requested header.
+        native_model_draw.colour_table = 0U;
+    }
+
     void launch_superfx() {
         const auto address = (static_cast<std::uint32_t>(
                                   superfx_registers[0x34U]) << 16U)
@@ -2373,51 +2483,7 @@ struct Wdc65816::Impl {
             return;
         }
         if (mshowobj3 != 0U && address == mshowobj3) {
-            // MSHOWOBJ3 is CONTINUE.ASM's model-viewer draw. Capture the
-            // exact launch registers before the 65C816 advances its rotation;
-            // the PC compositor consumes this otherwise-objectless model.
-            native_model_draw = {};
-            if (m_shapeptr != 0U) {
-                native_model_draw.shape = read_superfx16(m_shapeptr);
-                native_model_draw.active = native_model_draw.shape != 0U;
-            }
-            if (m_bigx != 0U) {
-                native_model_draw.x = signed16(read_superfx16(m_bigx));
-            }
-            if (m_bigy != 0U) {
-                native_model_draw.y = signed16(read_superfx16(m_bigy));
-            }
-            if (m_bigz != 0U) {
-                native_model_draw.z = signed16(read_superfx16(m_bigz));
-            }
-            if (m_rotx != 0U) {
-                native_model_draw.rotation_x = read_superfx16(m_rotx);
-            }
-            if (m_roty != 0U) {
-                native_model_draw.rotation_y = read_superfx16(m_roty);
-            }
-            if (m_rotz != 0U) {
-                native_model_draw.rotation_z = read_superfx16(m_rotz);
-            }
-            if (m_vanishx != 0U) {
-                native_model_draw.vanish_x = signed16(
-                    read_superfx16(m_vanishx));
-            }
-            if (m_vanishy != 0U) {
-                native_model_draw.vanish_y = signed16(
-                    read_superfx16(m_vanishy));
-            }
-            if (m_framenum != 0U) {
-                native_model_draw.animation_frame = read_superfx16(m_framenum);
-            }
-            if (m_colframe != 0U) {
-                native_model_draw.colour_frame = read_superfx16(m_colframe);
-            }
-            // MSHOWOBJ3 itself copies sh_col_ptr from the requested shape
-            // header into M_COLOURPTR. Because this bridge replaces that GSU
-            // entry point, the word currently in M_COLOURPTR belongs to the
-            // preceding model and must not override the requested header.
-            native_model_draw.colour_table = 0U;
+            capture_model_draw();
             return;
         }
         if (mdecrunch == 0U || address != mdecrunch) {
@@ -2806,7 +2872,7 @@ void Wdc65816::set_bus_clock_callback(BusClockCallback callback) {
         if (state.timeline) {
             const auto sources = state.cpu.cpu_state.pending_interrupts.load(std::memory_order_acquire);
             const auto request = state.timeline->interrupts().sample(bool(status & 4U),
-                bool(sources & 2U), bool(sources & 4U));
+                bool(sources & 2U) || (state.gsu && state.gsu->irq()), bool(sources & 4U));
             state.sampled_nmi |= request.nmi;
             state.sampled_irq |= request.irq;
             if (request.wake) state.waiting = false;
@@ -2841,21 +2907,21 @@ void Wdc65816::set_bus_clock_callback(BusClockCallback callback) {
     };
     hooks.read = [](void* context, std::uint32_t address, std::uint8_t* value) {
         auto& state = *static_cast<Impl*>(context);
-        if (!state.bus_clock_active) return state.bus.ReadByte(address, value);
+        if (!state.bus_clock_active) return state.cpu_bus_read(address, value);
         const auto clocks = cpu_access_master_clocks(address, state.fast_rom);
         state.dma_edge(clocks);
         state.advance_cpu_clocks(clocks - 4U);
-        state.bus.ReadByte(address, value);
+        state.cpu_bus_read(address, value);
         state.advance_cpu_clocks(4U);
         return static_cast<std::uint32_t>(clocks);
     };
     hooks.write = [](void* context, std::uint32_t address, std::uint8_t value) {
         auto& state = *static_cast<Impl*>(context);
-        if (!state.bus_clock_active) return state.bus.WriteByte(address, value);
+        if (!state.bus_clock_active) return state.cpu_bus_write(address, value);
         const auto clocks = cpu_access_master_clocks(address, state.fast_rom);
         state.dma_edge(clocks);
         state.advance_cpu_clocks(clocks);
-        state.bus.WriteByte(address, value);
+        state.cpu_bus_write(address, value);
         return static_cast<std::uint32_t>(clocks);
     };
 }
@@ -2863,6 +2929,8 @@ void Wdc65816::set_bus_clock_callback(BusClockCallback callback) {
 void Wdc65816::set_cpu_timeline(std::shared_ptr<SnesCpuTimeline> timeline) {
     if (impl_->bus_clock_active)
         throw std::logic_error{"Cannot replace the CPU timeline during execution"};
+    if (impl_->gsu && impl_->timeline != timeline)
+        throw std::logic_error{"Disable GSU timing before replacing its CPU timeline"};
     if (impl_->timeline && impl_->timeline != timeline && impl_->dma.requested())
         throw std::logic_error{"Cannot replace the CPU timeline while DMA is requested"};
     if (impl_->timeline != timeline) {
@@ -2872,6 +2940,47 @@ void Wdc65816::set_cpu_timeline(std::shared_ptr<SnesCpuTimeline> timeline) {
     }
     set_bus_clock_callback(std::move(impl_->bus_clock_callback));
 }
+
+void Wdc65816::set_gsu_timing(bool enabled) {
+    if (impl_->bus_clock_active) throw std::logic_error{"Cannot change GSU timing during CPU execution"};
+    if (enabled == bool(impl_->gsu)) return;
+    if (enabled) {
+        if (!impl_->timeline) throw std::logic_error{"GSU timing requires a live CPU timeline"};
+        const auto& bytes = impl_->rom->bytes();
+        const auto work = bytes[0x7fbdU] ? 1024U << (bytes[0x7fbdU] & 7U) : 0x8000U;
+        const auto shift = bytes[0x7fd8U];
+        if (shift > 7U) throw std::invalid_argument{"Unsupported GSU RAM header"};
+        const auto size = work + (shift ? 1024U << shift : 0U);
+        if (size != 0x10000U && size != 0x20000U)
+            throw std::invalid_argument{"GSU timing requires 64 or 128 KiB cartridge RAM"};
+        const auto extra = size == 0x20000U ? std::span<std::uint8_t>{impl_->cartridge_ram} : std::span<std::uint8_t>{};
+        auto device = std::make_shared<GsuDevice>(bytes,impl_->superfx_ram,extra);
+        impl_->timeline->set_gsu_device(device);
+        // First attachment begins cold; only actual CPU writes are imported.
+        // Shared RAM and CPU-authored cache bytes survive a pace change.
+        for (const auto low : {0x33U,0x34U,0x37U,0x38U,0x39U,0x3aU})
+            if (impl_->written_gsu_registers[low]) device->write_io(0x3000U + low,impl_->superfx_registers[low]);
+        for (unsigned low = 0; low < 0x20U; ++low)
+            if (impl_->written_gsu_registers[low]) device->write_io(0x3000U + low,impl_->superfx_registers[low]);
+        device->write_io(0x3030U,impl_->superfx_registers[0x30U] & ~0x20U);
+        if (impl_->written_gsu_registers[0x31U]) device->write_io(0x3031U,impl_->superfx_registers[0x31U]);
+        for (unsigned low = 0x100U; low < 0x300U; ++low)
+            if (impl_->written_gsu_registers[low]) device->write_io(0x3000U + low,impl_->superfx_registers[low]);
+        impl_->gsu = std::move(device);
+    } else {
+        if (impl_->gsu->running() || impl_->gsu->pending_ram_clocks() || impl_->gsu->irq())
+            throw std::logic_error{"GSU work and IRQ must finish before disabling its timing"};
+        auto registers = impl_->superfx_registers;
+        for (unsigned low = 0; low < 0x20U; ++low) registers[low] = impl_->gsu->read_io(0x3000U + low);
+        for (const auto low : {0x30U,0x31U,0x34U,0x36U,0x3bU,0x3cU,0x3eU,0x3fU})
+            registers[low] = impl_->gsu->read_io(0x3000U + low);
+        impl_->timeline->set_gsu_device({});
+        impl_->superfx_registers = registers;
+        impl_->gsu.reset();
+    }
+}
+bool Wdc65816::gsu_timing_enabled() const noexcept { return bool(impl_->gsu); }
+
 void Wdc65816::set_interrupt_sample_callback(InterruptSampleCallback callback) {
     if (impl_->bus_clock_active)
         throw std::logic_error{"Cannot replace the interrupt sampling callback during execution"};

@@ -164,6 +164,11 @@ public:
     // DMA and scanline HDMA share bus ownership after their startup delay.
     // Disable HDMA and finish pending DMA before replacing the timeline.
     void set_cpu_timeline(std::shared_ptr<SnesCpuTimeline> timeline);
+    // Opt in to the resumable GSU and cartridge bus map. Requires a live CPU
+    // timeline. First enable starts cold internal state from recorded CPU I/O;
+    // shared RAM is retained. Disable only after GO, RAM writes and IRQ finish.
+    void set_gsu_timing(bool enabled);
+    [[nodiscard]] bool gsu_timing_enabled() const noexcept;
     // Without a timeline, hardware signals use legacy instruction-boundary
     // sampling; with one they use the live last-cycle polling point. IRQ is
     // level-sensitive; the device must release it. NMI is a latched edge and

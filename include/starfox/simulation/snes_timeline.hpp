@@ -2,6 +2,7 @@
 
 #include "starfox/simulation/snes_interrupts.hpp"
 #include "starfox/simulation/snes_hdma.hpp"
+#include "starfox/simulation/gsu_device.hpp"
 #include <cstdint>
 #include <memory>
 #include <stdexcept>
@@ -87,7 +88,7 @@ struct SnesClockTotals {
 
 // Shared bus-time raster/interrupt clock for the accurate scheduler. Each step
 // is one CPU/DMA clock operation, not an aggregate instruction or frame. DMA
-// arbitration and GSU overlap remain the caller's responsibility.
+// arbitration is supplied by SnesDma; an optional GSU follows CPU thread time.
 class SnesCpuTimeline {
 public:
     explicit SnesCpuTimeline(SnesRegion region = SnesRegion::ntsc,
@@ -98,7 +99,15 @@ public:
             throw std::invalid_argument{"Unsupported S-CPU timing version"};
     }
 
+    void set_gsu_device(const std::shared_ptr<GsuDevice>& device) {
+        if (stepping_) throw std::logic_error{"Cannot replace a GSU while the timeline is stepping"};
+        if (const auto existing = gsu_.lock(); existing && device && existing != device)
+            throw std::logic_error{"CPU timeline already has a GSU owner"};
+        if (device) device->run_until(device_clock_);
+        gsu_ = device;
+    }
     void set_hdma_state(const std::shared_ptr<SnesHdmaState>& state) {
+        if (stepping_) throw std::logic_error{"Cannot replace HDMA while the timeline is stepping"};
         if (const auto existing = hdma_.lock(); existing && state && existing != state)
             throw std::logic_error{"CPU timeline already has an HDMA owner"};
         hdma_ = state;
@@ -108,7 +117,10 @@ public:
         vblank_start_ = vblank_start;
     }
     void step(std::uint32_t clocks, SnesClockWork work = SnesClockWork::cpu) {
+        if (stepping_) throw std::logic_error{"Cannot reenter the CPU timeline"};
         if (clocks & 1U) throw std::invalid_argument{"S-CPU clock steps must be even"};
+        struct Guard { bool& flag; ~Guard() { flag = false; } } guard{stepping_};
+        stepping_ = true;
         interrupts_.clock_step();
         (work == SnesClockWork::cpu ? totals_.cpu : totals_.dma) += clocks;
         advance(clocks);
@@ -121,14 +133,18 @@ public:
                 refresh_active_ = true;
                 advance(6U);
                 hdma_events();
+                synchronize_gsu(6U);
                 refresh_active_ = false;
                 advance(2U);
                 hdma_events();
+                synchronize_gsu(2U);
             }
         }
         hdma_events();
+        synchronize_gsu(clocks);
     }
 
+    [[nodiscard]] std::uint64_t device_clock() const noexcept { return device_clock_; }
     [[nodiscard]] const SnesRasterClock& raster() const noexcept { return raster_; }
     [[nodiscard]] const SnesClockTotals& totals() const noexcept { return totals_; }
     [[nodiscard]] SnesInterrupts& interrupts() noexcept { return interrupts_; }
@@ -139,6 +155,12 @@ public:
     [[nodiscard]] std::uint16_t vblank_start() const noexcept { return vblank_start_; }
 
 private:
+    void synchronize_gsu(std::uint32_t completed_clocks) {
+        // CPU::Thread::step is charged after nested refresh steps. During
+        // refresh this is behind the raster by the outer bus operation.
+        device_clock_ += completed_clocks;
+        if (const auto device = gsu_.lock()) device->run_until(device_clock_);
+    }
     void hdma_events() noexcept {
         if (!hdma_setup_triggered_ && raster_.horizontal() >= hdma_setup_position_) {
             hdma_setup_triggered_ = true;
@@ -173,6 +195,9 @@ private:
     std::uint32_t refresh_position_;
     std::uint16_t vblank_start_{225U};
     std::weak_ptr<SnesHdmaState> hdma_;
+    std::weak_ptr<GsuDevice> gsu_;
+    std::uint64_t device_clock_{};
+    bool stepping_{};
     std::uint32_t hdma_setup_position_;
     bool hdma_setup_triggered_{}, hdma_triggered_{};
     bool ppu_interlace_{}, refreshed_{}, refresh_active_{};

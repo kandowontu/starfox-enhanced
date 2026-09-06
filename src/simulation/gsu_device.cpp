@@ -25,9 +25,11 @@ struct Core {
     } rom;
     struct Ram {
         Core& owner;
-        std::span<std::uint8_t> bytes;
-        n8 read(u32 address) const { const auto value = bytes[address]; owner.observe(0x700000U + address,value,false); return value; }
-        void write(u32 address, n8 value) { bytes[address] = value; owner.observe(0x700000U + address,value,true); }
+        std::span<std::uint8_t> bytes, additional;
+        n8 peek(u32 address) const { return address < bytes.size() ? bytes[address] : additional[address - bytes.size()]; }
+        void poke(u32 address, n8 value) { (address < bytes.size() ? bytes[address] : additional[address - bytes.size()]) = value; }
+        n8 read(u32 address) const { const auto value = peek(address); owner.observe(0x700000U + address,value,false); return value; }
+        void write(u32 address, n8 value) { poke(address,value); owner.observe(0x700000U + address,value,true); }
     } ram;
     u32 romMask, ramMask;
     std::uint64_t clocks{}, target{}, instruction_count{}, stopped_at{};
@@ -68,9 +70,9 @@ struct Core {
     }
     Task<> execution;
 
-    Core(std::span<const std::uint8_t> rom_bytes, std::span<std::uint8_t> ram_bytes)
-        : regs{}, cache{}, pixelcache{}, rom{*this,rom_bytes}, ram{*this,ram_bytes},
-          romMask(u32(rom_bytes.size() - 1U)), ramMask(u32(ram_bytes.size() - 1U)) {
+    Core(std::span<const std::uint8_t> rom_bytes, std::span<std::uint8_t> ram_bytes, std::span<std::uint8_t> additional)
+        : regs{}, cache{}, pixelcache{}, rom{*this,rom_bytes}, ram{*this,ram_bytes,additional},
+          romMask(u32(rom_bytes.size() - 1U)), ramMask(u32(ram_bytes.size() + additional.size() - 1U)) {
         regs.pipeline = 0x01U;
         regs.vcr = 0x04U;
         regs.reset();
@@ -96,12 +98,13 @@ struct Core {
 } // namespace starfox::simulation::gsu
 
 namespace starfox::simulation {
-struct GsuDevice::Impl { gsu::Core core; Impl(std::span<const std::uint8_t> rom, std::span<std::uint8_t> ram) : core(rom,ram) {} };
-GsuDevice::GsuDevice(std::span<const std::uint8_t> rom, std::span<std::uint8_t> ram) {
+struct GsuDevice::Impl { gsu::Core core; Impl(std::span<const std::uint8_t> rom, std::span<std::uint8_t> ram, std::span<std::uint8_t> additional) : core(rom,ram,additional) {} };
+GsuDevice::GsuDevice(std::span<const std::uint8_t> rom, std::span<std::uint8_t> ram, std::span<std::uint8_t> additional) {
     if (!std::has_single_bit(rom.size()) || rom.size() < 0x8000U || rom.size() > 0x200000U
-            || (ram.size() != 0x10000U && ram.size() != 0x20000U))
+            || !((additional.empty() && (ram.size() == 0x10000U || ram.size() == 0x20000U))
+                || (ram.size() == 0x10000U && additional.size() == 0x10000U)))
         throw std::invalid_argument{"Unsupported GSU memory layout"};
-    impl_ = std::make_unique<Impl>(rom,ram);
+    impl_ = std::make_unique<Impl>(rom,ram,additional);
 }
 GsuDevice::~GsuDevice() = default;
 void GsuDevice::set_bus_observer(BusObserver observer) { impl_->core.require_idle(); impl_->core.observer = std::move(observer); }
@@ -111,6 +114,8 @@ std::uint64_t GsuDevice::last_stop_master_clock() const noexcept { return impl_-
 std::uint16_t GsuDevice::last_stop_status() const noexcept { return impl_->core.stopped_status; }
 std::uint64_t GsuDevice::instructions() const noexcept { return impl_->core.instruction_count; }
 bool GsuDevice::running() const noexcept { return impl_->core.regs.sfr.g; }
+bool GsuDevice::owns_rom() const noexcept { return impl_->core.regs.sfr.g && impl_->core.regs.scmr.ron; }
+bool GsuDevice::owns_ram() const noexcept { return impl_->core.regs.sfr.g && impl_->core.regs.scmr.ran; }
 bool GsuDevice::irq() const noexcept { return impl_->core.irq_line; }
 std::uint32_t GsuDevice::pending_ram_clocks() const noexcept { return impl_->core.regs.ramcl; }
 std::uint8_t GsuDevice::read_io(std::uint32_t address) { impl_->core.require_idle(); return impl_->core.readIO(address,0U); }
@@ -126,11 +131,11 @@ std::uint8_t GsuDevice::read_cpu_rom(std::uint32_t offset) const {
 std::uint8_t GsuDevice::read_cpu_ram(std::uint32_t offset, std::uint8_t open_bus) const {
     const auto& core = impl_->core;
     if (core.regs.sfr.g && core.regs.scmr.ran) return open_bus;
-    return core.ram.bytes[offset & core.ramMask];
+    return core.ram.peek(offset & core.ramMask);
 }
 void GsuDevice::write_cpu_ram(std::uint32_t offset, std::uint8_t value) {
     auto& core = impl_->core;
     core.require_idle();
-    core.ram.bytes[offset & core.ramMask] = value;
+    core.ram.poke(offset & core.ramMask,value);
 }
 } // namespace starfox::simulation

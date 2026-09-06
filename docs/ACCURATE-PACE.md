@@ -42,8 +42,11 @@ ownership after its startup delay and shares that ownership with raster-triggere
 HDMA. See HDMA-VALIDATION.md, GENERAL-DMA-VALIDATION.md and
 LIVE-INTERRUPT-VALIDATION.md for coverage. A resumable GSU device now supplies
 instruction/cache/pixel/buffer timing and bus-access waits; see
-RESUMABLE-GSU-VALIDATION.md. Binding it to CPU/DMA time and replacing the
-immediate graphics bridge remain unfinished.
+RESUMABLE-GSU-VALIDATION.md. The opt-in Wdc65816 binding now synchronizes it
+with CPU/DMA/refresh time, maps shared ROM/RAM and delivers its IRQ. Native
+binding checks and 216 independent source overlap schedules pass. Installing
+this binding in GameSimulation and replacing its immediate transfer orchestration
+remain unfinished.
 Production last-cycle hooks now match reference sample clocks and the I flag
 for 254 native opcodes, including both initial I states. A callback can select
 the pending-interrupt dummy read used by idleIRQ instructions. Timeline binding

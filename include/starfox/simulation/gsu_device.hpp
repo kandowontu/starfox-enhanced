@@ -11,7 +11,8 @@ namespace starfox::simulation {
 // ROM/RAM and advances this device before CPU accesses to shared devices.
 class GsuDevice {
 public:
-    GsuDevice(std::span<const std::uint8_t> rom, std::span<std::uint8_t> ram);
+    GsuDevice(std::span<const std::uint8_t> rom, std::span<std::uint8_t> ram,
+        std::span<std::uint8_t> additional_ram = {});
     ~GsuDevice();
     GsuDevice(const GsuDevice&) = delete;
     GsuDevice& operator=(const GsuDevice&) = delete;
@@ -25,6 +26,8 @@ public:
     [[nodiscard]] std::uint16_t last_stop_status() const noexcept;
     [[nodiscard]] std::uint64_t instructions() const noexcept;
     [[nodiscard]] bool running() const noexcept;
+    [[nodiscard]] bool owns_rom() const noexcept;
+    [[nodiscard]] bool owns_ram() const noexcept;
     [[nodiscard]] bool irq() const noexcept;
     [[nodiscard]] std::uint32_t pending_ram_clocks() const noexcept;
     std::uint8_t read_io(std::uint32_t address);

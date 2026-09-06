@@ -32,6 +32,10 @@ also retains the ISC notice below and is not linked into game builds.
 implementation in `tools/reference/raster_audit.cpp` for a development-only
 raster/beam-history comparison.
 
+`starfox_reference_gsu_overlap_tests` compiles the pinned CPU step/scanline
+and GSU device bodies with nall and libco for an independent scheduling
+comparison. These development-only components are not linked into the game.
+
 `tools/reference/full-system` also builds the pinned full SNES accuracy core,
 libco, nall and SLJIT as a separate development reference. It generates source
 copies with observation hooks and a reproducible power-on RAM seed outside
