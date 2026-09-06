@@ -1196,6 +1196,13 @@ if(STARFOX_BUILD_TESTS)
                 -DMAP=LEVEL2_1 -DEXPERIENCE=ORIGINAL
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/native_desktop_timing.cmake")
             set_tests_properties(starfox_native_desktop_timing PROPERTIES TIMEOUT 150)
+            add_test(NAME starfox_native_desktop_exits COMMAND "${CMAKE_COMMAND}"
+                "-DRUNTIME=$<TARGET_FILE:starfox_pc>"
+                "-DROM=${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
+                "-DSYMBOLS=${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT"
+                -DMAP=LEVEL2_1 -DEXPERIENCE=ORIGINAL "-DTEST_MSU_PACK=${STARFOX_TEST_MSU_PACK}"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/native_desktop_exits.cmake")
+            set_tests_properties(starfox_native_desktop_exits PROPERTIES TIMEOUT 500)
             add_test(
                 NAME starfox_runtime_smoke
                 COMMAND starfox_pc
@@ -1360,6 +1367,13 @@ if(STARFOX_BUILD_TESTS)
                 -DMAP=LEVEL7_2 -DEXPERIENCE=EX
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/native_desktop_timing.cmake")
             set_tests_properties(starfox_ex_native_desktop_timing PROPERTIES TIMEOUT 150)
+            add_test(NAME starfox_ex_native_desktop_exits COMMAND "${CMAKE_COMMAND}"
+                "-DRUNTIME=$<TARGET_FILE:starfox_pc>"
+                "-DROM=${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
+                "-DSYMBOLS=${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT"
+                -DMAP=LEVEL7_2 -DEXPERIENCE=EX
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/native_desktop_exits.cmake")
+            set_tests_properties(starfox_ex_native_desktop_exits PROPERTIES TIMEOUT 250)
             file(MAKE_DIRECTORY
                 "${CMAKE_CURRENT_BINARY_DIR}/embedded-ex-runtime-smoke")
             add_test(

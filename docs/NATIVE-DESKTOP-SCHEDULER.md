@@ -62,3 +62,28 @@ After rebuilding all targets, the complete suite passes 93/93 tests in
 276.66 seconds. `validation/native-pause-presentation-regressions.txt` retains
 the full log, including both presentation-rate matrices, normal/MSU ending
 audio, native pause navigation and existing multiplayer input coverage.
+
+## Desktop exit handoffs
+
+Native gameplay readiness now excludes an active host frontend transition.
+Special exits deliberately keep the gameplay flow state while their white or
+black fade runs. Checking that flow state alone reattached native MAIN during
+the fade and prevented the frontend from finishing. Both the desktop scheduler
+and native MAIN entry use the explicit readiness predicate.
+
+The exit replay sets LEVELFINISHED after twelve native updates, with CPU/APU
+and MSU bindings active. It tests ordinary results (1), credits (9), game over
+(10), and the special white fade (16) in both ports. Original repeats these
+cases with MSU on when the real pack is available, checking that a recording
+was actually selected. The credits cases include Start presses after handoff.
+The replay checks the exact destination flow, that only thirteen native
+updates completed, and that the CPU timeline remains detached while frontend
+execution continues. The special fade reaches planet travel by the end.
+
+All twelve targeted tests pass after rebuilding the desktop and affected
+native test binaries (32.49 seconds): the two exit matrices, both presentation
+rate matrices, both native MAIN tests, three native audio tests and three
+desktop smoke tests. `validation/native-desktop-exit-regressions.txt` retains
+the log. These injected exits verify the handoff itself; naturally reaching
+every exit in full campaigns and returning from every frontend remain separate
+coverage requirements. ACCURATE is still test-gated.

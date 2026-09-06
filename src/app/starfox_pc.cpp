@@ -4372,6 +4372,14 @@ int main(int argc, char** argv) {
         bool suppress_fullscreen_start{};
         double last_phase_fraction{};
         const bool test_native_gameplay=std::getenv("STARFOX_TEST_NATIVE_GAMEPLAY")!=nullptr;
+        std::uint16_t test_native_exit{};
+        if (test_native_gameplay && test_frames!=0U) {
+            if (const auto* value=std::getenv("STARFOX_TEST_NATIVE_EXIT")) {
+                const auto exit=std::stoul(value);
+                if (!exit || exit>16U) throw std::invalid_argument{"Invalid native exit fixture"};
+                test_native_exit=static_cast<std::uint16_t>(exit);
+            }
+        }
         std::uint64_t native_phase_target{},native_phase_remainder{};
         std::uint64_t native_completed_updates{};
         std::uint64_t native_last_publication{},native_publication_duration{1'073'864U};
@@ -5117,7 +5125,7 @@ int main(int argc, char** argv) {
                     continue;
                 }
                 if (test_native_gameplay
-                    && game.flow_state()==starfox::simulation::GameFlowState::gameplay
+                    && game.native_gameplay_ready()
                     && (game.native_transfer_timeline() || audio_video_phases==0U)) {
                     const bool attaching=!game.native_transfer_timeline();
                     if (attaching) {
@@ -5166,6 +5174,9 @@ int main(int argc, char** argv) {
                         if (leaving) {
                             audio.unbind_native_audio(game);
                             game.finish_native_gameplay_exit();
+                            if (test_native_exit) std::cerr << "native-handoff exit=" << test_native_exit
+                                << " flow=" << static_cast<unsigned>(game.flow_state())
+                                << " ready=" << game.native_gameplay_ready() << '\n';
                             pending_audio_writes=game.map().take_apu_port_writes();
                             pending_msu_writes=game.map().take_msu_register_writes();
                         }
@@ -5189,6 +5200,8 @@ int main(int argc, char** argv) {
                         } else if (raster_cut) previous_raster_motion=current_raster_motion;
                         ++source_logic_frames;
                         if (result) ++native_completed_updates;
+                        if (test_native_exit && native_completed_updates==12U && !leaving)
+                            game.map().write_native_word(ram_symbol("LEVELFINISHED"),test_native_exit);
                         synchronize_ex_save();
                         if (leaving) {
                             input.reset(sampled_buttons);

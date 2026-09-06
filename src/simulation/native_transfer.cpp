@@ -32,8 +32,8 @@ void GameSimulation::begin_native_transfer(const input::TickInput& input) {
 }
 
 void GameSimulation::begin_native_gameplay_update(const input::TickInput& input) {
-    if (flow_state_ != GameFlowState::gameplay)
-        throw std::logic_error{"Native MAIN updates require gameplay"};
+    if (!native_gameplay_ready())
+        throw std::logic_error{"Native MAIN updates require gameplay without a host frontend transition"};
     begin_native_update(input,true);
 }
 

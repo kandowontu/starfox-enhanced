@@ -229,6 +229,10 @@ public:
     // Execute the cartridge's complete MAIN iteration, retaining its CPU
     // continuation between updates. Cannot mix with transfer-only execution.
     void begin_native_gameplay_update(const input::TickInput& input);
+    [[nodiscard]] bool native_gameplay_ready() const noexcept {
+        return native_transfer_initialized_ && flow_state_==GameFlowState::gameplay
+            && frontend_phase_==FrontendPhase::none && !ending_task_active_;
+    }
     // Refresh physical held states between execution chunks. Button edges
     // remain the caller's responsibility to retain for the next begin call.
     void sample_native_controller_held(const std::array<input::ButtonMask,5>& held);

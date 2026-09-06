@@ -1,0 +1,242 @@
+Start testing: Sep 06 11:33 Eastern Daylight Time
+----------------------------------------------------------
+61/95 Testing: starfox_native_desktop_timing
+61/95 Test: starfox_native_desktop_timing
+Command: "C:/Strawberry/c/bin/cmake.exe" "-DRUNTIME=C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_pc.exe" "-DROM=C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "-DSYMBOLS=C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "-DMAP=LEVEL2_1" "-DEXPERIENCE=ORIGINAL" "-P" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/native_desktop_timing.cmake"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_native_desktop_timing" start time: Sep 06 11:33 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+-- ORIGINAL 20 FPS: native-desktop updates=23 master=64431818 flow=9
+-- ORIGINAL 60 FPS: native-desktop updates=23 master=64431818 flow=9
+-- ORIGINAL 144 FPS: native-desktop updates=23 master=64431818 flow=9
+<end of output>
+Test time =  12.96 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_native_desktop_timing" end time: Sep 06 11:33 Eastern Daylight Time
+"starfox_native_desktop_timing" time elapsed: 00:00:12
+----------------------------------------------------------
+
+93/95 Testing: starfox_ex_native_desktop_exits
+93/95 Test: starfox_ex_native_desktop_exits
+Command: "C:/Strawberry/c/bin/cmake.exe" "-DRUNTIME=C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_pc.exe" "-DROM=C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "-DSYMBOLS=C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "-DMAP=LEVEL7_2" "-DEXPERIENCE=EX" "-P" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/native_desktop_exits.cmake"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_native_desktop_exits" start time: Sep 06 11:33 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+-- EX exit 1, MSU 0: native-handoff exit=1 flow=10 ready=0
+native-desktop updates=13 master=0 flow=10
+msu1 enabled=0 available=1 track=0 playing=0
+
+-- EX exit 9, MSU 0: native-handoff exit=9 flow=13 ready=0
+native-desktop updates=13 master=0 flow=13
+msu1 enabled=0 available=1 track=0 playing=0
+
+-- EX exit 10, MSU 0: native-handoff exit=10 flow=11 ready=0
+native-desktop updates=13 master=0 flow=11
+msu1 enabled=0 available=1 track=0 playing=0
+
+-- EX exit 16, MSU 0: native-handoff exit=16 flow=9 ready=0
+native-desktop updates=13 master=0 flow=8
+msu1 enabled=0 available=1 track=0 playing=0
+
+<end of output>
+Test time =  16.72 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_native_desktop_exits" end time: Sep 06 11:33 Eastern Daylight Time
+"starfox_ex_native_desktop_exits" time elapsed: 00:00:16
+----------------------------------------------------------
+
+87/95 Testing: starfox_ex_native_audio
+87/95 Test: starfox_ex_native_audio
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_native_audio_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt" "LEVEL7_2"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_native_audio" start time: Sep 06 11:33 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+12 MAIN updates: 46469778 master clocks, 2218369 SPC clocks, 58424 reads, 116904 writes, 43 audio packets; identical across execution quanta
+<end of output>
+Test time =   4.16 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_native_audio" end time: Sep 06 11:34 Eastern Daylight Time
+"starfox_ex_native_audio" time elapsed: 00:00:04
+----------------------------------------------------------
+
+51/95 Testing: starfox_upstream_native_msu_audio
+51/95 Test: starfox_upstream_native_msu_audio
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_native_audio_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "LEVEL2_1" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/msu-tone-320.flac"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_native_msu_audio" start time: Sep 06 11:34 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+12 MAIN updates: 35688482 master clocks, 1703693 SPC clocks, 42354 reads, 84753 writes, 33 audio packets; identical across execution quanta
+<end of output>
+Test time =   2.40 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_native_msu_audio" end time: Sep 06 11:34 Eastern Daylight Time
+"starfox_upstream_native_msu_audio" time elapsed: 00:00:02
+----------------------------------------------------------
+
+50/95 Testing: starfox_upstream_native_audio
+50/95 Test: starfox_upstream_native_audio
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_native_audio_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "LEVEL2_1"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_native_audio" start time: Sep 06 11:34 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+12 MAIN updates: 35688482 master clocks, 1703693 SPC clocks, 42354 reads, 84753 writes, 33 audio packets; identical across execution quanta
+<end of output>
+Test time =   2.21 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_native_audio" end time: Sep 06 11:34 Eastern Daylight Time
+"starfox_upstream_native_audio" time elapsed: 00:00:02
+----------------------------------------------------------
+
+92/95 Testing: starfox_ex_native_desktop_timing
+92/95 Test: starfox_ex_native_desktop_timing
+Command: "C:/Strawberry/c/bin/cmake.exe" "-DRUNTIME=C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_pc.exe" "-DROM=C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "-DSYMBOLS=C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "-DMAP=LEVEL7_2" "-DEXPERIENCE=EX" "-P" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/native_desktop_timing.cmake"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_native_desktop_timing" start time: Sep 06 11:33 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+-- EX 20 FPS: native-desktop updates=19 master=64431844 flow=9
+-- EX 60 FPS: native-desktop updates=19 master=64431844 flow=9
+-- EX 144 FPS: native-desktop updates=19 master=64431844 flow=9
+<end of output>
+Test time =  13.82 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_native_desktop_timing" end time: Sep 06 11:34 Eastern Daylight Time
+"starfox_ex_native_desktop_timing" time elapsed: 00:00:13
+----------------------------------------------------------
+
+63/95 Testing: starfox_runtime_smoke
+63/95 Test: starfox_runtime_smoke
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_pc.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "LEVEL1_1"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_runtime_smoke" start time: Sep 06 11:34 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   2.40 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_runtime_smoke" end time: Sep 06 11:34 Eastern Daylight Time
+"starfox_runtime_smoke" time elapsed: 00:00:02
+----------------------------------------------------------
+
+64/95 Testing: starfox_exit_confirmation_smoke
+64/95 Test: starfox_exit_confirmation_smoke
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_pc.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_exit_confirmation_smoke" start time: Sep 06 11:34 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.78 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_exit_confirmation_smoke" end time: Sep 06 11:34 Eastern Daylight Time
+"starfox_exit_confirmation_smoke" time elapsed: 00:00:00
+----------------------------------------------------------
+
+65/95 Testing: starfox_embedded_runtime_smoke
+65/95 Test: starfox_embedded_runtime_smoke
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_pc.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/embedded-runtime-smoke
+"starfox_embedded_runtime_smoke" start time: Sep 06 11:34 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   2.29 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_embedded_runtime_smoke" end time: Sep 06 11:34 Eastern Daylight Time
+"starfox_embedded_runtime_smoke" time elapsed: 00:00:02
+----------------------------------------------------------
+
+47/95 Testing: starfox_upstream_native_main
+47/95 Test: starfox_upstream_native_main
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_native_transfer_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "LEVEL2_1" "--main"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_native_main" start time: Sep 06 11:34 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+native MAIN updates: stable in-flight publication and identical clocks/state across quanta
+<end of output>
+Test time =   1.61 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_native_main" end time: Sep 06 11:34 Eastern Daylight Time
+"starfox_upstream_native_main" time elapsed: 00:00:01
+----------------------------------------------------------
+
+84/95 Testing: starfox_ex_native_main
+84/95 Test: starfox_ex_native_main
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_native_transfer_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt" "LEVEL7_2" "--main"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_native_main" start time: Sep 06 11:34 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+native MAIN updates: stable in-flight publication and identical clocks/state across quanta
+<end of output>
+Test time =   3.09 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_native_main" end time: Sep 06 11:34 Eastern Daylight Time
+"starfox_ex_native_main" time elapsed: 00:00:03
+----------------------------------------------------------
+
+62/95 Testing: starfox_native_desktop_exits
+62/95 Test: starfox_native_desktop_exits
+Command: "C:/Strawberry/c/bin/cmake.exe" "-DRUNTIME=C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_pc.exe" "-DROM=C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "-DSYMBOLS=C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "-DMAP=LEVEL2_1" "-DEXPERIENCE=ORIGINAL" "-DTEST_MSU_PACK=C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/Starfox-MSU1.PAK" "-P" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/native_desktop_exits.cmake"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_native_desktop_exits" start time: Sep 06 11:33 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+-- ORIGINAL exit 1, MSU 0: native-handoff exit=1 flow=10 ready=0
+native-desktop updates=13 master=0 flow=10
+msu1 enabled=0 available=1 track=9 playing=0
+
+-- ORIGINAL exit 9, MSU 0: native-handoff exit=9 flow=13 ready=0
+native-desktop updates=13 master=0 flow=13
+msu1 enabled=0 available=1 track=49 playing=0
+
+-- ORIGINAL exit 10, MSU 0: native-handoff exit=10 flow=11 ready=0
+native-desktop updates=13 master=0 flow=11
+msu1 enabled=0 available=1 track=40 playing=0
+
+-- ORIGINAL exit 16, MSU 0: native-handoff exit=16 flow=9 ready=0
+native-desktop updates=13 master=0 flow=8
+msu1 enabled=0 available=1 track=5 playing=0
+
+-- ORIGINAL exit 1, MSU 1: native-handoff exit=1 flow=10 ready=0
+native-desktop updates=13 master=0 flow=10
+msu1 enabled=1 available=1 track=9 playing=1
+
+-- ORIGINAL exit 9, MSU 1: native-handoff exit=9 flow=13 ready=0
+native-desktop updates=13 master=0 flow=13
+msu1 enabled=1 available=1 track=49 playing=1
+
+-- ORIGINAL exit 10, MSU 1: native-handoff exit=10 flow=11 ready=0
+native-desktop updates=13 master=0 flow=11
+msu1 enabled=1 available=1 track=40 playing=1
+
+-- ORIGINAL exit 16, MSU 1: native-handoff exit=16 flow=9 ready=0
+native-desktop updates=13 master=0 flow=8
+msu1 enabled=1 available=1 track=5 playing=1
+
+<end of output>
+Test time =  32.47 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_native_desktop_exits" end time: Sep 06 11:34 Eastern Daylight Time
+"starfox_native_desktop_exits" time elapsed: 00:00:32
+----------------------------------------------------------
+
+End testing: Sep 06 11:34 Eastern Daylight Time
