@@ -37,7 +37,7 @@ int main(int argc, char** argv) try {
     std::ofstream file;
     if (argc == 2) file.open(argv[1]);
     auto& out = file.is_open() ? file : std::cout;
-    out << "opcode,status,direct,fast,registers_equal,memory_equal,port_clocks,ares_clocks,index\n";
+    out << "opcode,status,direct,fast,registers_equal,memory_equal,port_clocks,ares_clocks,index,bus_equal,port_bus_steps,ares_bus_steps\n";
     std::vector<Operation> ops;
     for (unsigned group = 0; group < 8; ++group) {
         for (const auto mode : std::array<Operation, 15>{{
@@ -147,9 +147,12 @@ int main(int argc, char** argv) try {
         regs.direct = static_cast<std::uint16_t>(direct);
         regs.data_bank = 0x7e;
         auto reference_regs = regs;
+        std::vector<std::uint32_t> port_bus, reference_bus;
+        port.set_bus_clock_callback([&](std::uint32_t clocks) { port_bus.push_back(clocks); });
         const std::array stops{stop};
         const auto actual = port.begin_long_task(entry, regs, stops, 100);
         reference::AresCpu reference{memory};
+        reference.set_bus_clock_callback([&](std::uint32_t clocks) { reference_bus.push_back(clocks); });
         const auto expected = reference.run(entry, reference_regs, stops[0], 100, fast);
         bool registers_equal = state(regs) == state(reference_regs);
         bool memory_equal = true;
@@ -158,14 +161,20 @@ int main(int argc, char** argv) try {
                 memory_equal = false;
                 break;
             }
-        const bool clocks_equal = port.executed_master_clocks() == expected.master_clocks;
+        const bool bus_equal = port_bus == reference_bus;
+        const bool clocks_equal = port.executed_master_clocks() == expected.master_clocks && bus_equal;
         ++cases;
         if (!registers_equal || !memory_equal) ++functional;
         if (!clocks_equal) ++timing;
         if (!registers_equal || !memory_equal || !clocks_equal) ++failures;
         out << op.opcode << ',' << flags << ',' << direct << ',' << fast << ','
             << registers_equal << ',' << memory_equal << ','
-            << port.executed_master_clocks() << ',' << expected.master_clocks << ',' << index << '\n';
+            << port.executed_master_clocks() << ',' << expected.master_clocks << ',' << index << ',' << bus_equal;
+        for (const auto* steps : {&port_bus, &reference_bus}) {
+            out << ',';
+            for (const auto clocks : *steps) out << clocks << '|';
+        }
+        out << '\n';
         if (actual.instructions != expected.instructions)
             throw std::runtime_error("CPU audit did not compare the same instruction count");
     }

@@ -75,6 +75,7 @@ cpu = re.sub(r'#include "([^"]+)"', r'#include <sfc/cpu/\1>', cpu)
 cpu = observe(cpu, "namespace ares::SuperFamicom {",
               'extern "C" void sfc_audit_cpu(unsigned, unsigned);\n'
               'extern "C" void sfc_audit_cpu_step(unsigned, unsigned, unsigned);\n'
+              'extern "C" void sfc_audit_cpu_step_end(unsigned, unsigned);\n'
               'namespace ares::SuperFamicom {\nstatic unsigned audit_refresh_depth = 0;\n'
               'static unsigned audit_dma_depth = 0;')
 cpu = observe(cpu, '#include <sfc/cpu/timing.cpp>', '#include "cpu-timing.cpp"')
@@ -104,6 +105,8 @@ timing = observe(timing,
 timing = observe(timing,
     "  }\n\n  if(!status.hdmaSetupTriggered",
     "    --audit_refresh_depth;\n  }\n\n  if(!status.hdmaSetupTriggered")
+timing = observe(timing, "  Thread::step(clocks);",
+    "  if(!audit_refresh_depth) sfc_audit_cpu_step_end(counter.cpu, status.dramRefreshPosition);\n  Thread::step(clocks);")
 save(generated / "cpu-timing.cpp", timing)
 
 # Power-on WRAM is deliberately random in Ares. Keep the stock low-entropy

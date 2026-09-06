@@ -18,6 +18,10 @@ that pinned checkout with a minimal development harness in
 `tools/reference/timer_audit.cpp`. Its independent interrupt-controller oracle
 also retains the ISC notice below and is not linked into game builds.
 
+`starfox_reference_raster_tests` similarly compiles the pinned PPU counter
+implementation in `tools/reference/raster_audit.cpp` for a development-only
+raster/beam-history comparison.
+
 `tools/reference/full-system` also builds the pinned full SNES accuracy core,
 libco, nall and SLJIT as a separate development reference. It generates source
 copies with observation hooks and a reproducible power-on RAM seed outside
@@ -48,6 +52,10 @@ Pinned revision: `ea9049ab25084334f7cc1907b3a98bf1c2604a03`
 The build applies `cmake/retro-cpu-parity.patch` for native arithmetic, operand
 bank wrapping, read-modify-write order, block transfers and instruction cycles.
 `cmake/retro-cpu-interrupts.patch` restores native hardware-interrupt entry cycles.
+`cmake/retro-cpu-direct-index.patch` removes the unsupported direct-index page
+crossing penalty. `cmake/retro-cpu-bus-clock.patch` exposes bus/idle clock hooks,
+and `cmake/retro-cpu-bus-order.patch` corrects their order within instructions.
+The build validates the cumulative patch series against the pinned source.
 These project-owned corrections retain the MIT license.
 
 Copyright (c) 2019 Albert Chaulk

@@ -16,7 +16,7 @@ int main(int argc, char** argv) try {
     if (argc == 2) file.open(argv[1]);
     if (argc == 2 && !file) throw std::runtime_error("Cannot create interrupt audit CSV");
     auto& out = file.is_open() ? file : std::cout;
-    out << "nmi,status,pc,stack,fast,registers_equal,memory_equal,port_clocks,ares_clocks\n";
+    out << "nmi,status,pc,stack,fast,registers_equal,memory_equal,port_clocks,ares_clocks,bus_equal\n";
     std::vector<std::uint8_t> bytes(0x8000U, 0xeaU);
     bytes[0x7fea] = 0x60; bytes[0x7feb] = 0x80;
     bytes[0x7fee] = 0x40; bytes[0x7fef] = 0x80;
@@ -38,11 +38,14 @@ int main(int argc, char** argv) try {
             regs.direct=0x4567; regs.data_bank=0x7f;
             regs.stack=static_cast<std::uint16_t>(stack); regs.status=static_cast<std::uint8_t>(flags);
             auto expected_regs=regs;
+            std::vector<std::uint32_t> port_bus, reference_bus;
+            port.set_bus_clock_callback([&](std::uint32_t clocks) { port_bus.push_back(clocks); });
             if (nmi) port.pulse_nmi(); else port.set_irq_line(true);
             const auto handler=nmi?0x008060U:0x008040U;
             const std::array stops{handler};
             const auto task=port.begin_long_task(entry,regs,stops,1);
             reference::AresCpu reference{memory};
+            reference.set_bus_clock_callback([&](std::uint32_t clocks) { reference_bus.push_back(clocks); });
             const auto expected=reference.enter_interrupt(entry,expected_regs,nmi?0xffeaU:0xffeeU,fast);
             bool registers_equal=state(regs)==state(expected_regs)
                 && task.stop_address==expected.program_address
@@ -50,12 +53,13 @@ int main(int argc, char** argv) try {
             bool memory_equal=true;
             for (unsigned p=0; p<0x2000; ++p)
                 if (port.read8(p)!=memory.read8(p)) {memory_equal=false;break;}
-            const bool clock_equal=port.executed_master_clocks()==expected.master_clocks;
+            const bool bus_equal=port_bus==reference_bus;
+            const bool clock_equal=port.executed_master_clocks()==expected.master_clocks && bus_equal;
             failures += !registers_equal || !memory_equal || !clock_equal;
             ++cases;
             out << nmi << ',' << flags << ',' << entry << ',' << stack << ',' << fast << ','
                 << registers_equal << ',' << memory_equal << ',' << port.executed_master_clocks()
-                << ',' << expected.master_clocks << '\n';
+                << ',' << expected.master_clocks << ',' << bus_equal << '\n';
         }
     }
     out.flush();

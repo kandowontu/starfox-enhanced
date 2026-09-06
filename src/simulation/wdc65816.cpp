@@ -91,6 +91,8 @@ struct Wdc65816::Impl {
     std::uint64_t host_setup_master_clocks{};
     std::uint64_t interrupt_entries{};
     InstructionBoundaryCallback instruction_boundary_callback;
+    BusClockCallback bus_clock_callback;
+    bool bus_clock_active{};
     bool scheduled_gameplay_bitmap_dma{};
     std::map<std::uint8_t, std::vector<std::uint8_t>> compatible_rom_banks;
     std::vector<std::uint8_t> wram = std::vector<std::uint8_t>(0x20000U);
@@ -281,6 +283,19 @@ struct Wdc65816::Impl {
     std::uint32_t task_entry{};
     std::uint32_t task_return_sentinel{};
     WDC65C816 cpu{&bus};
+
+    void step_cpu() {
+        if (!bus_clock_callback) {
+            cpu.SingleStep();
+            return;
+        }
+        struct ClockScope {
+            bool& active;
+            explicit ClockScope(bool& flag) : active(flag) { active = true; }
+            ~ClockScope() { active = false; }
+        } scope{bus_clock_active};
+        cpu.SingleStep();
+    }
 
     bool service_zero_projection(std::uint32_t pc) {
         if (projection_zero_loop == 0U || projection_return == 0U
@@ -2661,6 +2676,37 @@ void Wdc65816::set_instruction_boundary_callback(
     impl_->scheduled_gameplay_bitmap_dma = owns_gameplay_bitmap_dma;
 }
 
+void Wdc65816::set_bus_clock_callback(BusClockCallback callback) {
+    if (impl_->bus_clock_active)
+        throw std::logic_error{"Cannot replace the bus clock callback during CPU execution"};
+    impl_->bus_clock_callback = std::move(callback);
+    auto& hooks = impl_->cpu.timed_bus;
+    hooks = {};
+    if (!impl_->bus_clock_callback) return;
+    hooks.context = impl_.get();
+    hooks.idle = [](void* context, std::uint32_t clocks) {
+        auto& state = *static_cast<Impl*>(context);
+        if (state.bus_clock_active) state.bus_clock_callback(clocks);
+    };
+    hooks.read = [](void* context, std::uint32_t address, std::uint8_t* value) {
+        auto& state = *static_cast<Impl*>(context);
+        if (!state.bus_clock_active) return state.bus.ReadByte(address, value);
+        const auto clocks = cpu_access_master_clocks(address, state.fast_rom);
+        state.bus_clock_callback(clocks - 4U);
+        state.bus.ReadByte(address, value);
+        state.bus_clock_callback(4U);
+        return static_cast<std::uint32_t>(clocks);
+    };
+    hooks.write = [](void* context, std::uint32_t address, std::uint8_t value) {
+        auto& state = *static_cast<Impl*>(context);
+        if (!state.bus_clock_active) return state.bus.WriteByte(address, value);
+        const auto clocks = cpu_access_master_clocks(address, state.fast_rom);
+        state.bus_clock_callback(clocks);
+        state.bus.WriteByte(address, value);
+        return static_cast<std::uint32_t>(clocks);
+    };
+}
+
 void Wdc65816::set_irq_line(bool asserted) noexcept {
     if (asserted) impl_->cpu.cpu_state.SetInterruptSource(1U);
     else impl_->cpu.cpu_state.ClearInterruptSource(1U);
@@ -2947,7 +2993,7 @@ std::size_t Wdc65816::call(
         recent_program_counters[instructions % recent_program_counters.size()]
             = pc;
         const auto interrupt_entries = impl_->interrupt_entries;
-        cpu.SingleStep();
+        impl_->step_cpu();
         if (impl_->interrupt_entries == interrupt_entries) ++instructions;
     }
 
@@ -3098,7 +3144,7 @@ Wdc65816TaskResult Wdc65816::run_task(
         recent_program_counters[
             result.instructions % recent_program_counters.size()] = pc;
         const auto interrupt_entries = impl_->interrupt_entries;
-        cpu.SingleStep();
+        impl_->step_cpu();
         if (impl_->interrupt_entries == interrupt_entries) ++result.instructions;
         executed_instruction = true;
     }

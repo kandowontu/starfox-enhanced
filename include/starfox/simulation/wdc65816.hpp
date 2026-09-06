@@ -128,6 +128,13 @@ public:
     // This does not supply raster timing or clocks for DMA/translated GSU work.
     void set_instruction_boundary_callback(InstructionBoundaryCallback callback,
         bool owns_gameplay_bitmap_dma = false);
+    using BusClockCallback = std::function<void(std::uint32_t)>;
+    // Advance a device timeline at native bus-operation boundaries: reads
+    // step wait-4 clocks before sampling data and 4 afterward; writes step
+    // their full wait before storing data; each idle steps separately.
+    // Excludes synthetic call setup, DMA and translated GSU work. The callback
+    // may update device state but must not reenter CPU execution or replace itself.
+    void set_bus_clock_callback(BusClockCallback callback);
     // Hardware signals are sampled at native instruction boundaries. IRQ is
     // level-sensitive; the device must release it. NMI is a latched edge and
     // is acknowledged on entry. Neither API replaces registers or the stack.

@@ -1,0 +1,306 @@
+--- a/cpu/65816/cpu_65c816_instructions.inl
++++ b/cpu/65816/cpu_65c816_instructions.inl
+@@ -17,12 +17,15 @@
+ 	template<typename T>
+ 	static void Write(WDC65C816 *cpu, T value)
+ 	{
+-		cpu->WriteRaw(U::CalcEffectiveAddress(cpu), value);
++		const auto addr = U::CalcEffectiveAddress(cpu);
++		if constexpr(U::kMaybeHasConditionalCycle) cpu->InternalOp();
++		cpu->WriteRaw(addr, value);
+ 	}
+ 	template<typename Callable>
+ 	static void Modify(WDC65C816 *cpu, const Callable& fn)
+ 	{
+ 		auto addr = U::CalcEffectiveAddress(cpu);
++		if constexpr(U::kMaybeHasConditionalCycle) cpu->InternalOp();
+ 		typename U::Base::A ret;
+ 		cpu->ReadRaw(addr, ret);
+ 		const auto result = fn(ret);
+@@ -450,10 +453,9 @@
+ 
+ 	static cpuaddr_t CalcEffectiveAddress(WDC65C816 *cpu)
+ 	{
+-		if constexpr(offset_reg != REG_MAX)
+-			cpu->InternalOp();
+ 		uint8_t addr;
+ 		cpu->ReadPBR(cpu->cpu_state.ip + 1, addr);
++		if constexpr(offset_reg != REG_MAX) cpu->InternalOp();
+ 		uint32_t direct = cpu->cpu_state.regs.d.u16;
+ 		if(cpu->cpu_state.regs.d.u8[0]) {
+ 			cpu->InternalOp();
+@@ -799,10 +801,11 @@
+ 	{
+ 		uint8_t addr;
+ 		cpu->ReadPBR(cpu->cpu_state.ip + 1, addr);
+-		cpu->InternalOp(2);
++		cpu->InternalOp();
+ 		uint16_t pointer_addr = cpu->cpu_state.regs.sp.u16 + addr;
+ 		uint16_t pointer;
+ 		cpu->ReadZero(pointer_addr, pointer);
++		cpu->InternalOp();
+ 		return cpu->cpu_state.data_segment_base + pointer + cpu->cpu_state.regs.y.u16;
+ 	}
+ 
+@@ -847,9 +850,9 @@
+ 			A a;
+ 			cpu->cpu_state.regs.a.get(a);
+ 			cpu->cpu_state.zero = a & mem;
++			cpu->InternalOp();
+ 			return (A)(mem | a);
+ 		});
+-		cpu->InternalOp(1);
+ 		cpu->cpu_state.ip += kBytes;
+ 	}
+ 	static void Disassemble(WDC65C816 *cpu, uint32_t& addr, const char **str, char *formatted_str)
+@@ -879,9 +882,9 @@
+ 			A a;
+ 			cpu->cpu_state.regs.a.get(a);
+ 			cpu->cpu_state.zero = a & mem;
++			cpu->InternalOp();
+ 			return (A)(mem & ~a);
+ 		});
+-		cpu->InternalOp(1);
+ 		cpu->cpu_state.ip += kBytes;
+ 	}
+ 	static void Disassemble(WDC65C816 *cpu, uint32_t& addr, const char **str, char *formatted_str)
+@@ -1062,8 +1065,6 @@
+ 			cpu->SetNZ(b);
+ 			cpu->cpu_state.carry = a >> (8 * bA - 2);
+ 			cpu->InternalOp();
+-			if constexpr(AddrMode::kMaybeHasConditionalCycle)
+-				cpu->InternalOp();
+ 			return b;
+ 		});
+ 		cpu->cpu_state.ip += kBytes;
+@@ -1105,8 +1106,6 @@
+ 			A b = a >> 1;
+ 			SetFlags(cpu, a);
+ 			cpu->InternalOp();
+-			if constexpr(AddrMode::kMaybeHasConditionalCycle)
+-				cpu->InternalOp();
+ 			return b;
+ 		});
+ 		cpu->cpu_state.ip += kBytes;
+@@ -1142,8 +1141,6 @@
+ 			cpu->SetNZ(b);
+ 			cpu->cpu_state.carry = (a & 1) << 1;
+ 			cpu->InternalOp();
+-			if constexpr(AddrMode::kMaybeHasConditionalCycle)
+-				cpu->InternalOp();
+ 			return b;
+ 		});
+ 		cpu->cpu_state.ip += kBytes;
+@@ -1179,8 +1176,6 @@
+ 			cpu->SetNZ(b);
+ 			cpu->cpu_state.carry = a >> (8 * bA - 2);
+ 			cpu->InternalOp();
+-			if constexpr(AddrMode::kMaybeHasConditionalCycle)
+-				cpu->InternalOp();
+ 			return b;
+ 		});
+ 		cpu->cpu_state.ip += kBytes;
+@@ -1466,8 +1461,8 @@
+ 	{
+ 		Size v;
+ 		cpu->cpu_state.regs.reglist[Impl::kReg].get(v);
++		cpu->InternalOp();
+ 		cpu->Push(v);
+-		cpu->InternalOp();
+ 		cpu->cpu_state.ip += kBytes;
+ 	}
+ 	static void Disassemble(WDC65C816 *cpu, uint32_t& addr, const char **str, char *formatted_str)
+@@ -1519,13 +1514,13 @@
+ 
+ 	static void Exec(WDC65C816 *cpu)
+ 	{
++		cpu->InternalOp(2);
+ 		Size v;
+ 		if constexpr(Impl::kReg == RA) {
+ 			cpu->PopOld(v);
+ 		} else {
+ 			cpu->Pop(v);
+ 		}
+-		cpu->InternalOp(2);
+ 		cpu->cpu_state.regs.reglist[Impl::kReg].set(v);
+ 		cpu->SetNZ(v);
+ 		cpu->cpu_state.ip += kBytes;
+@@ -1577,8 +1572,8 @@
+ 
+ 	static void Exec(WDC65C816 *cpu)
+ 	{
++		cpu->InternalOp();
+ 		cpu->Push(cpu->GetStatusRegister());
+-		cpu->InternalOp();
+ 		cpu->cpu_state.ip += kBytes;
+ 	}
+ 	static void Disassemble(WDC65C816 *cpu, uint32_t& addr, const char **str, char *formatted_str)
+@@ -1601,9 +1596,9 @@
+ 
+ 	static void Exec(WDC65C816 *cpu)
+ 	{
++		cpu->InternalOp(2);
+ 		uint8_t v;
+ 		cpu->PopOld(v);
+-		cpu->InternalOp(2);
+ 		cpu->cpu_state.ip += kBytes;
+ 		cpu->SetStatusRegister(v);
+ 	}
+@@ -1628,8 +1623,8 @@
+ 	static void Exec(WDC65C816 *cpu)
+ 	{
+ 		uint8_t v = cpu->cpu_state.code_segment_base >> 16;
++		cpu->InternalOp();
+ 		cpu->Push(v);
+-		cpu->InternalOp();
+ 		cpu->cpu_state.ip += kBytes;
+ 	}
+ 	static void Disassemble(WDC65C816 *cpu, uint32_t& addr, const char **str, char *formatted_str)
+@@ -1653,8 +1648,8 @@
+ 	static void Exec(WDC65C816 *cpu)
+ 	{
+ 		uint8_t v = cpu->cpu_state.data_segment_base >> 16;
++		cpu->InternalOp();
+ 		cpu->Push(v);
+-		cpu->InternalOp(1);
+ 		cpu->cpu_state.ip += kBytes;
+ 	}
+ 	static void Disassemble(WDC65C816 *cpu, uint32_t& addr, const char **str, char *formatted_str)
+@@ -1677,10 +1672,10 @@
+ 
+ 	static void Exec(WDC65C816 *cpu)
+ 	{
++		cpu->InternalOp(2);
+ 		uint8_t v;
+ 		cpu->Pop(v);
+ 		cpu->cpu_state.data_segment_base = (uint32_t)v << 16;
+-		cpu->InternalOp(2);
+ 		cpu->SetNZ(v);
+ 		cpu->cpu_state.ip += kBytes;
+ 	}
+@@ -1707,7 +1702,32 @@
+ 
+ 	static void Exec(WDC65C816 *cpu)
+ 	{
++		// Long and indexed-indirect calls interleave operand reads with stack writes.
++		if constexpr(Impl::opcode == 0x22) {
++			uint16_t target;
++			uint8_t bank;
++			cpu->ReadPBR(cpu->cpu_state.ip + 1, target);
++			cpu->Push((uint8_t)(cpu->cpu_state.code_segment_base >> 16));
++			cpu->InternalOp();
++			cpu->ReadPBR(cpu->cpu_state.ip + 3, bank);
++			cpu->Push((uint16_t)(cpu->cpu_state.ip + 3));
++			cpu->cpu_state.code_segment_base = (uint32_t)bank << 16;
++			cpu->cpu_state.ip = target;
++			return;
++		}
++		if constexpr(Impl::opcode == 0xfc) {
++			uint8_t low, high;
++			uint16_t target;
++			cpu->ReadPBR(cpu->cpu_state.ip + 1, low);
++			cpu->Push((uint16_t)(cpu->cpu_state.ip + 2));
++			cpu->ReadPBR(cpu->cpu_state.ip + 2, high);
++			cpu->InternalOp();
++			cpu->ReadPBR(((uint16_t)high << 8) + low + cpu->cpu_state.regs.x.u16, target);
++			cpu->cpu_state.ip = target;
++			return;
++		}
+ 		auto addr = AddrMode::CalcEffectiveAddress(cpu);
++		cpu->InternalOp(Impl::kInternalCycles);
+ 		if constexpr(Impl::push_pc) {
+ 			if constexpr(is_long_jump) {
+ 				cpu->Push((uint8_t)(cpu->cpu_state.code_segment_base >> 16));
+@@ -1717,7 +1737,6 @@
+ 		if constexpr(is_long_jump) {
+ 			cpu->cpu_state.code_segment_base = addr & 0xFF0000;
+ 		}
+-		cpu->InternalOp(Impl::kInternalCycles);
+ 		cpu->cpu_state.ip = addr;
+ 	}
+ 	static void Disassemble(WDC65C816 *cpu, uint32_t& addr, const char **str, char *formatted_str)
+@@ -1733,7 +1752,7 @@
+ 	static constexpr bool pop_pc = false;
+ 	static constexpr const char kMnemonic[] = "JMP";
+ 	static constexpr uint8_t opcode = op;
+-	static constexpr uint32_t kInternalCycles = (op == 0x7c) ? 1 : 0;
++	static constexpr uint32_t kInternalCycles = 0;
+ };
+ template<uint8_t op>
+ struct JsrImpl
+@@ -1759,6 +1778,7 @@
+ 
+ 	static void Exec(WDC65C816 *cpu)
+ 	{
++		cpu->InternalOp(2);
+ 		uint16_t v;
+ 		cpu->Pop(v);
+ 		cpu->cpu_state.ip = v + 1;
+@@ -1767,7 +1787,7 @@
+ 			cpu->Pop(p);
+ 			cpu->cpu_state.code_segment_base = ((uint32_t)p) << 16;
+ 		}
+-		cpu->InternalOp(Impl::kInternalCycles);
++		cpu->InternalOp(Impl::kInternalCycles - 2);
+ 	}
+ 	static void Disassemble(WDC65C816 *cpu, uint32_t& addr, const char **str, char *formatted_str)
+ 	{
+@@ -1814,6 +1834,7 @@
+ 	{
+ 		uint16_t v;
+ 		cpu->ReadPBR(cpu->cpu_state.ip + 1, v);
++		cpu->InternalOp();
+ 		uint16_t new_pc;
+ 		cpu->ReadPBR(v + cpu->cpu_state.regs.x.u16, new_pc);
+ 		return new_pc;
+@@ -1867,13 +1888,13 @@
+ 
+ 	static void Exec(WDC65C816 *cpu)
+ 	{
++		cpu->InternalOp(2);
+ 		uint8_t flags, bank;
+ 		uint16_t pc;
+ 		cpu->Pop(flags);
+ 		cpu->SetStatusRegister(flags);
+ 
+ 		cpu->Pop(pc);
+-		cpu->InternalOp(2);
+ 		cpu->cpu_state.ip = pc;
+ 		if(!cpu->mode_emulation) {
+ 			cpu->Pop(bank);
+@@ -2063,8 +2084,6 @@
+ 		AddrMode::Modify(cpu, [cpu](typename AddrMode::A v) {
+ 			v++;
+ 			cpu->InternalOp();
+-			if constexpr(AddrMode::kMaybeHasConditionalCycle)
+-				cpu->InternalOp();
+ 			cpu->SetNZ(v);
+ 			return v;
+ 		});
+@@ -2095,8 +2114,6 @@
+ 		AddrMode::Modify(cpu, [cpu](typename AddrMode::A v) {
+ 			v--;
+ 			cpu->InternalOp();
+-			if constexpr(AddrMode::kMaybeHasConditionalCycle)
+-				cpu->InternalOp();
+ 			cpu->SetNZ(v);
+ 			return v;
+ 		});
+@@ -2269,9 +2286,6 @@
+ 		EffectiveSize reg;
+ 		cpu->cpu_state.regs.reglist[Impl::kReg].get(reg);
+ 		AddrMode::Write(cpu, reg);
+-		// Stores always execute their conditional cycle
+-		if constexpr(AddrMode::kMaybeHasConditionalCycle)
+-			cpu->InternalOp();
+ 		cpu->cpu_state.ip += kBytes;
+ 	}
+ 
+@@ -2321,7 +2335,6 @@
+ 	{
+ 		typename AddrMode::A reg = 0;
+ 		AddrMode::Write(cpu, reg);
+-		if constexpr(AddrMode::kMaybeHasConditionalCycle) cpu->InternalOp();
+ 		cpu->cpu_state.ip += kBytes;
+ 	}
+ 

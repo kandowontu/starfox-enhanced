@@ -50,6 +50,8 @@ namespace starfox::reference {
 struct AresCpu::Impl : ares::WDC65816 {
     simulation::Wdc65816& memory;
     std::uint64_t clocks{};
+    simulation::Wdc65816::BusClockCallback bus_clock_callback;
+    bool executing{};
     bool fast_rom{};
     explicit Impl(simulation::Wdc65816& bus) : memory(bus) {}
     unsigned access(unsigned address) const {
@@ -59,13 +61,20 @@ struct AresCpu::Impl : ares::WDC65816 {
         if ((address - 0x4000U) & 0x7e00U) return 6;
         return 12;
     }
-    void idle() override { clocks += 6; }
+    void step(unsigned count) {
+        clocks += count;
+        if (executing && bus_clock_callback) bus_clock_callback(count);
+    }
+    void idle() override { step(6); }
     ares::n8 read(ares::n24 address) override {
-        clocks += access(address);
-        return memory.read8(address);
+        // SFC CPU::read samples data between step(wait-4) and step(4).
+        step(access(address) - 4);
+        const auto value = memory.read8(address);
+        step(4);
+        return value;
     }
     void write(ares::n24 address, ares::n8 data) override {
-        clocks += access(address);
+        step(access(address));
         if ((address & 0x40ffffU) == 0x00420dU) fast_rom = (data & 1U) != 0U;
         memory.write8(address, data);
     }
@@ -76,6 +85,9 @@ struct AresCpu::Impl : ares::WDC65816 {
 
 AresCpu::AresCpu(simulation::Wdc65816& memory) : impl_(std::make_unique<Impl>(memory)) {}
 AresCpu::~AresCpu() = default;
+void AresCpu::set_bus_clock_callback(simulation::Wdc65816::BusClockCallback callback) {
+    impl_->bus_clock_callback = std::move(callback);
+}
 CpuInterruptRun AresCpu::enter_interrupt(std::uint32_t interrupted_pc,
     simulation::Wdc65816Registers& registers, std::uint16_t vector, bool fast_rom) {
     auto& cpu = *impl_;
@@ -88,7 +100,9 @@ CpuInterruptRun AresCpu::enter_interrupt(std::uint32_t interrupted_pc,
     r.irq = r.wai = r.stp = false; r.z = 0; r.vector = vector;
     cpu.pushN(0x7e); cpu.pushN(0x01); cpu.pushN(0xef);
     cpu.clocks = 0;
+    cpu.executing = true;
     cpu.interrupt();
+    cpu.executing = false;
     registers.a = r.a.w; registers.x = r.x.w; registers.y = r.y.w;
     registers.direct = r.d.w; registers.stack = r.s.w;
     registers.data_bank = r.b; registers.status = static_cast<unsigned>(r.p);
@@ -130,6 +144,11 @@ CpuRun AresCpu::run(std::uint32_t entry, simulation::Wdc65816Registers& register
     cpu.pushN(0x01);
     cpu.pushN(0xef);
     cpu.clocks = 0;
+    struct ExecutionScope {
+        bool& active;
+        explicit ExecutionScope(bool& value) : active(value) { active = true; }
+        ~ExecutionScope() { active = false; }
+    } scope{cpu.executing};
     unsigned count = 0;
     do {
         if (count == instruction_limit) throw std::runtime_error("Ares CPU audit instruction limit");

@@ -1,5 +1,6 @@
 #include "starfox/simulation/cpu_timing.hpp"
 #include "starfox/simulation/wdc65816.hpp"
+#include "starfox/simulation/snes_timeline.hpp"
 
 #include <algorithm>
 #include <array>
@@ -31,6 +32,35 @@ starfox::assets::RomImage fixture(std::initializer_list<std::uint8_t> code) {
 }
 
 int main() try {
+    {
+        const auto rom = fixture({0xad, 0x00, 0x61, 0x8d, 0x01, 0x61, 0x6b});
+        Wdc65816 cpu{rom};
+        Wdc65816Registers registers;
+        registers.status = 0x24U;
+        registers.data_bank = 0x7eU;
+        starfox::simulation::SnesCpuTimeline timeline;
+        std::uint64_t observed = 0;
+        bool before_write = false;
+        cpu.set_bus_clock_callback([&](std::uint32_t clocks) {
+            observed += clocks;
+            timeline.step(clocks);
+            if (observed == 28U) cpu.write8(0x7e6100U, 0xa5U);
+            if (observed == 64U) before_write = cpu.read8(0x7e6101U) == 0U;
+        });
+        const std::array stops{0x008003U};
+        const auto task = cpu.begin_long_task(0x008000U, registers, stops);
+        require(!task.returned && registers.a == 0xa5U && observed == 32U,
+            "bus clock did not run before the native data read or counted synthetic setup");
+        require(cpu.resume_task(registers, {}).returned && cpu.read8(0x7e6101U) == 0xa5U
+            && before_write && observed == cpu.executed_master_clocks(),
+            "bus write ordering, task resume or idle accounting differs");
+        require(timeline.totals().cpu == observed && timeline.raster().elapsed() == observed,
+            "CPU bus hook failed to advance the shared timeline");
+        cpu.set_bus_clock_callback({});
+        const auto prior = observed;
+        cpu.call_long(0x008000U, registers);
+        require(observed == prior, "disabled bus clock callback still executed");
+    }
     for (const unsigned direct : {0x1000U, 0x1001U}) {
         for (const unsigned index : {7U, 0xdfU, 0xe0U, 0xffU, 0x100U, 0x7ffU, 0xffffU}) {
             for (const bool fast : {false, true}) {

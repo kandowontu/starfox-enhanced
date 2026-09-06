@@ -18,6 +18,7 @@ class AresCpu {
 public:
     explicit AresCpu(simulation::Wdc65816& memory);
     ~AresCpu();
+    void set_bus_clock_callback(simulation::Wdc65816::BusClockCallback callback);
     CpuRun run(std::uint32_t entry, simulation::Wdc65816Registers& registers,
         std::uint32_t stop, unsigned instruction_limit = 10000, bool fast_rom = false);
     // One architectural native interrupt entry after the same synthetic

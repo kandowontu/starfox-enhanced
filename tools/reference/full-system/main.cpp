@@ -2,7 +2,9 @@
 // dependency; this executable and reference game data are never packaged.
 #include <sfc/sfc.hpp>
 #include "starfox/simulation/wdc65816.hpp"
+#include "starfox/simulation/snes_timeline.hpp"
 #include <array>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -22,10 +24,44 @@ unsigned gsu_entry{}, gsu_clsr{}, gsu_cfgr{}, gsu_scmr{};
 bool gsu_active{};
 std::array<std::uint64_t, 3> cpu_clock_categories{};
 std::array<std::uint64_t, 3> cpu_work_clock_categories{};
+const bool timeline_enabled = std::getenv("STARFOX_REFERENCE_TIMELINE") != nullptr;
+std::unique_ptr<starfox::simulation::SnesCpuTimeline> timeline;
+std::uint64_t timeline_comparisons{};
+std::string timeline_error;
 }
 extern "C" void sfc_audit_cpu_step(unsigned clocks, unsigned category, unsigned work_category) {
     cpu_clock_categories[category] += clocks;
     cpu_work_clock_categories[work_category] += clocks;
+    if (!timeline_enabled || work_category == 2U || !timeline_error.empty()) return;
+    try {
+        if (!timeline) timeline = std::make_unique<starfox::simulation::SnesCpuTimeline>(
+            starfox::simulation::SnesRegion::ntsc, static_cast<std::uint8_t>(sfc::cpu.version->value()));
+        timeline->set_display(sfc::ppu.interlace(), sfc::ppu.vdisp());
+        timeline->step(clocks, work_category == 1U ? starfox::simulation::SnesClockWork::dma
+                                                 : starfox::simulation::SnesClockWork::cpu);
+    } catch (const std::exception& error) { timeline_error = error.what(); }
+}
+extern "C" void sfc_audit_cpu_step_end(unsigned cpu_clocks, unsigned refresh_position) {
+    if (!timeline || !timeline_error.empty()) return;
+    const auto& raster = timeline->raster();
+    const auto& totals = timeline->totals();
+    const auto clock_match = totals.cpu == cpu_work_clock_categories[0]
+        && totals.dma == cpu_work_clock_categories[1] && totals.refresh == cpu_work_clock_categories[2]
+        && raster.elapsed() == totals.cpu + totals.dma + totals.refresh
+        && static_cast<std::uint32_t>(raster.elapsed()) == cpu_clocks;
+    const auto beam_match = raster.horizontal() == sfc::cpu.hcounter()
+        && raster.vertical() == sfc::cpu.vcounter() && raster.dot() == sfc::cpu.hdot()
+        && raster.field() == sfc::cpu.field() && raster.interlace() == sfc::cpu.interlace()
+        && timeline->refresh_position() == refresh_position;
+    bool history_match = true;
+    for (const auto delay : {2U, 6U, 10U})
+        history_match &= raster.horizontal(delay) == sfc::cpu.hcounter(delay)
+            && raster.vertical(delay) == sfc::cpu.vcounter(delay);
+    ++timeline_comparisons;
+    if (!clock_match || !beam_match || !history_match)
+        timeline_error = "CPU timeline differs at bus operation " + std::to_string(timeline_comparisons)
+            + " clocks=" + std::to_string(clock_match) + " beam=" + std::to_string(beam_match)
+            + " history=" + std::to_string(history_match);
 }
 extern "C" void sfc_audit_cpu(unsigned pc, unsigned clocks) {
     if (cpu_hook) cpu_hook(pc, clocks);
@@ -399,6 +435,18 @@ int main(int argc, char** argv) { try {
     platform.capture(prefix + "-final.ppm");
     cpu_hook = {}; gsu_hook = {};
     std::cout << camera_calls << " complete camera calls, " << camera_differences << " field differences\n";
+    if (timeline_enabled) {
+        if (!timeline || !timeline_comparisons) throw std::runtime_error("CPU timeline audit did not execute");
+        const auto& totals = timeline->totals();
+        std::ofstream report(prefix + "-timeline.csv");
+        report << "bus_operations,elapsed,cpu,dma,refresh,fields,passed\n"
+               << timeline_comparisons << ',' << timeline->raster().elapsed() << ','
+               << totals.cpu << ',' << totals.dma << ',' << totals.refresh << ','
+               << timeline->raster().fields() << ',' << timeline_error.empty() << '\n';
+        std::cout << "CPU timeline: " << timeline_comparisons << " bus operations, "
+                  << (timeline_error.empty() ? "zero differences" : timeline_error) << '\n';
+        if (!timeline_error.empty()) throw std::runtime_error(timeline_error);
+    }
     guard.close();
     if (!camera_error.empty()) throw std::runtime_error(camera_error);
     if (gameplay) gameplay->finish();

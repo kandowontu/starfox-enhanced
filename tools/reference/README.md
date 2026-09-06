@@ -348,6 +348,17 @@ masking, priority and returning to interrupted tasks. These checks do not model
 automatic video interrupts or CPU/GSU overlap; see
 `docs/CPU-PARITY-VALIDATION.md` for scope and the old-entry mutation result.
 
+## CPU bus timeline
+
+The opcode and interrupt-entry comparisons now check bus-step order as well
+as total clocks and final state. `starfox_reference_raster_tests` independently
+compares the shared raster clock with the pinned counter implementation.
+
+Set `STARFOX_REFERENCE_TIMELINE=1` for an optional full-system bus/refresh
+timeline audit. It compares the shared clock after each source bus operation
+and writes `PREFIX-timeline.csv`. This observer does not install a gameplay
+scheduler. See `docs/BUS-TIMELINE-VALIDATION.md` for results and limitations.
+
 ## Desktop audio output trace
 
 `pwsh -NoProfile -File tools/reference/run-runtime-ending-audio.ps1 -Experience ORIGINAL -Msu 0 -OutputDirectory tmp/runtime-audio-original`

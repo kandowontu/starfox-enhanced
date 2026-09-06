@@ -29,8 +29,13 @@ The remaining live-transfer discrepancy in EX LEVEL7_2 reads TRANS_FLAG during
 SCORPION strategy execution. The host still drains bitmap DMA synchronously.
 The instruction boundary callback, separate bitmap transfer phases, interrupt
 latches and reference clock accounting are available as integration groundwork.
+The new `SnesCpuTimeline` supplies raster history, field/interlace rules,
+refresh and live timer polling. Native CPU bus-clock callbacks now advance it
+at read, write and idle boundaries; synthetic call setup remains excluded.
+Those callbacks are opt-in and are not yet installed in GameSimulation.
 See STAGE-STATE-PARITY-VALIDATION.md and TIMING-PROFILE-VALIDATION.md for measured
-results and remaining limits.
+results and remaining limits, and BUS-TIMELINE-VALIDATION.md for the shared
+clock and bus-order validation.
 
 After integrating and validating that timeline, wire value 2 through menu
 cycling, labels, configuration validation, fresh-game defaults and test

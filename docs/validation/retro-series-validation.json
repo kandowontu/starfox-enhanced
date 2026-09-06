@@ -1,0 +1,7 @@
+{
+  "pristine_apply": true,
+  "reconfigure_idempotent": true,
+  "upgrade_from_prior_three_patches": true,
+  "unknown_drift_rejected_without_modification": true,
+  "scratch": "C:\\Users\\kando\\Documents\\ChatGPT\\Starfox Enhanced\\tmp\\retro-series-te45prmb"
+}

@@ -113,19 +113,25 @@ FetchContent_MakeAvailable(retro_cpu)
 # Retain the pinned dependency, with the independently audited native-mode
 # arithmetic, bus-order and instruction-timing corrections in a reviewable patch.
 find_package(Git REQUIRED)
-foreach(retro_cpu_patch IN ITEMS retro-cpu-parity.patch retro-cpu-interrupts.patch retro-cpu-direct-index.patch)
+set(retro_cpu_patch_files)
+foreach(retro_cpu_patch IN ITEMS retro-cpu-parity.patch retro-cpu-interrupts.patch retro-cpu-direct-index.patch retro-cpu-bus-clock.patch retro-cpu-bus-order.patch)
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/cmake/${retro_cpu_patch}")
-    execute_process(COMMAND "${CMAKE_COMMAND}"
-        "-DGIT_EXECUTABLE=${GIT_EXECUTABLE}"
-        "-DSOURCE_DIR=${retro_cpu_SOURCE_DIR}"
-        "-DPATCH_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/${retro_cpu_patch}"
-        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/apply_git_patch_once.cmake"
-        RESULT_VARIABLE retro_cpu_patch_result)
-    if(NOT retro_cpu_patch_result EQUAL 0)
-        message(FATAL_ERROR "Could not apply the pinned RetroCPU patch: ${retro_cpu_patch}")
-    endif()
+    list(APPEND retro_cpu_patch_files "${CMAKE_CURRENT_SOURCE_DIR}/cmake/${retro_cpu_patch}")
 endforeach()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/apply_retro_cpu_patch_series.cmake")
+execute_process(COMMAND "${CMAKE_COMMAND}"
+    "-DGIT_EXECUTABLE=${GIT_EXECUTABLE}"
+    "-DSOURCE_DIR=${retro_cpu_SOURCE_DIR}"
+    "-DCHECK_DIR=${CMAKE_CURRENT_BINARY_DIR}/_retro_cpu_patch_check"
+    "-DGIT_REVISION=ea9049ab25084334f7cc1907b3a98bf1c2604a03"
+    "-DPATCH_FILES=${retro_cpu_patch_files}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/apply_retro_cpu_patch_series.cmake"
+    RESULT_VARIABLE retro_cpu_patch_result)
+if(NOT retro_cpu_patch_result EQUAL 0)
+    message(FATAL_ERROR "Could not validate/apply the pinned RetroCPU patch series")
+endif()
 
 FetchContent_Declare(
     snes_spc
@@ -257,6 +263,10 @@ if(STARFOX_BUILD_TOOLS)
                     target_include_directories(starfox_reference_timer_tests SYSTEM PRIVATE
                         "${STARFOX_REFERENCE_ARES_DIR}" "${STARFOX_REFERENCE_ARES_DIR}/nall")
                     target_link_libraries(starfox_reference_timer_tests PRIVATE starfox_core)
+                    add_executable(starfox_reference_raster_tests tools/reference/raster_audit.cpp)
+                    target_include_directories(starfox_reference_raster_tests SYSTEM PRIVATE
+                        "${STARFOX_REFERENCE_ARES_DIR}" "${STARFOX_REFERENCE_ARES_DIR}/nall")
+                    target_link_libraries(starfox_reference_raster_tests PRIVATE starfox_core)
                 endif()
             endif()
         endif()
@@ -753,6 +763,10 @@ if(STARFOX_BUILD_TESTS)
         add_test(NAME starfox_reference_timers COMMAND starfox_reference_timer_tests)
         set_tests_properties(starfox_reference_timers PROPERTIES TIMEOUT 120)
     endif()
+    if(TARGET starfox_reference_raster_tests)
+        add_test(NAME starfox_reference_raster COMMAND starfox_reference_raster_tests)
+        set_tests_properties(starfox_reference_raster PROPERTIES TIMEOUT 120)
+    endif()
     add_executable(starfox_bps_tests tests/bps_tests.cpp)
     target_link_libraries(starfox_bps_tests PRIVATE starfox_core)
     add_test(NAME starfox_bps_tests COMMAND starfox_bps_tests)
@@ -844,6 +858,9 @@ if(STARFOX_BUILD_TESTS)
     add_executable(starfox_snes_interrupt_tests tests/snes_interrupt_tests.cpp)
     target_link_libraries(starfox_snes_interrupt_tests PRIVATE starfox_core)
     add_test(NAME starfox_snes_interrupt_tests COMMAND starfox_snes_interrupt_tests)
+    add_executable(starfox_snes_timeline_tests tests/snes_timeline_tests.cpp)
+    target_link_libraries(starfox_snes_timeline_tests PRIVATE starfox_core)
+    add_test(NAME starfox_snes_timeline_tests COMMAND starfox_snes_timeline_tests)
 
     add_executable(starfox_direct_audio_tests tests/direct_audio_tests.cpp)
     target_link_libraries(starfox_direct_audio_tests PRIVATE starfox_core)

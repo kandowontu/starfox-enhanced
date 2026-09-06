@@ -115,6 +115,9 @@ public:
         Wdc65816::InstructionBoundaryCallback callback) {
         cpu_.set_instruction_boundary_callback(std::move(callback));
     }
+    void set_native_bus_clock_callback(Wdc65816::BusClockCallback callback) {
+        cpu_.set_bus_clock_callback(std::move(callback));
+    }
     [[nodiscard]] std::vector<MsuRegisterWrite> take_msu_register_writes() {
         return cpu_.take_msu_register_writes();
     }
