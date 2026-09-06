@@ -5226,7 +5226,7 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
             result.strategies =
                 strategies_.tick_all_no_objects(protected_objects);
         } else {
-            result.strategies = strategies_.tick_all();
+            result.strategies = strategies_.tick_all(registers);
         }
         refresh_player_reference();
         apply_god_mode_state();

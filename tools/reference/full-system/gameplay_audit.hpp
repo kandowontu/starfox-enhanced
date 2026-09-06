@@ -52,7 +52,7 @@ public:
         if (instruction_frame) {
             strategy_trace.open(prefix + "-strategy-instructions.csv");
             if (!strategy_trace) throw std::runtime_error("Cannot create strategy instruction trace");
-            strategy_trace << "engine,pc,clocks\n";
+            strategy_trace << "engine,pc,clocks,work_clocks,endpoint\n";
         }
         host_phase_trace.open(prefix + "-host-phases.csv");
         if (!host_phase_trace) throw std::runtime_error("Cannot create host phase trace");
@@ -91,7 +91,8 @@ public:
         });
     }
     bool complete() const { return count == required; }
-    void capture_strategy_instruction(bool host, unsigned pc, std::uint64_t clocks) {
+    void capture_strategy_instruction(bool host, unsigned pc, std::uint64_t clocks,
+        std::uint64_t work_clocks = 0) {
         if (!instruction_frame) return;
         auto& active = strategy_trace_active[host ? 1 : 0];
         if (pc == address("UPDATE_OBJECTS_L")) {
@@ -99,9 +100,11 @@ public:
                                     : native(address("GAMEFRAME"));
             active = frame == instruction_frame;
         }
-        if (pc == address("GETVIEW_L")) active = false;
+        const auto endpoint = pc == address("GETVIEW_L");
         if (active) strategy_trace << (host ? "host-boundary" : "native-instruction")
-                                   << ',' << pc << ',' << clocks << '\n';
+                                   << ',' << pc << ',' << clocks << ','
+                                   << (host ? clocks : work_clocks) << ',' << endpoint << '\n';
+        if (endpoint) active = false;
     }
     void capture_submitted_flags() { try {
         if (!started || complete() || differences || !error.empty()) return;

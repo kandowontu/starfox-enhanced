@@ -150,10 +150,17 @@ std::size_t NativeStrategyScheduler::recover_strategy_failure(
 }
 
 StrategyTickStats NativeStrategyScheduler::tick_all() {
-    StrategyTickStats result;
-    if (objects_->first_active() == 0U) return result;
     Wdc65816Registers registers;
     registers.status = 0x24U;
+    return tick_all(registers);
+}
+
+StrategyTickStats NativeStrategyScheduler::tick_all(Wdc65816Registers registers) {
+    StrategyTickStats result;
+    if (objects_->first_active() == 0U) return result;
+    // UPDATE_OBJECTS_L owns the incoming accumulator width and direct page.
+    // Only reconstruct the stack frame for this partial-routine entry.
+    registers.stack = 0x1ffU;
     registers.data_bank = 0x7eU;
     const auto& stops = dispatch_calls_;
     std::array<std::uint64_t, kMaximumObjects + 1> visited{};
@@ -182,8 +189,7 @@ StrategyTickStats NativeStrategyScheduler::tick_all() {
             // cursor. Preserve the port's once-per-generation update rule.
             const auto next = next_unvisited();
             if (!next) break;
-            registers = {};
-            registers.status = 0x24U;
+            registers.stack = 0x1ffU;
             registers.data_bank = 0x7eU;
             registers.x = native_state_->original_object_pointer(next);
             registers.y = registers.x;
@@ -210,8 +216,7 @@ StrategyTickStats NativeStrategyScheduler::tick_all() {
             result.instructions += recover_strategy_failure(object, error);
             const auto next = next_unvisited();
             if (!next) break;
-            registers = {};
-            registers.status = 0x24U;
+            registers.stack = 0x1ffU;
             registers.data_bank = 0x7eU;
             registers.x = native_state_->original_object_pointer(next);
             registers.y = registers.x;

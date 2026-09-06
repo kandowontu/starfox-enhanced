@@ -30,6 +30,9 @@ public:
         std::size_t object_instruction_limit = 1'000'000U);
 
     [[nodiscard]] StrategyTickStats tick_all();
+    // Continue from UPDATE_OBJECTS_L's returned CPU state. The standalone
+    // overload above retains its historical 8-bit accumulator entry.
+    [[nodiscard]] StrategyTickStats tick_all(Wdc65816Registers registers);
     [[nodiscard]] StrategyTickStats tick_all_no_objects(
         std::span<const ObjectHandle> protected_objects);
     [[nodiscard]] std::size_t tick_object(ObjectHandle object);

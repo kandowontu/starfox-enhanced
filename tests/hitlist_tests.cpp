@@ -219,6 +219,39 @@ void check_strategy_cadence(const starfox::assets::RomImage& rom,
     std::cout << "native self-removal cannot double-tick player/boss logic\n";
 }
 
+void check_dispatch_width(const starfox::assets::RomImage& rom,
+    const starfox::assets::SymbolMap& symbols) {
+    using namespace starfox::simulation;
+    const auto ex = !symbols.find("PLANETSEQ2_L").empty();
+    for (const auto status : {0x04U, 0x24U}) {
+        ObjectPool objects{ex ? kMaximumObjects : kOriginalMaximumObjects,
+            ex ? ObjectMemoryLayout::starfox_ex : ObjectMemoryLayout::original};
+        MapVm map{rom, MapDatabase{rom, symbols}, objects, &symbols};
+        const auto object = objects.allocate_after();
+        objects.at(object).strategy_address = 0x7e6800U;
+        objects.at(object).health = 1;
+        map.write_native_byte(0x7e6800U, 0x6bU); // RTL
+        const auto dead = symbols.find("ALDEAD").at(0);
+        const auto loop = symbols.find("STRATLP").at(0);
+        require(map.read_native_byte(loop) == 0x9cU,
+            "source dispatcher no longer begins with STZ ALDEAD");
+        map.write_native_byte(dead + 1U, 0xa5U);
+        bool observed = false;
+        map.set_native_instruction_boundary_callback([&](std::uint64_t) {
+            if (map.native_program_address() != loop + 3U || observed) return;
+            observed = true;
+            require(map.read_native_byte(dead + 1U) == (status == 0x04U ? 0U : 0xa5U),
+                "dispatcher discarded caller accumulator width");
+        });
+        NativeStrategyScheduler scheduler{symbols, objects, map};
+        Wdc65816Registers registers;
+        registers.status = static_cast<std::uint8_t>(status);
+        static_cast<void>(scheduler.tick_all(registers));
+        require(observed, "source dispatcher width check did not execute");
+    }
+    std::cout << "source dispatcher preserves caller accumulator width\n";
+}
+
 void check_black_hole_music(const starfox::assets::RomImage& rom,
     const starfox::assets::SymbolMap& symbols) {
     using namespace starfox::simulation;
@@ -412,6 +445,7 @@ int main(int argc, char** argv) {
         check_tunnel(rom, symbols);
         check_damage(rom, symbols);
         check_strategy_cadence(rom, symbols);
+        check_dispatch_width(rom, symbols);
         check_black_hole_music(rom, symbols);
         check_map_cadence(rom, symbols);
         check_venom_handoff(rom, symbols);

@@ -308,7 +308,8 @@ int main(int argc, char** argv) { try {
         camera_fields.emplace_back(name, address(name));
     cpu_hook = [&](unsigned pc, unsigned clocks) {
         if (platform.pending_jump) return;
-        if (gameplay) gameplay->capture_strategy_instruction(false, pc, clocks);
+        if (gameplay) gameplay->capture_strategy_instruction(false, pc, clocks,
+            cpu_work_clock_categories[0]);
         if (pc == settled_transfer) {
             transfer_started_clocks = clocks;
             transfer_clock_categories = cpu_clock_categories;

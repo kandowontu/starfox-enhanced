@@ -1,0 +1,118 @@
+[
+  {
+    "trace": "tmp\\instruction-work-306-strategy-instructions.csv",
+    "sha256": "F85B5A1289F79D09D3CB3E62A83421586277EB038B032ED151E21C8E57875272",
+    "native_clocks": 85204,
+    "host_clocks": 84946,
+    "matched_timing_differences": [
+      {
+        "pc": "0x229783",
+        "native": 40,
+        "host": 32,
+        "count": 9
+      },
+      {
+        "pc": "0xc9ee4",
+        "native": 30,
+        "host": 14,
+        "count": 1
+      },
+      {
+        "pc": "0xc9ee9",
+        "native": 38,
+        "host": 14,
+        "count": 1
+      },
+      {
+        "pc": "0x2297a3",
+        "native": 40,
+        "host": 32,
+        "count": 9
+      },
+      {
+        "pc": "0x22979a",
+        "native": 40,
+        "host": 32,
+        "count": 5
+      }
+    ],
+    "unmatched": [
+      {
+        "native": [],
+        "host": [
+          "0x7e01f0"
+        ]
+      },
+      {
+        "native": [],
+        "host": [
+          "0xc9ee5"
+        ]
+      },
+      {
+        "native": [],
+        "host": [
+          "0xc9eea"
+        ]
+      },
+      {
+        "native": [
+          "0x2294b1"
+        ],
+        "host": [
+          "0x2201f0"
+        ]
+      }
+    ],
+    "scope": "PC sequence alignment and scoped CPU work only. Excludes DMA and refresh. Unmatched instructions and patched code require separate interpretation; this report does not assert gameplay, scheduler or physical timing parity."
+  },
+  {
+    "trace": "tmp\\dispatch-width-306-strategy-instructions.csv",
+    "sha256": "91621FD557D26049F8C1EE3A720FB6CF1FA4DEB8317FFCCD9A03304D0FA0562C",
+    "native_clocks": 85204,
+    "host_clocks": 85130,
+    "matched_timing_differences": [
+      {
+        "pc": "0xc9ee4",
+        "native": 30,
+        "host": 14,
+        "count": 1
+      },
+      {
+        "pc": "0xc9ee9",
+        "native": 38,
+        "host": 14,
+        "count": 1
+      }
+    ],
+    "unmatched": [
+      {
+        "native": [],
+        "host": [
+          "0x7e01f0"
+        ]
+      },
+      {
+        "native": [],
+        "host": [
+          "0xc9ee5"
+        ]
+      },
+      {
+        "native": [],
+        "host": [
+          "0xc9eea"
+        ]
+      },
+      {
+        "native": [
+          "0x2294b1"
+        ],
+        "host": [
+          "0x2201f0"
+        ]
+      }
+    ],
+    "scope": "PC sequence alignment and scoped CPU work only. Excludes DMA and refresh. Unmatched instructions and patched code require separate interpretation; this report does not assert gameplay, scheduler or physical timing parity."
+  }
+]

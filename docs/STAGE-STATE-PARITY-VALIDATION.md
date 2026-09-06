@@ -476,6 +476,53 @@ expanded CPU matrix, input/pacing, transitions and normal/MSU ending audio.
 See `validation/direct-index-regression-validation.txt`. The desktop executable
 is rebuilt; the packaged candidate is unchanged.
 
+## Preserve dispatcher accumulator width
+
+Instruction traces now include execution-scoped CPU work and the GETVIEW_L
+endpoint, so the last instruction's duration is measured too. The new
+`tools/reference/compare-strategy-clocks.py` aligns the selected PC sequences
+and reports timing differences without treating unmatched instructions as a
+parity pass. Missing endpoints, missing engines and backwards clocks are
+rejected by mutation checks.
+
+At EX GAMEFRAME 306, UPDATE_OBJECTS_L returns with a 16-bit accumulator. The
+host dispatcher previously forced 8-bit mode. Its nine STZ ALDEAD, nine LDA
+ALDEAD and five LDA NOOBJMODE accesses were each eight master clocks short.
+The production caller now passes the returned register state into the source
+dispatcher. Its recovery paths preserve that state while rebuilding the
+synthetic stack frame. Standalone callers retain the existing no-argument API.
+
+Both games' regression checks exercise 8-bit and 16-bit incoming accumulator
+width and observe the high byte immediately after source STZ ALDEAD. The
+focused trace removes all 23 dispatcher timing differences: the host interval
+increases from 84,946 to 85,130 CPU-work clocks against 85,204 in the reference.
+The remaining 74 clocks are accounted for by the existing SETSHIP instruction
+patch (12 clocks) and the caller JSL GETVIEW_L (62 clocks), which the host's
+separate call entry does not execute. Synthetic return boundaries add no work.
+See `validation/dispatch-width-comparison.json` for both trace hashes and
+remaining instruction differences.
+
+The same bounded EX comparison still stops at update 200 with the known
+TRANS_FLAG-sensitive Y mismatch: 163,460 comparisons and one difference. This
+fix does not install the missing live DMA/GSU timeline. The requested new
+ACCURATE default and preservation of existing pace choices are tracked in
+`ACCURATE-PACE.md`; the unfinished timeline is not exposed as an accurate mode.
+
+The rebuilt desktop and full regression suite pass 67/67 checks in 275.24
+seconds, including both width regressions, input/pacing, multiplayer and
+normal/MSU ending audio. See `validation/dispatch-width-regression-validation.txt`.
+The packaged candidate has not been refreshed.
+
+The final runtime also repeats all 59 numbered stage openings: 58 pass, with
+17,400 completed updates and 29,296,709 comparisons in the passing cases.
+Only the existing EX LEVEL7_2 difference remains. The deliberately incomplete
+run is rejected. Unlike the earlier intermediate dispatcher audit, this run
+includes the final removal safeguards, indexed-direct timing correction and
+incoming-register fix. Evidence is in `validation/dispatch-width-stage-summary.json`
+and `validation/dispatch-width-stage-validation.txt`; the focused failure log
+is `validation/dispatch-width-focused-validation.txt`. These are bounded
+neutral-input state comparisons, not complete campaigns or a pace certificate.
+
 ## Regression and candidate status
 
 The rebuilt full suite passed 60/61 checks in 238.33 seconds; its sole failure
