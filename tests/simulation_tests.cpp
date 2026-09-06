@@ -4210,6 +4210,9 @@ int main(int argc, char** argv) {
                 && dimension_exit_game.flow_state()
                     == starfox::simulation::GameFlowState::gameplay;
              ++tick) {
+            // Reassert the outgoing exit while TRANSFER continues. MAIN's
+            // accepted transition must not restart its forty-frame counter.
+            dimension_exit_game.map().write_native_word(level_finished.front(),16U);
             static_cast<void>(dimension_exit_game.tick({}));
             saw_dimension_white = saw_dimension_white
                 || dimension_exit_game.colour_math_effect_state().active;

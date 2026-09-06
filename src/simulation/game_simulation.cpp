@@ -4125,6 +4125,14 @@ GameTickResult GameSimulation::tick_planet_map(const input::TickInput& input) {
 }
 
 void GameSimulation::service_level_exit() {
+    // MAIN has already accepted the exit and is running its transfer-only
+    // transition loop. Outgoing strategies may leave/reassert LEVELFINISHED;
+    // interpreting it again resets the white-fade counter every update.
+    if (frontend_phase_ == FrontendPhase::special_exit_white
+        || frontend_phase_ == FrontendPhase::special_exit_fade_down) {
+        map_.write_native_word(level_finished_, 0U);
+        return;
+    }
     const auto exit = map_.read_native_word(level_finished_);
     if (exit == 0U) return;
     if (flow_state_ == GameFlowState::stage_results) {
