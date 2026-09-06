@@ -60,8 +60,12 @@ int main(int argc, char** argv) try {
                     input::InputLatch pending;
                     if (!held_control) {
                         // Both physical taps arrive before either source update.
-                        pending.sample(0, shoulder, shoulder);
-                        pending.sample(0, shoulder, shoulder);
+                        input::DigitalInputEvents batch;
+                        for (unsigned tap_index = 0; tap_index < 2; ++tap_index) {
+                            batch.record(shoulder, true);
+                            batch.record(shoulder, false);
+                        }
+                        pending.sample(0, batch);
                     }
                     const auto deliver = [&] {
                         const auto controls = held_control ? tap : pending.consume();

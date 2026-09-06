@@ -46,15 +46,16 @@ void short_tap_replay(const assets::RomImage& rom, const assets::SymbolMap& symb
             : nanoseconds{1'000'000'000ULL / rates[frame % rates.size()]};
         if (schedule == 3 && frame % 29 == 0) delta = milliseconds{100};
         elapsed += delta;
-        input::ButtonMask pressed{}, released{};
+        input::DigitalInputEvents events;
         while (scheduled && event < tap_count * 2 && tap_times[event] <= elapsed) {
-            if ((event & 1) == 0) held = pressed = shoulder;
-            else { held = 0; released = shoulder; }
+            if ((event & 1) == 0) held = shoulder;
+            else held = 0;
+            events.record(shoulder, (event & 1) == 0);
             ++event;
         }
         // Match the desktop path: event collection and held sampling happen
         // once per presentation, including frames that service several rasters.
-        latch.sample(held, pressed, released);
+        latch.sample(held, events);
         const auto batch = clock.advance(delta);
         for (unsigned phase = 0; phase < batch.simulation_steps; ++phase) {
             game->present_frame();
@@ -166,11 +167,11 @@ int main(int argc, char** argv) {
                             short_tap_replay(rom, symbols, level, mode, schedule, shoulder, count);
                 std::cout << level << ' ' << static_cast<unsigned>(mode)
                     << ": 16 presentation-sampled short-tap cases pass\n";
-                for (unsigned schedule = 0; schedule < 2; ++schedule)
+                for (unsigned schedule = 0; schedule < 4; ++schedule)
                     for (const auto shoulder : {input::left_shoulder, input::right_shoulder})
                         short_tap_replay(rom, symbols, level, mode, schedule, shoulder, 2, 25);
                 std::cout << level << ' ' << static_cast<unsigned>(mode)
-                    << ": 4 tightly spaced presentation-sampled pairs pass\n";
+                    << ": 8 tightly spaced presentation-sampled pairs pass\n";
                 if (short_only) continue;
                 const auto expected = replay(rom, symbols, level, mode, 0, false);
                 for (unsigned schedule = 1; schedule <= 3; ++schedule) {

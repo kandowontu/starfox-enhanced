@@ -4361,8 +4361,8 @@ int main(int argc, char** argv) {
             bool toggle_frame_freeze{};
             bool step_frame_forward{};
             bool step_frame_backward{};
-            starfox::input::TickInput presentation_edges{};
-            std::array<starfox::input::TickInput, 4> secondary_edges{};
+            starfox::input::DigitalInputEvents presentation_edges{};
+            std::array<starfox::input::DigitalInputEvents, 4> secondary_edges{};
             SDL_Event event;
             while (SDL_PollEvent(&event)) {
                 const bool capture_edges = !remap_menu.active && !hud_editor.active
@@ -4788,17 +4788,15 @@ int main(int argc, char** argv) {
                     && !frame_frozen && !frame_debug_key && !fullscreen_key
                     && !toggle_rewind_key && !exit_confirmation_key
                     && (!event_was_exit_confirmation || exit_confirmation)) {
-                    const auto collect = [&](starfox::input::TickInput& edges,
+                    const auto collect = [&](starfox::input::DigitalInputEvents& edges,
                         SDL_Gamepad* device, bool keyboard) {
                         auto buttons = with_swapped_face_buttons(
                             bindings.event_buttons(event, device, keyboard),
                             game.swap_face_buttons());
                         if (suppress_fullscreen_start)
                             buttons &= static_cast<ButtonMask>(~starfox::input::start);
-                        if (event.type == SDL_EVENT_KEY_DOWN
-                            || event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN)
-                            edges.pressed |= buttons;
-                        else edges.released |= buttons;
+                        edges.record(buttons, event.type == SDL_EVENT_KEY_DOWN
+                            || event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN);
                     };
                     collect(presentation_edges, gamepad, true);
                     for (std::size_t player = 0; player < secondary_edges.size(); ++player)
@@ -4944,8 +4942,7 @@ int main(int argc, char** argv) {
                 sampled_buttons = static_cast<ButtonMask>(
                     sampled_buttons & ~starfox::input::start);
             }
-            input.sample(sampled_buttons, presentation_edges.pressed,
-                presentation_edges.released);
+            input.sample(sampled_buttons, presentation_edges);
             if (exit_confirmation) {
                 // Host confirmation input is presentation-rate UI. Consuming
                 // it only inside a 60 Hz raster phase lost quick presses at
@@ -4976,7 +4973,7 @@ int main(int argc, char** argv) {
                             bindings.sample_gamepad_only(gamepads[player + 1U]),
                             game.swap_face_buttons())
                         : starfox::input::ButtonMask{},
-                    secondary_edges[player].pressed, secondary_edges[player].released);
+                    secondary_edges[player]);
             }
             remap_input.sample(
                 bindings.sample_fixed_menu_navigation(gamepad));

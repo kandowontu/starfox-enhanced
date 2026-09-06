@@ -447,6 +447,41 @@ void test_repeated_presses_survive_one_pending_tick() {
         "reset leaked queued presses or retriggered a held control on a new screen");
 }
 
+void test_event_batch_taps_and_overlapping_bindings() {
+    constexpr starfox::input::ButtonMask button = 1U << 5;
+    for (bool finish_held : {false, true}) {
+        starfox::input::DigitalInputEvents batch;
+        batch.record(button, true);
+        batch.record(button, false);
+        batch.record(button, true);
+        batch.record(button, false);
+        if (finish_held) batch.record(button, true);
+        starfox::input::InputLatch input;
+        input.sample(finish_held ? button : 0, batch);
+        unsigned presses{}, releases{};
+        for (unsigned update = 0; update < 4; ++update) {
+            const auto controls = input.consume();
+            require(controls.held == (finish_held ? button : 0), "batch events extended held input");
+            presses += controls.pressed != 0;
+            releases += controls.released != 0;
+        }
+        require(presses == 2U + finish_held && releases == 2,
+            "complete taps and a final held interval were counted incorrectly");
+    }
+    starfox::input::DigitalInputEvents overlap;
+    overlap.record(button, true);
+    overlap.record(button, true);
+    overlap.record(button, false);
+    overlap.record(button, false);
+    starfox::input::InputLatch input;
+    input.sample(0, overlap);
+    require(input.consume().pressed == button && input.consume().pressed == 0,
+        "overlapping bindings manufactured a double tap");
+    input.reset(button);
+    input.sample(button, overlap);
+    require(input.consume().pressed == 0, "event batch retriggered a previously held action");
+}
+
 } // namespace
 
 int main() {
@@ -470,6 +505,7 @@ int main() {
     test_invalid_frequency_is_rejected();
     test_input_edges_survive_between_ticks();
     test_repeated_presses_survive_one_pending_tick();
+    test_event_batch_taps_and_overlapping_bindings();
     std::cout << "All timing tests passed.\n";
     return 0;
 }

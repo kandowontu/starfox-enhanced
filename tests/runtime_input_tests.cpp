@@ -145,6 +145,36 @@ int main() {
         require(overlapping.pressed == 0 && overlapping.released == 0,
             "another binding's tap retriggered an already-held action");
     }
+    for (const auto shoulder : {SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,
+                                SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER}) {
+        SDL_UpdateGamepads();
+        SDL_FlushEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST);
+        for (unsigned tap = 0; tap < 2; ++tap) {
+            require(SDL_SetJoystickVirtualButton(joystick, shoulder, true), "batch tap press failed");
+            SDL_UpdateGamepads();
+            require(SDL_SetJoystickVirtualButton(joystick, shoulder, false), "batch tap release failed");
+            SDL_UpdateGamepads();
+        }
+        starfox::input::DigitalInputEvents batch;
+        SDL_Event event;
+        while (SDL_PollEvent(&event))
+            batch.record(bindings.event_buttons(event, gamepad),
+                event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN);
+        const auto expected = shoulder == SDL_GAMEPAD_BUTTON_LEFT_SHOULDER
+            ? starfox::input::left_shoulder : starfox::input::right_shoulder;
+        const auto held = bindings.sample_gamepad_only(gamepad);
+        starfox::input::InputLatch merged, counted;
+        merged.sample(held, batch.pressed, batch.released);
+        require(merged.consume().pressed == expected && merged.consume().pressed == 0,
+            "old event masks did not reproduce the merged pair");
+        counted.sample(held, batch);
+        for (unsigned tap = 0; tap < 2; ++tap) {
+            const auto controls = counted.consume();
+            require(controls.held == held && controls.pressed == expected && controls.released == expected,
+                "two virtual SDL taps in one presentation were not both retained");
+        }
+        require(counted.consume().pressed == 0, "batch taps repeated after delivery");
+    }
     {
         SDL_Event event{};
         event.type = SDL_EVENT_KEY_DOWN;

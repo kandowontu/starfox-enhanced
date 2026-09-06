@@ -7,8 +7,21 @@ build = root / "build/current"
 output = root / "tmp/queued-input-baseline"
 header = output / "include/starfox/input/input_latch.hpp"
 header.parent.mkdir(parents=True, exist_ok=True)
-header.write_bytes(subprocess.check_output([
-    "git", "-C", str(root), "show", "1b4a06e:include/starfox/input/input_latch.hpp"]))
+old_header = subprocess.check_output([
+    "git", "-C", str(root), "show", "1b4a06e:include/starfox/input/input_latch.hpp"]).decode()
+# Current replay fixtures submit the event-batch type. Adapt that overload to
+# the prior mask-only API; the prior latch implementation itself stays intact.
+current_header = (root / "include/starfox/input/input_latch.hpp").read_text()
+batch = current_header[current_header.index("// Events from one presentation."):
+                       current_header.index("// Presentation may poll")]
+old_header = old_header.replace("#include <cstdint>", "#include <cstdint>\n#include <array>\n#include <limits>")
+old_header = old_header.replace("// Presentation may poll", batch + "// Presentation may poll", 1)
+old_header = old_header.replace("    [[nodiscard]] TickInput consume()", """    void sample(ButtonMask held, const DigitalInputEvents& events) noexcept {
+        sample(held, events.pressed, events.released);
+    }
+
+    [[nodiscard]] TickInput consume()""", 1)
+header.write_text(old_header)
 compiler = "C:/Strawberry/c/bin/g++.exe"
 executables = {}
 for fixture in ("timing_parity", "multiplayer_input"):

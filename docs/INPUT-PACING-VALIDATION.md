@@ -111,13 +111,41 @@ seconds. The two runs are archived together in
 `validation/queued-input-regression-validation.txt`. The packaged candidate has
 not been refreshed.
 
+## Multiple complete taps in one presentation
+
+DigitalInputEvents records complete taps within each SDL event batch before the
+latch samples held state. Per-action down depth combines overlapping bindings
+within the batch into one held interval. The latch retains every completed tap
+for an action that was previously up, including taps followed by a final held
+press. Previously held actions keep their existing held-sampling behavior.
+The desktop uses the collector for the primary and four secondary slots.
+
+The SDL virtual-gamepad tests submit two complete shoulder taps before polling
+any events. Feeding the old pressed/released masks to the latch yields only one
+press; feeding the counted batch yields both, once each. Tests cover both
+shoulders, overlapping bindings, a final held interval and an already-held action.
+Desktop and UWP variants use the same virtual-device checks.
+
+Primary short-tap replays now use the event collector and include the 25 ms pairs
+under variable 47–59 FPS and 100 ms stalls, adding 32 closely spaced pairs per port
+to the existing 64 scenarios. All 192 primary scenarios pass, alongside the 56
+one-minute pace replays. All 24 native EX multiplayer cases now feed both taps in
+one batch. The old-latch baseline script adapts the new event-batch overload back
+to the old mask API so its historical latch remains testable.
+
+The final rebuilt suite passes 66/66 checks in 330.93 seconds. The complete log
+and repeated old-latch rejection evidence are preserved in
+`validation/event-batch-regression-validation.txt`. The desktop executable is
+rebuilt; the packaged candidate remains unchanged.
+
 ## Limits and next checks
 
-The desktop SDL event collector still combines edges inside a single presentation
-into masks. Multiple same-button taps entirely inside that one event batch remain
-an open case; edge counts cannot recover information already merged by the collector.
-The counts preserve repeated edges received in separate samples, not a timestamped
-ordering across different buttons. Counter saturation is bounded at UINT32_MAX. Primary and EX secondary/multitap shoulder strategies are covered. Analog
+Completed taps are counted when the action was up at the previous sample.
+A previously held action that releases and is tapped again inside one batch still
+uses the existing held-sampling path; mixed binding transitions across batch
+boundaries need separate source-aware event tracking. Counts do not retain a
+timestamped ordering across different buttons and saturate at UINT32_MAX.
+Primary and EX secondary/multitap shoulder strategies are covered. Analog
 axis events, fixed remapping-menu navigation, and touch taps are not addressed
 by this change. Existing held-state sampling for those paths is unchanged.
 
