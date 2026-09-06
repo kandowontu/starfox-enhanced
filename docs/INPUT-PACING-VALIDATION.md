@@ -61,12 +61,31 @@ and full-suite log are in `validation/short-roll-regression-validation.txt`.
 The packaged candidate remains unchanged; these changes are in the current
 source and rebuilt desktop executable.
 
+## EX secondary and multitap shoulder taps
+
+The same one-update shoulder press now reaches EX's secondary controller and
+multitap slots. Fresh press bits clear the corresponding native last-controller
+bits; physical hardware controller values remain the sampled held state.
+The one-controller multitap mode mirrors the pulse to all five native players.
+
+`starfox_ex_multiplayer_input` activates the ROM's actual secondary player
+strategies and checks both shoulders and both pace modes: two-player mode,
+each secondary slot in five-player mode, and the one-controller mirror mode.
+All 24 short-tap cases pass. A single tap must not roll, a paired tap must roll,
+and unselected players must remain unaffected. The previous implementation
+failed the first secondary-player short-tap case. The fixture's separate
+`--held-control` positive control passed all 24 cases before the correction.
+The rebuilt full suite passes 66/66 checks in 305.23 seconds; all 24 held-control
+cases also pass after the correction. The log is preserved in
+`validation/multiplayer-regression-validation.txt`. The desktop executable was
+rebuilt; the packaged candidate remains unchanged.
+These are native strategy tests, not a physical five-gamepad playthrough.
+
 ## Limits and next checks
 
 The event latch still does not queue multiple presses of the same button inside
 one simulation tick. Two taps compressed into a single pending press bit remain
-an open case. The shoulder-pulse correction currently covers the primary native
-controller; EX secondary/multitap roll handling needs its own verification. Analog
+an open case. Primary and EX secondary/multitap shoulder strategies are covered. Analog
 axis events, fixed remapping-menu navigation, and touch taps are not addressed
 by this change. Existing held-state sampling for those paths is unchanged.
 

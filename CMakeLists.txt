@@ -863,6 +863,8 @@ if(STARFOX_BUILD_TESTS)
     target_link_libraries(starfox_reference_grid_tests PRIVATE starfox_core)
     add_executable(starfox_timing_parity_tests tests/timing_parity_tests.cpp)
     target_link_libraries(starfox_timing_parity_tests PRIVATE starfox_core)
+    add_executable(starfox_multiplayer_input_tests tests/multiplayer_input_tests.cpp)
+    target_link_libraries(starfox_multiplayer_input_tests PRIVATE starfox_core)
     add_executable(starfox_ending_audio_tests tests/ending_audio_tests.cpp)
     target_link_libraries(starfox_ending_audio_tests PRIVATE starfox_core)
 
@@ -1150,6 +1152,9 @@ if(STARFOX_BUILD_TESTS)
         add_test(NAME starfox_ex_timing_parity COMMAND starfox_timing_parity_tests
             "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}")
         set_tests_properties(starfox_ex_timing_parity PROPERTIES TIMEOUT 180)
+        add_test(NAME starfox_ex_multiplayer_input COMMAND starfox_multiplayer_input_tests
+            "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}")
+        set_tests_properties(starfox_ex_multiplayer_input PROPERTIES TIMEOUT 120)
         set_tests_properties(starfox_ex_port_regressions PROPERTIES TIMEOUT 120)
         add_test(NAME starfox_ex_hitlist COMMAND starfox_hitlist_tests
             "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}")

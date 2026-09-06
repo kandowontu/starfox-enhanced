@@ -1755,9 +1755,12 @@ void GameSimulation::write_input(const input::TickInput& input) {
     // Roll strategies inspect current/previous held bits rather than TRIG.
     // Present that edge for this update, and preserve the physical release
     // before a new press even when no intervening simulation sample saw it.
-    const auto roll_presses = static_cast<input::ButtonMask>(
-        (flow_state_ == GameFlowState::gameplay || flow_state_ == GameFlowState::training)
-            ? input.pressed & (input::left_shoulder | input::right_shoulder) : 0U);
+    const auto roll_edges = [&](const input::TickInput& controls) {
+        return static_cast<input::ButtonMask>(
+            (flow_state_ == GameFlowState::gameplay || flow_state_ == GameFlowState::training)
+                ? controls.pressed & (input::left_shoulder | input::right_shoulder) : 0U);
+    };
+    const auto roll_presses = roll_edges(input);
     const auto control_type = static_cast<std::uint8_t>(
         map_.read_native_byte(control_type_) & 3U);
     const auto mapped_held = map_control_type_buttons(
@@ -1781,12 +1784,16 @@ void GameSimulation::write_input(const input::TickInput& input) {
     map_.write_native_word(hardware_controller_, input.held);
     if (starfox_ex_cartridge_) {
         const auto& second = secondary_inputs_.front();
+        const auto second_roll_presses = roll_edges(second);
+        if (second_roll_presses != 0U)
+            map_.write_native_byte(ex_last_controller_2_low_, static_cast<std::uint8_t>(
+                map_.read_native_byte(ex_last_controller_2_low_) & ~second_roll_presses));
         map_.write_native_byte(ex_previous_controller_2_high_,
             map_.read_native_byte(ex_controller_2_high_));
         map_.write_native_byte(ex_controller_2_high_,
             static_cast<std::uint8_t>(second.held >> 8U));
         map_.write_native_byte(ex_controller_2_low_,
-            static_cast<std::uint8_t>(second.held));
+            static_cast<std::uint8_t>(second.held | second_roll_presses));
         map_.write_native_word(ex_trigger_2_, second.pressed);
         map_.write_native_word(ex_hardware_controller_2_, second.held);
 
@@ -1797,16 +1804,29 @@ void GameSimulation::write_input(const input::TickInput& input) {
             secondary_inputs_[2].held,
             secondary_inputs_[3].held,
         };
+        std::array<input::ButtonMask, 5> roll_pressed{
+            roll_presses, second_roll_presses, roll_edges(secondary_inputs_[1]),
+            roll_edges(secondary_inputs_[2]), roll_edges(secondary_inputs_[3]),
+        };
+        for (std::size_t index = 0; index < held.size(); ++index)
+            held[index] = static_cast<input::ButtonMask>(held[index] | roll_pressed[index]);
         // EX's one-controller multitap mode deliberately mirrors player 1
         // into all five controller slots. Preserve that source convenience
         // while allowing distinct native PC devices in every other mode.
         if (map_.read_native_byte(ex_multitap_mode_) != 0U
             && map_.read_native_byte(ex_number_players_) == 1U) {
-            held.fill(input.held);
+            held.fill(static_cast<input::ButtonMask>(input.held | roll_presses));
+            roll_pressed.fill(roll_presses);
         }
         for (std::size_t index = 0; index < held.size(); ++index) {
             map_.write_native_word(ex_multitap_controllers_[index],
                 held[index]);
+        }
+        for (std::size_t index = 0; index < ex_last_multitap_controllers_.size(); ++index) {
+            if (roll_pressed[index + 2U] == 0U) continue;
+            map_.write_native_word(ex_last_multitap_controllers_[index],
+                static_cast<std::uint16_t>(map_.read_native_word(ex_last_multitap_controllers_[index])
+                    & ~roll_pressed[index + 2U]));
         }
 
         if (ex_mouse_control_enabled()) {
