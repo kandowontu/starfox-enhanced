@@ -90,6 +90,8 @@ struct Wdc65816::Impl {
     bool fast_rom{};
     std::uint64_t host_setup_master_clocks{};
     std::uint64_t interrupt_entries{};
+    InstructionBoundaryCallback instruction_boundary_callback;
+    bool scheduled_gameplay_bitmap_dma{};
     std::map<std::uint8_t, std::vector<std::uint8_t>> compatible_rom_banks;
     std::vector<std::uint8_t> wram = std::vector<std::uint8_t>(0x20000U);
     std::array<std::uint8_t, 8> controller{};
@@ -2412,7 +2414,8 @@ struct Wdc65816::Impl {
             // Bounded native calls retain their synchronous completion path.
             // A raster scheduler can instead advance individual DMA phases,
             // with the final phase held until source display work is ready.
-            while (advance_gameplay_bitmap_dma_phase(false)) {}
+            if (!scheduled_gameplay_bitmap_dma)
+                while (advance_gameplay_bitmap_dma_phase(false)) {}
             break;
         case 10U:
             // FOXYTRANS's first IRQ copies the upper half of the Super FX
@@ -2646,6 +2649,14 @@ std::uint64_t Wdc65816::executed_master_clocks() const noexcept {
     return impl_->cpu.cpu_state.cycle - impl_->host_setup_master_clocks;
 }
 
+void Wdc65816::set_instruction_boundary_callback(
+    InstructionBoundaryCallback callback, bool owns_gameplay_bitmap_dma) {
+    if (owns_gameplay_bitmap_dma && !callback)
+        throw std::invalid_argument{"Scheduled gameplay DMA requires a boundary callback"};
+    impl_->instruction_boundary_callback = std::move(callback);
+    impl_->scheduled_gameplay_bitmap_dma = owns_gameplay_bitmap_dma;
+}
+
 void Wdc65816::set_irq_line(bool asserted) noexcept {
     if (asserted) impl_->cpu.cpu_state.SetInterruptSource(1U);
     else impl_->cpu.cpu_state.ClearInterruptSource(1U);
@@ -2870,7 +2881,10 @@ std::size_t Wdc65816::call(
     std::array<std::uint32_t, 32> recent_program_counters{};
     std::vector<std::uint32_t> crash_entry_trace;
     std::uint32_t crash_entry{};
-    while (cpu.program_address() != return_sentinel) {
+    while (true) {
+        if (impl_->instruction_boundary_callback)
+            impl_->instruction_boundary_callback(executed_master_clocks());
+        if (cpu.program_address() == return_sentinel) break;
         // BGS.ASM's waittrans macro waits for the NMI-side transfer engine to
         // clear TRANS_FLAG at WRAM $0000. During a bounded subroutine call no
         // concurrent SNES NMI runs, so acknowledge those requests here when
@@ -3020,6 +3034,8 @@ Wdc65816TaskResult Wdc65816::run_task(
     std::array<std::uint32_t, 32> recent_program_counters{};
     bool executed_instruction = false;
     while (true) {
+        if (impl_->instruction_boundary_callback)
+            impl_->instruction_boundary_callback(executed_master_clocks());
         const auto pc = cpu.program_address();
         if (impl_->service_zero_projection(pc)) continue;
         if (pc == impl_->task_return_sentinel) {

@@ -228,6 +228,37 @@ replays. The baseline OAM-length rejection and full log are archived in
 `validation/bitmap-phase-regression-validation.txt`. The desktop executable was
 rebuilt; the packaged candidate remains unchanged.
 
+## Native instruction-boundary scheduling hook
+
+Wdc65816 now supports an optional instruction-boundary callback with cumulative
+native master clocks. It runs before instructions and at call/task return or
+pause boundaries; a resume may repeat the same timestamp. The caller can opt in
+to owning gameplay DMA phases, preventing bounded-call service from draining
+states 2/4/6 immediately. Clearing the callback restores synchronous completion.
+An observer without DMA ownership leaves that completion policy unchanged.
+
+A native program reads TRANS_FLAG four times while a callback advances the DMA
+phases at supplied clock deadlines. Both a normal call and a task paused/resumed
+twice observe 2,4,6,0; the completion request first encounters a closed NOIRQBIT3
+gate, then completes after the native program opens it. An unscheduled control
+retains 2 for all reads, while synchronous service produces 0. Passive observation
+preserves native instruction clocks, return registers and stack; the final clock
+boundary is delivered as well. The existing six data-path phase sequences remain
+in the same regression executable.
+
+This is an instruction-boundary hook, not a complete SNES clock or raster engine.
+It does not model changes inside an instruction or supply DMA, refresh or
+translated-GSU clocks. No production GameSimulation callback is installed yet.
+Deriving and integrating the live transfer deadlines remains necessary to resolve
+LEVEL7_2; no fixed phase value or enemy-specific override was added. The input
+collection and rendering/interpolation paths are unchanged.
+
+The final rebuilt suite passes 67/67 checks in 314.06 seconds. The full log is
+preserved in `validation/native-boundary-regression-validation.txt`; it includes
+the clock/read scheduling tests, both source-DMA comparisons, input/pacing replays
+and normal/MSU ending audio. The desktop executable was rebuilt; the packaged
+candidate remains unchanged.
+
 ## Regression and candidate status
 
 The rebuilt full suite passed 60/61 checks in 238.33 seconds; its sole failure
