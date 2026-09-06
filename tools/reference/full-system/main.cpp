@@ -20,6 +20,10 @@ std::function<void(unsigned, unsigned, unsigned, unsigned,
 std::uint64_t gsu_clocks{}, gsu_started{};
 unsigned gsu_entry{}, gsu_clsr{}, gsu_cfgr{}, gsu_scmr{};
 bool gsu_active{};
+std::array<std::uint64_t, 3> cpu_clock_categories{};
+}
+extern "C" void sfc_audit_cpu_step(unsigned clocks, unsigned category) {
+    cpu_clock_categories[category] += clocks;
 }
 extern "C" void sfc_audit_cpu(unsigned pc, unsigned clocks) {
     if (cpu_hook) cpu_hook(pc, clocks);
@@ -271,6 +275,10 @@ int main(int argc, char** argv) { try {
     std::ofstream phases(prefix + "-transfer-phases.csv");
     if (!phases) throw std::runtime_error("Cannot create transfer-phase trace");
     phases << "video_frame,game_frame,phase,master_clocks,transfer_clocks,vcounter,hcounter,transfer_flag,noirqbit3,gsu_running\n";
+    std::ofstream clock_parts(prefix + "-clock-parts.csv");
+    if (!clock_parts) throw std::runtime_error("Cannot create clock accounting trace");
+    clock_parts << "video_frame,game_frame,phase,transfer_clocks,cpu_clocks,dma_active_clocks,refresh_clocks\n";
+    std::array<std::uint64_t, 3> transfer_clock_categories{};
     unsigned transfer_started_clocks = 0;
     bool observed_transfer = false;
     unsigned draw_flags_clear = 0;
@@ -293,6 +301,7 @@ int main(int argc, char** argv) { try {
         if (platform.pending_jump) return;
         if (pc == settled_transfer) {
             transfer_started_clocks = clocks;
+            transfer_clock_categories = cpu_clock_categories;
             observed_transfer = true;
         }
         if (observed_transfer) {
@@ -301,6 +310,11 @@ int main(int argc, char** argv) { try {
                     << clocks << ',' << clocks - transfer_started_clocks << ',' << sfc::cpu.vcounter() << ','
                     << sfc::cpu.hcounter() << ',' << read(0, 1) << ',' << read(address("NOIRQBIT3"), 1)
                     << ',' << unsigned(sfc::superfx.regs.sfr.g) << '\n';
+                clock_parts << video_index << ',' << read(game_frame) << ',' << phase->second
+                    << ',' << clocks - transfer_started_clocks;
+                for (unsigned category = 0; category < 3; ++category)
+                    clock_parts << ',' << cpu_clock_categories[category] - transfer_clock_categories[category];
+                clock_parts << '\n';
             }
         }
         if (const auto reader = scorpion_transfer_reads.find(pc); reader != scorpion_transfer_reads.end()) {

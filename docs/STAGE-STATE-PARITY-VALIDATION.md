@@ -294,6 +294,57 @@ clocks are checked in both ordinary and paused/resumed native execution; all
 three bitmap and source-transition CTest checks pass. The most recent full-suite
 result remains the preceding 67/67 run, not a new full-suite run for this observer.
 
+## Reference elapsed-clock accounting
+
+The pinned full-system reference now observes every existing CPU `step` and
+partitions its clocks into ordinary CPU work, DMA-active work and DRAM refresh.
+Generated hooks leave the pinned checkout unchanged and add no emulated cycles.
+Refresh's five recursive 6+2 sequences take priority over DMA-active, avoiding
+double counting. DMA-active includes arbitration/alignment and CPU cycles while
+the source flag is asserted; it is not a DMA-byte counter. Ordinary CPU clocks
+include wait-loop instructions and interrupt-handler instructions outside that
+flag, so they are not equivalent to the host's selected native routine calls.
+
+At GAMEFRAME 306, the elapsed reference clocks break down as follows:
+
+| Entry | Ordinary CPU | DMA-active | Refresh | Total |
+| --- | ---: | ---: | ---: | ---: |
+| INIT_STRATS_L | 23,316 | 7,206 | 920 | 31,442 |
+| UPDATE_OBJECTS_L | 54,258 | 9,234 | 1,920 | 65,412 |
+| GETVIEW_L | 138,944 | 14,802 | 4,640 | 158,386 |
+| DOSOUNDS_L | 182,458 | 17,686 | 6,040 | 206,184 |
+| GENERATE_COLLIST_L | 250,062 | 109,442 | 10,880 | 370,384 |
+
+DMA-active work is already present before IRQBIT1, while the first bitmap
+transfer accounts for a much larger increase afterward. Adding only bitmap
+payload clocks to the host counter would therefore omit other elapsed costs.
+Even subtracting DMA-active and refresh leaves an ordinary-CPU discrepancy:
+GETVIEW_L starts at 138,944 reference CPU clocks versus 128,352 host instruction
+clocks. The next scheduler work must account for both peripheral stalls and
+the source execution omitted by the host's selected-call sequencing.
+
+`tools/reference/verify-clock-parts.py` checks matching phase identities, exact
+partition sums, nonnegative monotonic category clocks between transfer resets,
+complete 40-clock refresh sequences and coverage of every category. It passes
+2,052 EX and 3,077 Original observations. Four negative controls (extra CPU
+clocks, doubled refresh, missing phase and wrong phase identity) are rejected.
+The EX run retains all eleven pre-existing CSV traces byte-for-byte, including
+the same update-200 failure. Original LEVEL2_1 passes 300 updates / 562,428
+comparisons; EX still fails after 163,460 comparisons. The incomplete-run guard
+also passes. No production runtime changed in this accounting addition.
+
+Evidence: `validation/reference-clock-parts-summary.json` and
+`validation/reference-clock-parts-failure.csv`. Reproduce using:
+
+```powershell
+cmake --build tmp/full-reference-build -j4
+python tools/reference/verify-gameplay.py --case ex:LEVEL7_2 --case original:LEVEL2_1 --updates 300 --video-frames 5000 --output tmp/clock-parts-audit
+python tools/reference/verify-clock-parts.py tmp/clock-parts-audit/ex-LEVEL7_2 tmp/clock-parts-audit/original-LEVEL2_1 --output tmp/clock-parts-audit/accounting.json
+```
+
+The gameplay command currently returns failure for the known EX difference;
+successful clock accounting does not override that result or establish parity.
+
 ## Regression and candidate status
 
 The rebuilt full suite passed 60/61 checks in 238.33 seconds; its sole failure

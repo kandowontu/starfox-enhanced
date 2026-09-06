@@ -73,10 +73,30 @@ def observe(text, old, new):
 cpu = (source / "ares/sfc/cpu/cpu.cpp").read_text()
 cpu = re.sub(r'#include "([^"]+)"', r'#include <sfc/cpu/\1>', cpu)
 cpu = observe(cpu, "namespace ares::SuperFamicom {",
-              'extern "C" void sfc_audit_cpu(unsigned, unsigned);\nnamespace ares::SuperFamicom {')
+              'extern "C" void sfc_audit_cpu(unsigned, unsigned);\n'
+              'extern "C" void sfc_audit_cpu_step(unsigned, unsigned);\n'
+              'namespace ares::SuperFamicom {\nstatic unsigned audit_refresh_depth = 0;')
+cpu = observe(cpu, '#include <sfc/cpu/timing.cpp>', '#include "cpu-timing.cpp"')
 cpu = observe(cpu, "    debugger.instruction();",
               "    sfc_audit_cpu(r.pc.d, counter.cpu);\n    debugger.instruction();")
 save(generated / "cpu.cpp", cpu)
+
+# Account for every existing step without adding or removing emulated clocks.
+# DMA-active includes arbitration/alignment and any CPU cycle while that flag
+# is set; it is deliberately not called DMA payload time. Refresh has priority
+# so its recursively stepped clocks are counted once, in a disjoint category.
+timing = (source / "ares/sfc/cpu/timing.cpp").read_text()
+timing = observe(timing, "auto CPU::step(u32 clocks) -> void {",
+    "auto CPU::step(u32 clocks) -> void {\n"
+    "  sfc_audit_cpu_step(clocks, audit_refresh_depth ? 2 : status.dmaActive ? 1 : 0);")
+timing = observe(timing,
+    "  if(!status.dramRefresh && hcounter() >= status.dramRefreshPosition) {",
+    "  if(!status.dramRefresh && hcounter() >= status.dramRefreshPosition) {\n"
+    "    ++audit_refresh_depth;")
+timing = observe(timing,
+    "  }\n\n  if(!status.hdmaSetupTriggered",
+    "    --audit_refresh_depth;\n  }\n\n  if(!status.hdmaSetupTriggered")
+save(generated / "cpu-timing.cpp", timing)
 
 # Power-on WRAM is deliberately random in Ares. Keep the stock low-entropy
 # pattern generator but seed it reproducibly for this diagnostic fixture.

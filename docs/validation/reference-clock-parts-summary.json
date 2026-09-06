@@ -1,0 +1,48 @@
+{
+  "accounting": [
+    {
+      "prefix": "tmp\\clock-parts-audit\\ex-LEVEL7_2",
+      "phase_rows": 2052,
+      "accounting_passed": true,
+      "maximum_clocks_per_category": {
+        "cpu": 34933200,
+        "dma_active": 1591178,
+        "refresh": 1103480
+      },
+      "sha256": {
+        "ex-LEVEL7_2-clock-parts.csv": "DB2124B75A0F47450BBDEFBCB6726F57DFC4722BAFDCBE7B9C97B1A3927629CC",
+        "ex-LEVEL7_2-transfer-phases.csv": "4D758EAED5BDC74CF88A17AD78DABABFD8A45128083C35CB4DC9D9677A8A9711"
+      },
+      "scope": "Reference elapsed-clock partition only. DMA-active includes arbitration and alignment; CPU includes wait-loop instructions. Not host parity or hardware certification."
+    },
+    {
+      "prefix": "tmp\\clock-parts-audit\\original-LEVEL2_1",
+      "phase_rows": 3077,
+      "accounting_passed": true,
+      "maximum_clocks_per_category": {
+        "cpu": 27814942,
+        "dma_active": 1370496,
+        "refresh": 881760
+      },
+      "sha256": {
+        "original-LEVEL2_1-clock-parts.csv": "CBD79C63B1EA135E5E8D4B36A7D268371F0E2F53744B0A9350320C67F3CBCBD3",
+        "original-LEVEL2_1-transfer-phases.csv": "CE89F357510A906AEAC4E5F59D8433FE98BB3ED0020C1BB5B9C4D20E3E1293D3"
+      },
+      "scope": "Reference elapsed-clock partition only. DMA-active includes arbitration and alignment; CPU includes wait-loop instructions. Not host parity or hardware certification."
+    }
+  ],
+  "rejected_controls": [
+    "extra-clock",
+    "double-refresh",
+    "missing-phase",
+    "wrong-phase"
+  ],
+  "unchanged_ex_traces": 11,
+  "original_gameplay_updates": 300,
+  "original_comparisons": 562428,
+  "original_differences": 0,
+  "ex_failure_update": 200,
+  "ex_comparisons": 163460,
+  "ex_differences": 1,
+  "host_parity_passed": false
+}
