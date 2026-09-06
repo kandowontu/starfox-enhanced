@@ -103,6 +103,26 @@ int main(int argc,char** argv) try {
         bool rejected{};
         try { small->begin_native_gameplay_update({}); } catch (const std::logic_error&) { rejected=true; }
         require(rejected,"MAIN resumed gameplay with a pending scene exit");
+        const auto final_clock=small->native_transfer_clock();
+        const auto* final_timeline=small->native_transfer_timeline();
+        small->map().set_msu_bus_callback([](std::uint64_t,std::uint16_t,std::optional<std::uint8_t>) {
+            return std::uint8_t{};
+        });
+        rejected=false;
+        try { small->finish_native_gameplay_exit(); } catch (const std::logic_error&) { rejected=true; }
+        require(rejected && small->native_gameplay_exit_pending()
+            && small->native_transfer_timeline()==final_timeline && small->native_transfer_clock()==final_clock,
+            "rejected audio handoff changed the native continuation");
+        small->map().set_msu_bus_callback({});
+        small->finish_native_gameplay_exit();
+        require(!small->native_transfer_timeline() && !small->native_gameplay_exit_pending(),
+            "scene handoff retained the native gameplay binding");
+        static_cast<void>(small->tick({}));
+        large->map().write_native_word(symbols.find("LEVELFINISHED").at(0),9U);
+        static_cast<void>(run(*large,4096U));
+        large->finish_native_gameplay_exit();
+        require(large->flow_state()==GameFlowState::credits,"native handoff did not enter credits");
+        static_cast<void>(large->tick({}));
     }
     std::cout << (main_loop ? "native MAIN updates" : "native transfers")
         << ": stable in-flight publication and identical clocks/state across quanta\n";

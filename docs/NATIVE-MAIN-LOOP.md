@@ -42,9 +42,18 @@ The pause JSR return address is also validated from the ROM. Missing or
 ambiguous boundaries are rejected before installing the live timing binding.
 These checks support the two current cartridges, not arbitrary MAIN patches.
 
-A pending scene exit rejects another gameplay begin until a scheduler handoff
-is implemented. The CPU continuation remains suspended at that boundary; it
-is not discarded or accidentally executed through a legacy host call.
+A pending scene exit rejects another gameplay begin. The CPU continuation
+remains suspended until `finish_native_gameplay_exit()` explicitly detaches it
+and calls the existing level-exit dispatcher. Before calling this method, the
+scheduler must advance audio through the final native clock and detach its
+APU and MSU bus bindings. An audio binding, halted CPU, pending DMA/HDMA, or
+unfinished GSU work/IRQ rejects the handoff before changing the continuation.
+Enabled but idle HDMA channels retain their display configuration after the
+old raster is detached. RAM and accepted CPU interrupts are retained.
+
+This boundary is implemented for host frontend ownership; it is not yet
+connected to desktop scheduling. It does not flush a partial SPC packet or
+make it safe to mix incremental audio with legacy whole-packet rendering.
 
 ## Validation and limits
 
@@ -54,7 +63,10 @@ order/flags, VRAM, palettes and elapsed clocks agree, and intermediate yields
 retain the previous view. Instruction callbacks verify one first-channel
 communications call per update, plus one second-channel and scored-display
 call per update in EX. Forced game over stops at the handoff without modifying
-STAGE or DOINGEND, and a subsequent gameplay begin is rejected.
+STAGE or DOINGEND, and a subsequent gameplay begin is rejected. Both ROMs
+also exercise explicit game-over and credits handoffs followed by a host
+tick. An attached MSU callback rejects the handoff without changing the
+pending exit, timeline identity or elapsed clock; detaching it permits retry.
 
 Input replays reach controllable gameplay through MAIN, enter the cartridge
 pause, deliver release/press/release physical Start samples during that same
@@ -68,8 +80,12 @@ against the rebuilt implementation, including normal/MSU ending audio and
 the existing multiplayer tests. EX's pause replay waits for its launch wipe
 to settle, because its control flag clears before the pause gate opens.
 
+After adding the explicit scene handoff, the complete rebuilt suite passes
+91/91 tests in 221.45 seconds. The full test log is retained in
+`validation/native-scene-handoff-regressions.txt`.
+
 These compare runtime scheduling paths and inspect source routine execution;
 they are not an independent full-system timing oracle or full campaign test.
 The desktop driver, timestamped audio servicing during partial updates,
-scene/pace handoffs, interpolation integration and ACCURATE selection/default
+desktop scene/pace handoffs, interpolation integration and ACCURATE selection/default
 remain unfinished. No user pace or saved configuration changes in this step.

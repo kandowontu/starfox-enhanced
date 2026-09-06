@@ -138,6 +138,7 @@ public:
         cpu_.set_cpu_timeline(std::move(timeline));
     }
     void set_gsu_timing(bool enabled) { cpu_.set_gsu_timing(enabled); }
+    void detach_native_task() { cpu_.detach_native_task(); }
     void set_task_clock_deadline(std::optional<std::uint64_t> deadline) {
         cpu_.set_task_clock_deadline(deadline);
     }

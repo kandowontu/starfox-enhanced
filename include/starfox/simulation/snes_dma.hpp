@@ -21,6 +21,9 @@ public:
     [[nodiscard]] bool requested() const noexcept {
         return enabled_ != 0 || hdma_->enabled != 0 || hdma_->pending;
     }
+    [[nodiscard]] bool transfer_pending() const noexcept {
+        return enabled_ != 0 || hdma_->pending;
+    }
 
     static bool valid_a(std::uint32_t address) noexcept {
         return (address & 0x40ff00U) != 0x2100U

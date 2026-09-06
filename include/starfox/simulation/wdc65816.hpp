@@ -192,6 +192,10 @@ public:
     // shared RAM is retained. Disable only after GO, RAM writes and IRQ finish.
     void set_gsu_timing(bool enabled);
     [[nodiscard]] bool gsu_timing_enabled() const noexcept;
+    // End a suspended native continuation at a host-owned scene boundary.
+    // Rejects live audio bindings, halted execution and unfinished device work
+    // before changing any binding. RAM and accepted interrupts are retained.
+    void detach_native_task();
     // Cooperative task-only deadline in absolute raster master clocks.
     // Yields at an instruction boundary; the final instruction/DMA may
     // overrun. The task, registers and pending interrupts remain resumable.

@@ -233,6 +233,9 @@ public:
     // remain the caller's responsibility to retain for the next begin call.
     void sample_native_controller_held(const std::array<input::ButtonMask,5>& held);
     [[nodiscard]] bool native_gameplay_exit_pending() const noexcept { return native_main_exit_pending_; }
+    // Caller must first advance audio to the final native clock and detach
+    // its bus bindings. Pending device work rejects the handoff unchanged.
+    void finish_native_gameplay_exit();
     [[nodiscard]] std::optional<GameTickResult> advance_native_transfer(std::uint64_t master_clocks);
     [[nodiscard]] bool native_transfer_active() const noexcept;
     [[nodiscard]] std::uint64_t native_transfer_clock() const noexcept;

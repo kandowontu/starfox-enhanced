@@ -14,6 +14,18 @@ std::uint64_t GameSimulation::native_transfer_clock() const noexcept {
     return native_transfer_timeline_ ? native_transfer_timeline_->raster().elapsed() : 0U;
 }
 
+void GameSimulation::finish_native_gameplay_exit() {
+    if (!native_main_exit_pending_ || native_transfer_active() || !native_transfer_timeline_)
+        throw std::logic_error{"No completed native gameplay exit is pending"};
+    map_.detach_native_task();
+    native_transfer_timeline_.reset();
+    native_transfer_task_started_ = false;
+    native_main_loop_ = false;
+    native_main_exit_pending_ = false;
+    native_roll_pulses_.fill(0U);
+    service_level_exit();
+}
+
 void GameSimulation::begin_native_transfer(const input::TickInput& input) {
     begin_native_update(input,false);
 }

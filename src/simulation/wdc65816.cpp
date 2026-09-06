@@ -3030,6 +3030,26 @@ void Wdc65816::set_gsu_timing(bool enabled) {
 }
 bool Wdc65816::gsu_timing_enabled() const noexcept { return bool(impl_->gsu); }
 
+void Wdc65816::detach_native_task() {
+    if (impl_->bus_clock_active || impl_->waiting || impl_->stopped)
+        throw std::logic_error{"Cannot detach an executing or halted native task"};
+    if (impl_->apu_bus_callback || impl_->msu_bus_callback)
+        throw std::logic_error{"Detach audio bus bindings before ending the native task"};
+    if (impl_->task_clock_deadline || impl_->dma.transfer_pending())
+        throw std::logic_error{"Native task deadline and pending DMA must finish before detach"};
+    if (impl_->gsu && (impl_->gsu->running() || impl_->gsu->pending_ram_clocks() || impl_->gsu->irq()))
+        throw std::logic_error{"GSU work and IRQ must finish before native task detach"};
+    set_gsu_timing(false);
+    // An enabled channel is display configuration, not an in-flight byte.
+    // Preserve it for the bounded-call renderer without leaving an owner on
+    // the discarded raster. Pending HDMA was rejected above.
+    const auto hdma_enabled = impl_->dma.hdma_state()->enabled;
+    impl_->dma.enable_hdma(0U);
+    set_cpu_timeline({});
+    impl_->dma.enable_hdma(hdma_enabled);
+    impl_->task_active = false;
+}
+
 void Wdc65816::set_task_clock_deadline(std::optional<std::uint64_t> deadline) {
     if (impl_->bus_clock_active)
         throw std::logic_error{"Cannot change a task deadline during CPU execution"};
