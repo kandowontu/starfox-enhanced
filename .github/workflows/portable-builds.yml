@@ -7,6 +7,10 @@ on:
         description: Existing GitHub release tag to receive the artifacts
         required: false
         default: ''
+      only_vita:
+        description: Rebuild only the Vita package for the selected release
+        type: boolean
+        default: false
   push:
     tags:
       - 'v*'
@@ -16,6 +20,7 @@ permissions:
 
 jobs:
   windows-x64:
+    if: ${{ !inputs.only_vita }}
     name: Windows x64 runtime and standalone asset builder
     runs-on: windows-latest
     steps:
@@ -80,6 +85,7 @@ jobs:
             StarFoxAssetBuilder-0.0.4.1-windows-x64.zip --clobber
 
   windows-x86:
+    if: ${{ !inputs.only_vita }}
     name: Windows x86 runtime
     runs-on: windows-latest
     steps:
@@ -135,6 +141,7 @@ jobs:
             StarFoxEnhanced-0.0.4.1-windows-x86.zip --clobber
 
   xbox-uwp-x64:
+    if: ${{ !inputs.only_vita }}
     name: Xbox UWP x64 (Developer Mode)
     # Keep the legacy UWP/C++ packaging workload and its redistributable
     # Microsoft.VCLibs framework package available. windows-latest moved to
@@ -199,6 +206,7 @@ jobs:
             StarFoxEnhanced-0.0.4.1-xbox-uwp-x64.zip --clobber
 
   linux-x64:
+    if: ${{ !inputs.only_vita }}
     name: Linux x64 native runtime
     runs-on: ubuntu-24.04
     steps:
@@ -248,6 +256,7 @@ jobs:
             StarFoxEnhanced-0.0.4.1-linux-x64.zip --clobber
 
   macos-universal:
+    if: ${{ !inputs.only_vita }}
     name: macOS universal (unsigned)
     runs-on: macos-15
     steps:
@@ -292,6 +301,7 @@ jobs:
             StarFoxEnhanced-0.0.4.1-macos-universal.zip --clobber
 
   ios-device:
+    if: ${{ !inputs.only_vita }}
     name: iOS arm64 device (unsigned)
     runs-on: macos-15
     steps:
@@ -332,6 +342,7 @@ jobs:
             StarFoxEnhanced-0.0.4.1-ios-arm64-unsigned.zip --clobber
 
   android-arm64:
+    if: ${{ !inputs.only_vita }}
     name: Android arm64 development APK
     runs-on: ubuntu-latest
     steps:
@@ -378,6 +389,7 @@ jobs:
             StarFoxEnhanced-0.0.4.1-android-arm64.apk --clobber
 
   switch-homebrew:
+    if: ${{ !inputs.only_vita }}
     name: Nintendo Switch homebrew NRO
     runs-on: ubuntu-latest
     container:
@@ -417,8 +429,13 @@ jobs:
       # Pin the dated VitaSDK multi-architecture manifest; floating nightly
       # images can change underneath an otherwise identical release build.
       image: vitasdk/vitasdk:nightly-non-root-20260829@sha256:8c025f249ce33e3c76f92f422099bfb8b01a4e1a1f67db175df53257c2bbc28b
+      # GitHub mounts runner command files owned by the host user. The SDK
+      # image's non-root user cannot write them during checkout/post-checkout.
+      options: --user 0
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
       - name: Build native Vita application
         shell: bash
         run: |
