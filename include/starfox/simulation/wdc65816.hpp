@@ -84,6 +84,10 @@ struct Wdc65816TaskResult {
     std::size_t instructions{};
     std::uint32_t stop_address{};
     bool returned{};
+    // Live WAI/STP yield here; stop_address is the next PC and may not be one
+    // of the requested stop addresses. resume_task advances another idle.
+    bool waiting{};
+    bool stopped{};
 };
 
 // Snapshot of CONTINUE.ASM's dedicated MSHOWOBJ3 launch. Unlike ordinary
@@ -149,19 +153,21 @@ public:
     using InterruptSampleCallback = std::function<bool(const Wdc65816InterruptSample&)>;
     // Observe the native last-cycle polling point. A true return selects the
     // pending-interrupt dummy read on idleIRQ instructions. This does not
-    // itself enter a handler; WAI/STP scheduling is not provided by this hook.
+    // itself enter a handler; live halt scheduling requires timeline binding.
     // Like bus callbacks, it must not reenter execution or replace callbacks.
     void set_interrupt_sample_callback(InterruptSampleCallback callback);
     // Bind live timer/blanking/counter registers and advance their shared
     // timeline during native bus operations. Null restores bounded-call I/O.
     // Native IRQ/NMI requests are sampled at lastCycle and delivered at the
-    // next CPU step. Accepted requests survive detach. WAI/STP scheduling and
-    // DMA arbitration are not supplied by this binding.
+    // next CPU step. Accepted requests and halt states survive detach. Live
+    // WAI/STP yield through the task API; STP needs CPU reconstruction to reset.
+    // DMA arbitration is not supplied by this binding.
     void set_cpu_timeline(std::shared_ptr<SnesCpuTimeline> timeline);
     // Without a timeline, hardware signals use legacy instruction-boundary
     // sampling; with one they use the live last-cycle polling point. IRQ is
     // level-sensitive; the device must release it. NMI is a latched edge and
-    // is acknowledged on entry. Neither API replaces registers or the stack.
+    // is acknowledged on acceptance in live mode (on entry in legacy mode).
+    // Neither API replaces registers or the stack.
     void set_irq_line(bool asserted) noexcept;
     void pulse_nmi() noexcept;
     [[nodiscard]] std::uint64_t interrupts_taken() const noexcept;
@@ -249,7 +255,9 @@ public:
         bool service_transfer_flag = false,
         std::optional<std::uint8_t> saved_data_bank = std::nullopt);
 
-    // Continues the active task. The instruction at the address where the
+    // Continues the active task. Waiting/stopped tasks advance one polling
+    // idle and yield again while halted; a wake resumes ordinary execution.
+    // The instruction at the address where the
     // previous call paused is executed before stop addresses are considered
     // again, allowing frame loops to use one stable source label as a yield.
     Wdc65816TaskResult resume_task(

@@ -16,6 +16,89 @@ void advance_to(SnesCpuTimeline& clock, unsigned vertical, unsigned horizontal) 
 }
 int main() try {
     {
+        for (const bool stop : {false, true}) {
+            std::vector<std::uint8_t> bytes(0x8000U, 0xeaU);
+            bytes[0] = stop ? 0xdbU : 0xcbU;
+            const starfox::assets::RomImage halt_rom{bytes};
+            Wdc65816 cpu{halt_rom};
+            auto clock = std::make_shared<SnesCpuTimeline>();
+            cpu.set_cpu_timeline(clock);
+            Wdc65816Registers registers;
+            const std::array stops{0x8001U};
+            auto task = cpu.begin_long_task(0x8000U, registers, stops, 1);
+            require(task.instructions == 1U && !task.returned && task.waiting == !stop
+                && task.stopped == stop && cpu.executed_master_clocks() == 14U,
+                "WAI/STP did not yield after its first sampling idle");
+            bool replacement_rejected{};
+            try { cpu.begin_long_task(0x8100U, registers, stops, 1); }
+            catch (const std::logic_error&) { replacement_rejected = true; }
+            require(replacement_rejected && cpu.program_address() == 0x8001U
+                && cpu.executed_master_clocks() == 14U,
+                "starting another call modified the halted CPU instead of preserving it");
+            for (unsigned i = 0; i < 3U; ++i) {
+                task = cpu.resume_task(registers, stops, 1);
+                require(task.instructions == 0U && task.waiting == !stop && task.stopped == stop
+                    && cpu.executed_master_clocks() == 20U + i * 6U,
+                    "resuming a halted task executed an opcode or lost its six-clock polling cadence");
+            }
+            cpu.set_cpu_timeline({});
+            cpu.set_irq_line(true); // I is set: wakes WAI without taking IRQ.
+            task = cpu.resume_task(registers, stops, 1);
+            require(task.instructions == 0U && !task.waiting && task.stopped == stop
+                && cpu.interrupts_taken() == 0U
+                && cpu.executed_master_clocks() == (stop ? 38U : 44U),
+                "masked IRQ wake, WAI trailing idle or STP persistence differs after detach");
+            if (stop) {
+                cpu.pulse_nmi();
+                task = cpu.resume_task(registers, stops, 1);
+                require(task.stopped && task.instructions == 0U && cpu.interrupts_taken() == 0U,
+                    "NMI restarted STP without a reset");
+            }
+            Wdc65816 bounded{halt_rom};
+            bounded.set_cpu_timeline(std::make_shared<SnesCpuTimeline>());
+            bool rejected{};
+            try { bounded.call_long(0x8000U, registers, 3); }
+            catch (const Wdc65816ExecutionError&) { rejected = true; }
+            require(rejected, "synchronous halted call did not honor its finite budget");
+            Wdc65816 sentinel{halt_rom};
+            sentinel.set_cpu_timeline(std::make_shared<SnesCpuTimeline>());
+            sentinel.write8(0x7e01efU, stop ? 0xdbU : 0xcbU);
+            auto at_return = sentinel.begin_long_task(0x7e01efU, registers, stops, 1);
+            at_return = sentinel.resume_task(registers, stops, 1);
+            require(!at_return.returned && (at_return.waiting || at_return.stopped)
+                && at_return.instructions == 0U,
+                "halt at the synthetic return PC was mistaken for a completed task");
+        }
+    }
+    {
+        std::vector<std::uint8_t> bytes(0x8000U, 0xeaU);
+        bytes[0] = 0xcbU;
+        bytes[0x7fee] = 0x40U; bytes[0x7fef] = 0x80U;
+        const starfox::assets::RomImage rom{std::move(bytes)};
+        Wdc65816 cpu{rom};
+        cpu.set_cpu_timeline(std::make_shared<SnesCpuTimeline>());
+        cpu.write8(0x4207U, 5U); cpu.write8(0x4208U, 0U);
+        cpu.write8(0x4200U, 0x10U);
+        Wdc65816Registers registers;
+        registers.status = 0U;
+        const std::array stops{0x8040U};
+        auto task = cpu.begin_long_task(0x8000U, registers, stops, 1);
+        for (unsigned steps = 0; task.waiting && steps < 10U; ++steps)
+            task = cpu.resume_task(registers, stops, 1);
+        require(!task.waiting && task.stop_address == 0x8040U && task.instructions == 0U
+            && cpu.interrupts_taken() == 1U && cpu.executed_master_clocks() == 112U,
+            "live horizontal timer did not wake WAI and enter IRQ after its trailing idle");
+        Wdc65816 immediate{rom};
+        immediate.set_cpu_timeline(std::make_shared<SnesCpuTimeline>());
+        immediate.set_irq_line(true);
+        registers = {};
+        registers.status = 0U;
+        task = immediate.begin_long_task(0x8000U, registers, stops, 1);
+        require(task.instructions == 1U && task.stop_address == 0x8040U
+            && immediate.executed_master_clocks() == 82U && immediate.interrupts_taken() == 1U,
+            "accepted IRQ after an immediate WAI wake consumed another instruction-budget slot");
+    }
+    {
         std::vector<std::uint8_t> bytes(0x8000U, 0xeaU);
         bytes[0x40] = bytes[0x50] = 0x40U; // IRQ/NMI handlers: RTI
         bytes[0x7fee] = 0x40U; bytes[0x7fef] = 0x80U;

@@ -43,7 +43,9 @@ Production last-cycle hooks now match reference sample clocks and the I flag
 for 254 native opcodes, including both initial I states. A callback can select
 the pending-interrupt dummy read used by idleIRQ instructions. Timeline binding
 now consumes live timer requests at these hooks and delivers the selected
-handler; WAI/STP scheduling is not covered. See LAST-CYCLE-VALIDATION.md.
+handler. Live WAI/STP now yield through resumable tasks, retaining their
+polling cadence and trailing wake idle; see HALT-VALIDATION.md. STP requires
+CPU reconstruction to reset. See LAST-CYCLE-VALIDATION.md for sampling checks.
 Interrupt entry now preserves the stacked status and sets I/clears D before
 vector reads, matching the source's hardware interrupt, BRK and COP order.
 This preserves the status order seen by the sampling hooks during entry.

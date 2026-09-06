@@ -28,7 +28,7 @@ separate upstream source checkout is preserved.
 This is an entry-order fix, not complete live interrupt delivery. Production
 last-cycle hooks and pending-interrupt dummy reads are now validated separately
 in LAST-CYCLE-VALIDATION.md, and bounded live delivery in
-LIVE-INTERRUPT-VALIDATION.md. WAI/STP, DMA arbitration and overlapping GSU
+LIVE-INTERRUPT-VALIDATION.md. WAI/STP is covered by HALT-VALIDATION.md. DMA arbitration and overlapping GSU
 work remain necessary for ACCURATE pace. Whole-campaign parity
 and the existing EX live-transfer mismatch remain unresolved. No packaged
 candidate is refreshed by this change.

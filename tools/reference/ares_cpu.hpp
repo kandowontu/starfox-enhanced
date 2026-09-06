@@ -12,6 +12,10 @@ struct CpuInterruptRun {
     std::uint64_t master_clocks{};
 };
 using CpuInterruptSample = simulation::Wdc65816InterruptSample;
+struct CpuHaltRun {
+    std::uint64_t master_clocks{};
+    bool waiting{}, stopped{};
+};
 
 // Development-only independent instruction engine, using a separate adapter
 // instance for memory/I/O. No concurrent DMA, automatic interrupt delivery or
@@ -26,6 +30,11 @@ public:
     // also selects its pending-interrupt bus behavior (idleIRQ dummy reads).
     using InterruptSampleCallback = std::function<bool(const CpuInterruptSample&)>;
     void set_interrupt_sample_callback(InterruptSampleCallback callback);
+    // Run the unmodified source WAI/STP loop until wake or a bounded bus-clock
+    // observation limit. The limit may finish at the following bus boundary.
+    CpuHaltRun run_halt(std::uint32_t entry, simulation::Wdc65816Registers& registers,
+        std::uint64_t clock_budget, std::optional<std::uint64_t> wake_clock = std::nullopt,
+        bool fast_rom = false);
     CpuRun run(std::uint32_t entry, simulation::Wdc65816Registers& registers,
         std::uint32_t stop, unsigned instruction_limit = 10000, bool fast_rom = false);
     // One architectural native interrupt entry after the same synthetic

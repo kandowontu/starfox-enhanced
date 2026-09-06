@@ -54,6 +54,10 @@ struct AresCpu::Impl : ares::WDC65816 {
     InterruptSampleCallback interrupt_sample_callback;
     std::uint32_t instruction_address{};
     bool interrupt_pending{};
+    struct HaltYield {};
+    bool halt_audit{};
+    std::uint64_t halt_budget{};
+    std::optional<std::uint64_t> wake_clock;
     bool executing{};
     bool fast_rom{};
     explicit Impl(simulation::Wdc65816& bus) : memory(bus) {}
@@ -67,6 +71,7 @@ struct AresCpu::Impl : ares::WDC65816 {
     void step(unsigned count) {
         clocks += count;
         if (executing && bus_clock_callback) bus_clock_callback(count);
+        if (executing && halt_audit && clocks >= halt_budget) throw HaltYield{};
     }
     void idle() override { step(6); }
     ares::n8 read(ares::n24 address) override {
@@ -84,9 +89,10 @@ struct AresCpu::Impl : ares::WDC65816 {
     void lastCycle() override {
         if (executing && interrupt_sample_callback)
             interrupt_pending = interrupt_sample_callback({instruction_address, clocks, bool(r.p.i)});
+        if (halt_audit && wake_clock && clocks >= *wake_clock) r.wai = false;
     }
     bool interruptPending() const override { return interrupt_pending; }
-    bool synchronizing() const override { return true; }
+    bool synchronizing() const override { return !halt_audit; }
 };
 
 AresCpu::AresCpu(simulation::Wdc65816& memory) : impl_(std::make_unique<Impl>(memory)) {}
@@ -99,6 +105,26 @@ void AresCpu::set_bus_clock_callback(simulation::Wdc65816::BusClockCallback call
 }
 void AresCpu::set_interrupt_sample_callback(InterruptSampleCallback callback) {
     impl_->interrupt_sample_callback = std::move(callback);
+}
+CpuHaltRun AresCpu::run_halt(std::uint32_t entry, simulation::Wdc65816Registers& registers,
+    std::uint64_t clock_budget, std::optional<std::uint64_t> wake_clock, bool fast_rom) {
+    auto& cpu = *impl_;
+    if (clock_budget < 12U) throw std::invalid_argument{"Halt observation budget is too small"};
+    cpu.halt_budget = clock_budget;
+    cpu.wake_clock = wake_clock;
+    struct Scope {
+        bool& active;
+        explicit Scope(bool& value) : active(value) { active = true; }
+        ~Scope() { active = false; }
+    } scope{cpu.halt_audit};
+    try { run(entry, registers, (entry & 0xff0000U) | ((entry + 1U) & 0xffffU), 1, fast_rom); }
+    catch (const Impl::HaltYield&) {
+        const auto& r = cpu.r;
+        registers.a = r.a.w; registers.x = r.x.w; registers.y = r.y.w;
+        registers.direct = r.d.w; registers.stack = r.s.w;
+        registers.data_bank = r.b; registers.status = static_cast<unsigned>(r.p);
+    }
+    return {cpu.clocks, bool(cpu.r.wai), bool(cpu.r.stp)};
 }
 CpuInterruptRun AresCpu::enter_interrupt(std::uint32_t interrupted_pc,
     simulation::Wdc65816Registers& registers, std::uint16_t vector, bool fast_rom) {

@@ -28,8 +28,9 @@ entries match their sampling point, status sequence, state and bus timing.
 
 The callback alone does not deliver an interrupt handler. Timeline binding
 now connects it to live timer requests and latched delivery; see
-LIVE-INTERRUPT-VALIDATION.md. WAI/STP handling, DMA arbitration and overlapping
-GSU work remain scheduler work. The bounded audit
+LIVE-INTERRUPT-VALIDATION.md. WAI/STP handling is now covered separately by
+HALT-VALIDATION.md. DMA arbitration and overlapping GSU work remain scheduler
+work. The bounded audit
 does not certify emulation-mode execution or whole campaigns. GameSimulation
 does not yet install this timing path; ACCURATE remains unexposed and the
 packaged candidate remains unchanged.

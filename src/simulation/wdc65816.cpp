@@ -97,6 +97,8 @@ struct Wdc65816::Impl {
     std::uint32_t sampled_instruction_address{};
     std::shared_ptr<SnesCpuTimeline> timeline;
     bool sampled_nmi{}, sampled_irq{}, delivering_sampled_interrupt{};
+    bool waiting{}, stopped{}, last_step_instruction{};
+    std::uint32_t halt_instruction_address{};
     bool bus_clock_active{};
     bool scheduled_gameplay_bitmap_dma{};
     std::map<std::uint8_t, std::vector<std::uint8_t>> compatible_rom_banks;
@@ -293,8 +295,9 @@ struct Wdc65816::Impl {
     WDC65C816 cpu{&bus};
 
     void step_cpu() {
+        last_step_instruction = true;
         if (!bus_clock_callback && !timeline && !interrupt_sample_callback
-                && !sampled_nmi && !sampled_irq) {
+                && !sampled_nmi && !sampled_irq && !waiting && !stopped) {
             cpu.SingleStep();
             return;
         }
@@ -305,7 +308,11 @@ struct Wdc65816::Impl {
         } scope{bus_clock_active};
         cpu.cpu_state.ip &= cpu.cpu_state.ip_mask;
         sampled_instruction_address = cpu.program_address();
-        if (sampled_nmi || sampled_irq) {
+        if (waiting || stopped) {
+            last_step_instruction = false;
+            sampled_instruction_address = halt_instruction_address;
+            step_halt();
+        } else if (sampled_nmi || sampled_irq) {
             const auto type = sampled_nmi ? WDC65C816::NMI : WDC65C816::IRQ;
             if (sampled_nmi) sampled_nmi = false;
             else sampled_irq = false;
@@ -316,6 +323,19 @@ struct Wdc65816::Impl {
             // the instruction's eventual I flag by SingleStep's legacy path.
             WDC65C816::EmulateInstruction(&cpu);
         } else cpu.SingleStep();
+    }
+
+    void step_halt() {
+        const bool was_waiting = waiting;
+        cpu.LastCycle();
+        cpu.InternalOp();
+        // WAI performs one additional idle after the request wakes it. STP
+        // keeps clocking devices but ignores wake requests until CPU reset.
+        if (was_waiting && !waiting) cpu.InternalOp();
+    }
+    void require_call_entry() const {
+        if (waiting || stopped)
+            throw std::logic_error{"Cannot replace a halted CPU task; resume it or recreate the CPU to reset"};
     }
 
     void advance_cpu_clocks(std::uint32_t clocks) {
@@ -2770,7 +2790,8 @@ void Wdc65816::set_bus_clock_callback(BusClockCallback callback) {
     impl_->bus_clock_callback = std::move(callback);
     auto& hooks = impl_->cpu.timed_bus;
     hooks = {};
-    if (!impl_->bus_clock_callback && !impl_->timeline && !impl_->interrupt_sample_callback) return;
+    if (!impl_->bus_clock_callback && !impl_->timeline && !impl_->interrupt_sample_callback
+            && !impl_->waiting && !impl_->stopped) return;
     hooks.context = impl_.get();
     hooks.last_cycle = [](void* context, std::uint8_t status) {
         auto& state = *static_cast<Impl*>(context);
@@ -2781,12 +2802,28 @@ void Wdc65816::set_bus_clock_callback(BusClockCallback callback) {
                 bool(sources & 2U), bool(sources & 4U));
             state.sampled_nmi |= request.nmi;
             state.sampled_irq |= request.irq;
+            if (request.wake) state.waiting = false;
             if (request.nmi && (sources & 4U)) state.cpu.cpu_state.ClearInterruptSource(2U);
+        } else if (state.waiting || state.stopped) {
+            // Detaching the raster timeline must not turn WAI/STP into NOPs.
+            const auto sources = state.cpu.cpu_state.pending_interrupts.load(std::memory_order_acquire);
+            state.sampled_nmi |= bool(sources & 4U);
+            state.sampled_irq |= bool(sources & 2U) && !(status & 4U);
+            if (sources & 6U) state.waiting = false;
+            if (sources & 4U) state.cpu.cpu_state.ClearInterruptSource(2U);
         }
         const bool observed_pending = state.interrupt_sample_callback
             && state.interrupt_sample_callback({state.sampled_instruction_address,
                 state.cpu.cpu_state.cycle - state.host_setup_master_clocks, bool(status & 4U)});
         return observed_pending || state.sampled_nmi || state.sampled_irq;
+    };
+    hooks.halt = [](void* context, bool stop) {
+        auto& state = *static_cast<Impl*>(context);
+        if (!state.bus_clock_active || !state.timeline) return;
+        state.waiting = !stop;
+        state.stopped = stop;
+        state.halt_instruction_address = state.sampled_instruction_address;
+        state.step_halt();
     };
     hooks.idle = [](void* context, std::uint32_t clocks) {
         auto& state = *static_cast<Impl*>(context);
@@ -3023,6 +3060,7 @@ std::size_t Wdc65816::call(
     std::size_t instruction_limit,
     bool service_transfer_flag,
     bool long_return) {
+    impl_->require_call_entry();
     impl_->task_active = false;
     auto& cpu = impl_->cpu;
     cpu.SetRegister("p", registers.status);
@@ -3045,12 +3083,20 @@ std::size_t Wdc65816::call(
     cpu.SetRegister("pc", address);
 
     std::size_t instructions = 0;
+    std::size_t halt_steps = 0;
     std::array<std::uint32_t, 32> recent_program_counters{};
     std::vector<std::uint32_t> crash_entry_trace;
     std::uint32_t crash_entry{};
     while (true) {
         if (impl_->instruction_boundary_callback)
             impl_->instruction_boundary_callback(executed_master_clocks());
+        if (impl_->waiting) {
+            impl_->step_cpu();
+            if (impl_->waiting && ++halt_steps >= instruction_limit)
+                throw Wdc65816ExecutionError{"65C816 wait exceeded its idle-step budget; use a resumable task",
+                    address, cpu.program_address(), instructions};
+            continue;
+        }
         if (cpu.program_address() == return_sentinel) break;
         // BGS.ASM's waittrans macro waits for the NMI-side transfer engine to
         // clear TRANS_FLAG at WRAM $0000. During a bounded subroutine call no
@@ -3073,7 +3119,8 @@ std::size_t Wdc65816::call(
             throw Wdc65816ExecutionError{message.str(), address,
                 execution_address, instructions};
         }
-        if (instructions == instruction_limit) {
+        if (instructions == instruction_limit && !impl_->waiting && !impl_->stopped
+                && !impl_->sampled_nmi && !impl_->sampled_irq) {
             std::ostringstream message;
             message << "65C816 subroutine at $" << std::hex << address
                     << " exceeded the instruction limit at $"
@@ -3111,7 +3158,13 @@ std::size_t Wdc65816::call(
             = pc;
         const auto interrupt_entries = impl_->interrupt_entries;
         impl_->step_cpu();
-        if (impl_->interrupt_entries == interrupt_entries) ++instructions;
+        if (impl_->last_step_instruction && impl_->interrupt_entries == interrupt_entries) ++instructions;
+        if (impl_->stopped || (impl_->waiting && ++halt_steps >= instruction_limit)) {
+            throw Wdc65816ExecutionError{impl_->stopped
+                    ? "65C816 stopped; use a resumable task and reset the CPU to restart"
+                    : "65C816 wait exceeded its idle-step budget; use a resumable task",
+                address, cpu.program_address(), instructions};
+        }
     }
 
     registers.a = cpu.a();
@@ -3130,6 +3183,7 @@ Wdc65816TaskResult Wdc65816::begin_long_task(
     std::span<const std::uint32_t> stop_addresses,
     std::size_t instruction_limit,
     bool service_transfer_flag) {
+    impl_->require_call_entry();
     auto& cpu = impl_->cpu;
     impl_->task_active = true;
     impl_->task_entry = address;
@@ -3157,6 +3211,7 @@ Wdc65816TaskResult Wdc65816::begin_near_task(
     std::span<const std::uint32_t> stop_addresses,
     std::size_t instruction_limit,
     bool service_transfer_flag, std::optional<std::uint8_t> saved_data_bank) {
+    impl_->require_call_entry();
     auto& cpu = impl_->cpu;
     impl_->task_active = true;
     impl_->task_entry = address;
@@ -3204,6 +3259,17 @@ Wdc65816TaskResult Wdc65816::run_task(
     while (true) {
         if (impl_->instruction_boundary_callback)
             impl_->instruction_boundary_callback(executed_master_clocks());
+        if (impl_->waiting || impl_->stopped) {
+            impl_->step_cpu();
+            if (impl_->waiting || impl_->stopped) {
+                result.waiting = impl_->waiting;
+                result.stopped = impl_->stopped;
+                result.stop_address = cpu.program_address();
+                break;
+            }
+            executed_instruction = true;
+            continue;
+        }
         const auto pc = cpu.program_address();
         if (impl_->service_zero_projection(pc)) continue;
         if (pc == impl_->task_return_sentinel) {
@@ -3232,7 +3298,8 @@ Wdc65816TaskResult Wdc65816::run_task(
             throw Wdc65816ExecutionError{message.str(), impl_->task_entry,
                 pc, result.instructions};
         }
-        if (result.instructions == instruction_limit) {
+        if (result.instructions == instruction_limit && !impl_->waiting && !impl_->stopped
+                && !impl_->sampled_nmi && !impl_->sampled_irq) {
             std::ostringstream message;
             message << "65C816 task at $" << std::hex << impl_->task_entry
                     << " exceeded the instruction limit at $" << pc
@@ -3262,7 +3329,13 @@ Wdc65816TaskResult Wdc65816::run_task(
             result.instructions % recent_program_counters.size()] = pc;
         const auto interrupt_entries = impl_->interrupt_entries;
         impl_->step_cpu();
-        if (impl_->interrupt_entries == interrupt_entries) ++result.instructions;
+        if (impl_->last_step_instruction && impl_->interrupt_entries == interrupt_entries) ++result.instructions;
+        if (impl_->waiting || impl_->stopped) {
+            result.waiting = impl_->waiting;
+            result.stopped = impl_->stopped;
+            result.stop_address = cpu.program_address();
+            break;
+        }
         executed_instruction = true;
     }
 
