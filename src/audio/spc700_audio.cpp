@@ -28,6 +28,7 @@ constexpr std::size_t kSmpRegistersOffset = kSpcRamOffset + 0xf0U;
 constexpr std::size_t kDspFlags = 0x6cU;
 constexpr int kClocksPerLogicTick = spc_clock_rate / 20;
 static_assert(kClocksPerLogicTick == 51'200);
+static_assert(Spc700Audio::clocks_per_frame == kClocksPerLogicTick);
 static_assert(Spc700Audio::stereo_frames_per_logic_tick
               == static_cast<std::size_t>(spc_sample_rate / 20));
 
@@ -65,6 +66,11 @@ struct Spc700Audio::Impl {
     bool uploading{true};
     bool loaded{};
     std::size_t upload_count{};
+    bool streaming{};
+    std::uint32_t stream_clock{};
+    std::uint32_t stream_origin{};
+    std::size_t stream_sample_offset{};
+    std::vector<std::int16_t> stream_output;
 
     Impl() {
         if (spc == nullptr || filter == nullptr) {
@@ -189,6 +195,73 @@ struct Spc700Audio::Impl {
         }
     }
 
+    void start_stream() {
+        stream_output.assign(Spc700Audio::stereo_frames_per_logic_tick * 2U,0);
+        streaming=true;
+        stream_clock=stream_origin=0U;
+        stream_sample_offset=0U;
+        if (loaded) attach_stream_output();
+    }
+
+    void attach_stream_output() {
+        spc_set_output(spc,stream_output.data()+stream_sample_offset,
+            static_cast<int>(stream_output.size()-stream_sample_offset));
+    }
+
+    void sync_stream(std::uint32_t clock) {
+        if (loaded) static_cast<void>(spc_read_port(spc,static_cast<int>(clock-stream_origin),0));
+        stream_clock=clock;
+    }
+
+    void finish_stream_segment(std::uint32_t clock) {
+        if (!loaded) return;
+        spc_end_frame(spc,static_cast<int>(clock-stream_origin));
+        const auto generated=std::clamp(spc_sample_count(spc),0,
+            static_cast<int>(stream_output.size()-stream_sample_offset));
+        if (generated) spc_filter_run(filter,stream_output.data()+stream_sample_offset,generated);
+        stream_sample_offset+=static_cast<std::size_t>(generated);
+        // The DSP may have copied look-ahead samples into this buffer.
+        // end_frame retained those internally; do not publish them during
+        // the silent upload interval following this segment.
+        std::fill(stream_output.begin()+stream_sample_offset,stream_output.end(),0);
+        stream_origin=clock;
+    }
+
+    void advance_stream(std::uint32_t clock,
+        std::span<const simulation::ApuPortWrite> writes,CommandStream command_stream) {
+        if (!streaming) start_stream();
+        for (const auto& write : writes) {
+            sync_stream(write.clock_offset);
+            if (!uploading && write.port==0U && write.value==0xffU) {
+                // Preserve audio and live ARAM up to the actual restart,
+                // before the bank loader resets the processor/filter.
+                finish_stream_segment(write.clock_offset);
+                begin_upload();
+            }
+            const auto was_loaded=loaded;
+            if (uploading) consume_upload_write(write);
+            else {
+                const auto global_pause=write.port==3U && (write.value==1U || write.value==2U);
+                const auto accepts=command_stream==CommandStream::effects
+                    ? write.port!=0U : write.port==0U || global_pause;
+                if (accepts) spc_write_port(spc,static_cast<int>(write.clock_offset-stream_origin),
+                    write.port,write.value);
+            }
+            if (!was_loaded && loaded) {
+                // The upload is silent until its execute packet. Place the
+                // new driver's samples on this frame's output timeline.
+                stream_origin=write.clock_offset;
+                stream_sample_offset=static_cast<std::size_t>(write.clock_offset/32U)*2U;
+                attach_stream_output();
+            }
+        }
+        sync_stream(clock);
+        if (clock==Spc700Audio::clocks_per_frame) {
+            finish_stream_segment(clock);
+            streaming=false;
+        }
+    }
+
     std::vector<std::int16_t> render(
         std::span<const simulation::ApuPortWrite> writes,
         bool split_upload_restarts = false,
@@ -278,6 +351,7 @@ Spc700Audio& Spc700Audio::operator=(Spc700Audio&&) noexcept = default;
 
 std::vector<std::int16_t> Spc700Audio::render_logic_tick(
     std::span<const simulation::ApuPortWrite> writes) {
+    if (music_impl_->streaming) throw std::logic_error{"Cannot render a legacy tick during an incomplete audio frame"};
     last_music_samples_ = music_impl_->render(
         writes, false, nullptr, Impl::CommandStream::music);
     last_effect_samples_ = effects_impl_->render(
@@ -297,8 +371,29 @@ std::vector<std::int16_t> Spc700Audio::render_logic_tick(
     return mixed;
 }
 
+bool Spc700Audio::advance_frame(std::uint32_t clock,
+    std::span<const simulation::ApuPortWrite> writes) {
+    auto previous=music_impl_->streaming ? music_impl_->stream_clock : 0U;
+    if (clock<previous || clock>clocks_per_frame)
+        throw std::invalid_argument{"Audio frame clock is outside the remaining frame"};
+    // Validate before either stem advances, so malformed input cannot leave
+    // the music and effects processors at different times.
+    for (const auto& write : writes) {
+        if (write.port>3U || write.clock_offset<previous || write.clock_offset>clock)
+            throw std::invalid_argument{"Audio write is outside the current frame interval"};
+        previous=write.clock_offset;
+    }
+    music_impl_->advance_stream(clock,writes,Impl::CommandStream::music);
+    effects_impl_->advance_stream(clock,writes,Impl::CommandStream::effects);
+    if (clock!=clocks_per_frame) return false;
+    last_music_samples_=std::move(music_impl_->stream_output);
+    last_effect_samples_=std::move(effects_impl_->stream_output);
+    return true;
+}
+
 std::size_t Spc700Audio::prime_upload_sequence(
     std::span<const simulation::ApuPortWrite> writes) {
+    if (music_impl_->streaming) throw std::logic_error{"Cannot prime uploads during an incomplete audio frame"};
     std::size_t music_frames{};
     std::size_t effect_frames{};
     static_cast<void>(music_impl_->render(
@@ -323,10 +418,14 @@ std::size_t Spc700Audio::uploaded_bytes() const noexcept {
 std::array<std::uint8_t, 4> Spc700Audio::output_ports() const noexcept {
     if (!driver_loaded()) return {};
     return {
-        static_cast<std::uint8_t>(spc_read_port(music_impl_->spc, 0, 0)),
-        static_cast<std::uint8_t>(spc_read_port(effects_impl_->spc, 0, 1)),
-        static_cast<std::uint8_t>(spc_read_port(effects_impl_->spc, 0, 2)),
-        static_cast<std::uint8_t>(spc_read_port(effects_impl_->spc, 0, 3)),
+        static_cast<std::uint8_t>(spc_read_port(music_impl_->spc,
+            music_impl_->streaming ? static_cast<int>(music_impl_->stream_clock-music_impl_->stream_origin) : 0, 0)),
+        static_cast<std::uint8_t>(spc_read_port(effects_impl_->spc,
+            effects_impl_->streaming ? static_cast<int>(effects_impl_->stream_clock-effects_impl_->stream_origin) : 0, 1)),
+        static_cast<std::uint8_t>(spc_read_port(effects_impl_->spc,
+            effects_impl_->streaming ? static_cast<int>(effects_impl_->stream_clock-effects_impl_->stream_origin) : 0, 2)),
+        static_cast<std::uint8_t>(spc_read_port(effects_impl_->spc,
+            effects_impl_->streaming ? static_cast<int>(effects_impl_->stream_clock-effects_impl_->stream_origin) : 0, 3)),
     };
 }
 

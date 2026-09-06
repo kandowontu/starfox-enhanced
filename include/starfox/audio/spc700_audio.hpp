@@ -29,10 +29,12 @@ public:
         std::int8_t main_volume_left{};
         std::int8_t main_volume_right{};
         std::array<std::uint8_t, 4> output_ports{};
+        friend bool operator==(const State&,const State&) = default;
     };
 
     static constexpr std::uint32_t sample_rate = 32'000;
     static constexpr std::size_t stereo_frames_per_logic_tick = 1'600;
+    static constexpr std::uint32_t clocks_per_frame = 51'200;
 
     Spc700Audio();
     ~Spc700Audio();
@@ -45,6 +47,15 @@ public:
     // exactly 50 ms of native 32 kHz interleaved stereo output.
     [[nodiscard]] std::vector<std::int16_t> render_logic_tick(
         std::span<const simulation::ApuPortWrite> writes);
+
+    // Advance within a 50 ms audio frame without waiting for gameplay to
+    // complete. Times and write offsets are SPC clocks relative to this
+    // frame and must be monotonic. Output ports are live after each call.
+    // At clocks_per_frame, publishes both PCM stems and returns true; the
+    // next call starts a new frame. Does not mix with legacy rendering while
+    // a frame is incomplete.
+    [[nodiscard]] bool advance_frame(std::uint32_t clock,
+        std::span<const simulation::ApuPortWrite> writes = {});
 
     // BGM commands (CPU port 0) and effect commands (continuous engine and
     // positional audio on ports 1/2 plus queued effects on port 3) run on

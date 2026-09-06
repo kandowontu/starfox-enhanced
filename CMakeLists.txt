@@ -987,6 +987,8 @@ if(STARFOX_BUILD_TESTS)
     target_link_libraries(starfox_multiplayer_input_tests PRIVATE starfox_core)
     add_executable(starfox_ending_audio_tests tests/ending_audio_tests.cpp)
     target_link_libraries(starfox_ending_audio_tests PRIVATE starfox_core)
+    add_executable(starfox_stream_audio_tests tests/stream_audio_tests.cpp)
+    target_link_libraries(starfox_stream_audio_tests PRIVATE starfox_core)
 
     add_executable(starfox_hitlist_tests tests/hitlist_tests.cpp)
     add_executable(starfox_level_clear_tests tests/level_clear_tests.cpp)
@@ -1104,6 +1106,9 @@ if(STARFOX_BUILD_TESTS)
             "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
             "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT" LEVEL2_1 --main)
         set_tests_properties(starfox_upstream_native_main starfox_upstream_native_main_input PROPERTIES TIMEOUT 180)
+        add_test(NAME starfox_upstream_stream_audio COMMAND starfox_stream_audio_tests
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT")
         set(STARFOX_TEST_MSU_PACK "${STARFOX_MSU1_PACK}")
         if(NOT STARFOX_TEST_MSU_PACK AND EXISTS "${CMAKE_CURRENT_BINARY_DIR}/Starfox-MSU1.PAK")
             set(STARFOX_TEST_MSU_PACK "${CMAKE_CURRENT_BINARY_DIR}/Starfox-MSU1.PAK")
@@ -1298,6 +1303,8 @@ if(STARFOX_BUILD_TESTS)
         add_test(NAME starfox_ex_native_main_input COMMAND starfox_native_transfer_input_tests
             "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}" LEVEL7_2 --main)
         set_tests_properties(starfox_ex_native_main starfox_ex_native_main_input PROPERTIES TIMEOUT 180)
+        add_test(NAME starfox_ex_stream_audio COMMAND starfox_stream_audio_tests
+            "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}")
         add_test(NAME starfox_ex_multiplayer_input COMMAND starfox_multiplayer_input_tests
             "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}")
         set_tests_properties(starfox_ex_multiplayer_input PROPERTIES TIMEOUT 120)
