@@ -2843,20 +2843,31 @@ public:
           table_(address(symbols, "RUMBLE_TABLE")) {}
 
     void advance(starfox::simulation::MapVm& map, SDL_Gamepad* gamepad,
-        bool enabled) noexcept {
+        bool enabled, bool native_gameplay = false) {
         if (!available() || !enabled || gamepad == nullptr) {
             stop(gamepad);
             return;
         }
+        if (native_gameplay) {
+            if (!live_state_) live_state_ = std::make_unique<
+                starfox::simulation::NativePresentationSnapshot>();
+            map.capture_live_presentation(*live_state_);
+        }
+        const auto read = [&](std::uint32_t address) {
+            if (native_gameplay) {
+                if (const auto value=live_state_->read_ram(address)) return *value;
+            }
+            return map.read_native_byte(address);
+        };
         auto output = std::uint8_t{};
-        auto sequence_index = map.read_native_byte(index_);
+        auto sequence_index = read(index_);
         for (std::size_t guard = 0U; guard < 4U; ++guard) {
             if (sequence_index == 0U) {
-                output = map.read_native_byte(time_) == 0U
-                    ? 0U : map.read_native_byte(command_);
+                output = read(time_) == 0U
+                    ? 0U : read(command_);
                 break;
             }
-            output = map.read_native_byte(
+            output = read(
                 table_ + static_cast<std::uint32_t>(sequence_index - 1U));
             sequence_index = static_cast<std::uint8_t>(sequence_index + 1U);
             map.write_native_byte(index_, sequence_index);
@@ -2869,7 +2880,7 @@ public:
             sequence_index = 1U;
             map.write_native_byte(index_, sequence_index);
         }
-        const auto remaining = map.read_native_byte(time_);
+        const auto remaining = read(time_);
         if (remaining != 0U) {
             map.write_native_byte(time_,
                 static_cast<std::uint8_t>(remaining - 1U));
@@ -2906,6 +2917,7 @@ private:
     std::uint32_t index_{};
     std::uint32_t table_{};
     bool active_{};
+    std::unique_ptr<starfox::simulation::NativePresentationSnapshot> live_state_;
 };
 
 class MsuFadeOutput {
@@ -5215,6 +5227,13 @@ int main(int argc, char** argv) {
                             break;
                         }
                     }
+                    // Rumble is a host peripheral in these cartridge builds.
+                    // Service it once per raster phase, even while MAIN has
+                    // not published a completed view. Read live RAM without
+                    // releasing the renderer's held presentation snapshot.
+                    rumble.advance(game.map(), gamepad,
+                        game.rumble() && active_experience
+                            == starfox::simulation::Experience::original, true);
                     continue;
                 }
                 game.present_frame();

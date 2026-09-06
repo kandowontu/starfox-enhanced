@@ -124,3 +124,19 @@ The delayed native credits jingle and one-ship Star Wolf reports have not been
 reproduced; passing related replays does not establish that those reports are
 fixed. Full campaign parity and physical controller/older-PC behavior remain
 unverified. No new release has been published from this checkpoint.
+
+## Native rumble servicing
+
+ACCURATE now services the existing Original-port rumble adapter once per
+desktop raster phase, including phases with unfinished MAIN work. It reads a
+live RAM snapshot and writes the host-owned timer/index without releasing the
+held renderer view. Legacy rumble behavior and EX's existing availability are
+unchanged. The native replay seeds a timed command and verifies that the
+cartridge leaves its timer unchanged, preventing duplicate timer advancement
+by the host and source IRQ.
+
+After rebuilding, six focused tests passed in 15.52 seconds: both transfer and
+MAIN replays and both desktop pace matrices. The log is retained in
+`validation/native-rumble-integration-regressions.txt`. These checks cover
+scheduler integration and timer ownership; physical motor output remains
+unverified.

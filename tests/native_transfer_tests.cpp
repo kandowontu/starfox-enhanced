@@ -74,10 +74,21 @@ int main(int argc,char** argv) try {
         return game.native_transfer_clock()-before;
     };
     for (unsigned frame=0;frame<9U;++frame) {
+        const auto rumble_time=symbols.find("RUMBLE_TIME");
+        if (frame==7U && !rumble_time.empty()) {
+            for (auto* game : {small.get(),large.get()}) {
+                game->map().write_native_byte(symbols.find("RUMBLE_INDEX").at(0),0U);
+                game->map().write_native_byte(rumble_time[0],250U);
+            }
+        }
         // The final sub-instruction quantum lands on phase entries as
         // deadline yields, rather than only as explicit stop-address yields.
         const auto small_clocks=run(*small,frame==8U ? 2U : 4096U);
         const auto large_clocks=run(*large,100'000'000U);
+        if (frame==7U && !rumble_time.empty())
+            require(small->map().read_native_byte(rumble_time[0])==250U
+                && large->map().read_native_byte(rumble_time[0])==250U,
+                "Native cartridge advanced the host-owned rumble timer");
         require(small_clocks==large_clocks && object_bytes(*small)==object_bytes(*large)
             && small->draw_order()==large->draw_order()
             && small->map().ppu_state().vram==large->map().ppu_state().vram
