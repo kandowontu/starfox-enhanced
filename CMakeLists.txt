@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(starfox_enhanced VERSION 0.0.4 LANGUAGES CXX)
+project(starfox_enhanced VERSION 0.0.4.1 LANGUAGES CXX)
 
 if(WINDOWS_STORE)
     # Apply the UWP ABI to the entire dependency graph, not only the SDL entry
@@ -513,7 +513,7 @@ if(STARFOX_BUILD_RUNTIME)
             VERBATIM)
         set(STARFOX_UWP_MANIFEST
             "${CMAKE_CURRENT_BINARY_DIR}/Package.appxmanifest")
-        set(STARFOX_UWP_BUILD_REVISION "0" CACHE STRING
+        set(STARFOX_UWP_BUILD_REVISION "1" CACHE STRING
             "Fourth component of the Xbox UWP package version")
         if(NOT STARFOX_UWP_BUILD_REVISION MATCHES "^[0-9]+$")
             message(FATAL_ERROR
@@ -567,8 +567,8 @@ if(STARFOX_BUILD_RUNTIME)
             OUTPUT_NAME "StarFoxEnhanced"
             MACOSX_BUNDLE_BUNDLE_NAME "Star Fox Enhanced"
             MACOSX_BUNDLE_GUI_IDENTIFIER "com.starfox.enhanced"
-            MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
-            MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+            MACOSX_BUNDLE_SHORT_VERSION_STRING "0.0.41"
+            MACOSX_BUNDLE_BUNDLE_VERSION "0.0.41"
             MACOSX_BUNDLE_INFO_PLIST
                 "${CMAKE_CURRENT_SOURCE_DIR}/platform/apple/Info.plist.in")
     endif()
@@ -795,7 +795,7 @@ if(STARFOX_BUILD_RUNTIME)
         include("$ENV{VITASDK}/share/vita.cmake" REQUIRED)
         set(STARFOX_VITA_TITLE_ID "SFXE00001" CACHE STRING
             "Nine-character PS Vita title id")
-        set(STARFOX_VITA_APP_VERSION "00.04" CACHE STRING
+        set(STARFOX_VITA_APP_VERSION "00.05" CACHE STRING
             "Two-component PS Vita application version")
         vita_create_self(eboot.bin starfox_pc)
         vita_create_vpk(StarFoxEnhanced.vpk
