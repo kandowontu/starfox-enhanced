@@ -31,6 +31,15 @@ port still needs explicit last-cycle hooks, pending-interrupt bus reads and
 delivery connected to SnesCpuTimeline. DMA arbitration and overlapping GSU
 work remain necessary before exposing ACCURATE as the default pace.
 
+The production interrupt-entry ordering is now corrected separately: the
+stack receives the old status, then I is set and D cleared before vector
+reads. The original implementation delayed those changes until after both
+reads. A bus-status comparison exposed 5,760 differences among 6,912 hardware
+interrupt cases despite equal final state and clock totals. The hardware
+audit now checks P at every bus step; the CPU audit does the same for BRK and
+COP, leaving its new `interrupt_status_bus_equal` field blank for other
+instructions. See INTERRUPT-STATUS-VALIDATION.md for the resulting evidence.
+
 Evidence: `docs/validation/interrupt-sampling-summary.json` and
 `docs/validation/interrupt-sampling-regression.log`, with captured test output
 in `docs/validation/interrupt-sampling-cpu.log`. Both relevant CTest checks

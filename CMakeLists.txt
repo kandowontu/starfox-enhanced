@@ -114,7 +114,7 @@ FetchContent_MakeAvailable(retro_cpu)
 # arithmetic, bus-order and instruction-timing corrections in a reviewable patch.
 find_package(Git REQUIRED)
 set(retro_cpu_patch_files)
-foreach(retro_cpu_patch IN ITEMS retro-cpu-parity.patch retro-cpu-interrupts.patch retro-cpu-direct-index.patch retro-cpu-bus-clock.patch retro-cpu-bus-order.patch)
+foreach(retro_cpu_patch IN ITEMS retro-cpu-parity.patch retro-cpu-interrupts.patch retro-cpu-direct-index.patch retro-cpu-bus-clock.patch retro-cpu-bus-order.patch retro-cpu-interrupt-status.patch)
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/cmake/${retro_cpu_patch}")
     list(APPEND retro_cpu_patch_files "${CMAKE_CURRENT_SOURCE_DIR}/cmake/${retro_cpu_patch}")

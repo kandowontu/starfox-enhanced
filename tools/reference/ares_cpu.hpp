@@ -24,6 +24,7 @@ class AresCpu {
 public:
     explicit AresCpu(simulation::Wdc65816& memory);
     ~AresCpu();
+    [[nodiscard]] std::uint8_t status_register() const noexcept;
     void set_bus_clock_callback(simulation::Wdc65816::BusClockCallback callback);
     // Observe the source's actual last-cycle polling point. Returning true
     // also selects its pending-interrupt bus behavior (idleIRQ dummy reads).

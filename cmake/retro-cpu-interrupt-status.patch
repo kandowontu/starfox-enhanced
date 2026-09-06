@@ -1,0 +1,20 @@
+--- a/cpu/65816/cpu_65c816.cc
++++ b/cpu/65816/cpu_65c816.cc
+@@ -414,13 +414,13 @@
+ 		vector = (mode_emulation ? 0xFFFA : 0xFFEA);
+ 		break;
+ 	}
++	// Preserve the pushed P, then set I and clear D before vector reads.
++	cpu_state.interrupts = 0;
++	if(!mode_native_6502)
++		cpu_state.other_flags &= 0xFFF7;
+ 	ReadRaw(vector, pc);
+ 	cpu_state.ip = pc;
+ 	cpu_state.code_segment_base = 0;
+-
+-	cpu_state.interrupts = 0;
+-	if(!mode_native_6502)
+-		cpu_state.other_flags &= 0xFFF7;
+ 
+ 	if(type == IRQ || type == NMI)
+ 		sys->io_devices.irq_taken(sys->io_devices.context, (type == IRQ) ? 1 : 2);

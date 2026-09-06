@@ -91,6 +91,9 @@ struct AresCpu::Impl : ares::WDC65816 {
 
 AresCpu::AresCpu(simulation::Wdc65816& memory) : impl_(std::make_unique<Impl>(memory)) {}
 AresCpu::~AresCpu() = default;
+std::uint8_t AresCpu::status_register() const noexcept {
+    return static_cast<unsigned>(impl_->r.p);
+}
 void AresCpu::set_bus_clock_callback(simulation::Wdc65816::BusClockCallback callback) {
     impl_->bus_clock_callback = std::move(callback);
 }

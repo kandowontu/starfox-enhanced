@@ -121,6 +121,9 @@ public:
     // This is a measurement input, not the game's current pace scheduler.
     [[nodiscard]] std::uint64_t executed_master_clocks() const noexcept;
     [[nodiscard]] std::uint32_t program_address() const noexcept;
+    // Current native P, including during bus callbacks. Reading it does not
+    // sample interrupts or advance the CPU.
+    [[nodiscard]] std::uint8_t status_register() const noexcept;
     using InstructionBoundaryCallback = std::function<void(std::uint64_t)>;
     // Observe cumulative native clocks before instructions and at call/task
     // boundaries. Resuming a paused task may repeat the same timestamp.

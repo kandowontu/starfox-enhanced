@@ -1,0 +1,9 @@
+{
+  "scratch": "C:\\Users\\kando\\Documents\\ChatGPT\\Starfox Enhanced\\tmp\\interrupt-status-patches-ephtv2zb",
+  "checks": {
+    "fresh": "matches production after apply and repeat",
+    "fresh-drift": "rejected without modifying file",
+    "upgrade-five": "matches production after apply and repeat",
+    "upgrade-five-drift": "rejected without modifying file"
+  }
+}

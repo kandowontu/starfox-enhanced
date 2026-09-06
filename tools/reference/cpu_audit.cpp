@@ -90,7 +90,7 @@ int main(int argc, char** argv) try {
     if (argc == 2) file.open(argv[1]);
     if (argc == 2 && !file) throw std::runtime_error("Cannot create CPU audit CSV");
     auto& out = file.is_open() ? file : std::cout;
-    out << "opcode,status,direct,fast,registers_equal,memory_equal,port_clocks,ares_clocks,index,bus_equal,port_bus_steps,ares_bus_steps,ares_interrupt_samples\n";
+    out << "opcode,status,direct,fast,registers_equal,memory_equal,port_clocks,ares_clocks,index,bus_equal,port_bus_steps,ares_bus_steps,ares_interrupt_samples,interrupt_status_bus_equal\n";
     std::vector<Operation> ops;
     for (unsigned group = 0; group < 8; ++group) {
         for (const auto mode : std::array<Operation, 15>{{
@@ -203,7 +203,12 @@ int main(int argc, char** argv) try {
         regs.data_bank = 0x7e;
         auto reference_regs = regs;
         std::vector<std::uint32_t> port_bus, reference_bus;
-        port.set_bus_clock_callback([&](std::uint32_t clocks) { port_bus.push_back(clocks); });
+        const bool software_interrupt = op.opcode == 0 || op.opcode == 2;
+        std::vector<std::uint8_t> port_status, reference_status;
+        port.set_bus_clock_callback([&](std::uint32_t clocks) {
+            port_bus.push_back(clocks);
+            if (software_interrupt) port_status.push_back(port.status_register());
+        });
         const std::array stops{stop};
         const auto actual = port.begin_long_task(entry, regs, stops, 100);
         reference::AresCpu reference{memory};
@@ -212,7 +217,10 @@ int main(int argc, char** argv) try {
             samples.push_back(sample);
             return false;
         });
-        reference.set_bus_clock_callback([&](std::uint32_t clocks) { reference_bus.push_back(clocks); });
+        reference.set_bus_clock_callback([&](std::uint32_t clocks) {
+            reference_bus.push_back(clocks);
+            if (software_interrupt) reference_status.push_back(reference.status_register());
+        });
         const auto expected = reference.run(entry, reference_regs, stops[0], 100, fast);
         bool registers_equal = state(regs) == state(reference_regs);
         bool memory_equal = true;
@@ -222,7 +230,9 @@ int main(int argc, char** argv) try {
                 break;
             }
         const bool bus_equal = port_bus == reference_bus;
-        const bool clocks_equal = port.executed_master_clocks() == expected.master_clocks && bus_equal;
+        const bool status_bus_equal = port_status == reference_status;
+        const bool clocks_equal = port.executed_master_clocks() == expected.master_clocks && bus_equal
+            && status_bus_equal;
         ++cases;
         if (!registers_equal || !memory_equal) ++functional;
         if (!clocks_equal) ++timing;
@@ -237,6 +247,8 @@ int main(int argc, char** argv) try {
         out << ',';
         for (const auto& sample : samples)
             out << sample.instruction_address << ':' << sample.master_clocks << ':' << sample.masked << '|';
+        out << ',';
+        if (software_interrupt) out << status_bus_equal;
         out << '\n';
         if (samples.size() != expected.instructions)
             throw std::runtime_error("Missing source interrupt sampling point");

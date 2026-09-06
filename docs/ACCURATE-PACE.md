@@ -41,6 +41,9 @@ The reference CPU audit now records exact last-cycle sample clocks and the I
 flag at those points, including both initial I states. Native delivery must
 also reproduce the pending-interrupt dummy read used by idleIRQ instructions;
 sampling only after an instruction misses both flag ordering and bus work.
+Interrupt entry now preserves the stacked status and sets I/clears D before
+vector reads, matching the source's hardware interrupt, BRK and COP order.
+This corrects an entry-phase difference; it does not yet supply sampling hooks.
 See STAGE-STATE-PARITY-VALIDATION.md and TIMING-PROFILE-VALIDATION.md for measured
 results and remaining limits, and BUS-TIMELINE-VALIDATION.md for the shared
 clock and bus-order validation.

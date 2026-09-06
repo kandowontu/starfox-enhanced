@@ -2735,6 +2735,9 @@ std::uint64_t Wdc65816::executed_master_clocks() const noexcept {
 std::uint32_t Wdc65816::program_address() const noexcept {
     return impl_->cpu.program_address();
 }
+std::uint8_t Wdc65816::status_register() const noexcept {
+    return impl_->cpu.GetStatusRegister();
+}
 
 void Wdc65816::set_instruction_boundary_callback(
     InstructionBoundaryCallback callback, bool owns_gameplay_bitmap_dma) {

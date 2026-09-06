@@ -1,0 +1,22 @@
+{
+  "hardware_interrupt_cases": 6912,
+  "status_bus_mismatches_before": 5760,
+  "status_bus_mismatches_after": 0,
+  "prior_hardware_observations_unchanged": true,
+  "cpu_cases": 40512,
+  "software_interrupt_status_cases": 192,
+  "software_interrupt_status_mismatches": 0,
+  "desktop_sha256": "0ba99d9a36e682cece86893aee6b3725d37dd81ed48774647b749eb3dc9bd318",
+  "interrupt_csv_sha256": "0a3b4b68aeaf47a1652b8c36672055e7f3f98e5594ac475fc18f4fd91359f874",
+  "cpu_csv_sha256": "25057ec26db13c8897e613a876cc62cdb95de8e5886d01a6f2fa3ac337e13d57",
+  "limitations": [
+    "No production last-cycle sampling hooks or pending interrupt dummy reads",
+    "DMA/GSU overlap and EX transfer mismatch unresolved",
+    "Packaged candidate unchanged"
+  ],
+  "ctest": {
+    "passed": 70,
+    "total": 70,
+    "seconds": 259.72
+  }
+}
