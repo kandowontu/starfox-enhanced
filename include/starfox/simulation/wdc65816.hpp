@@ -154,9 +154,12 @@ public:
     void set_interrupt_sample_callback(InterruptSampleCallback callback);
     // Bind live timer/blanking/counter registers and advance their shared
     // timeline during native bus operations. Null restores bounded-call I/O.
-    // Interrupt delivery and DMA arbitration are still scheduler-owned.
+    // Native IRQ/NMI requests are sampled at lastCycle and delivered at the
+    // next CPU step. Accepted requests survive detach. WAI/STP scheduling and
+    // DMA arbitration are not supplied by this binding.
     void set_cpu_timeline(std::shared_ptr<SnesCpuTimeline> timeline);
-    // Hardware signals are sampled at native instruction boundaries. IRQ is
+    // Without a timeline, hardware signals use legacy instruction-boundary
+    // sampling; with one they use the live last-cycle polling point. IRQ is
     // level-sensitive; the device must release it. NMI is a latched edge and
     // is acknowledged on entry. Neither API replaces registers or the stack.
     void set_irq_line(bool asserted) noexcept;

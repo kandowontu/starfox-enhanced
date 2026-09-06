@@ -15,6 +15,107 @@ void advance_to(SnesCpuTimeline& clock, unsigned vertical, unsigned horizontal) 
     throw std::runtime_error{"unreachable test beam position"};
 }
 int main() try {
+    {
+        std::vector<std::uint8_t> bytes(0x8000U, 0xeaU);
+        bytes[0x40] = bytes[0x50] = 0x40U; // IRQ/NMI handlers: RTI
+        bytes[0x7fee] = 0x40U; bytes[0x7fef] = 0x80U;
+        bytes[0x7fea] = 0x50U; bytes[0x7feb] = 0x80U;
+        const starfox::assets::RomImage interrupt_rom{bytes};
+        for (const bool nmi : {false, true}) {
+            Wdc65816 cpu{interrupt_rom};
+            auto clock = std::make_shared<SnesCpuTimeline>();
+            cpu.set_cpu_timeline(clock);
+            if (nmi) {
+                advance_to(*clock, 225U, 10U);
+                cpu.write8(0x4200U, 0x80U);
+            } else {
+                cpu.write8(0x4207U, 0U);
+                cpu.write8(0x4208U, 0U);
+                cpu.write8(0x4200U, 0x10U);
+            }
+            Wdc65816Registers registers;
+            registers.status = 0U;
+            const std::array stops{nmi ? 0x8050U : 0x8040U};
+            const auto task = cpu.begin_long_task(0x8000U, registers, stops, 8);
+            require(task.instructions == (nmi ? 1U : 2U) && cpu.interrupts_taken() == 1U
+                && cpu.executed_master_clocks() == (nmi ? 78U : 92U),
+                "mapped raster timer/NMI requests did not reach native interrupt delivery");
+        }
+        for (const bool cli : {false, true}) {
+            bytes[0] = cli ? 0x58U : 0x78U;
+            const starfox::assets::RomImage flag_rom{bytes};
+            Wdc65816 cpu{flag_rom};
+            cpu.set_cpu_timeline(std::make_shared<SnesCpuTimeline>());
+            cpu.set_irq_line(true);
+            Wdc65816Registers registers;
+            registers.status = cli ? 4U : 0U;
+            const std::array stops{0x8040U};
+            const auto task = cpu.begin_long_task(0x8000U, registers, stops, 8);
+            require(task.stop_address == 0x8040U && task.instructions == (cli ? 2U : 1U)
+                && cpu.interrupts_taken() == 1U
+                && cpu.executed_master_clocks() == (cli ? 92U : 78U)
+                && bool(cpu.read8(0x1f9U) & 4U) == !cli,
+                "live IRQ delivery re-tested I after CLI/SEI or stacked the sampled rather than final status");
+        }
+        for (const bool late : {false, true}) {
+            Wdc65816 cpu{interrupt_rom};
+            cpu.set_cpu_timeline(std::make_shared<SnesCpuTimeline>());
+            std::uint64_t clocks{};
+            bool injected{};
+            cpu.set_bus_clock_callback([&](std::uint32_t count) {
+                clocks += count;
+                if (!injected && clocks >= (late ? 14U : 4U)) {
+                    injected = true;
+                    cpu.pulse_nmi();
+                }
+            });
+            Wdc65816Registers registers;
+            const std::array stops{0x8050U};
+            const auto task = cpu.begin_long_task(0x8000U, registers, stops, 8);
+            require(task.instructions == (late ? 2U : 1U) && cpu.interrupts_taken() == 1U
+                && cpu.executed_master_clocks() == (late ? 92U : 78U),
+                "an NMI arriving in the final cycle did not wait for the next sample");
+        }
+        {
+            Wdc65816 cpu{interrupt_rom};
+            cpu.set_cpu_timeline(std::make_shared<SnesCpuTimeline>());
+            cpu.pulse_nmi();
+            std::uint64_t clocks{};
+            bool injected{};
+            cpu.set_bus_clock_callback([&](std::uint32_t count) {
+                clocks += count;
+                if (!injected && clocks >= 20U) {
+                    injected = true;
+                    cpu.pulse_nmi();
+                }
+            });
+            Wdc65816Registers registers;
+            const std::array stops{0x8001U};
+            // First stop is reached before entry; resume then runs both nested
+            // handlers. A new edge during entry must survive acknowledgement.
+            cpu.begin_long_task(0x8000U, registers, stops, 8);
+            cpu.resume_task(registers, stops, 8);
+            require(cpu.interrupts_taken() == 2U && registers.stack == 0x1fcU,
+                "NMI entry acknowledgement erased a new edge or corrupted nested return frames");
+        }
+        {
+            Wdc65816 cpu{interrupt_rom};
+            cpu.set_cpu_timeline(std::make_shared<SnesCpuTimeline>());
+            cpu.set_irq_line(true);
+            cpu.pulse_nmi();
+            Wdc65816Registers registers;
+            registers.status = 0U;
+            const std::array first{0x8050U};
+            cpu.begin_long_task(0x8000U, registers, first, 8);
+            require(cpu.interrupts_taken() == 1U, "NMI did not take priority over a simultaneous IRQ");
+            cpu.set_irq_line(false);
+            cpu.set_cpu_timeline({});
+            const std::array second{0x8040U};
+            cpu.resume_task(registers, second, 8);
+            require(cpu.interrupts_taken() == 2U,
+                "accepted IRQ was discarded after NMI entry, source release or timeline detach");
+        }
+    }
     std::vector<std::uint8_t> bytes(0x8000U);
     // Poll live Vblank, then return. A zero-valued stub would never complete.
     const std::array<std::uint8_t, 6> code{0xad, 0x12, 0x42, 0x10, 0xfb, 0x6b};

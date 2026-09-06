@@ -28,7 +28,8 @@ clocks from a no-interrupt run cannot establish this behavior.
 
 This work supplied the oracle for the production CPU integration. The hooks
 and pending-interrupt bus reads are now covered by LAST-CYCLE-VALIDATION.md.
-Delivery connected to SnesCpuTimeline, DMA arbitration and overlapping GSU
+Bounded delivery connected to SnesCpuTimeline is now covered by
+LIVE-INTERRUPT-VALIDATION.md. WAI/STP, DMA arbitration and overlapping GSU
 work remain necessary before exposing ACCURATE as the default pace.
 
 The production interrupt-entry ordering is now corrected separately: the

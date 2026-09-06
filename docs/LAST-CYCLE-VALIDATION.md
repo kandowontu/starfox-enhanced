@@ -26,9 +26,10 @@ not distinguish a read from an idle. Ten targeted flag-order and NOP cases
 also compare the production and reference paths. All 6,912 hardware interrupt
 entries match their sampling point, status sequence, state and bus timing.
 
-This callback does not automatically deliver an interrupt handler. Connecting
-it to live timer requests and latched delivery remains scheduler work, as do
-WAI/STP handling, DMA arbitration and overlapping GSU work. The bounded audit
+The callback alone does not deliver an interrupt handler. Timeline binding
+now connects it to live timer requests and latched delivery; see
+LIVE-INTERRUPT-VALIDATION.md. WAI/STP handling, DMA arbitration and overlapping
+GSU work remain scheduler work. The bounded audit
 does not certify emulation-mode execution or whole campaigns. GameSimulation
 does not yet install this timing path; ACCURATE remains unexposed and the
 packaged candidate remains unchanged.

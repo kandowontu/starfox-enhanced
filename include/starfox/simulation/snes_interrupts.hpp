@@ -74,11 +74,11 @@ public:
     // external IRQ source (for example a coprocessor).
     void inhibit() noexcept { locked_ = true; }
     void clock_step() noexcept { locked_ = false; }
-    InterruptRequest sample(bool masked, bool external_irq = false) noexcept {
+    InterruptRequest sample(bool masked, bool external_irq = false, bool external_nmi = false) noexcept {
         if (locked_) return {};
         const bool irq = irq_pending_ || external_irq;
-        const InterruptRequest result{nmi_pending_, irq && !masked,
-            nmi_pending_ || irq};
+        const InterruptRequest result{nmi_pending_ || external_nmi, irq && !masked,
+            nmi_pending_ || external_nmi || irq};
         nmi_pending_ = irq_pending_ = false;
         return result;
     }

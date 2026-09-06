@@ -35,13 +35,15 @@ at read, write and idle boundaries; synthetic call setup remains excluded.
 Those callbacks are opt-in and are not yet installed in GameSimulation.
 The opt-in CPU timeline now supplies live beam counters, blanking flags,
 timer control and interrupt status registers. Both ports' native WAITDMA_L
-routine passes scanline waits across a field boundary. This binding does not
-yet deliver hardware interrupts or arbitrate DMA; those remain scheduler work.
+routine passes scanline waits across a field boundary. This binding now
+delivers sampled IRQ/NMI requests at the next CPU step, preserving accepted
+requests across flag changes and timeline detach. DMA arbitration remains
+scheduler work; see LIVE-INTERRUPT-VALIDATION.md for the bounded delivery checks.
 Production last-cycle hooks now match reference sample clocks and the I flag
 for 254 native opcodes, including both initial I states. A callback can select
-the pending-interrupt dummy read used by idleIRQ instructions. These hooks
-still need to consume the live timer requests and deliver the selected handler;
-WAI/STP scheduling is not covered. See LAST-CYCLE-VALIDATION.md.
+the pending-interrupt dummy read used by idleIRQ instructions. Timeline binding
+now consumes live timer requests at these hooks and delivers the selected
+handler; WAI/STP scheduling is not covered. See LAST-CYCLE-VALIDATION.md.
 Interrupt entry now preserves the stacked status and sets I/clears D before
 vector reads, matching the source's hardware interrupt, BRK and COP order.
 This preserves the status order seen by the sampling hooks during entry.

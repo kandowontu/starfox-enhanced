@@ -96,6 +96,7 @@ struct Wdc65816::Impl {
     InterruptSampleCallback interrupt_sample_callback;
     std::uint32_t sampled_instruction_address{};
     std::shared_ptr<SnesCpuTimeline> timeline;
+    bool sampled_nmi{}, sampled_irq{}, delivering_sampled_interrupt{};
     bool bus_clock_active{};
     bool scheduled_gameplay_bitmap_dma{};
     std::map<std::uint8_t, std::vector<std::uint8_t>> compatible_rom_banks;
@@ -292,7 +293,8 @@ struct Wdc65816::Impl {
     WDC65C816 cpu{&bus};
 
     void step_cpu() {
-        if (!bus_clock_callback && !timeline && !interrupt_sample_callback) {
+        if (!bus_clock_callback && !timeline && !interrupt_sample_callback
+                && !sampled_nmi && !sampled_irq) {
             cpu.SingleStep();
             return;
         }
@@ -301,8 +303,19 @@ struct Wdc65816::Impl {
             explicit ClockScope(bool& flag) : active(flag) { active = true; }
             ~ClockScope() { active = false; }
         } scope{bus_clock_active};
+        cpu.cpu_state.ip &= cpu.cpu_state.ip_mask;
         sampled_instruction_address = cpu.program_address();
-        cpu.SingleStep();
+        if (sampled_nmi || sampled_irq) {
+            const auto type = sampled_nmi ? WDC65C816::NMI : WDC65C816::IRQ;
+            if (sampled_nmi) sampled_nmi = false;
+            else sampled_irq = false;
+            ClockScope delivery{delivering_sampled_interrupt};
+            cpu.DoInterrupt(type);
+        } else if (timeline) {
+            // Live requests are accepted at lastCycle, never re-tested against
+            // the instruction's eventual I flag by SingleStep's legacy path.
+            WDC65C816::EmulateInstruction(&cpu);
+        } else cpu.SingleStep();
     }
 
     void advance_cpu_clocks(std::uint32_t clocks) {
@@ -576,7 +589,8 @@ struct Wdc65816::Impl {
     static void irq_taken(void* context, std::uint32_t source) {
         auto& self = *static_cast<Impl*>(context);
         ++self.interrupt_entries;
-        if (source == 2U) self.cpu.cpu_state.ClearInterruptSource(2U);
+        if (source == 2U && !self.delivering_sampled_interrupt)
+            self.cpu.cpu_state.ClearInterruptSource(2U);
     }
 
     explicit Impl(const assets::RomImage& rom_image, const assets::SymbolMap* symbols)
@@ -2760,9 +2774,19 @@ void Wdc65816::set_bus_clock_callback(BusClockCallback callback) {
     hooks.context = impl_.get();
     hooks.last_cycle = [](void* context, std::uint8_t status) {
         auto& state = *static_cast<Impl*>(context);
-        return state.bus_clock_active && state.interrupt_sample_callback
+        if (!state.bus_clock_active) return false;
+        if (state.timeline) {
+            const auto sources = state.cpu.cpu_state.pending_interrupts.load(std::memory_order_acquire);
+            const auto request = state.timeline->interrupts().sample(bool(status & 4U),
+                bool(sources & 2U), bool(sources & 4U));
+            state.sampled_nmi |= request.nmi;
+            state.sampled_irq |= request.irq;
+            if (request.nmi && (sources & 4U)) state.cpu.cpu_state.ClearInterruptSource(2U);
+        }
+        const bool observed_pending = state.interrupt_sample_callback
             && state.interrupt_sample_callback({state.sampled_instruction_address,
                 state.cpu.cpu_state.cycle - state.host_setup_master_clocks, bool(status & 4U)});
+        return observed_pending || state.sampled_nmi || state.sampled_irq;
     };
     hooks.idle = [](void* context, std::uint32_t clocks) {
         auto& state = *static_cast<Impl*>(context);

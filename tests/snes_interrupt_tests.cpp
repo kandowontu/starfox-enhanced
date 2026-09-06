@@ -68,6 +68,12 @@ int main() try {
     require(nmi.sample(false, true) == InterruptRequest{}, "DMA lock did not inhibit polling");
     nmi.clock_step();
     require(nmi.sample(false, true).irq, "clock step did not release polling lock");
+    nmi.inhibit();
+    require(nmi.sample(true, false, true) == InterruptRequest{},
+        "external NMI bypassed the polling lock");
+    nmi.clock_step();
+    require(nmi.sample(true, false, true) == InterruptRequest{true, false, true},
+        "external NMI was masked by I after the polling lock cleared");
     std::cout << "Timer/NMI holds, acknowledgements, register writes and CPU polling pass\n";
 } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';
