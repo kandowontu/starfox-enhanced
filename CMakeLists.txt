@@ -201,6 +201,7 @@ add_library(starfox_core
     src/simulation/math.cpp
     src/simulation/dust_system.cpp
     src/simulation/game_simulation.cpp
+    src/simulation/gsu_device.cpp
     src/simulation/map_vm.cpp
     src/simulation/object_pool.cpp
     src/simulation/particle_system.cpp
@@ -239,6 +240,7 @@ if(STARFOX_BUILD_TOOLS)
             target_include_directories(starfox_reference_ares SYSTEM PRIVATE
                 "${STARFOX_REFERENCE_ARES_DIR}" "${STARFOX_REFERENCE_ARES_DIR}/nall")
             target_compile_features(starfox_reference_ares PRIVATE cxx_std_20)
+            target_link_libraries(starfox_reference_ares PRIVATE starfox_core)
             add_executable(starfox_reference_ares_render tools/reference/render_audit.cpp)
             target_include_directories(starfox_reference_ares_render PRIVATE
                 "${STARFOX_REFERENCE_CORE_DIR}/libretro")
@@ -247,6 +249,8 @@ if(STARFOX_BUILD_TOOLS)
             add_executable(starfox_reference_ares_tests tools/reference/ares_gsu_tests.cpp)
             target_compile_features(starfox_reference_ares_tests PRIVATE cxx_std_20)
             target_link_libraries(starfox_reference_ares_tests PRIVATE starfox_reference_ares)
+            add_executable(starfox_reference_gsu_device_tests tools/reference/gsu_device_audit.cpp)
+            target_link_libraries(starfox_reference_gsu_device_tests PRIVATE starfox_core starfox_reference_ares)
             add_executable(starfox_reference_view tools/reference/view_audit.cpp)
             target_link_libraries(starfox_reference_view PRIVATE starfox_core starfox_reference_ares)
             if(EXISTS "${STARFOX_REFERENCE_ARES_DIR}/ares/component/processor/wdc65816/wdc65816.hpp")
@@ -799,6 +803,10 @@ if(STARFOX_BUILD_TESTS)
         add_test(NAME starfox_reference_halt COMMAND starfox_reference_halt_tests)
         set_tests_properties(starfox_reference_halt PROPERTIES TIMEOUT 30)
     endif()
+    if(TARGET starfox_reference_gsu_device_tests)
+        add_test(NAME starfox_reference_gsu_device COMMAND starfox_reference_gsu_device_tests)
+        set_tests_properties(starfox_reference_gsu_device PROPERTIES TIMEOUT 120)
+    endif()
     if(TARGET starfox_reference_dma_tests)
         add_test(NAME starfox_reference_dma COMMAND starfox_reference_dma_tests)
         set_tests_properties(starfox_reference_dma PROPERTIES TIMEOUT 60)
@@ -895,6 +903,9 @@ if(STARFOX_BUILD_TESTS)
     target_link_libraries(starfox_dma_tests PRIVATE starfox_core)
     add_test(NAME starfox_dma_tests COMMAND starfox_dma_tests)
 
+    add_executable(starfox_gsu_device_tests tests/gsu_device_tests.cpp)
+    target_link_libraries(starfox_gsu_device_tests PRIVATE starfox_core)
+    add_test(NAME starfox_gsu_device_tests COMMAND starfox_gsu_device_tests)
     add_executable(starfox_snes_interrupt_tests tests/snes_interrupt_tests.cpp)
     target_link_libraries(starfox_snes_interrupt_tests PRIVATE starfox_core)
     add_test(NAME starfox_snes_interrupt_tests COMMAND starfox_snes_interrupt_tests)

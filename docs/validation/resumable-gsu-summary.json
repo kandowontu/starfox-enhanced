@@ -1,0 +1,29 @@
+{
+  "opcode_alt_cases": 24576,
+  "opcode_state_bus_clock_ram_differences": 0,
+  "cartridge_launches": 73536,
+  "cartridge_result_rows": 70980,
+  "cartridge_device_comparison_enabled": true,
+  "cartridge_state_clock_ram_differences": 0,
+  "sampled_view_launches": 720,
+  "source_pin": "0aafd85789215e84e1e43415c07d4c88461b7899",
+  "generated_output_reproducible": true,
+  "prior_cpu_csv_sha256": "65e4f0a20d74b0c1b87d9226c12c0ac9e87ef20134a92cf958d753d5d37baf09",
+  "prior_interrupt_csv_sha256": "b692eae16e0ad8c54124a76a7b34e278248006d52a978e6a54645e9a8d0aee88",
+  "prior_audit_csvs_unchanged": true,
+  "ctest": {
+    "passed": 74,
+    "total": 74,
+    "seconds": 180.83
+  },
+  "desktop_sha256": "1ae26654cbdb3a6d4f5c1febf1fe8a5001a259511f90fb6b85c8094ef59840de",
+  "device_source_sha256": "eb3ea7c81bbec165e25fc2cf90f03dad9ea177d438b1e7e505abf4ad08e94cc6",
+  "generator_sha256": "f03775717212b6360e2e2c7e3bbe89214d81d5b8ddf224274223b1b174b8fe32",
+  "remaining": [
+    "CPU/DMA/refresh device binding and GSU IRQ delivery",
+    "GameSimulation and native graphics bridge integration",
+    "EX live-transfer mismatch and full campaign verification",
+    "ACCURATE menu/default, switching and presentation/input/audio validation",
+    "Integrated device performance and packaged candidate"
+  ]
+}

@@ -1,13 +1,23 @@
 # Third-party notices
 
-## Ares CPU/GSU audit adapters (development tools only)
+## Ares GSU adaptation and development reference tools
+
+The resumable GSU device in `src/simulation/gsu_device.cpp` and the generated
+files under `src/simulation/gsu` adapt the pinned Ares instruction, cache,
+pixel, transfer and I/O implementations to project-owned C++ coroutine
+scheduling. These adapted files retain the ISC license below, also saved in
+`src/simulation/gsu/LICENSE-ARES.txt`. Normal builds use these checked-in
+files; they do not require Ares, nall or an OS coroutine library. The device
+is compiled into the core but is not yet installed in the game-loop pace path.
+
+### Separate development adapters
 
 Source: <https://github.com/ares-emulator/ares>
 
 Pinned revision: `0aafd85789215e84e1e43415c07d4c88461b7899` (v148).
 
 The optional `starfox_reference_ares_*` and `starfox_reference_cpu*` tools use the CPU/GSU components and nall
-headers from an independently downloaded checkout. They are not linked into
+headers from an independently downloaded checkout. Those separate tools and nall headers are not linked into
 the game or included in game packages. `tools/reference/ares_gsu.cpp` adapts
 GSU initialization; `tools/reference/ares_cpu.cpp` adapts the bus timing expression.
 Both retain the following ISC notice. Other project-owned

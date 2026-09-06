@@ -1,0 +1,1918 @@
+Start testing: Sep 06 04:45 Eastern Daylight Time
+----------------------------------------------------------
+60/74 Testing: starfox_ex_port_regressions
+60/74 Test: starfox_ex_port_regressions
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_port_regression_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_port_regressions" start time: Sep 06 04:45 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+native object words: 360 pointer/counter round trips and scalar-preserving removal passed
+submitted flags: native clear, repeated presentations, invisible objects and slot reuse passed
+source point scaling: 90 model/frame/scale comparisons
+source planet art: 28 complete flat/zoom icon comparisons
+credits late Start returned at 3505
+credits held early returned at 2699
+credits Australia Y returned at 3500
+LEVEL5_5 Unlocked pace four-ship encounter, rendering, player laser kills and map continuation passed
+LEVEL6_6 Unlocked pace four-ship encounter, rendering, player laser kills and map continuation passed
+LEVEL7_5 Unlocked pace four-ship encounter, rendering, player laser kills and map continuation passed
+LEVEL5_5 Original pace four-ship encounter, rendering, player laser kills and map continuation passed
+LEVEL6_6 Original pace four-ship encounter, rendering, player laser kills and map continuation passed
+LEVEL7_5 Original pace four-ship encounter, rendering, player laser kills and map continuation passed
+LEVEL1_6 L+R+Select at route terminator passed
+LEVEL2_6 L+R+Select at route terminator passed
+LEVEL3_7 L+R+Select at route terminator passed
+LEVEL4_5 L+R+Select at route terminator passed
+LEVEL5_5 L+R+Select at route terminator passed
+LEVEL6_6 L+R+Select at route terminator passed
+LEVEL7_5 L+R+Select at route terminator passed
+<end of output>
+Test time =  49.86 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_port_regressions" end time: Sep 06 04:46 Eastern Daylight Time
+"starfox_ex_port_regressions" time elapsed: 00:00:49
+----------------------------------------------------------
+
+43/74 Testing: starfox_upstream_level_clear
+43/74 Test: starfox_upstream_level_clear
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_level_clear_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_level_clear" start time: Sep 06 04:45 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+CL_COLON fps=20 final tunnel at 13.3s
+CL_COLON fps=120 final tunnel at 13.3s
+CL_WARP CLB2=2 tick=502 raster=1556
+CL_WARP CLB2=1 tick=586 raster=1808
+LEVEL1_2/CL_WARP fps=20 pace=original fast=0 tally=20.9333s hide=25.9333s done=30.4333s ticks=592 flow=8 warmup=200 cursor=dced1 strat=ba568 wait=166
+ extra rasters bbab3=42 PLAYERINSPACE_STRAT
+ extra rasters bce3f=8 PLAYEROUTOFCOCK_STRAT
+CL_WARP CLB2=2 tick=502 raster=1556
+CL_WARP CLB2=1 tick=586 raster=1808
+LEVEL1_2/CL_WARP fps=30 pace=original fast=0 tally=20.9333s hide=25.9333s done=30.4333s ticks=592 flow=8 warmup=200 cursor=dced1 strat=ba568 wait=166
+ extra rasters bbab3=42 PLAYERINSPACE_STRAT
+ extra rasters bce3f=8 PLAYEROUTOFCOCK_STRAT
+CL_WARP CLB2=2 tick=502 raster=1556
+CL_WARP CLB2=1 tick=586 raster=1808
+LEVEL1_2/CL_WARP fps=60 pace=original fast=0 tally=20.9333s hide=25.9333s done=30.4333s ticks=592 flow=8 warmup=200 cursor=dced1 strat=ba568 wait=166
+ extra rasters bbab3=42 PLAYERINSPACE_STRAT
+ extra rasters bce3f=8 PLAYEROUTOFCOCK_STRAT
+CL_WARP CLB2=2 tick=502 raster=1556
+CL_WARP CLB2=1 tick=586 raster=1808
+LEVEL1_2/CL_WARP fps=90 pace=original fast=0 tally=20.9333s hide=25.9333s done=30.4333s ticks=592 flow=8 warmup=200 cursor=dced1 strat=ba568 wait=166
+ extra rasters bbab3=42 PLAYERINSPACE_STRAT
+ extra rasters bce3f=8 PLAYEROUTOFCOCK_STRAT
+CL_WARP CLB2=2 tick=502 raster=1556
+CL_WARP CLB2=1 tick=586 raster=1808
+LEVEL1_2/CL_WARP fps=120 pace=original fast=0 tally=20.9333s hide=25.9333s done=30.4333s ticks=592 flow=8 warmup=200 cursor=dced1 strat=ba568 wait=166
+ extra rasters bbab3=42 PLAYERINSPACE_STRAT
+ extra rasters bce3f=8 PLAYEROUTOFCOCK_STRAT
+CL_WARP CLB2=2 tick=502 raster=1556
+CL_WARP CLB2=1 tick=586 raster=1808
+LEVEL1_2/CL_WARP fps=240 pace=original fast=0 tally=20.9333s hide=25.9333s done=30.4333s ticks=592 flow=8 warmup=200 cursor=dced1 strat=ba568 wait=166
+ extra rasters bbab3=42 PLAYERINSPACE_STRAT
+ extra rasters bce3f=8 PLAYEROUTOFCOCK_STRAT
+CL_WARP CLB2=2 tick=502 raster=1556
+CL_WARP CLB2=1 tick=586 raster=1808
+LEVEL1_2/CL_WARP fps=360 pace=original fast=0 tally=20.9333s hide=25.9333s done=30.4333s ticks=592 flow=8 warmup=200 cursor=dced1 strat=ba568 wait=166
+ extra rasters bbab3=42 PLAYERINSPACE_STRAT
+ extra rasters bce3f=8 PLAYEROUTOFCOCK_STRAT
+CL_WARP CLB2=2 tick=502 raster=1556
+CL_WARP CLB2=1 tick=586 raster=1808
+LEVEL1_2/CL_WARP fps=480 pace=original fast=0 tally=20.9333s hide=25.9333s done=30.4333s ticks=592 flow=8 warmup=200 cursor=dced1 strat=ba568 wait=166
+ extra rasters bbab3=42 PLAYERINSPACE_STRAT
+ extra rasters bce3f=8 PLAYEROUTOFCOCK_STRAT
+CL_WARP CLB2=2 tick=502 raster=1506
+CL_WARP CLB2=1 tick=586 raster=1758
+LEVEL1_2/CL_WARP fps=20 pace=unlocked fast=0 tally=20.1s hide=25.1s done=29.6s ticks=592 flow=8 warmup=200 cursor=dced1 strat=ba568 wait=166
+CL_WARP CLB2=2 tick=502 raster=1506
+CL_WARP CLB2=1 tick=586 raster=1758
+LEVEL1_2/CL_WARP fps=120 pace=unlocked fast=0 tally=20.1s hide=25.1s done=29.6s ticks=592 flow=8 warmup=200 cursor=dced1 strat=ba568 wait=166
+CL_GROUND CLB2=1 tick=408 raster=1282
+LEVEL1_1/CL_GROUND fps=20 pace=original fast=0 tally=14.5667s hide=0s done=21.4167s ticks=409 flow=8 warmup=324 cursor=dce76 strat=b96ae wait=15
+ extra rasters bbd3a=58 PLAYERONPLANET_STRAT
+CL_GROUND CLB2=1 tick=408 raster=1282
+LEVEL1_1/CL_GROUND fps=30 pace=original fast=0 tally=14.5667s hide=0s done=21.4167s ticks=409 flow=8 warmup=324 cursor=dce76 strat=b96ae wait=15
+ extra rasters bbd3a=58 PLAYERONPLANET_STRAT
+CL_GROUND CLB2=1 tick=408 raster=1282
+LEVEL1_1/CL_GROUND fps=60 pace=original fast=0 tally=14.5667s hide=0s done=21.4167s ticks=409 flow=8 warmup=324 cursor=dce76 strat=b96ae wait=15
+ extra rasters bbd3a=58 PLAYERONPLANET_STRAT
+CL_GROUND CLB2=1 tick=408 raster=1282
+LEVEL1_1/CL_GROUND fps=90 pace=original fast=0 tally=14.5667s hide=0s done=21.4167s ticks=409 flow=8 warmup=324 cursor=dce76 strat=b96ae wait=15
+ extra rasters bbd3a=58 PLAYERONPLANET_STRAT
+CL_GROUND CLB2=1 tick=408 raster=1282
+LEVEL1_1/CL_GROUND fps=120 pace=original fast=0 tally=14.5667s hide=0s done=21.4167s ticks=409 flow=8 warmup=324 cursor=dce76 strat=b96ae wait=15
+ extra rasters bbd3a=58 PLAYERONPLANET_STRAT
+CL_GROUND CLB2=1 tick=408 raster=1282
+LEVEL1_1/CL_GROUND fps=240 pace=original fast=0 tally=14.5667s hide=0s done=21.4167s ticks=409 flow=8 warmup=324 cursor=dce76 strat=b96ae wait=15
+ extra rasters bbd3a=58 PLAYERONPLANET_STRAT
+CL_GROUND CLB2=1 tick=408 raster=1282
+LEVEL1_1/CL_GROUND fps=360 pace=original fast=0 tally=14.5667s hide=0s done=21.4167s ticks=409 flow=8 warmup=324 cursor=dce76 strat=b96ae wait=15
+ extra rasters bbd3a=58 PLAYERONPLANET_STRAT
+CL_GROUND CLB2=1 tick=408 raster=1282
+LEVEL1_1/CL_GROUND fps=480 pace=original fast=0 tally=14.5667s hide=0s done=21.4167s ticks=409 flow=8 warmup=324 cursor=dce76 strat=b96ae wait=15
+ extra rasters bbd3a=58 PLAYERONPLANET_STRAT
+CL_GROUND CLB2=1 tick=408 raster=1224
+LEVEL1_1/CL_GROUND fps=20 pace=unlocked fast=0 tally=13.6s hide=0s done=20.45s ticks=409 flow=8 warmup=324 cursor=dce76 strat=b96ae wait=15
+CL_GROUND CLB2=1 tick=408 raster=1224
+LEVEL1_1/CL_GROUND fps=120 pace=unlocked fast=0 tally=13.6s hide=0s done=20.45s ticks=409 flow=8 warmup=324 cursor=dce76 strat=b96ae wait=15
+CL_SHIP1_3 CLB2=1 tick=431 raster=1295
+LEVEL1_3/CL_SHIP1_3 fps=20 pace=original fast=0 tally=14.0833s hide=0s done=21.6333s ticks=432 flow=8 warmup=200 cursor=dd194 strat=b9c68 wait=75
+ extra rasters bbab3=2 PLAYERINSPACE_STRAT
+CL_SHIP1_3 CLB2=1 tick=431 raster=1295
+LEVEL1_3/CL_SHIP1_3 fps=30 pace=original fast=0 tally=14.0833s hide=0s done=21.6333s ticks=432 flow=8 warmup=200 cursor=dd194 strat=b9c68 wait=75
+ extra rasters bbab3=2 PLAYERINSPACE_STRAT
+CL_SHIP1_3 CLB2=1 tick=431 raster=1295
+LEVEL1_3/CL_SHIP1_3 fps=60 pace=original fast=0 tally=14.0833s hide=0s done=21.6333s ticks=432 flow=8 warmup=200 cursor=dd194 strat=b9c68 wait=75
+ extra rasters bbab3=2 PLAYERINSPACE_STRAT
+CL_SHIP1_3 CLB2=1 tick=431 raster=1295
+LEVEL1_3/CL_SHIP1_3 fps=90 pace=original fast=0 tally=14.0833s hide=0s done=21.6333s ticks=432 flow=8 warmup=200 cursor=dd194 strat=b9c68 wait=75
+ extra rasters bbab3=2 PLAYERINSPACE_STRAT
+CL_SHIP1_3 CLB2=1 tick=431 raster=1295
+LEVEL1_3/CL_SHIP1_3 fps=120 pace=original fast=0 tally=14.0833s hide=0s done=21.6333s ticks=432 flow=8 warmup=200 cursor=dd194 strat=b9c68 wait=75
+ extra rasters bbab3=2 PLAYERINSPACE_STRAT
+CL_SHIP1_3 CLB2=1 tick=431 raster=1295
+LEVEL1_3/CL_SHIP1_3 fps=240 pace=original fast=0 tally=14.0833s hide=0s done=21.6333s ticks=432 flow=8 warmup=200 cursor=dd194 strat=b9c68 wait=75
+ extra rasters bbab3=2 PLAYERINSPACE_STRAT
+CL_SHIP1_3 CLB2=1 tick=431 raster=1295
+LEVEL1_3/CL_SHIP1_3 fps=360 pace=original fast=0 tally=14.0833s hide=0s done=21.6333s ticks=432 flow=8 warmup=200 cursor=dd194 strat=b9c68 wait=75
+ extra rasters bbab3=2 PLAYERINSPACE_STRAT
+CL_SHIP1_3 CLB2=1 tick=431 raster=1295
+LEVEL1_3/CL_SHIP1_3 fps=480 pace=original fast=0 tally=14.0833s hide=0s done=21.6333s ticks=432 flow=8 warmup=200 cursor=dd194 strat=b9c68 wait=75
+ extra rasters bbab3=2 PLAYERINSPACE_STRAT
+CL_SHIP1_3 CLB2=1 tick=431 raster=1293
+LEVEL1_3/CL_SHIP1_3 fps=20 pace=unlocked fast=0 tally=14.05s hide=0s done=21.6s ticks=432 flow=8 warmup=200 cursor=dd194 strat=b9c68 wait=75
+CL_SHIP1_3 CLB2=1 tick=431 raster=1293
+LEVEL1_3/CL_SHIP1_3 fps=120 pace=unlocked fast=0 tally=14.05s hide=0s done=21.6s ticks=432 flow=8 warmup=200 cursor=dd194 strat=b9c68 wait=75
+CL_DIVE CLB2=1 tick=420 raster=1348
+LEVEL1_5/CL_DIVE fps=20 pace=original fast=0 tally=17.2167s hide=0s done=22.5667s ticks=422 flow=9 warmup=200 cursor=dd2aa strat=bb841 wait=0
+ extra rasters bbab3=48 PLAYERINSPACE_STRAT
+ extra rasters bce3f=40 PLAYEROUTOFCOCK_STRAT
+CL_DIVE CLB2=1 tick=420 raster=1348
+LEVEL1_5/CL_DIVE fps=30 pace=original fast=0 tally=17.2167s hide=0s done=22.5667s ticks=422 flow=9 warmup=200 cursor=dd2aa strat=bb841 wait=0
+ extra rasters bbab3=48 PLAYERINSPACE_STRAT
+ extra rasters bce3f=40 PLAYEROUTOFCOCK_STRAT
+CL_DIVE CLB2=1 tick=420 raster=1348
+LEVEL1_5/CL_DIVE fps=60 pace=original fast=0 tally=17.2167s hide=0s done=22.5667s ticks=422 flow=9 warmup=200 cursor=dd2aa strat=bb841 wait=0
+ extra rasters bbab3=48 PLAYERINSPACE_STRAT
+ extra rasters bce3f=40 PLAYEROUTOFCOCK_STRAT
+CL_DIVE CLB2=1 tick=420 raster=1348
+LEVEL1_5/CL_DIVE fps=90 pace=original fast=0 tally=17.2167s hide=0s done=22.5667s ticks=422 flow=9 warmup=200 cursor=dd2aa strat=bb841 wait=0
+ extra rasters bbab3=48 PLAYERINSPACE_STRAT
+ extra rasters bce3f=40 PLAYEROUTOFCOCK_STRAT
+CL_DIVE CLB2=1 tick=420 raster=1348
+LEVEL1_5/CL_DIVE fps=120 pace=original fast=0 tally=17.2167s hide=0s done=22.5667s ticks=422 flow=9 warmup=200 cursor=dd2aa strat=bb841 wait=0
+ extra rasters bbab3=48 PLAYERINSPACE_STRAT
+ extra rasters bce3f=40 PLAYEROUTOFCOCK_STRAT
+CL_DIVE CLB2=1 tick=420 raster=1348
+LEVEL1_5/CL_DIVE fps=240 pace=original fast=0 tally=17.2167s hide=0s done=22.5667s ticks=422 flow=9 warmup=200 cursor=dd2aa strat=bb841 wait=0
+ extra rasters bbab3=48 PLAYERINSPACE_STRAT
+ extra rasters bce3f=40 PLAYEROUTOFCOCK_STRAT
+CL_DIVE CLB2=1 tick=420 raster=1348
+LEVEL1_5/CL_DIVE fps=360 pace=original fast=0 tally=17.2167s hide=0s done=22.5667s ticks=422 flow=9 warmup=200 cursor=dd2aa strat=bb841 wait=0
+ extra rasters bbab3=48 PLAYERINSPACE_STRAT
+ extra rasters bce3f=40 PLAYEROUTOFCOCK_STRAT
+CL_DIVE CLB2=1 tick=420 raster=1348
+LEVEL1_5/CL_DIVE fps=480 pace=original fast=0 tally=17.2167s hide=0s done=22.5667s ticks=422 flow=9 warmup=200 cursor=dd2aa strat=bb841 wait=0
+ extra rasters bbab3=48 PLAYERINSPACE_STRAT
+ extra rasters bce3f=40 PLAYEROUTOFCOCK_STRAT
+CL_DIVE CLB2=1 tick=420 raster=1260
+LEVEL1_5/CL_DIVE fps=20 pace=unlocked fast=0 tally=15.75s hide=0s done=21.1s ticks=422 flow=9 warmup=200 cursor=dd2aa strat=bb841 wait=0
+CL_DIVE CLB2=1 tick=420 raster=1260
+LEVEL1_5/CL_DIVE fps=120 pace=unlocked fast=0 tally=15.75s hide=0s done=21.1s ticks=422 flow=9 warmup=200 cursor=dd2aa strat=bb841 wait=0
+CL_EARTH CLB2=1 tick=435 raster=1378
+LEVEL2_2/CL_EARTH fps=20 pace=original fast=0 tally=16.3167s hide=0s done=23.0167s ticks=436 flow=8 warmup=200 cursor=ddbf1 strat=b9828 wait=26
+ extra rasters bbab3=51 PLAYERINSPACE_STRAT
+ extra rasters bce3f=22 PLAYEROUTOFCOCK_STRAT
+CL_EARTH CLB2=1 tick=435 raster=1378
+LEVEL2_2/CL_EARTH fps=30 pace=original fast=0 tally=16.3167s hide=0s done=23.0167s ticks=436 flow=8 warmup=200 cursor=ddbf1 strat=b9828 wait=26
+ extra rasters bbab3=51 PLAYERINSPACE_STRAT
+ extra rasters bce3f=22 PLAYEROUTOFCOCK_STRAT
+CL_EARTH CLB2=1 tick=435 raster=1378
+LEVEL2_2/CL_EARTH fps=60 pace=original fast=0 tally=16.3167s hide=0s done=23.0167s ticks=436 flow=8 warmup=200 cursor=ddbf1 strat=b9828 wait=26
+ extra rasters bbab3=51 PLAYERINSPACE_STRAT
+ extra rasters bce3f=22 PLAYEROUTOFCOCK_STRAT
+CL_EARTH CLB2=1 tick=435 raster=1378
+LEVEL2_2/CL_EARTH fps=90 pace=original fast=0 tally=16.3167s hide=0s done=23.0167s ticks=436 flow=8 warmup=200 cursor=ddbf1 strat=b9828 wait=26
+ extra rasters bbab3=51 PLAYERINSPACE_STRAT
+ extra rasters bce3f=22 PLAYEROUTOFCOCK_STRAT
+CL_EARTH CLB2=1 tick=435 raster=1378
+LEVEL2_2/CL_EARTH fps=120 pace=original fast=0 tally=16.3167s hide=0s done=23.0167s ticks=436 flow=8 warmup=200 cursor=ddbf1 strat=b9828 wait=26
+ extra rasters bbab3=51 PLAYERINSPACE_STRAT
+ extra rasters bce3f=22 PLAYEROUTOFCOCK_STRAT
+CL_EARTH CLB2=1 tick=435 raster=1378
+LEVEL2_2/CL_EARTH fps=240 pace=original fast=0 tally=16.3167s hide=0s done=23.0167s ticks=436 flow=8 warmup=200 cursor=ddbf1 strat=b9828 wait=26
+ extra rasters bbab3=51 PLAYERINSPACE_STRAT
+ extra rasters bce3f=22 PLAYEROUTOFCOCK_STRAT
+CL_EARTH CLB2=1 tick=435 raster=1378
+LEVEL2_2/CL_EARTH fps=360 pace=original fast=0 tally=16.3167s hide=0s done=23.0167s ticks=436 flow=8 warmup=200 cursor=ddbf1 strat=b9828 wait=26
+ extra rasters bbab3=51 PLAYERINSPACE_STRAT
+ extra rasters bce3f=22 PLAYEROUTOFCOCK_STRAT
+CL_EARTH CLB2=1 tick=435 raster=1378
+LEVEL2_2/CL_EARTH fps=480 pace=original fast=0 tally=16.3167s hide=0s done=23.0167s ticks=436 flow=8 warmup=200 cursor=ddbf1 strat=b9828 wait=26
+ extra rasters bbab3=51 PLAYERINSPACE_STRAT
+ extra rasters bce3f=22 PLAYEROUTOFCOCK_STRAT
+CL_EARTH CLB2=1 tick=435 raster=1305
+LEVEL2_2/CL_EARTH fps=20 pace=unlocked fast=0 tally=15.1s hide=0s done=21.8s ticks=436 flow=8 warmup=200 cursor=ddbf1 strat=b9828 wait=26
+CL_EARTH CLB2=1 tick=435 raster=1305
+LEVEL2_2/CL_EARTH fps=120 pace=unlocked fast=0 tally=15.1s hide=0s done=21.8s ticks=436 flow=8 warmup=200 cursor=ddbf1 strat=b9828 wait=26
+CL_BRIDGE CLB2=1 tick=421 raster=1280
+LEVEL2_3/CL_BRIDGE fps=20 pace=original fast=0 tally=14.6333s hide=0s done=21.3833s ticks=422 flow=8 warmup=200 cursor=ddc74 strat=b9495 wait=1
+ extra rasters bbd3a=17 PLAYERONPLANET_STRAT
+CL_BRIDGE CLB2=1 tick=421 raster=1280
+LEVEL2_3/CL_BRIDGE fps=30 pace=original fast=0 tally=14.6333s hide=0s done=21.3833s ticks=422 flow=8 warmup=200 cursor=ddc74 strat=b9495 wait=1
+ extra rasters bbd3a=17 PLAYERONPLANET_STRAT
+CL_BRIDGE CLB2=1 tick=421 raster=1280
+LEVEL2_3/CL_BRIDGE fps=60 pace=original fast=0 tally=14.6333s hide=0s done=21.3833s ticks=422 flow=8 warmup=200 cursor=ddc74 strat=b9495 wait=1
+ extra rasters bbd3a=17 PLAYERONPLANET_STRAT
+CL_BRIDGE CLB2=1 tick=421 raster=1280
+LEVEL2_3/CL_BRIDGE fps=90 pace=original fast=0 tally=14.6333s hide=0s done=21.3833s ticks=422 flow=8 warmup=200 cursor=ddc74 strat=b9495 wait=1
+ extra rasters bbd3a=17 PLAYERONPLANET_STRAT
+CL_BRIDGE CLB2=1 tick=421 raster=1280
+LEVEL2_3/CL_BRIDGE fps=120 pace=original fast=0 tally=14.6333s hide=0s done=21.3833s ticks=422 flow=8 warmup=200 cursor=ddc74 strat=b9495 wait=1
+ extra rasters bbd3a=17 PLAYERONPLANET_STRAT
+CL_BRIDGE CLB2=1 tick=421 raster=1280
+LEVEL2_3/CL_BRIDGE fps=240 pace=original fast=0 tally=14.6333s hide=0s done=21.3833s ticks=422 flow=8 warmup=200 cursor=ddc74 strat=b9495 wait=1
+ extra rasters bbd3a=17 PLAYERONPLANET_STRAT
+CL_BRIDGE CLB2=1 tick=421 raster=1280
+LEVEL2_3/CL_BRIDGE fps=360 pace=original fast=0 tally=14.6333s hide=0s done=21.3833s ticks=422 flow=8 warmup=200 cursor=ddc74 strat=b9495 wait=1
+ extra rasters bbd3a=17 PLAYERONPLANET_STRAT
+CL_BRIDGE CLB2=1 tick=421 raster=1280
+LEVEL2_3/CL_BRIDGE fps=480 pace=original fast=0 tally=14.6333s hide=0s done=21.3833s ticks=422 flow=8 warmup=200 cursor=ddc74 strat=b9495 wait=1
+ extra rasters bbd3a=17 PLAYERONPLANET_STRAT
+CL_BRIDGE CLB2=1 tick=421 raster=1263
+LEVEL2_3/CL_BRIDGE fps=20 pace=unlocked fast=0 tally=14.35s hide=0s done=21.1s ticks=422 flow=8 warmup=200 cursor=ddc74 strat=b9495 wait=1
+CL_BRIDGE CLB2=1 tick=421 raster=1263
+LEVEL2_3/CL_BRIDGE fps=120 pace=unlocked fast=0 tally=14.35s hide=0s done=21.1s ticks=422 flow=8 warmup=200 cursor=ddc74 strat=b9495 wait=1
+CL_TURN CLB2=1 tick=508 raster=1587
+LEVEL2_4/CL_TURN fps=20 pace=original fast=0 tally=17.6s hide=0s done=26.5s ticks=509 flow=8 warmup=200 cursor=ddccf strat=b9eb4 wait=1
+ extra rasters bbab3=63 PLAYERINSPACE_STRAT
+CL_TURN CLB2=1 tick=508 raster=1587
+LEVEL2_4/CL_TURN fps=30 pace=original fast=0 tally=17.6s hide=0s done=26.5s ticks=509 flow=8 warmup=200 cursor=ddccf strat=b9eb4 wait=1
+ extra rasters bbab3=63 PLAYERINSPACE_STRAT
+CL_TURN CLB2=1 tick=508 raster=1587
+LEVEL2_4/CL_TURN fps=60 pace=original fast=0 tally=17.6s hide=0s done=26.5s ticks=509 flow=8 warmup=200 cursor=ddccf strat=b9eb4 wait=1
+ extra rasters bbab3=63 PLAYERINSPACE_STRAT
+CL_TURN CLB2=1 tick=508 raster=1587
+LEVEL2_4/CL_TURN fps=90 pace=original fast=0 tally=17.6s hide=0s done=26.5s ticks=509 flow=8 warmup=200 cursor=ddccf strat=b9eb4 wait=1
+ extra rasters bbab3=63 PLAYERINSPACE_STRAT
+CL_TURN CLB2=1 tick=508 raster=1587
+LEVEL2_4/CL_TURN fps=120 pace=original fast=0 tally=17.6s hide=0s done=26.5s ticks=509 flow=8 warmup=200 cursor=ddccf strat=b9eb4 wait=1
+ extra rasters bbab3=63 PLAYERINSPACE_STRAT
+CL_TURN CLB2=1 tick=508 raster=1587
+LEVEL2_4/CL_TURN fps=240 pace=original fast=0 tally=17.6s hide=0s done=26.5s ticks=509 flow=8 warmup=200 cursor=ddccf strat=b9eb4 wait=1
+ extra rasters bbab3=63 PLAYERINSPACE_STRAT
+CL_TURN CLB2=1 tick=508 raster=1587
+LEVEL2_4/CL_TURN fps=360 pace=original fast=0 tally=17.6s hide=0s done=26.5s ticks=509 flow=8 warmup=200 cursor=ddccf strat=b9eb4 wait=1
+ extra rasters bbab3=63 PLAYERINSPACE_STRAT
+CL_TURN CLB2=1 tick=508 raster=1587
+LEVEL2_4/CL_TURN fps=480 pace=original fast=0 tally=17.6s hide=0s done=26.5s ticks=509 flow=8 warmup=200 cursor=ddccf strat=b9eb4 wait=1
+ extra rasters bbab3=63 PLAYERINSPACE_STRAT
+CL_TURN CLB2=1 tick=508 raster=1524
+LEVEL2_4/CL_TURN fps=20 pace=unlocked fast=0 tally=16.55s hide=0s done=25.45s ticks=509 flow=8 warmup=200 cursor=ddccf strat=b9eb4 wait=1
+CL_TURN CLB2=1 tick=508 raster=1524
+LEVEL2_4/CL_TURN fps=120 pace=unlocked fast=0 tally=16.55s hide=0s done=25.45s ticks=509 flow=8 warmup=200 cursor=ddccf strat=b9eb4 wait=1
+CL_CHASE CLB2=1 tick=497 raster=1565
+LEVEL3_2/CL_CHASE fps=20 pace=original fast=0 tally=19.3833s hide=0s done=26.1333s ticks=498 flow=8 warmup=200 cursor=de2a3 strat=ba188 wait=1
+ extra rasters bbab3=52 PLAYERINSPACE_STRAT
+ extra rasters bce3f=22 PLAYEROUTOFCOCK_STRAT
+CL_CHASE CLB2=1 tick=497 raster=1565
+LEVEL3_2/CL_CHASE fps=30 pace=original fast=0 tally=19.3833s hide=0s done=26.1333s ticks=498 flow=8 warmup=200 cursor=de2a3 strat=ba188 wait=1
+ extra rasters bbab3=52 PLAYERINSPACE_STRAT
+ extra rasters bce3f=22 PLAYEROUTOFCOCK_STRAT
+CL_CHASE CLB2=1 tick=497 raster=1565
+LEVEL3_2/CL_CHASE fps=60 pace=original fast=0 tally=19.3833s hide=0s done=26.1333s ticks=498 flow=8 warmup=200 cursor=de2a3 strat=ba188 wait=1
+ extra rasters bbab3=52 PLAYERINSPACE_STRAT
+ extra rasters bce3f=22 PLAYEROUTOFCOCK_STRAT
+CL_CHASE CLB2=1 tick=497 raster=1565
+LEVEL3_2/CL_CHASE fps=90 pace=original fast=0 tally=19.3833s hide=0s done=26.1333s ticks=498 flow=8 warmup=200 cursor=de2a3 strat=ba188 wait=1
+ extra rasters bbab3=52 PLAYERINSPACE_STRAT
+ extra rasters bce3f=22 PLAYEROUTOFCOCK_STRAT
+CL_CHASE CLB2=1 tick=497 raster=1565
+LEVEL3_2/CL_CHASE fps=120 pace=original fast=0 tally=19.3833s hide=0s done=26.1333s ticks=498 flow=8 warmup=200 cursor=de2a3 strat=ba188 wait=1
+ extra rasters bbab3=52 PLAYERINSPACE_STRAT
+ extra rasters bce3f=22 PLAYEROUTOFCOCK_STRAT
+CL_CHASE CLB2=1 tick=497 raster=1565
+LEVEL3_2/CL_CHASE fps=240 pace=original fast=0 tally=19.3833s hide=0s done=26.1333s ticks=498 flow=8 warmup=200 cursor=de2a3 strat=ba188 wait=1
+ extra rasters bbab3=52 PLAYERINSPACE_STRAT
+ extra rasters bce3f=22 PLAYEROUTOFCOCK_STRAT
+CL_CHASE CLB2=1 tick=497 raster=1565
+LEVEL3_2/CL_CHASE fps=360 pace=original fast=0 tally=19.3833s hide=0s done=26.1333s ticks=498 flow=8 warmup=200 cursor=de2a3 strat=ba188 wait=1
+ extra rasters bbab3=52 PLAYERINSPACE_STRAT
+ extra rasters bce3f=22 PLAYEROUTOFCOCK_STRAT
+CL_CHASE CLB2=1 tick=497 raster=1565
+LEVEL3_2/CL_CHASE fps=480 pace=original fast=0 tally=19.3833s hide=0s done=26.1333s ticks=498 flow=8 warmup=200 cursor=de2a3 strat=ba188 wait=1
+ extra rasters bbab3=52 PLAYERINSPACE_STRAT
+ extra rasters bce3f=22 PLAYEROUTOFCOCK_STRAT
+CL_CHASE CLB2=1 tick=497 raster=1491
+LEVEL3_2/CL_CHASE fps=20 pace=unlocked fast=0 tally=18.15s hide=0s done=24.9s ticks=498 flow=8 warmup=200 cursor=de2a3 strat=ba188 wait=1
+CL_CHASE CLB2=1 tick=497 raster=1491
+LEVEL3_2/CL_CHASE fps=120 pace=unlocked fast=0 tally=18.15s hide=0s done=24.9s ticks=498 flow=8 warmup=200 cursor=de2a3 strat=ba188 wait=1
+CL_SHIP3_4 CLB2=1 tick=431 raster=1293
+LEVEL3_4/CL_SHIP3_4 fps=20 pace=original fast=0 tally=14.05s hide=0s done=21.6s ticks=432 flow=8 warmup=200 cursor=de48a strat=b9c68 wait=75
+CL_SHIP3_4 CLB2=1 tick=431 raster=1293
+LEVEL3_4/CL_SHIP3_4 fps=30 pace=original fast=0 tally=14.05s hide=0s done=21.6s ticks=432 flow=8 warmup=200 cursor=de48a strat=b9c68 wait=75
+CL_SHIP3_4 CLB2=1 tick=431 raster=1293
+LEVEL3_4/CL_SHIP3_4 fps=60 pace=original fast=0 tally=14.05s hide=0s done=21.6s ticks=432 flow=8 warmup=200 cursor=de48a strat=b9c68 wait=75
+CL_SHIP3_4 CLB2=1 tick=431 raster=1293
+LEVEL3_4/CL_SHIP3_4 fps=90 pace=original fast=0 tally=14.05s hide=0s done=21.6s ticks=432 flow=8 warmup=200 cursor=de48a strat=b9c68 wait=75
+CL_SHIP3_4 CLB2=1 tick=431 raster=1293
+LEVEL3_4/CL_SHIP3_4 fps=120 pace=original fast=0 tally=14.05s hide=0s done=21.6s ticks=432 flow=8 warmup=200 cursor=de48a strat=b9c68 wait=75
+CL_SHIP3_4 CLB2=1 tick=431 raster=1293
+LEVEL3_4/CL_SHIP3_4 fps=240 pace=original fast=0 tally=14.05s hide=0s done=21.6s ticks=432 flow=8 warmup=200 cursor=de48a strat=b9c68 wait=75
+CL_SHIP3_4 CLB2=1 tick=431 raster=1293
+LEVEL3_4/CL_SHIP3_4 fps=360 pace=original fast=0 tally=14.05s hide=0s done=21.6s ticks=432 flow=8 warmup=200 cursor=de48a strat=b9c68 wait=75
+CL_SHIP3_4 CLB2=1 tick=431 raster=1293
+LEVEL3_4/CL_SHIP3_4 fps=480 pace=original fast=0 tally=14.05s hide=0s done=21.6s ticks=432 flow=8 warmup=200 cursor=de48a strat=b9c68 wait=75
+CL_SHIP3_4 CLB2=1 tick=431 raster=1293
+LEVEL3_4/CL_SHIP3_4 fps=20 pace=unlocked fast=0 tally=14.05s hide=0s done=21.6s ticks=432 flow=8 warmup=200 cursor=de48a strat=b9c68 wait=75
+CL_SHIP3_4 CLB2=1 tick=431 raster=1293
+LEVEL3_4/CL_SHIP3_4 fps=120 pace=unlocked fast=0 tally=14.05s hide=0s done=21.6s ticks=432 flow=8 warmup=200 cursor=de48a strat=b9c68 wait=75
+CL_UNDER CLB2=1 tick=417 raster=1290
+LEVEL3_5/CL_UNDER fps=20 pace=original fast=0 tally=14.8s hide=0s done=21.55s ticks=418 flow=8 warmup=200 cursor=de527 strat=ba292 wait=1
+ extra rasters bbe5c=39 PLAYERUNDERGND_STRAT
+CL_UNDER CLB2=1 tick=417 raster=1290
+LEVEL3_5/CL_UNDER fps=30 pace=original fast=0 tally=14.8s hide=0s done=21.55s ticks=418 flow=8 warmup=200 cursor=de527 strat=ba292 wait=1
+ extra rasters bbe5c=39 PLAYERUNDERGND_STRAT
+CL_UNDER CLB2=1 tick=417 raster=1290
+LEVEL3_5/CL_UNDER fps=60 pace=original fast=0 tally=14.8s hide=0s done=21.55s ticks=418 flow=8 warmup=200 cursor=de527 strat=ba292 wait=1
+ extra rasters bbe5c=39 PLAYERUNDERGND_STRAT
+CL_UNDER CLB2=1 tick=417 raster=1290
+LEVEL3_5/CL_UNDER fps=90 pace=original fast=0 tally=14.8s hide=0s done=21.55s ticks=418 flow=8 warmup=200 cursor=de527 strat=ba292 wait=1
+ extra rasters bbe5c=39 PLAYERUNDERGND_STRAT
+CL_UNDER CLB2=1 tick=417 raster=1290
+LEVEL3_5/CL_UNDER fps=120 pace=original fast=0 tally=14.8s hide=0s done=21.55s ticks=418 flow=8 warmup=200 cursor=de527 strat=ba292 wait=1
+ extra rasters bbe5c=39 PLAYERUNDERGND_STRAT
+CL_UNDER CLB2=1 tick=417 raster=1290
+LEVEL3_5/CL_UNDER fps=240 pace=original fast=0 tally=14.8s hide=0s done=21.55s ticks=418 flow=8 warmup=200 cursor=de527 strat=ba292 wait=1
+ extra rasters bbe5c=39 PLAYERUNDERGND_STRAT
+CL_UNDER CLB2=1 tick=417 raster=1290
+LEVEL3_5/CL_UNDER fps=360 pace=original fast=0 tally=14.8s hide=0s done=21.55s ticks=418 flow=8 warmup=200 cursor=de527 strat=ba292 wait=1
+ extra rasters bbe5c=39 PLAYERUNDERGND_STRAT
+CL_UNDER CLB2=1 tick=417 raster=1290
+LEVEL3_5/CL_UNDER fps=480 pace=original fast=0 tally=14.8s hide=0s done=21.55s ticks=418 flow=8 warmup=200 cursor=de527 strat=ba292 wait=1
+ extra rasters bbe5c=39 PLAYERUNDERGND_STRAT
+CL_UNDER CLB2=1 tick=417 raster=1251
+LEVEL3_5/CL_UNDER fps=20 pace=unlocked fast=0 tally=14.15s hide=0s done=20.9s ticks=418 flow=8 warmup=200 cursor=de527 strat=ba292 wait=1
+CL_UNDER CLB2=1 tick=417 raster=1251
+LEVEL3_5/CL_UNDER fps=120 pace=unlocked fast=0 tally=14.15s hide=0s done=20.9s ticks=418 flow=8 warmup=200 cursor=de527 strat=ba292 wait=1
+<end of output>
+Test time =  53.88 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_level_clear" end time: Sep 06 04:46 Eastern Daylight Time
+"starfox_upstream_level_clear" time elapsed: 00:00:53
+----------------------------------------------------------
+
+71/74 Testing: starfox_ex_level_clear
+71/74 Test: starfox_ex_level_clear
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_level_clear_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_level_clear" start time: Sep 06 04:45 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+CL_COLON fps=20 final tunnel at 13.3s
+CL_COLON fps=120 final tunnel at 13.3s
+CL_WARP CLB2=3 tick=441 raster=1357
+CL_WARP CLB2=1 tick=554 raster=1696
+LEVEL1_2/CL_WARP fps=20 pace=original fast=0 tally=17.6167s hide=22.6167s done=28.5667s ticks=560 flow=8 warmup=200 cursor=6c397 strat=18955f wait=0
+ extra rasters 17e132=34 PLAYERINSIDESPACEFLYIN_STRAT
+CL_WARP CLB2=3 tick=441 raster=1357
+CL_WARP CLB2=1 tick=554 raster=1696
+LEVEL1_2/CL_WARP fps=30 pace=original fast=0 tally=17.6167s hide=22.6167s done=28.5667s ticks=560 flow=8 warmup=200 cursor=6c397 strat=18955f wait=0
+ extra rasters 17e132=34 PLAYERINSIDESPACEFLYIN_STRAT
+CL_WARP CLB2=3 tick=441 raster=1357
+CL_WARP CLB2=1 tick=554 raster=1696
+LEVEL1_2/CL_WARP fps=60 pace=original fast=0 tally=17.6167s hide=22.6167s done=28.5667s ticks=560 flow=8 warmup=200 cursor=6c397 strat=18955f wait=0
+ extra rasters 17e132=34 PLAYERINSIDESPACEFLYIN_STRAT
+CL_WARP CLB2=3 tick=441 raster=1357
+CL_WARP CLB2=1 tick=554 raster=1696
+LEVEL1_2/CL_WARP fps=90 pace=original fast=0 tally=17.6167s hide=22.6167s done=28.5667s ticks=560 flow=8 warmup=200 cursor=6c397 strat=18955f wait=0
+ extra rasters 17e132=34 PLAYERINSIDESPACEFLYIN_STRAT
+CL_WARP CLB2=3 tick=441 raster=1357
+CL_WARP CLB2=1 tick=554 raster=1696
+LEVEL1_2/CL_WARP fps=120 pace=original fast=0 tally=17.6167s hide=22.6167s done=28.5667s ticks=560 flow=8 warmup=200 cursor=6c397 strat=18955f wait=0
+ extra rasters 17e132=34 PLAYERINSIDESPACEFLYIN_STRAT
+CL_WARP CLB2=3 tick=441 raster=1357
+CL_WARP CLB2=1 tick=554 raster=1696
+LEVEL1_2/CL_WARP fps=240 pace=original fast=0 tally=17.6167s hide=22.6167s done=28.5667s ticks=560 flow=8 warmup=200 cursor=6c397 strat=18955f wait=0
+ extra rasters 17e132=34 PLAYERINSIDESPACEFLYIN_STRAT
+CL_WARP CLB2=3 tick=441 raster=1357
+CL_WARP CLB2=1 tick=554 raster=1696
+LEVEL1_2/CL_WARP fps=360 pace=original fast=0 tally=17.6167s hide=22.6167s done=28.5667s ticks=560 flow=8 warmup=200 cursor=6c397 strat=18955f wait=0
+ extra rasters 17e132=34 PLAYERINSIDESPACEFLYIN_STRAT
+CL_WARP CLB2=3 tick=441 raster=1357
+CL_WARP CLB2=1 tick=554 raster=1696
+LEVEL1_2/CL_WARP fps=480 pace=original fast=0 tally=17.6167s hide=22.6167s done=28.5667s ticks=560 flow=8 warmup=200 cursor=6c397 strat=18955f wait=0
+ extra rasters 17e132=34 PLAYERINSIDESPACEFLYIN_STRAT
+CL_WARP CLB2=3 tick=441 raster=1323
+CL_WARP CLB2=1 tick=554 raster=1662
+LEVEL1_2/CL_WARP fps=20 pace=unlocked fast=0 tally=17.05s hide=22.05s done=28s ticks=560 flow=8 warmup=200 cursor=6c397 strat=18955f wait=0
+CL_WARP CLB2=3 tick=441 raster=1323
+CL_WARP CLB2=1 tick=554 raster=1662
+LEVEL1_2/CL_WARP fps=120 pace=unlocked fast=0 tally=17.05s hide=22.05s done=28s ticks=560 flow=8 warmup=200 cursor=6c397 strat=18955f wait=0
+CL_WARP CLB2=1 tick=223 raster=711
+LEVEL1_2/CL_WARP fps=20 pace=original fast=1 tally=11.85s hide=0s done=12.15s ticks=229 flow=9 warmup=200 cursor=6cd23 strat=17e132 wait=54
+ extra rasters 17e132=42 PLAYERINSIDESPACEFLYIN_STRAT
+CL_WARP CLB2=1 tick=223 raster=711
+LEVEL1_2/CL_WARP fps=120 pace=original fast=1 tally=11.85s hide=0s done=12.15s ticks=229 flow=9 warmup=200 cursor=6cd23 strat=17e132 wait=54
+ extra rasters 17e132=42 PLAYERINSIDESPACEFLYIN_STRAT
+LEVEL1_1/CL_GROUND fps=20 pace=original fast=0 tally=14.8667s hide=0s done=21.6667s ticks=419 flow=8 warmup=324 cursor=6c905 strat=188444 wait=0
+ extra rasters 1792e7=43 PLAYERONPLANET_STRAT
+LEVEL1_1/CL_GROUND fps=30 pace=original fast=0 tally=14.8667s hide=0s done=21.6667s ticks=419 flow=8 warmup=324 cursor=6c905 strat=188444 wait=0
+ extra rasters 1792e7=43 PLAYERONPLANET_STRAT
+LEVEL1_1/CL_GROUND fps=60 pace=original fast=0 tally=14.8667s hide=0s done=21.6667s ticks=419 flow=8 warmup=324 cursor=6c905 strat=188444 wait=0
+ extra rasters 1792e7=43 PLAYERONPLANET_STRAT
+LEVEL1_1/CL_GROUND fps=90 pace=original fast=0 tally=14.8667s hide=0s done=21.6667s ticks=419 flow=8 warmup=324 cursor=6c905 strat=188444 wait=0
+ extra rasters 1792e7=43 PLAYERONPLANET_STRAT
+LEVEL1_1/CL_GROUND fps=120 pace=original fast=0 tally=14.8667s hide=0s done=21.6667s ticks=419 flow=8 warmup=324 cursor=6c905 strat=188444 wait=0
+ extra rasters 1792e7=43 PLAYERONPLANET_STRAT
+LEVEL1_1/CL_GROUND fps=240 pace=original fast=0 tally=14.8667s hide=0s done=21.6667s ticks=419 flow=8 warmup=324 cursor=6c905 strat=188444 wait=0
+ extra rasters 1792e7=43 PLAYERONPLANET_STRAT
+LEVEL1_1/CL_GROUND fps=360 pace=original fast=0 tally=14.8667s hide=0s done=21.6667s ticks=419 flow=8 warmup=324 cursor=6c905 strat=188444 wait=0
+ extra rasters 1792e7=43 PLAYERONPLANET_STRAT
+LEVEL1_1/CL_GROUND fps=480 pace=original fast=0 tally=14.8667s hide=0s done=21.6667s ticks=419 flow=8 warmup=324 cursor=6c905 strat=188444 wait=0
+ extra rasters 1792e7=43 PLAYERONPLANET_STRAT
+LEVEL1_1/CL_GROUND fps=20 pace=unlocked fast=0 tally=14.15s hide=0s done=20.95s ticks=419 flow=8 warmup=324 cursor=6c905 strat=188444 wait=0
+LEVEL1_1/CL_GROUND fps=120 pace=unlocked fast=0 tally=14.15s hide=0s done=20.95s ticks=419 flow=8 warmup=324 cursor=6c905 strat=188444 wait=0
+CL_GROUND CLB2=1 tick=117 raster=394
+LEVEL1_1/CL_GROUND fps=20 pace=original fast=1 tally=6.56667s hide=0s done=6.61667s ticks=118 flow=8 warmup=324 cursor=6cc92 strat=1792e7 wait=1
+ extra rasters 1792e7=43 PLAYERONPLANET_STRAT
+CL_GROUND CLB2=1 tick=117 raster=394
+LEVEL1_1/CL_GROUND fps=120 pace=original fast=1 tally=6.56667s hide=0s done=6.61667s ticks=118 flow=8 warmup=324 cursor=6cc92 strat=1792e7 wait=1
+ extra rasters 1792e7=43 PLAYERONPLANET_STRAT
+LEVEL1_3/CL_SHIP1_3 fps=20 pace=original fast=0 tally=15s hide=0s done=21.55s ticks=431 flow=8 warmup=200 cursor=5c776 strat=188b41 wait=1
+LEVEL1_3/CL_SHIP1_3 fps=30 pace=original fast=0 tally=15s hide=0s done=21.55s ticks=431 flow=8 warmup=200 cursor=5c776 strat=188b41 wait=1
+LEVEL1_3/CL_SHIP1_3 fps=60 pace=original fast=0 tally=15s hide=0s done=21.55s ticks=431 flow=8 warmup=200 cursor=5c776 strat=188b41 wait=1
+LEVEL1_3/CL_SHIP1_3 fps=90 pace=original fast=0 tally=15s hide=0s done=21.55s ticks=431 flow=8 warmup=200 cursor=5c776 strat=188b41 wait=1
+LEVEL1_3/CL_SHIP1_3 fps=120 pace=original fast=0 tally=15s hide=0s done=21.55s ticks=431 flow=8 warmup=200 cursor=5c776 strat=188b41 wait=1
+LEVEL1_3/CL_SHIP1_3 fps=240 pace=original fast=0 tally=15s hide=0s done=21.55s ticks=431 flow=8 warmup=200 cursor=5c776 strat=188b41 wait=1
+LEVEL1_3/CL_SHIP1_3 fps=360 pace=original fast=0 tally=15s hide=0s done=21.55s ticks=431 flow=8 warmup=200 cursor=5c776 strat=188b41 wait=1
+LEVEL1_3/CL_SHIP1_3 fps=480 pace=original fast=0 tally=15s hide=0s done=21.55s ticks=431 flow=8 warmup=200 cursor=5c776 strat=188b41 wait=1
+LEVEL1_3/CL_SHIP1_3 fps=20 pace=unlocked fast=0 tally=15s hide=0s done=21.55s ticks=431 flow=8 warmup=200 cursor=5c776 strat=188b41 wait=1
+LEVEL1_3/CL_SHIP1_3 fps=120 pace=unlocked fast=0 tally=15s hide=0s done=21.55s ticks=431 flow=8 warmup=200 cursor=5c776 strat=188b41 wait=1
+CL_SHIP1_3 CLB2=1 tick=110 raster=330
+LEVEL1_3/CL_SHIP1_3 fps=20 pace=original fast=1 tally=5.5s hide=0s done=5.55s ticks=111 flow=8 warmup=200 cursor=6d04c strat=188b41 wait=0
+CL_SHIP1_3 CLB2=1 tick=110 raster=330
+LEVEL1_3/CL_SHIP1_3 fps=120 pace=original fast=1 tally=5.5s hide=0s done=5.55s ticks=111 flow=8 warmup=200 cursor=6d04c strat=188b41 wait=0
+CL_DIVE CLB2=1 tick=359 raster=1079
+LEVEL1_5/CL_DIVE fps=20 pace=original fast=0 tally=12.7333s hide=0s done=18.0333s ticks=360 flow=9 warmup=200 cursor=6d26c strat=178ae5 wait=0
+ extra rasters 17e132=2 PLAYERINSIDESPACEFLYIN_STRAT
+CL_DIVE CLB2=1 tick=359 raster=1079
+LEVEL1_5/CL_DIVE fps=30 pace=original fast=0 tally=12.7333s hide=0s done=18.0333s ticks=360 flow=9 warmup=200 cursor=6d26c strat=178ae5 wait=0
+ extra rasters 17e132=2 PLAYERINSIDESPACEFLYIN_STRAT
+CL_DIVE CLB2=1 tick=359 raster=1079
+LEVEL1_5/CL_DIVE fps=60 pace=original fast=0 tally=12.7333s hide=0s done=18.0333s ticks=360 flow=9 warmup=200 cursor=6d26c strat=178ae5 wait=0
+ extra rasters 17e132=2 PLAYERINSIDESPACEFLYIN_STRAT
+CL_DIVE CLB2=1 tick=359 raster=1079
+LEVEL1_5/CL_DIVE fps=90 pace=original fast=0 tally=12.7333s hide=0s done=18.0333s ticks=360 flow=9 warmup=200 cursor=6d26c strat=178ae5 wait=0
+ extra rasters 17e132=2 PLAYERINSIDESPACEFLYIN_STRAT
+CL_DIVE CLB2=1 tick=359 raster=1079
+LEVEL1_5/CL_DIVE fps=120 pace=original fast=0 tally=12.7333s hide=0s done=18.0333s ticks=360 flow=9 warmup=200 cursor=6d26c strat=178ae5 wait=0
+ extra rasters 17e132=2 PLAYERINSIDESPACEFLYIN_STRAT
+CL_DIVE CLB2=1 tick=359 raster=1079
+LEVEL1_5/CL_DIVE fps=240 pace=original fast=0 tally=12.7333s hide=0s done=18.0333s ticks=360 flow=9 warmup=200 cursor=6d26c strat=178ae5 wait=0
+ extra rasters 17e132=2 PLAYERINSIDESPACEFLYIN_STRAT
+CL_DIVE CLB2=1 tick=359 raster=1079
+LEVEL1_5/CL_DIVE fps=360 pace=original fast=0 tally=12.7333s hide=0s done=18.0333s ticks=360 flow=9 warmup=200 cursor=6d26c strat=178ae5 wait=0
+ extra rasters 17e132=2 PLAYERINSIDESPACEFLYIN_STRAT
+CL_DIVE CLB2=1 tick=359 raster=1079
+LEVEL1_5/CL_DIVE fps=480 pace=original fast=0 tally=12.7333s hide=0s done=18.0333s ticks=360 flow=9 warmup=200 cursor=6d26c strat=178ae5 wait=0
+ extra rasters 17e132=2 PLAYERINSIDESPACEFLYIN_STRAT
+CL_DIVE CLB2=1 tick=359 raster=1077
+LEVEL1_5/CL_DIVE fps=20 pace=unlocked fast=0 tally=12.7s hide=0s done=18s ticks=360 flow=9 warmup=200 cursor=6d26c strat=178ae5 wait=0
+CL_DIVE CLB2=1 tick=359 raster=1077
+LEVEL1_5/CL_DIVE fps=120 pace=unlocked fast=0 tally=12.7s hide=0s done=18s ticks=360 flow=9 warmup=200 cursor=6d26c strat=178ae5 wait=0
+CL_DIVE CLB2=1 tick=63 raster=191
+LEVEL1_5/CL_DIVE fps=20 pace=original fast=1 tally=3.18333s hide=0s done=3.28333s ticks=65 flow=9 warmup=200 cursor=6d26c strat=178ae5 wait=0
+ extra rasters 17e132=2 PLAYERINSIDESPACEFLYIN_STRAT
+CL_DIVE CLB2=1 tick=63 raster=191
+LEVEL1_5/CL_DIVE fps=120 pace=original fast=1 tally=3.18333s hide=0s done=3.28333s ticks=65 flow=9 warmup=200 cursor=6d26c strat=178ae5 wait=0
+ extra rasters 17e132=2 PLAYERINSIDESPACEFLYIN_STRAT
+LEVEL1_1/CL_EARTH fps=20 pace=original fast=0 tally=11.9333s hide=0s done=18.3333s ticks=366 flow=8 warmup=324 cursor=5ca13 strat=1885d0 wait=0
+ extra rasters 1792e7=2 PLAYERONPLANET_STRAT
+LEVEL1_1/CL_EARTH fps=30 pace=original fast=0 tally=11.9333s hide=0s done=18.3333s ticks=366 flow=8 warmup=324 cursor=5ca13 strat=1885d0 wait=0
+ extra rasters 1792e7=2 PLAYERONPLANET_STRAT
+LEVEL1_1/CL_EARTH fps=60 pace=original fast=0 tally=11.9333s hide=0s done=18.3333s ticks=366 flow=8 warmup=324 cursor=5ca13 strat=1885d0 wait=0
+ extra rasters 1792e7=2 PLAYERONPLANET_STRAT
+LEVEL1_1/CL_EARTH fps=90 pace=original fast=0 tally=11.9333s hide=0s done=18.3333s ticks=366 flow=8 warmup=324 cursor=5ca13 strat=1885d0 wait=0
+ extra rasters 1792e7=2 PLAYERONPLANET_STRAT
+LEVEL1_1/CL_EARTH fps=120 pace=original fast=0 tally=11.9333s hide=0s done=18.3333s ticks=366 flow=8 warmup=324 cursor=5ca13 strat=1885d0 wait=0
+ extra rasters 1792e7=2 PLAYERONPLANET_STRAT
+LEVEL1_1/CL_EARTH fps=240 pace=original fast=0 tally=11.9333s hide=0s done=18.3333s ticks=366 flow=8 warmup=324 cursor=5ca13 strat=1885d0 wait=0
+ extra rasters 1792e7=2 PLAYERONPLANET_STRAT
+LEVEL1_1/CL_EARTH fps=360 pace=original fast=0 tally=11.9333s hide=0s done=18.3333s ticks=366 flow=8 warmup=324 cursor=5ca13 strat=1885d0 wait=0
+ extra rasters 1792e7=2 PLAYERONPLANET_STRAT
+LEVEL1_1/CL_EARTH fps=480 pace=original fast=0 tally=11.9333s hide=0s done=18.3333s ticks=366 flow=8 warmup=324 cursor=5ca13 strat=1885d0 wait=0
+ extra rasters 1792e7=2 PLAYERONPLANET_STRAT
+LEVEL1_1/CL_EARTH fps=20 pace=unlocked fast=0 tally=11.9s hide=0s done=18.3s ticks=366 flow=8 warmup=324 cursor=5ca13 strat=1885d0 wait=0
+LEVEL1_1/CL_EARTH fps=120 pace=unlocked fast=0 tally=11.9s hide=0s done=18.3s ticks=366 flow=8 warmup=324 cursor=5ca13 strat=1885d0 wait=0
+CL_EARTH CLB2=1 tick=142 raster=428
+LEVEL1_1/CL_EARTH fps=20 pace=original fast=1 tally=7.13333s hide=0s done=7.18333s ticks=143 flow=8 warmup=324 cursor=6cc67 strat=1885d0 wait=10
+ extra rasters 1792e7=2 PLAYERONPLANET_STRAT
+CL_EARTH CLB2=1 tick=142 raster=428
+LEVEL1_1/CL_EARTH fps=120 pace=original fast=1 tally=7.13333s hide=0s done=7.18333s ticks=143 flow=8 warmup=324 cursor=6cc67 strat=1885d0 wait=10
+ extra rasters 1792e7=2 PLAYERONPLANET_STRAT
+LEVEL2_3/CL_BRIDGE fps=20 pace=original fast=0 tally=14.7833s hide=0s done=21.4833s ticks=424 flow=8 warmup=200 cursor=5aed5 strat=1880f6 wait=0
+ extra rasters 179513=17 PLAYERONPLANET2_STRAT
+LEVEL2_3/CL_BRIDGE fps=30 pace=original fast=0 tally=14.7833s hide=0s done=21.4833s ticks=424 flow=8 warmup=200 cursor=5aed5 strat=1880f6 wait=0
+ extra rasters 179513=17 PLAYERONPLANET2_STRAT
+LEVEL2_3/CL_BRIDGE fps=60 pace=original fast=0 tally=14.7833s hide=0s done=21.4833s ticks=424 flow=8 warmup=200 cursor=5aed5 strat=1880f6 wait=0
+ extra rasters 179513=17 PLAYERONPLANET2_STRAT
+LEVEL2_3/CL_BRIDGE fps=90 pace=original fast=0 tally=14.7833s hide=0s done=21.4833s ticks=424 flow=8 warmup=200 cursor=5aed5 strat=1880f6 wait=0
+ extra rasters 179513=17 PLAYERONPLANET2_STRAT
+LEVEL2_3/CL_BRIDGE fps=120 pace=original fast=0 tally=14.7833s hide=0s done=21.4833s ticks=424 flow=8 warmup=200 cursor=5aed5 strat=1880f6 wait=0
+ extra rasters 179513=17 PLAYERONPLANET2_STRAT
+LEVEL2_3/CL_BRIDGE fps=240 pace=original fast=0 tally=14.7833s hide=0s done=21.4833s ticks=424 flow=8 warmup=200 cursor=5aed5 strat=1880f6 wait=0
+ extra rasters 179513=17 PLAYERONPLANET2_STRAT
+LEVEL2_3/CL_BRIDGE fps=360 pace=original fast=0 tally=14.7833s hide=0s done=21.4833s ticks=424 flow=8 warmup=200 cursor=5aed5 strat=1880f6 wait=0
+ extra rasters 179513=17 PLAYERONPLANET2_STRAT
+LEVEL2_3/CL_BRIDGE fps=480 pace=original fast=0 tally=14.7833s hide=0s done=21.4833s ticks=424 flow=8 warmup=200 cursor=5aed5 strat=1880f6 wait=0
+ extra rasters 179513=17 PLAYERONPLANET2_STRAT
+LEVEL2_3/CL_BRIDGE fps=20 pace=unlocked fast=0 tally=14.5s hide=0s done=21.2s ticks=424 flow=8 warmup=200 cursor=5aed5 strat=1880f6 wait=0
+LEVEL2_3/CL_BRIDGE fps=120 pace=unlocked fast=0 tally=14.5s hide=0s done=21.2s ticks=424 flow=8 warmup=200 cursor=5aed5 strat=1880f6 wait=0
+CL_BRIDGE CLB2=1 tick=118 raster=371
+LEVEL2_3/CL_BRIDGE fps=20 pace=original fast=1 tally=6.18333s hide=0s done=6.23333s ticks=119 flow=8 warmup=200 cursor=9f02d strat=18807c wait=1
+ extra rasters 179513=17 PLAYERONPLANET2_STRAT
+CL_BRIDGE CLB2=1 tick=118 raster=371
+LEVEL2_3/CL_BRIDGE fps=120 pace=original fast=1 tally=6.18333s hide=0s done=6.23333s ticks=119 flow=8 warmup=200 cursor=9f02d strat=18807c wait=1
+ extra rasters 179513=17 PLAYERONPLANET2_STRAT
+LEVEL2_4/CL_TURN fps=20 pace=original fast=0 tally=15.6167s hide=0s done=24.4667s ticks=479 flow=8 warmup=200 cursor=5abfb strat=188e74 wait=9000
+ extra rasters 178eb3=31 PLAYERINSPACE_STRAT
+LEVEL2_4/CL_TURN fps=30 pace=original fast=0 tally=15.6167s hide=0s done=24.4667s ticks=479 flow=8 warmup=200 cursor=5abfb strat=188e74 wait=9000
+ extra rasters 178eb3=31 PLAYERINSPACE_STRAT
+LEVEL2_4/CL_TURN fps=60 pace=original fast=0 tally=15.6167s hide=0s done=24.4667s ticks=479 flow=8 warmup=200 cursor=5abfb strat=188e74 wait=9000
+ extra rasters 178eb3=31 PLAYERINSPACE_STRAT
+LEVEL2_4/CL_TURN fps=90 pace=original fast=0 tally=15.6167s hide=0s done=24.4667s ticks=479 flow=8 warmup=200 cursor=5abfb strat=188e74 wait=9000
+ extra rasters 178eb3=31 PLAYERINSPACE_STRAT
+LEVEL2_4/CL_TURN fps=120 pace=original fast=0 tally=15.6167s hide=0s done=24.4667s ticks=479 flow=8 warmup=200 cursor=5abfb strat=188e74 wait=9000
+ extra rasters 178eb3=31 PLAYERINSPACE_STRAT
+LEVEL2_4/CL_TURN fps=240 pace=original fast=0 tally=15.6167s hide=0s done=24.4667s ticks=479 flow=8 warmup=200 cursor=5abfb strat=188e74 wait=9000
+ extra rasters 178eb3=31 PLAYERINSPACE_STRAT
+LEVEL2_4/CL_TURN fps=360 pace=original fast=0 tally=15.6167s hide=0s done=24.4667s ticks=479 flow=8 warmup=200 cursor=5abfb strat=188e74 wait=9000
+ extra rasters 178eb3=31 PLAYERINSPACE_STRAT
+LEVEL2_4/CL_TURN fps=480 pace=original fast=0 tally=15.6167s hide=0s done=24.4667s ticks=479 flow=8 warmup=200 cursor=5abfb strat=188e74 wait=9000
+ extra rasters 178eb3=31 PLAYERINSPACE_STRAT
+LEVEL2_4/CL_TURN fps=20 pace=unlocked fast=0 tally=15.1s hide=0s done=23.95s ticks=479 flow=8 warmup=200 cursor=5abfb strat=188e74 wait=9000
+LEVEL2_4/CL_TURN fps=120 pace=unlocked fast=0 tally=15.1s hide=0s done=23.95s ticks=479 flow=8 warmup=200 cursor=5abfb strat=188e74 wait=9000
+CL_TURN CLB2=1 tick=66 raster=299
+LEVEL2_4/CL_TURN fps=20 pace=original fast=1 tally=4.98333s hide=0s done=5.03333s ticks=67 flow=8 warmup=200 cursor=9f0be strat=178eb3 wait=1
+ extra rasters 178eb3=101 PLAYERINSPACE_STRAT
+CL_TURN CLB2=1 tick=66 raster=299
+LEVEL2_4/CL_TURN fps=120 pace=original fast=1 tally=4.98333s hide=0s done=5.03333s ticks=67 flow=8 warmup=200 cursor=9f0be strat=178eb3 wait=1
+ extra rasters 178eb3=101 PLAYERINSPACE_STRAT
+LEVEL3_2/CL_CHASE fps=20 pace=original fast=0 tally=15.1167s hide=0s done=21.8167s ticks=436 flow=8 warmup=200 cursor=5cca7 strat=1891a3 wait=0
+ extra rasters 17e132=1 PLAYERINSIDESPACEFLYIN_STRAT
+LEVEL3_2/CL_CHASE fps=30 pace=original fast=0 tally=15.1167s hide=0s done=21.8167s ticks=436 flow=8 warmup=200 cursor=5cca7 strat=1891a3 wait=0
+ extra rasters 17e132=1 PLAYERINSIDESPACEFLYIN_STRAT
+LEVEL3_2/CL_CHASE fps=60 pace=original fast=0 tally=15.1167s hide=0s done=21.8167s ticks=436 flow=8 warmup=200 cursor=5cca7 strat=1891a3 wait=0
+ extra rasters 17e132=1 PLAYERINSIDESPACEFLYIN_STRAT
+LEVEL3_2/CL_CHASE fps=90 pace=original fast=0 tally=15.1167s hide=0s done=21.8167s ticks=436 flow=8 warmup=200 cursor=5cca7 strat=1891a3 wait=0
+ extra rasters 17e132=1 PLAYERINSIDESPACEFLYIN_STRAT
+LEVEL3_2/CL_CHASE fps=120 pace=original fast=0 tally=15.1167s hide=0s done=21.8167s ticks=436 flow=8 warmup=200 cursor=5cca7 strat=1891a3 wait=0
+ extra rasters 17e132=1 PLAYERINSIDESPACEFLYIN_STRAT
+LEVEL3_2/CL_CHASE fps=240 pace=original fast=0 tally=15.1167s hide=0s done=21.8167s ticks=436 flow=8 warmup=200 cursor=5cca7 strat=1891a3 wait=0
+ extra rasters 17e132=1 PLAYERINSIDESPACEFLYIN_STRAT
+LEVEL3_2/CL_CHASE fps=360 pace=original fast=0 tally=15.1167s hide=0s done=21.8167s ticks=436 flow=8 warmup=200 cursor=5cca7 strat=1891a3 wait=0
+ extra rasters 17e132=1 PLAYERINSIDESPACEFLYIN_STRAT
+LEVEL3_2/CL_CHASE fps=480 pace=original fast=0 tally=15.1167s hide=0s done=21.8167s ticks=436 flow=8 warmup=200 cursor=5cca7 strat=1891a3 wait=0
+ extra rasters 17e132=1 PLAYERINSIDESPACEFLYIN_STRAT
+LEVEL3_2/CL_CHASE fps=20 pace=unlocked fast=0 tally=15.1s hide=0s done=21.8s ticks=436 flow=8 warmup=200 cursor=5cca7 strat=1891a3 wait=0
+LEVEL3_2/CL_CHASE fps=120 pace=unlocked fast=0 tally=15.1s hide=0s done=21.8s ticks=436 flow=8 warmup=200 cursor=5cca7 strat=1891a3 wait=0
+CL_CHASE CLB2=1 tick=98 raster=295
+LEVEL3_2/CL_CHASE fps=20 pace=original fast=1 tally=4.91667s hide=0s done=4.96667s ticks=99 flow=8 warmup=200 cursor=78541 strat=189057 wait=1
+ extra rasters 17e132=1 PLAYERINSIDESPACEFLYIN_STRAT
+CL_CHASE CLB2=1 tick=98 raster=295
+LEVEL3_2/CL_CHASE fps=120 pace=original fast=1 tally=4.91667s hide=0s done=4.96667s ticks=99 flow=8 warmup=200 cursor=78541 strat=189057 wait=1
+ extra rasters 17e132=1 PLAYERINSIDESPACEFLYIN_STRAT
+LEVEL3_4/CL_SHIP3_4 fps=20 pace=original fast=0 tally=15.0333s hide=0s done=21.5833s ticks=431 flow=8 warmup=200 cursor=5c776 strat=188b41 wait=1
+ extra rasters 17e132=2 PLAYERINSIDESPACEFLYIN_STRAT
+LEVEL3_4/CL_SHIP3_4 fps=30 pace=original fast=0 tally=15.0333s hide=0s done=21.5833s ticks=431 flow=8 warmup=200 cursor=5c776 strat=188b41 wait=1
+ extra rasters 17e132=2 PLAYERINSIDESPACEFLYIN_STRAT
+LEVEL3_4/CL_SHIP3_4 fps=60 pace=original fast=0 tally=15.0333s hide=0s done=21.5833s ticks=431 flow=8 warmup=200 cursor=5c776 strat=188b41 wait=1
+ extra rasters 17e132=2 PLAYERINSIDESPACEFLYIN_STRAT
+LEVEL3_4/CL_SHIP3_4 fps=90 pace=original fast=0 tally=15.0333s hide=0s done=21.5833s ticks=431 flow=8 warmup=200 cursor=5c776 strat=188b41 wait=1
+ extra rasters 17e132=2 PLAYERINSIDESPACEFLYIN_STRAT
+LEVEL3_4/CL_SHIP3_4 fps=120 pace=original fast=0 tally=15.0333s hide=0s done=21.5833s ticks=431 flow=8 warmup=200 cursor=5c776 strat=188b41 wait=1
+ extra rasters 17e132=2 PLAYERINSIDESPACEFLYIN_STRAT
+LEVEL3_4/CL_SHIP3_4 fps=240 pace=original fast=0 tally=15.0333s hide=0s done=21.5833s ticks=431 flow=8 warmup=200 cursor=5c776 strat=188b41 wait=1
+ extra rasters 17e132=2 PLAYERINSIDESPACEFLYIN_STRAT
+LEVEL3_4/CL_SHIP3_4 fps=360 pace=original fast=0 tally=15.0333s hide=0s done=21.5833s ticks=431 flow=8 warmup=200 cursor=5c776 strat=188b41 wait=1
+ extra rasters 17e132=2 PLAYERINSIDESPACEFLYIN_STRAT
+LEVEL3_4/CL_SHIP3_4 fps=480 pace=original fast=0 tally=15.0333s hide=0s done=21.5833s ticks=431 flow=8 warmup=200 cursor=5c776 strat=188b41 wait=1
+ extra rasters 17e132=2 PLAYERINSIDESPACEFLYIN_STRAT
+LEVEL3_4/CL_SHIP3_4 fps=20 pace=unlocked fast=0 tally=15s hide=0s done=21.55s ticks=431 flow=8 warmup=200 cursor=5c776 strat=188b41 wait=1
+LEVEL3_4/CL_SHIP3_4 fps=120 pace=unlocked fast=0 tally=15s hide=0s done=21.55s ticks=431 flow=8 warmup=200 cursor=5c776 strat=188b41 wait=1
+CL_SHIP3_4 CLB2=1 tick=110 raster=332
+LEVEL3_4/CL_SHIP3_4 fps=20 pace=original fast=1 tally=5.53333s hide=0s done=5.58333s ticks=111 flow=8 warmup=200 cursor=787ea strat=188b41 wait=0
+ extra rasters 17e132=2 PLAYERINSIDESPACEFLYIN_STRAT
+CL_SHIP3_4 CLB2=1 tick=110 raster=332
+LEVEL3_4/CL_SHIP3_4 fps=120 pace=original fast=1 tally=5.53333s hide=0s done=5.58333s ticks=111 flow=8 warmup=200 cursor=787ea strat=188b41 wait=0
+ extra rasters 17e132=2 PLAYERINSIDESPACEFLYIN_STRAT
+LEVEL3_5/CL_UNDER fps=20 pace=original fast=0 tally=14.3667s hide=0s done=21.0667s ticks=420 flow=8 warmup=200 cursor=5cf23 strat=1892bf wait=0
+ extra rasters 179a4f=4 PLAYERUNDERGND_STRAT
+LEVEL3_5/CL_UNDER fps=30 pace=original fast=0 tally=14.3667s hide=0s done=21.0667s ticks=420 flow=8 warmup=200 cursor=5cf23 strat=1892bf wait=0
+ extra rasters 179a4f=4 PLAYERUNDERGND_STRAT
+LEVEL3_5/CL_UNDER fps=60 pace=original fast=0 tally=14.3667s hide=0s done=21.0667s ticks=420 flow=8 warmup=200 cursor=5cf23 strat=1892bf wait=0
+ extra rasters 179a4f=4 PLAYERUNDERGND_STRAT
+LEVEL3_5/CL_UNDER fps=90 pace=original fast=0 tally=14.3667s hide=0s done=21.0667s ticks=420 flow=8 warmup=200 cursor=5cf23 strat=1892bf wait=0
+ extra rasters 179a4f=4 PLAYERUNDERGND_STRAT
+LEVEL3_5/CL_UNDER fps=120 pace=original fast=0 tally=14.3667s hide=0s done=21.0667s ticks=420 flow=8 warmup=200 cursor=5cf23 strat=1892bf wait=0
+ extra rasters 179a4f=4 PLAYERUNDERGND_STRAT
+LEVEL3_5/CL_UNDER fps=240 pace=original fast=0 tally=14.3667s hide=0s done=21.0667s ticks=420 flow=8 warmup=200 cursor=5cf23 strat=1892bf wait=0
+ extra rasters 179a4f=4 PLAYERUNDERGND_STRAT
+LEVEL3_5/CL_UNDER fps=360 pace=original fast=0 tally=14.3667s hide=0s done=21.0667s ticks=420 flow=8 warmup=200 cursor=5cf23 strat=1892bf wait=0
+ extra rasters 179a4f=4 PLAYERUNDERGND_STRAT
+LEVEL3_5/CL_UNDER fps=480 pace=original fast=0 tally=14.3667s hide=0s done=21.0667s ticks=420 flow=8 warmup=200 cursor=5cf23 strat=1892bf wait=0
+ extra rasters 179a4f=4 PLAYERUNDERGND_STRAT
+LEVEL3_5/CL_UNDER fps=20 pace=unlocked fast=0 tally=14.3s hide=0s done=21s ticks=420 flow=8 warmup=200 cursor=5cf23 strat=1892bf wait=0
+LEVEL3_5/CL_UNDER fps=120 pace=unlocked fast=0 tally=14.3s hide=0s done=21s ticks=420 flow=8 warmup=200 cursor=5cf23 strat=1892bf wait=0
+CL_UNDER CLB2=1 tick=133 raster=403
+LEVEL3_5/CL_UNDER fps=20 pace=original fast=1 tally=6.71667s hide=0s done=6.76667s ticks=134 flow=8 warmup=200 cursor=788bd strat=179a4f wait=1
+ extra rasters 179a4f=4 PLAYERUNDERGND_STRAT
+CL_UNDER CLB2=1 tick=133 raster=403
+LEVEL3_5/CL_UNDER fps=120 pace=original fast=1 tally=6.71667s hide=0s done=6.76667s ticks=134 flow=8 warmup=200 cursor=788bd strat=179a4f wait=1
+ extra rasters 179a4f=4 PLAYERUNDERGND_STRAT
+LEVEL6_3/CL_TURN2 fps=20 pace=original fast=0 tally=11.9s hide=0s done=20.75s ticks=415 flow=8 warmup=200 cursor=5d590 strat=188e74 wait=9000
+LEVEL6_3/CL_TURN2 fps=30 pace=original fast=0 tally=11.9s hide=0s done=20.75s ticks=415 flow=8 warmup=200 cursor=5d590 strat=188e74 wait=9000
+LEVEL6_3/CL_TURN2 fps=60 pace=original fast=0 tally=11.9s hide=0s done=20.75s ticks=415 flow=8 warmup=200 cursor=5d590 strat=188e74 wait=9000
+LEVEL6_3/CL_TURN2 fps=90 pace=original fast=0 tally=11.9s hide=0s done=20.75s ticks=415 flow=8 warmup=200 cursor=5d590 strat=188e74 wait=9000
+LEVEL6_3/CL_TURN2 fps=120 pace=original fast=0 tally=11.9s hide=0s done=20.75s ticks=415 flow=8 warmup=200 cursor=5d590 strat=188e74 wait=9000
+LEVEL6_3/CL_TURN2 fps=240 pace=original fast=0 tally=11.9s hide=0s done=20.75s ticks=415 flow=8 warmup=200 cursor=5d590 strat=188e74 wait=9000
+LEVEL6_3/CL_TURN2 fps=360 pace=original fast=0 tally=11.9s hide=0s done=20.75s ticks=415 flow=8 warmup=200 cursor=5d590 strat=188e74 wait=9000
+LEVEL6_3/CL_TURN2 fps=480 pace=original fast=0 tally=11.9s hide=0s done=20.75s ticks=415 flow=8 warmup=200 cursor=5d590 strat=188e74 wait=9000
+LEVEL6_3/CL_TURN2 fps=20 pace=unlocked fast=0 tally=11.9s hide=0s done=20.75s ticks=415 flow=8 warmup=200 cursor=5d590 strat=188e74 wait=9000
+LEVEL6_3/CL_TURN2 fps=120 pace=unlocked fast=0 tally=11.9s hide=0s done=20.75s ticks=415 flow=8 warmup=200 cursor=5d590 strat=188e74 wait=9000
+CL_TURN2 CLB2=1 tick=66 raster=198
+LEVEL6_3/CL_TURN2 fps=20 pace=original fast=1 tally=3.3s hide=0s done=3.35s ticks=67 flow=8 warmup=200 cursor=9d93f strat=178eb3 wait=1
+CL_TURN2 CLB2=1 tick=66 raster=198
+LEVEL6_3/CL_TURN2 fps=120 pace=original fast=1 tally=3.3s hide=0s done=3.35s ticks=67 flow=8 warmup=200 cursor=9d93f strat=178eb3 wait=1
+CL_COMET CLB2=3 tick=281 raster=845
+CL_COMET CLB2=1 tick=518 raster=1556
+LEVEL_COMET/CL_COMET fps=20 pace=original fast=0 tally=4.08333s hide=14.0833s done=26.2333s ticks=524 flow=8 warmup=200 cursor=5d357 strat=18955f wait=96
+ extra rasters 178eb3=2 PLAYERINSPACE_STRAT
+CL_COMET CLB2=3 tick=281 raster=845
+CL_COMET CLB2=1 tick=518 raster=1556
+LEVEL_COMET/CL_COMET fps=30 pace=original fast=0 tally=4.08333s hide=14.0833s done=26.2333s ticks=524 flow=8 warmup=200 cursor=5d357 strat=18955f wait=96
+ extra rasters 178eb3=2 PLAYERINSPACE_STRAT
+CL_COMET CLB2=3 tick=281 raster=845
+CL_COMET CLB2=1 tick=518 raster=1556
+LEVEL_COMET/CL_COMET fps=60 pace=original fast=0 tally=4.08333s hide=14.0833s done=26.2333s ticks=524 flow=8 warmup=200 cursor=5d357 strat=18955f wait=96
+ extra rasters 178eb3=2 PLAYERINSPACE_STRAT
+CL_COMET CLB2=3 tick=281 raster=845
+CL_COMET CLB2=1 tick=518 raster=1556
+LEVEL_COMET/CL_COMET fps=90 pace=original fast=0 tally=4.08333s hide=14.0833s done=26.2333s ticks=524 flow=8 warmup=200 cursor=5d357 strat=18955f wait=96
+ extra rasters 178eb3=2 PLAYERINSPACE_STRAT
+CL_COMET CLB2=3 tick=281 raster=845
+CL_COMET CLB2=1 tick=518 raster=1556
+LEVEL_COMET/CL_COMET fps=120 pace=original fast=0 tally=4.08333s hide=14.0833s done=26.2333s ticks=524 flow=8 warmup=200 cursor=5d357 strat=18955f wait=96
+ extra rasters 178eb3=2 PLAYERINSPACE_STRAT
+CL_COMET CLB2=3 tick=281 raster=845
+CL_COMET CLB2=1 tick=518 raster=1556
+LEVEL_COMET/CL_COMET fps=240 pace=original fast=0 tally=4.08333s hide=14.0833s done=26.2333s ticks=524 flow=8 warmup=200 cursor=5d357 strat=18955f wait=96
+ extra rasters 178eb3=2 PLAYERINSPACE_STRAT
+CL_COMET CLB2=3 tick=281 raster=845
+CL_COMET CLB2=1 tick=518 raster=1556
+LEVEL_COMET/CL_COMET fps=360 pace=original fast=0 tally=4.08333s hide=14.0833s done=26.2333s ticks=524 flow=8 warmup=200 cursor=5d357 strat=18955f wait=96
+ extra rasters 178eb3=2 PLAYERINSPACE_STRAT
+CL_COMET CLB2=3 tick=281 raster=845
+CL_COMET CLB2=1 tick=518 raster=1556
+LEVEL_COMET/CL_COMET fps=480 pace=original fast=0 tally=4.08333s hide=14.0833s done=26.2333s ticks=524 flow=8 warmup=200 cursor=5d357 strat=18955f wait=96
+ extra rasters 178eb3=2 PLAYERINSPACE_STRAT
+CL_COMET CLB2=3 tick=281 raster=843
+CL_COMET CLB2=1 tick=518 raster=1554
+LEVEL_COMET/CL_COMET fps=20 pace=unlocked fast=0 tally=4.05s hide=14.05s done=26.2s ticks=524 flow=8 warmup=200 cursor=5d357 strat=18955f wait=96
+CL_COMET CLB2=3 tick=281 raster=843
+CL_COMET CLB2=1 tick=518 raster=1554
+LEVEL_COMET/CL_COMET fps=120 pace=unlocked fast=0 tally=4.05s hide=14.05s done=26.2s ticks=524 flow=8 warmup=200 cursor=5d357 strat=18955f wait=96
+CL_COMET CLB2=1 tick=368 raster=1106
+LEVEL_COMET/CL_COMET fps=20 pace=original fast=1 tally=18.4333s hide=0s done=18.7333s ticks=374 flow=8 warmup=200 cursor=5bf09 strat=189348 wait=29
+ extra rasters 178eb3=2 PLAYERINSPACE_STRAT
+CL_COMET CLB2=1 tick=368 raster=1106
+LEVEL_COMET/CL_COMET fps=120 pace=original fast=1 tally=18.4333s hide=0s done=18.7333s ticks=374 flow=8 warmup=200 cursor=5bf09 strat=189348 wait=29
+ extra rasters 178eb3=2 PLAYERINSPACE_STRAT
+<end of output>
+Test time =  66.45 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_level_clear" end time: Sep 06 04:46 Eastern Daylight Time
+"starfox_ex_level_clear" time elapsed: 00:01:06
+----------------------------------------------------------
+
+68/74 Testing: starfox_ex_timing_parity
+68/74 Test: starfox_ex_timing_parity
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_timing_parity_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_timing_parity" start time: Sep 06 04:45 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+LEVEL2_1 1: 16 presentation-sampled short-tap cases pass
+LEVEL2_1 1: 8 tightly spaced presentation-sampled pairs pass
+LEVEL2_1 1: 8 held release/repress pairs pass
+LEVEL2_1 original: 785 identical source updates across seven 60-second replays
+LEVEL2_1 0: 16 presentation-sampled short-tap cases pass
+LEVEL2_1 0: 8 tightly spaced presentation-sampled pairs pass
+LEVEL2_1 0: 8 held release/repress pairs pass
+LEVEL2_1 unlocked: 1200 identical source updates across seven 60-second replays
+LEVEL3_1 1: 16 presentation-sampled short-tap cases pass
+LEVEL3_1 1: 8 tightly spaced presentation-sampled pairs pass
+LEVEL3_1 1: 8 held release/repress pairs pass
+LEVEL3_1 original: 776 identical source updates across seven 60-second replays
+LEVEL3_1 0: 16 presentation-sampled short-tap cases pass
+LEVEL3_1 0: 8 tightly spaced presentation-sampled pairs pass
+LEVEL3_1 0: 8 held release/repress pairs pass
+LEVEL3_1 unlocked: 1200 identical source updates across seven 60-second replays
+<end of output>
+Test time =  68.09 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_timing_parity" end time: Sep 06 04:46 Eastern Daylight Time
+"starfox_ex_timing_parity" time elapsed: 00:01:08
+----------------------------------------------------------
+
+38/74 Testing: starfox_upstream_ending_audio
+38/74 Test: starfox_upstream_ending_audio
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_ending_audio_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_ending_audio" start time: Sep 06 04:46 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+staff roll entered at 155.3 seconds
+SPC staff roll first=0.3 last=801.85 longest silence=591.25 reprise=740.35 seconds
+<end of output>
+Test time =  23.94 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_ending_audio" end time: Sep 06 04:47 Eastern Daylight Time
+"starfox_upstream_ending_audio" time elapsed: 00:00:23
+----------------------------------------------------------
+
+41/74 Testing: starfox_upstream_msu_ending_audio
+41/74 Test: starfox_upstream_msu_ending_audio
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_ending_audio_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/Starfox-MSU1.PAK"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_msu_ending_audio" start time: Sep 06 04:46 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+staff roll entered at 155.3 seconds
+SPC staff roll first=0.3 last=801.85 longest silence=591.25 reprise=740.35 seconds
+MSU staff roll first=0.05 last=801.85 longest silence=570.2 reprise=740.35 seconds
+MSU native-tail handoff=170.15 seconds
+<end of output>
+Test time =  25.13 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_msu_ending_audio" end time: Sep 06 04:47 Eastern Daylight Time
+"starfox_upstream_msu_ending_audio" time elapsed: 00:00:25
+----------------------------------------------------------
+
+40/74 Testing: starfox_upstream_timing_parity
+40/74 Test: starfox_upstream_timing_parity
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_timing_parity_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_timing_parity" start time: Sep 06 04:46 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+LEVEL2_1 1: 16 presentation-sampled short-tap cases pass
+LEVEL2_1 1: 8 tightly spaced presentation-sampled pairs pass
+LEVEL2_1 1: 8 held release/repress pairs pass
+LEVEL2_1 original: 814 identical source updates across seven 60-second replays
+LEVEL2_1 0: 16 presentation-sampled short-tap cases pass
+LEVEL2_1 0: 8 tightly spaced presentation-sampled pairs pass
+LEVEL2_1 0: 8 held release/repress pairs pass
+LEVEL2_1 unlocked: 1200 identical source updates across seven 60-second replays
+LEVEL3_1 1: 16 presentation-sampled short-tap cases pass
+LEVEL3_1 1: 8 tightly spaced presentation-sampled pairs pass
+LEVEL3_1 1: 8 held release/repress pairs pass
+LEVEL3_1 original: 793 identical source updates across seven 60-second replays
+LEVEL3_1 0: 16 presentation-sampled short-tap cases pass
+LEVEL3_1 0: 8 tightly spaced presentation-sampled pairs pass
+LEVEL3_1 0: 8 held release/repress pairs pass
+LEVEL3_1 unlocked: 1200 identical source updates across seven 60-second replays
+<end of output>
+Test time =  61.58 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_timing_parity" end time: Sep 06 04:47 Eastern Daylight Time
+"starfox_upstream_timing_parity" time elapsed: 00:01:01
+----------------------------------------------------------
+
+59/74 Testing: starfox_ex_orchestra_audio
+59/74 Test: starfox_ex_orchestra_audio
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_ending_audio_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt" "-" "orchestra"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_orchestra_audio" start time: Sep 06 04:47 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+staff roll entered at 168.1 seconds
+SPC EX orchestra first=0.3 last=950.05 longest silence=0 reprise=0 seconds
+<end of output>
+Test time =  29.75 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_orchestra_audio" end time: Sep 06 04:47 Eastern Daylight Time
+"starfox_ex_orchestra_audio" time elapsed: 00:00:29
+----------------------------------------------------------
+
+58/74 Testing: starfox_ex_ending_audio
+58/74 Test: starfox_ex_ending_audio
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_ending_audio_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_ending_audio" start time: Sep 06 04:47 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+staff roll entered at 154.4 seconds
+SPC staff roll first=0.3 last=801.85 longest silence=591.4 reprise=740.35 seconds
+<end of output>
+Test time =  29.63 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_ending_audio" end time: Sep 06 04:47 Eastern Daylight Time
+"starfox_ex_ending_audio" time elapsed: 00:00:29
+----------------------------------------------------------
+
+69/74 Testing: starfox_ex_multiplayer_input
+69/74 Test: starfox_ex_multiplayer_input
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_multiplayer_input_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_multiplayer_input" start time: Sep 06 04:47 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+48 native multiplayer short-tap cases pass
+<end of output>
+Test time =  15.08 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_multiplayer_input" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_ex_multiplayer_input" time elapsed: 00:00:15
+----------------------------------------------------------
+
+56/74 Testing: starfox_ex_ending
+56/74 Test: starfox_ex_ending
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_ending_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_ending" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+EX unlocked/20Hz route-1: escape=897 total=1145 average=1195 credits=3073 final=6474 bosses=6 credit-strings=60
+EX original/120Hz special-route: escape=846 total=1094 average=1144 credits=3347 final=6748 bosses=6 credit-strings=60
+<end of output>
+Test time =   7.11 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_ending" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_ex_ending" time elapsed: 00:00:07
+----------------------------------------------------------
+
+53/74 Testing: starfox_embedded_asset_lifecycle
+53/74 Test: starfox_embedded_asset_lifecycle
+Command: "C:/Strawberry/c/bin/cmake.exe" "-DRUNTIME=C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_pc.exe" "-DVERIFIER=C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_bps_tests.exe" "-DRETAIL=C:/NTSC-US Super Nintendo System Roms/Star Fox (USA) (Rev 2).sfc" "-DRETAIL_JAPAN_V10=C:/NTSC-US Super Nintendo System Roms/Star Fox (Japan).sfc" "-DRETAIL_JAPAN_V11=C:/NTSC-US Super Nintendo System Roms/Star Fox (Japan) (Rev 1).sfc" "-DRETAIL_USA_V10=C:/NTSC-US Super Nintendo System Roms/Star Fox (USA).sfc" "-DRETAIL_USA_V11=C:/NTSC-US Super Nintendo System Roms/Star Fox (USA) (Rev 1).sfc" "-DRETAIL_EUROPE_V10=C:/NTSC-US Super Nintendo System Roms/Starwing (Europe).sfc" "-DRETAIL_EUROPE_V11=C:/NTSC-US Super Nintendo System Roms/Starwing (Europe) (Rev 1).sfc" "-DRETAIL_GERMANY_V10=C:/NTSC-US Super Nintendo System Roms/Starwing (Germany).sfc" "-DORIGINAL_ROM=C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.sfc" "-DORIGINAL_SYMBOLS=C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "-DEX_ROM=C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "-DEX_SYMBOLS=C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt" "-DWORK_DIR=C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/asset-lifecycle" "-P" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/runtime_asset_lifecycle.cmake"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_embedded_asset_lifecycle" start time: Sep 06 04:47 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+-- runtime asset lifecycle passed
+<end of output>
+Test time =  33.84 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_embedded_asset_lifecycle" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_embedded_asset_lifecycle" time elapsed: 00:00:33
+----------------------------------------------------------
+
+30/74 Testing: starfox_upstream_ending
+30/74 Test: starfox_upstream_ending
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_ending_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_ending" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+Original unlocked/20Hz route-1: escape=915 total=1163 average=1213 credits=3091 final=5642 bosses=6 credit-strings=60
+Original original/120Hz special-route: escape=915 total=1163 average=1213 credits=3091 final=5642 bosses=6 credit-strings=61
+<end of output>
+Test time =   4.78 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_ending" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_upstream_ending" time elapsed: 00:00:04
+----------------------------------------------------------
+
+31/74 Testing: starfox_upstream_port_regressions
+31/74 Test: starfox_upstream_port_regressions
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_port_regression_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_port_regressions" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+native object words: 320 pointer/counter round trips and scalar-preserving removal passed
+submitted flags: native clear, repeated presentations, invisible objects and slot reuse passed
+source point scaling: 6 model/frame/scale comparisons
+source planet art: 24 complete flat/zoom icon comparisons
+credits late Start returned at 3500
+credits held early returned at 2521
+<end of output>
+Test time =   3.26 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_port_regressions" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_upstream_port_regressions" time elapsed: 00:00:03
+----------------------------------------------------------
+
+73/74 Testing: starfox_ex_intro_runtime_smoke
+73/74 Test: starfox_ex_intro_runtime_smoke
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_pc.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/embedded-ex-runtime-smoke
+"starfox_ex_intro_runtime_smoke" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =  17.17 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_intro_runtime_smoke" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_ex_intro_runtime_smoke" time elapsed: 00:00:17
+----------------------------------------------------------
+
+65/74 Testing: starfox_ex_reference_view_2
+65/74 Test: starfox_ex_reference_view_2
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_view.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt" "LEVEL2_1" "1800" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/reference-view-ex-2.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_reference_view_2" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+LEVEL2_1: 3142 object views, 104 invisible, 23 behind, 0 different
+<end of output>
+Test time =   2.07 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_reference_view_2" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_ex_reference_view_2" time elapsed: 00:00:02
+----------------------------------------------------------
+
+66/74 Testing: starfox_ex_reference_view_3
+66/74 Test: starfox_ex_reference_view_3
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_view.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt" "LEVEL3_1" "1800" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/reference-view-ex-3.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_reference_view_3" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+LEVEL3_1: 3094 object views, 82 invisible, 24 behind, 0 different
+<end of output>
+Test time =   1.95 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_reference_view_3" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_ex_reference_view_3" time elapsed: 00:00:01
+----------------------------------------------------------
+
+36/74 Testing: starfox_upstream_reference_view_2
+36/74 Test: starfox_upstream_reference_view_2
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_view.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "LEVEL2_1" "1800" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/reference-view-original-2.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_reference_view_2" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+LEVEL2_1: 2993 object views, 106 invisible, 121 behind, 0 different
+<end of output>
+Test time =   1.67 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_reference_view_2" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_upstream_reference_view_2" time elapsed: 00:00:01
+----------------------------------------------------------
+
+37/74 Testing: starfox_upstream_reference_view_3
+37/74 Test: starfox_upstream_reference_view_3
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_view.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "LEVEL3_1" "1800" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/reference-view-original-3.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_reference_view_3" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+LEVEL3_1: 2984 object views, 83 invisible, 122 behind, 0 different
+<end of output>
+Test time =   1.76 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_reference_view_3" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_upstream_reference_view_3" time elapsed: 00:00:01
+----------------------------------------------------------
+
+61/74 Testing: starfox_ex_reference_render
+61/74 Test: starfox_ex_reference_render
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_render_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/reference-render-ex.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_reference_render" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+24630 independent cartridge framebuffer hashes passed
+<end of output>
+Test time =   1.55 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_reference_render" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_ex_reference_render" time elapsed: 00:00:01
+----------------------------------------------------------
+
+3/74 Testing: starfox_reference_interrupts
+3/74 Test: starfox_reference_interrupts
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_interrupt_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/reference-interrupts.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_reference_interrupts" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+6912 native interrupt entries; 0 differences
+<end of output>
+Test time =   1.99 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_reference_interrupts" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_reference_interrupts" time elapsed: 00:00:01
+----------------------------------------------------------
+
+50/74 Testing: starfox_runtime_smoke
+50/74 Test: starfox_runtime_smoke
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_pc.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "LEVEL1_1"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_runtime_smoke" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   2.85 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_runtime_smoke" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_runtime_smoke" time elapsed: 00:00:02
+----------------------------------------------------------
+
+7/74 Testing: starfox_reference_dma
+7/74 Test: starfox_reference_dma
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_dma_tests.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_reference_dma" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+48 three-field HDMA schedules; zero differences
+11520 scheduled HDMA and collision cases; zero differences
+18435 general DMA cases; zero bus, data, register or timeline differences
+<end of output>
+Test time =   5.13 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_reference_dma" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_reference_dma" time elapsed: 00:00:05
+----------------------------------------------------------
+
+32/74 Testing: starfox_upstream_reference_render
+32/74 Test: starfox_upstream_reference_render
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_render_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/reference-render-original.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_reference_render" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+15948 independent cartridge framebuffer hashes passed
+<end of output>
+Test time =   0.90 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_reference_render" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_upstream_reference_render" time elapsed: 00:00:00
+----------------------------------------------------------
+
+72/74 Testing: starfox_ex_simulation_data
+72/74 Test: starfox_ex_simulation_data
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_simulation_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_simulation_data" start time: Sep 06 04:46 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+All simulation substrate tests passed.
+<end of output>
+Test time = 120.52 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_simulation_data" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_ex_simulation_data" time elapsed: 00:02:00
+----------------------------------------------------------
+
+51/74 Testing: starfox_exit_confirmation_smoke
+51/74 Test: starfox_exit_confirmation_smoke
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_pc.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_exit_confirmation_smoke" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   1.37 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_exit_confirmation_smoke" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_exit_confirmation_smoke" time elapsed: 00:00:01
+----------------------------------------------------------
+
+52/74 Testing: starfox_embedded_runtime_smoke
+52/74 Test: starfox_embedded_runtime_smoke
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_pc.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/embedded-runtime-smoke
+"starfox_embedded_runtime_smoke" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   2.58 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_embedded_runtime_smoke" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_embedded_runtime_smoke" time elapsed: 00:00:02
+----------------------------------------------------------
+
+54/74 Testing: starfox_ex_direct_audio
+54/74 Test: starfox_ex_direct_audio
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_direct_audio_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_direct_audio" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   1.01 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_direct_audio" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_ex_direct_audio" time elapsed: 00:00:01
+----------------------------------------------------------
+
+28/74 Testing: starfox_upstream_direct_audio
+28/74 Test: starfox_upstream_direct_audio
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_direct_audio_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_direct_audio" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.88 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_direct_audio" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_upstream_direct_audio" time elapsed: 00:00:00
+----------------------------------------------------------
+
+49/74 Testing: starfox_upstream_route_lifecycle
+49/74 Test: starfox_upstream_route_lifecycle
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_stage_trace.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "LEVEL1_3" "500"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_route_lifecycle" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+LEVEL1_3: ticks=500, flow=9, map=active, cursor=$daa75, countdown=78, objects=21, shapes=7/7, display=on/15 (fade=15), bgflags=$0, exit=$0, stage=$2, bg=$27/27, gameframe=244, gamepal=0, flymode=3, viewdist=120/120, crosshair=255@(0,22), pstrat=$bab3/b, newpstrat=$89ab/b, hp=255, shape=$bb2b, pflags=(8,10,0,0,9), pcoll=0, body=$370/21, player=(28,-117,-29572), instructions=5512522, apu-writes=27510
+sound-effects=38
+<end of output>
+Test time =   0.49 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_route_lifecycle" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_upstream_route_lifecycle" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/74 Testing: starfox_reference_cpu
+2/74 Test: starfox_reference_cpu
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_cpu_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/reference-cpu.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_reference_cpu" start time: Sep 06 04:47 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+10 interrupt polling phase/status and pending-bus cases agree
+81024 CPU cases; 0 differences (0 state, 0 timing)
+524288 decimal ALU cases agree, including all 8-bit inputs
+1048576 native ADC/SBC routines agree, including all 8-bit inputs
+<end of output>
+Test time =  67.06 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_reference_cpu" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_reference_cpu" time elapsed: 00:01:07
+----------------------------------------------------------
+
+74/74 Testing: starfox_shape_audit_tests
+74/74 Test: starfox_shape_audit_tests
+Command: "C:/Users/kando/AppData/Local/Programs/Python/Python314/python.exe" "-m" "unittest" "discover" "-s" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests" "-p" "test_shape_audit.py"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_shape_audit_tests" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.116s
+
+OK
+<end of output>
+Test time =   0.26 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_shape_audit_tests" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_shape_audit_tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+67/74 Testing: starfox_ex_reference_sprites
+67/74 Test: starfox_ex_reference_sprites
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_render_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/reference-sprites-ex.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_reference_sprites" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+1950 independent cartridge framebuffer hashes passed
+<end of output>
+Test time =   0.11 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_reference_sprites" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_ex_reference_sprites" time elapsed: 00:00:00
+----------------------------------------------------------
+
+24/74 Testing: starfox_audio_queue_tests
+24/74 Test: starfox_audio_queue_tests
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_audio_queue_tests.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_audio_queue_tests" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+Realtime audio queue tests passed.
+<end of output>
+Test time =   0.13 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_audio_queue_tests" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_audio_queue_tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+70/74 Testing: starfox_ex_hitlist
+70/74 Test: starfox_ex_hitlist
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_hitlist_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_hitlist" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+Cockpit markers retain fractional roll at 60-480 Hz
+32 source tunnel phases, override/exit, four viewport widths passed
+native body collision flash and camera shake passed
+native self-removal cannot double-tick player/boss logic
+source dispatcher preserves caller accumulator width
+native WAITDMA waits on live counters across a field boundary
+source black-hole route selection and non-MSU music PCM passed
+six map planets: eight FPS choices, both paces, exact one-second angles passed
+native Venom-space exit -> tally -> Venom base, without map/briefing passed
+Sector Y map pixels/palette preserved across all three black-hole exits
+<end of output>
+Test time =   2.47 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_hitlist" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_ex_hitlist" time elapsed: 00:00:02
+----------------------------------------------------------
+
+25/74 Testing: starfox_uwp_input_tests
+25/74 Test: starfox_uwp_input_tests
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_uwp_input_tests.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_uwp_input_tests" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+All runtime input tests passed.
+<end of output>
+Test time =   0.23 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_uwp_input_tests" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_uwp_input_tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+42/74 Testing: starfox_upstream_hitlist
+42/74 Test: starfox_upstream_hitlist
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_hitlist_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_hitlist" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+Cockpit markers retain fractional roll at 60-480 Hz
+32 source tunnel phases, override/exit, four viewport widths passed
+native body collision flash and camera shake passed
+native self-removal cannot double-tick player/boss logic
+source dispatcher preserves caller accumulator width
+native WAITDMA waits on live counters across a field boundary
+source black-hole route selection and non-MSU music PCM passed
+six map planets: eight FPS choices, both paces, exact one-second angles passed
+native Venom-space exit -> tally -> Venom base, without map/briefing passed
+Sector Y map pixels/palette preserved across all three black-hole exits
+<end of output>
+Test time =   1.84 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_hitlist" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_upstream_hitlist" time elapsed: 00:00:01
+----------------------------------------------------------
+
+33/74 Testing: starfox_upstream_reference_math
+33/74 Test: starfox_upstream_reference_math
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_math_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/reference-matrices-original.csv" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/reference-points-original.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_reference_math" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+3726 model/shadow matrices match independent cartridge words
+9729 world points match independent cartridge words
+<end of output>
+Test time =   0.10 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_reference_math" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_upstream_reference_math" time elapsed: 00:00:00
+----------------------------------------------------------
+
+57/74 Testing: starfox_ex_shape_coverage
+57/74 Test: starfox_ex_shape_coverage
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_shape_coverage.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_shape_coverage" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+decoded headers: 3511
+static shapes:   3328
+animated shapes: 183
+BSP shapes:      325
+unsupported:     0
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_shape_coverage" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_ex_shape_coverage" time elapsed: 00:00:00
+----------------------------------------------------------
+
+17/74 Testing: starfox_bitmap_transfer_tests
+17/74 Test: starfox_bitmap_transfer_tests
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_bitmap_transfer_tests.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_bitmap_transfer_tests" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+Gameplay DMA wrapping/gates and timed native reads across calls/resumes pass
+<end of output>
+Test time =   0.07 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_bitmap_transfer_tests" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_bitmap_transfer_tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+11/74 Testing: starfox_retail_variant_canonicalization
+11/74 Test: starfox_retail_variant_canonicalization
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_bps_tests.exe" "--verify-canonicalizations" "C:/NTSC-US Super Nintendo System Roms/Star Fox (USA) (Rev 2).sfc" "C:/NTSC-US Super Nintendo System Roms/Star Fox (Japan).sfc" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/patches/retail-japan-v10-to-usa-v12.bps" "C:/NTSC-US Super Nintendo System Roms/Star Fox (Japan) (Rev 1).sfc" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/patches/retail-japan-v11-to-usa-v12.bps" "C:/NTSC-US Super Nintendo System Roms/Star Fox (USA).sfc" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/patches/retail-usa-v10-to-v12.bps" "C:/NTSC-US Super Nintendo System Roms/Star Fox (USA) (Rev 1).sfc" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/patches/retail-usa-v11-to-v12.bps" "C:/NTSC-US Super Nintendo System Roms/Starwing (Europe).sfc" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/patches/retail-europe-v10-to-usa-v12.bps" "C:/NTSC-US Super Nintendo System Roms/Starwing (Europe) (Rev 1).sfc" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/patches/retail-europe-v11-to-usa-v12.bps" "C:/NTSC-US Super Nintendo System Roms/Starwing (Germany).sfc" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/patches/retail-germany-v10-to-usa-v12.bps"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_retail_variant_canonicalization" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+BPS tests passed
+<end of output>
+Test time =   0.15 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_retail_variant_canonicalization" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_retail_variant_canonicalization" time elapsed: 00:00:00
+----------------------------------------------------------
+
+35/74 Testing: starfox_upstream_reference_grid
+35/74 Test: starfox_upstream_reference_grid
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_grid_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/reference-grid-original.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_reference_grid" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+192 ground-grid frames match independent cartridge pixels
+<end of output>
+Test time =   0.09 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_reference_grid" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_upstream_reference_grid" time elapsed: 00:00:00
+----------------------------------------------------------
+
+5/74 Testing: starfox_reference_halt
+5/74 Test: starfox_reference_halt
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_halt_tests.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_reference_halt" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+80 native WAI/STP cases; zero state, bus or sampling differences
+<end of output>
+Test time =   0.11 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_reference_halt" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_reference_halt" time elapsed: 00:00:00
+----------------------------------------------------------
+
+63/74 Testing: starfox_ex_reference_dust
+63/74 Test: starfox_ex_reference_dust
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_dust_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/reference-dust-ex.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_reference_dust" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+386 dust states match independent native points/pixels
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_reference_dust" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_ex_reference_dust" time elapsed: 00:00:00
+----------------------------------------------------------
+
+64/74 Testing: starfox_ex_reference_grid
+64/74 Test: starfox_ex_reference_grid
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_grid_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/reference-grid-ex.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_reference_grid" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+384 ground-grid frames match independent cartridge pixels
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_reference_grid" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_ex_reference_grid" time elapsed: 00:00:00
+----------------------------------------------------------
+
+18/74 Testing: starfox_dma_tests
+18/74 Test: starfox_dma_tests
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_dma_tests.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_dma_tests" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+96 DMA bank/fixed-address cases and 5 B-bus wrapping cases pass
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_dma_tests" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_dma_tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+55/74 Testing: starfox_ex_transition_parity
+55/74 Test: starfox_ex_transition_parity
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_transition_parity_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_transition_parity" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+IRQ flashes: 1024 native RNG/palette cases, 102 tunnel and 10 background flashes
+<end of output>
+Test time =   0.14 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_transition_parity" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_ex_transition_parity" time elapsed: 00:00:00
+----------------------------------------------------------
+
+62/74 Testing: starfox_ex_reference_math
+62/74 Test: starfox_ex_reference_math
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_math_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/symbols/starfox-ex.txt" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/reference-matrices-ex.csv" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/reference-points-ex.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_ex_reference_math" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+3726 model/shadow matrices match independent cartridge words
+9729 world points match independent cartridge words
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_ex_reference_math" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_ex_reference_math" time elapsed: 00:00:00
+----------------------------------------------------------
+
+34/74 Testing: starfox_upstream_reference_dust
+34/74 Test: starfox_upstream_reference_dust
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_dust_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/reference-dust-original.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_reference_dust" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+193 dust states match independent native points/pixels
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_reference_dust" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_upstream_reference_dust" time elapsed: 00:00:00
+----------------------------------------------------------
+
+47/74 Testing: starfox_upstream_stage_trace
+47/74 Test: starfox_upstream_stage_trace
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_stage_trace.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "LEVEL1_1" "100"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_stage_trace" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+LEVEL1_1: ticks=100, flow=9, map=active, cursor=$2780b3, countdown=265, objects=17, shapes=4/4, display=on/15 (fade=15), bgflags=$0, exit=$0, stage=$0, bg=$3/3, gameframe=97, gamepal=0, flymode=0, viewdist=120/120, crosshair=0@(-47,-90), pstrat=$814b/b, newpstrat=$801b/b, hp=255, shape=$bb63, pflags=(24,8,1,0,1), pcoll=0, body=$370/40, player=(0,-42,6559), instructions=601971, apu-writes=105784
+sound-effects=0
+<end of output>
+Test time =   0.11 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_stage_trace" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_upstream_stage_trace" time elapsed: 00:00:00
+----------------------------------------------------------
+
+8/74 Testing: starfox_reference_raster
+8/74 Test: starfox_reference_raster
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_raster_tests.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_reference_raster" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+48 NTSC/PAL fields, 37624544 beam comparisons, zero differences against pinned Ares counter
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_reference_raster" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_reference_raster" time elapsed: 00:00:00
+----------------------------------------------------------
+
+10/74 Testing: starfox_retail_v12_reconstruction
+10/74 Test: starfox_retail_v12_reconstruction
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_bps_tests.exe" "C:/NTSC-US Super Nintendo System Roms/Star Fox (USA) (Rev 2).sfc" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/patches/ultrastarfox-v12.bps" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.sfc" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/assets/patches/starfox-ex-v12.bps" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tmp/runtime-inputs/starfox-ex/SFES.SFC"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_retail_v12_reconstruction" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+BPS tests passed
+<end of output>
+Test time =   0.10 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_retail_v12_reconstruction" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_retail_v12_reconstruction" time elapsed: 00:00:00
+----------------------------------------------------------
+
+16/74 Testing: starfox_cpu_timing_tests
+16/74 Test: starfox_cpu_timing_tests
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_cpu_timing_tests.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_cpu_timing_tests" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+CPU bus regions, FastROM transitions, internal cycles, call/task accounting and interrupt signals pass
+<end of output>
+Test time =   0.07 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_cpu_timing_tests" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_cpu_timing_tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+39/74 Testing: starfox_upstream_reference_sprites
+39/74 Test: starfox_upstream_reference_sprites
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_render_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/tests/data/reference-sprites-original.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_reference_sprites" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+150 independent cartridge framebuffer hashes passed
+<end of output>
+Test time =   0.07 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_reference_sprites" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_upstream_reference_sprites" time elapsed: 00:00:00
+----------------------------------------------------------
+
+29/74 Testing: starfox_upstream_transition_parity
+29/74 Test: starfox_upstream_transition_parity
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_transition_parity_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_transition_parity" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+IRQ flashes: 1024 native RNG/palette cases, 94 tunnel and 11 background flashes
+<end of output>
+Test time =   0.12 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_transition_parity" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_upstream_transition_parity" time elapsed: 00:00:00
+----------------------------------------------------------
+
+46/74 Testing: starfox_upstream_game_init
+46/74 Test: starfox_upstream_game_init
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_game_init_trace.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "20"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_game_init" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+initgame: instructions=2055, objects=5, playpt=$338, dummy=$418, ticks=20, strategies=100, prelude-instructions=2210, strategy-instructions=29408
+<end of output>
+Test time =   0.13 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_game_init" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_upstream_game_init" time elapsed: 00:00:00
+----------------------------------------------------------
+
+45/74 Testing: starfox_upstream_strategy_trace
+45/74 Test: starfox_upstream_strategy_trace
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_strategy_trace.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "MAP1_1A" "1"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_strategy_trace" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+MAP1_1A: ticks=1, strategies=10, removed=0, instructions=1146, active=10
+<end of output>
+Test time =   0.11 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_strategy_trace" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_upstream_strategy_trace" time elapsed: 00:00:00
+----------------------------------------------------------
+
+48/74 Testing: starfox_upstream_planet_probe
+48/74 Test: starfox_upstream_planet_probe
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_planet_probe.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_planet_probe" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+setup-instructions=158551 draw-instructions=1147 unknown-superfx=
+<end of output>
+Test time =   0.12 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_planet_probe" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_upstream_planet_probe" time elapsed: 00:00:00
+----------------------------------------------------------
+
+27/74 Testing: starfox_upstream_simulation_data
+27/74 Test: starfox_upstream_simulation_data
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_simulation_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_simulation_data" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+warning: recovered failed path object: native strategy dispatch failed for object 7 at $4805b shape=$cb07 sword2=$594 rot=(0,14,0) sflags=(b,10,8,0) coll=$0 stratmem=$4fda pathptr=$0 heap=3,4,e,5,9,90,5,c,97,5,c,0,0,0,1,1f,: 65C816 subroutine at $1fd2a5 exceeded the instruction limit at $1fd2a6 (recent $1fd2a5)
+warning: recovered failed path object: native strategy dispatch failed for object 7 at $4805b shape=$cb07 sword2=$594 rot=(0,14,0) sflags=(b,10,8,0) coll=$0 stratmem=$4fda pathptr=$0 heap=3,4,e,5,9,90,5,c,97,5,c,0,0,0,1,1f,: 65C816 task at $2d725 exceeded the instruction limit at $4a377 (P=$24 D=$0 A=$85ce X=$488 [$84]=$0 [$86]=$0 recent $48067 $48069 $4806c $4806e $48070 $48072 $48074 $9c023 $9c026 $9c029 $9c02b $9c02e $9c02f $9c030 $9c031 $9c033 $9c035 $9c036 $9c037 $9c039 $9c03b $9c03c $9c03e $9c041 $48562 $4a36c $4a36d $4a36e $4a370 $4a371 $4a375 $4a376)
+All simulation substrate tests passed.
+<end of output>
+Test time =   9.54 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_simulation_data" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_upstream_simulation_data" time elapsed: 00:00:09
+----------------------------------------------------------
+
+13/74 Testing: starfox_msu1_pack_tests
+13/74 Test: starfox_msu1_pack_tests
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_msu1_pack_tests.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_msu1_pack_tests" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+All MSU-1 pack tests passed.
+<end of output>
+Test time =   0.17 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_msu1_pack_tests" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_msu1_pack_tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+44/74 Testing: starfox_upstream_map_trace
+44/74 Test: starfox_upstream_map_trace
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_map_trace.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT" "MAP1_1A"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_map_trace" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+MAP1_1A: ended, waits=10, objects=27, boundary-skipped=0
+<end of output>
+Test time =   0.18 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_map_trace" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_upstream_map_trace" time elapsed: 00:00:00
+----------------------------------------------------------
+
+26/74 Testing: starfox_upstream_shape_coverage
+26/74 Test: starfox_upstream_shape_coverage
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_shape_coverage.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SF.SFC" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/upstream-ultrastarfox/SYMBOLS.TXT"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_upstream_shape_coverage" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+decoded headers: 2697
+static shapes:   2578
+animated shapes: 119
+BSP shapes:      187
+unsupported:     0
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_upstream_shape_coverage" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_upstream_shape_coverage" time elapsed: 00:00:00
+----------------------------------------------------------
+
+12/74 Testing: starfox_core_tests
+12/74 Test: starfox_core_tests
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_core_tests.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_core_tests" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+All timing tests passed.
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_core_tests" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_core_tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+1/74 Testing: starfox_reference_ares_adapter
+1/74 Test: starfox_reference_ares_adapter
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_ares_tests.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_reference_ares_adapter" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+Ares isolated GSU: pipeline/cache/multiply clocks, SRAM, bounds and reset checks passed
+<end of output>
+Test time =   0.09 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_reference_ares_adapter" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_reference_ares_adapter" time elapsed: 00:00:00
+----------------------------------------------------------
+
+23/74 Testing: starfox_runtime_input_tests
+23/74 Test: starfox_runtime_input_tests
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_runtime_input_tests.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_runtime_input_tests" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+All runtime input tests passed.
+<end of output>
+Test time =   0.22 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_runtime_input_tests" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_runtime_input_tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/74 Testing: starfox_reference_timers
+4/74 Test: starfox_reference_timers
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_timer_tests.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_reference_timers" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+1000000 timer events, 332915 acknowledgement/poll comparisons, zero differences against pinned Ares irq.cpp
+<end of output>
+Test time =   0.09 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_reference_timers" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_reference_timers" time elapsed: 00:00:00
+----------------------------------------------------------
+
+14/74 Testing: starfox_shape_decoder_tests
+14/74 Test: starfox_shape_decoder_tests
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_shape_decoder_tests.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_shape_decoder_tests" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+All shape decoder tests passed.
+<end of output>
+Test time =   0.07 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_shape_decoder_tests" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_shape_decoder_tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+9/74 Testing: starfox_bps_tests
+9/74 Test: starfox_bps_tests
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_bps_tests.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_bps_tests" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+BPS tests passed
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_bps_tests" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_bps_tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+20/74 Testing: starfox_snes_interrupt_tests
+20/74 Test: starfox_snes_interrupt_tests
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_snes_interrupt_tests.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_snes_interrupt_tests" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+Timer/NMI holds, acknowledgements, register writes and CPU polling pass
+<end of output>
+Test time =   0.09 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_snes_interrupt_tests" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_snes_interrupt_tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+15/74 Testing: starfox_simulation_tests
+15/74 Test: starfox_simulation_tests
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_simulation_tests.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_simulation_tests" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+All simulation substrate tests passed.
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_simulation_tests" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_simulation_tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+22/74 Testing: starfox_timing_io_tests
+22/74 Test: starfox_timing_io_tests
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_timing_io_tests.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_timing_io_tests" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+live CPU blanking wait, counter latches, timer I/O and detach behavior passed
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_timing_io_tests" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_timing_io_tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+21/74 Testing: starfox_snes_timeline_tests
+21/74 Test: starfox_snes_timeline_tests
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_snes_timeline_tests.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_snes_timeline_tests" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+raster fields, short-line history, CPU/DMA refresh and live IRQ timing passed
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_snes_timeline_tests" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_snes_timeline_tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+19/74 Testing: starfox_gsu_device_tests
+19/74 Test: starfox_gsu_device_tests
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_gsu_device_tests.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_gsu_device_tests" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+GSU warm cache, CPU stop, IRQ, RAM wait, observer guards and suspended destruction passed
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_gsu_device_tests" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_gsu_device_tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+6/74 Testing: starfox_reference_gsu_device
+6/74 Test: starfox_reference_gsu_device
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_gsu_device_tests.exe"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_reference_gsu_device" start time: Sep 06 04:48 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+24576 GSU opcode/ALT/state/clock/RAM/bus-event cases; zero differences; bus-wait/resume checks passed
+<end of output>
+Test time =   0.47 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_reference_gsu_device" end time: Sep 06 04:48 Eastern Daylight Time
+"starfox_reference_gsu_device" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Sep 06 04:48 Eastern Daylight Time

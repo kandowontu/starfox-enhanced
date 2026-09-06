@@ -18,6 +18,9 @@
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 #include "ares_gsu.hpp"
+#include "starfox/simulation/gsu_device.hpp"
+#include <cstdlib>
+#include <vector>
 #include <algorithm>
 #include <bit>
 #include <stdexcept>
@@ -52,19 +55,22 @@ struct AuditScheduler {
 };
 struct Thread {
     std::uint64_t clocks{};
+    starfox::reference::AresGsu::BusObserver observer;
     void step(u32 amount) { clocks += amount; }
     void synchronize(AuditCpu&) {}
 };
 
 struct SuperFX : GSU, Thread {
     struct Rom {
+        Thread* timing;
         std::span<const std::uint8_t> bytes;
-        n8 read(u32 address) { return bytes[address]; }
+        n8 read(u32 address) { const auto value = bytes[address]; if(timing->observer) timing->observer(timing->clocks,address,value,false); return value; }
     } rom;
     struct Ram {
+        Thread* timing;
         std::span<std::uint8_t> bytes;
-        n8 read(u32 address) { return bytes[address]; }
-        void write(u32 address, n8 data) { bytes[address] = data; }
+        n8 read(u32 address) { const auto value = bytes[address]; if(timing->observer) timing->observer(timing->clocks,0x700000U+address,value,false); return value; }
+        void write(u32 address, n8 data) { bytes[address] = data; if(timing->observer) timing->observer(timing->clocks,0x700000U+address,data,true); }
     } ram;
     AuditCpu cpu;
     AuditScheduler scheduler;
@@ -73,7 +79,7 @@ struct SuperFX : GSU, Thread {
 
     SuperFX(std::span<const std::uint8_t> rom_bytes,
         std::span<std::uint8_t> ram_bytes)
-        : rom{rom_bytes}, ram{ram_bytes},
+        : rom{this,rom_bytes}, ram{this,ram_bytes},
           romMask(static_cast<u32>(rom_bytes.size() - 1)),
           ramMask(static_cast<u32>(ram_bytes.size() - 1)) {}
     void stop() override;
@@ -98,7 +104,7 @@ struct SuperFX : GSU, Thread {
     void writeRAMBuffer(n16, n8) override;
 
     starfox::reference::GsuRun run(unsigned address, unsigned stack,
-        unsigned return_address, unsigned limit, bool fast_clock) {
+        unsigned return_address, unsigned limit, bool fast_clock, std::uint8_t cfgr, bool finish_idle) {
         GSU::power();
         clocks = 0;
         for (auto& byte : cache.buffer) byte = 0;
@@ -113,6 +119,7 @@ struct SuperFX : GSU, Thread {
         regs.scmr = 0x39; // both buses, 4bpp, 192 rows
         regs.scbr = 0x10; // screen base $4000
         regs.clsr = fast_clock;
+        regs.cfgr = cfgr;
         regs.r[10] = stack;
         regs.r[11] = return_address;
         regs.pbr = address >> 16;
@@ -135,8 +142,14 @@ struct SuperFX : GSU, Thread {
         // isolated caller reads RAM immediately, so finish that transfer
         // explicitly and include its remaining clocks in the measurement.
         // This does not flush the pixel cache: fixtures must execute RPIX.
-        syncRAMBuffer();
-        return {instructions, clocks};
+        starfox::reference::GsuRun result;
+        result.instructions = instructions;
+        result.stop_master_clocks = clocks;
+        result.status = regs.sfr;
+        for (unsigned n = 0; n < 16U; ++n) result.registers[n] = regs.r[n];
+        if (finish_idle) step(6U); else syncRAMBuffer();
+        result.master_clocks = clocks;
+        return result;
     }
 };
 
@@ -186,10 +199,33 @@ AresGsu::AresGsu(std::span<const std::uint8_t> rom, std::span<std::uint8_t> ram)
     impl_ = std::make_unique<Impl>(rom, ram);
 }
 AresGsu::~AresGsu() = default;
+void AresGsu::set_bus_observer(BusObserver observer) { impl_->core.observer = std::move(observer); }
 GsuRun AresGsu::run(unsigned address, unsigned stack, unsigned return_address,
-    unsigned instruction_limit, bool fast_clock) {
+    unsigned instruction_limit, bool fast_clock, std::uint8_t cfgr, bool finish_idle) {
     if (address > 0x5fffff || stack > 0xffff || return_address > 0xffff)
         throw std::invalid_argument("Unsupported isolated GSU entry registers");
-    return impl_->core.run(address, stack, return_address, instruction_limit, fast_clock);
+    const auto option = std::getenv("STARFOX_COMPARE_GSU_DEVICE");
+    const bool compare = option && std::string{option} == "1";
+    std::vector<std::uint8_t> host_ram;
+    if (compare) host_ram.assign(impl_->core.ram.bytes.begin(), impl_->core.ram.bytes.end());
+    const auto result = impl_->core.run(address, stack, return_address, instruction_limit, fast_clock, cfgr, finish_idle);
+    if (compare) {
+        starfox::simulation::GsuDevice host{impl_->core.rom.bytes,host_ram};
+        host.write_io(0x303aU,0x39U); host.write_io(0x3038U,0x10U);
+        host.write_io(0x3039U,fast_clock); host.write_io(0x3037U,cfgr);
+        host.write_io(0x3014U,stack); host.write_io(0x3015U,stack >> 8U);
+        host.write_io(0x3016U,return_address); host.write_io(0x3017U,return_address >> 8U);
+        host.write_io(0x3034U,address >> 16U);
+        host.write_io(0x301eU,address); host.write_io(0x301fU,address >> 8U);
+        host.run_until(result.stop_master_clocks + 1U);
+        bool different = host.running() || host.instructions() != result.instructions
+            || host.last_stop_master_clock() != result.stop_master_clocks
+            || host.last_stop_status() != result.status
+            || !std::equal(host_ram.begin(),host_ram.end(),impl_->core.ram.bytes.begin());
+        for (unsigned n = 0; n < 16U; ++n)
+            different |= (host.read_io(0x3000U+n*2U) | (unsigned(host.read_io(0x3001U+n*2U)) << 8U)) != result.registers[n];
+        if (different) throw std::runtime_error{"Resumable GSU differs at entry " + std::to_string(address)};
+    }
+    return result;
 }
 } // namespace starfox::reference
