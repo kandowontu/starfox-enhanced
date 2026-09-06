@@ -32,6 +32,14 @@ exit dispatcher, and retains newly generated frontend sound commands.
 
 ## Current validation
 
+After ACCURATE default selection, boss-death audio checks and native rumble
+integration (`f7575bd`), all targets rebuilt successfully and the complete
+suite passed 95/95 tests in 270.69 seconds. The full log is retained in
+`validation/accurate-default-full-regressions.txt`. The build emitted existing
+explicit-constructor warnings in the reference GSU overlap audit.
+This is regression coverage, not proof of the remaining full-campaign,
+enhanced-feature or physical-input requirements listed below.
+
 `native_desktop_timing.cmake` runs three seconds at each of 20, 60 and 144
 presentation FPS. Each cartridge reaches an identical native update count,
 elapsed master clock and flow across those presentation rates:
