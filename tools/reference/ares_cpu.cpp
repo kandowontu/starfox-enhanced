@@ -51,6 +51,9 @@ struct AresCpu::Impl : ares::WDC65816 {
     simulation::Wdc65816& memory;
     std::uint64_t clocks{};
     simulation::Wdc65816::BusClockCallback bus_clock_callback;
+    InterruptSampleCallback interrupt_sample_callback;
+    std::uint32_t instruction_address{};
+    bool interrupt_pending{};
     bool executing{};
     bool fast_rom{};
     explicit Impl(simulation::Wdc65816& bus) : memory(bus) {}
@@ -78,8 +81,11 @@ struct AresCpu::Impl : ares::WDC65816 {
         if ((address & 0x40ffffU) == 0x00420dU) fast_rom = (data & 1U) != 0U;
         memory.write8(address, data);
     }
-    void lastCycle() override {}
-    bool interruptPending() const override { return false; }
+    void lastCycle() override {
+        if (executing && interrupt_sample_callback)
+            interrupt_pending = interrupt_sample_callback({instruction_address, clocks, bool(r.p.i)});
+    }
+    bool interruptPending() const override { return interrupt_pending; }
     bool synchronizing() const override { return true; }
 };
 
@@ -88,11 +94,16 @@ AresCpu::~AresCpu() = default;
 void AresCpu::set_bus_clock_callback(simulation::Wdc65816::BusClockCallback callback) {
     impl_->bus_clock_callback = std::move(callback);
 }
+void AresCpu::set_interrupt_sample_callback(InterruptSampleCallback callback) {
+    impl_->interrupt_sample_callback = std::move(callback);
+}
 CpuInterruptRun AresCpu::enter_interrupt(std::uint32_t interrupted_pc,
     simulation::Wdc65816Registers& registers, std::uint16_t vector, bool fast_rom) {
     auto& cpu = *impl_;
     auto& r = cpu.r;
     cpu.fast_rom = fast_rom;
+    cpu.interrupt_pending = false;
+    cpu.instruction_address = interrupted_pc;
     r.pc = interrupted_pc;
     r.a = registers.a; r.x = registers.x; r.y = registers.y;
     r.d = registers.direct; r.s = registers.stack; r.b = registers.data_bank;
@@ -128,6 +139,7 @@ CpuRun AresCpu::run(std::uint32_t entry, simulation::Wdc65816Registers& register
     auto& cpu = *impl_;
     auto& r = cpu.r;
     cpu.fast_rom = fast_rom;
+    cpu.interrupt_pending = false;
     r.pc = entry;
     r.a = registers.a;
     r.x = registers.x;
@@ -152,6 +164,7 @@ CpuRun AresCpu::run(std::uint32_t entry, simulation::Wdc65816Registers& register
     unsigned count = 0;
     do {
         if (count == instruction_limit) throw std::runtime_error("Ares CPU audit instruction limit");
+        cpu.instruction_address = static_cast<unsigned>(r.pc.d);
         cpu.instruction();
         ++count;
     } while (static_cast<unsigned>(r.pc.d) != stop);

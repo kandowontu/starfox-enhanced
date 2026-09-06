@@ -13,6 +13,57 @@ struct Operation { unsigned opcode, size; }; // size 0/5 denotes M/X immediate
 auto state(const simulation::Wdc65816Registers& r) {
     return std::tuple{r.a, r.x, r.y, r.direct, r.stack, r.data_bank, r.status};
 }
+void check_interrupt_polling() {
+    struct PollCase {
+        unsigned opcode, initial_status, sampled_mask, final_mask, clocks, size;
+    };
+    // Flag changes are deliberately on both sides of I. PLP reads $ef from
+    // the synthetic caller frame; RTI restores that status before its sample.
+    for (const auto test : std::array<PollCase, 8>{{
+            {0x58,4,1,0,8,1}, {0x78,0,0,1,8,1},
+            {0xc2,4,1,0,16,2}, {0xe2,0,0,1,16,2},
+            {0x28,0,0,1,20,1}, {0x40,0,1,1,44,1},
+            {0xea,0,0,0,8,1}, {0xea,4,1,1,8,1}}}) {
+        std::vector<std::uint8_t> bytes(0x8000U);
+        bytes[0] = static_cast<std::uint8_t>(test.opcode);
+        bytes[1] = 4;
+        const assets::RomImage rom{std::move(bytes)};
+        simulation::Wdc65816 memory{rom};
+        memory.write8(0x200U, 1); // RTI's bank after the synthetic caller frame
+        reference::AresCpu cpu{memory};
+        std::vector<reference::CpuInterruptSample> samples;
+        cpu.set_interrupt_sample_callback([&](const reference::CpuInterruptSample& sample) {
+            samples.push_back(sample);
+            return false;
+        });
+        simulation::Wdc65816Registers regs;
+        regs.status = static_cast<std::uint8_t>(test.initial_status);
+        cpu.run(0x8000U, regs, test.opcode == 0x40 ? 0x017e01U : 0x8000U + test.size, 1);
+        if (samples.size() != 1 || samples[0].instruction_address != 0x8000U
+                || samples[0].master_clocks != test.clocks
+                || samples[0].masked != bool(test.sampled_mask)
+                || bool(regs.status & 4U) != bool(test.final_mask))
+            throw std::runtime_error("Reference interrupt polling phase or status mismatch");
+    }
+    // A pending interrupt turns idleIRQ into a bus read of the next opcode.
+    // Slow ROM therefore costs eight clocks here, rather than a six-clock idle.
+    std::vector<std::uint8_t> bytes(0x8000U, 0xea);
+    const assets::RomImage rom{std::move(bytes)};
+    simulation::Wdc65816 memory{rom};
+    reference::AresCpu cpu{memory};
+    for (const bool pending : {true, false}) {
+        std::vector<std::uint32_t> bus;
+        cpu.set_bus_clock_callback([&](std::uint32_t clocks) { bus.push_back(clocks); });
+        cpu.set_interrupt_sample_callback([&](const reference::CpuInterruptSample&) { return pending; });
+        simulation::Wdc65816Registers regs;
+        const auto run = cpu.run(0x8000U, regs, 0x8001U, 1);
+        const auto expected = pending ? std::vector<std::uint32_t>{4,4,4,4}
+                                      : std::vector<std::uint32_t>{4,4,6};
+        if (run.master_clocks != (pending ? 16U : 14U) || bus != expected)
+            throw std::runtime_error("Reference pending interrupt did not select the final dummy read");
+    }
+    std::cerr << "10 interrupt polling phase/status and pending-bus cases agree\n";
+}
 template<class Word> void check_decimal(reference::AresCpu& reference, Word a, Word b, bool carry) {
     for (const bool subtract : {false,true}) {
         simulation::Wdc65816Registers regs;
@@ -34,10 +85,12 @@ template<class Word> void check_decimal(reference::AresCpu& reference, Word a, W
 }
 
 int main(int argc, char** argv) try {
+    check_interrupt_polling();
     std::ofstream file;
     if (argc == 2) file.open(argv[1]);
+    if (argc == 2 && !file) throw std::runtime_error("Cannot create CPU audit CSV");
     auto& out = file.is_open() ? file : std::cout;
-    out << "opcode,status,direct,fast,registers_equal,memory_equal,port_clocks,ares_clocks,index,bus_equal,port_bus_steps,ares_bus_steps\n";
+    out << "opcode,status,direct,fast,registers_equal,memory_equal,port_clocks,ares_clocks,index,bus_equal,port_bus_steps,ares_bus_steps,ares_interrupt_samples\n";
     std::vector<Operation> ops;
     for (unsigned group = 0; group < 8; ++group) {
         for (const auto mode : std::array<Operation, 15>{{
@@ -77,12 +130,14 @@ int main(int argc, char** argv) try {
         0x15U,0x16U,0x34U,0x35U,0x36U,
         0x55U,0x56U,0x74U,0x75U,0x76U,0x94U,0x95U,0x96U,0xb4U,0xb5U,
         0xb6U,0xd5U,0xd6U,0xf5U,0xf6U};
-    for (const auto op : ops) for (unsigned flags : {0x04U,0x05U,0x0cU,0x0dU,
+    for (const bool masked : {true,false})
+    for (const auto op : ops) for (unsigned base_flags : {0x04U,0x05U,0x0cU,0x0dU,
             0x14U,0x24U,0x34U,0xc5U,0x2cU,0x2dU,0x3cU,0x3dU}) for (unsigned direct : {0x1000U,0x1001U})
         for (const auto index : (std::find(direct_indexed_ops.begin(), direct_indexed_ops.end(), op.opcode)
                 != direct_indexed_ops.end() ? std::vector<unsigned>{7,0xdf,0xe0,0xff,0x100,0x7ff,0xffff}
                                            : std::vector<unsigned>{7}))
         for (const bool fast : {false,true}) {
+        const auto flags = masked ? base_flags : base_flags & ~4U;
         const auto size = op.size == 0 ? (flags & 0x20U ? 2U : 3U)
             : op.size == 5 ? (flags & 0x10U ? 2U : 3U) : op.size;
         std::vector<std::uint8_t> bytes(0x8000U);
@@ -152,6 +207,11 @@ int main(int argc, char** argv) try {
         const std::array stops{stop};
         const auto actual = port.begin_long_task(entry, regs, stops, 100);
         reference::AresCpu reference{memory};
+        std::vector<reference::CpuInterruptSample> samples;
+        reference.set_interrupt_sample_callback([&](const reference::CpuInterruptSample& sample) {
+            samples.push_back(sample);
+            return false;
+        });
         reference.set_bus_clock_callback([&](std::uint32_t clocks) { reference_bus.push_back(clocks); });
         const auto expected = reference.run(entry, reference_regs, stops[0], 100, fast);
         bool registers_equal = state(regs) == state(reference_regs);
@@ -174,7 +234,12 @@ int main(int argc, char** argv) try {
             out << ',';
             for (const auto clocks : *steps) out << clocks << '|';
         }
+        out << ',';
+        for (const auto& sample : samples)
+            out << sample.instruction_address << ':' << sample.master_clocks << ':' << sample.masked << '|';
         out << '\n';
+        if (samples.size() != expected.instructions)
+            throw std::runtime_error("Missing source interrupt sampling point");
         if (actual.instructions != expected.instructions)
             throw std::runtime_error("CPU audit did not compare the same instruction count");
     }
@@ -229,6 +294,8 @@ int main(int argc, char** argv) try {
         }
     }
     std::cerr << arithmetic_cases << " native ADC/SBC routines agree, including all 8-bit inputs\n";
+    out.flush();
+    if (!out) throw std::runtime_error("Cannot write CPU audit CSV");
     return failures ? 1 : 0;
 } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';

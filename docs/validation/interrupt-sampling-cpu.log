@@ -1,0 +1,38 @@
+Start testing: Sep 06 02:36 Eastern Daylight Time
+----------------------------------------------------------
+3/70 Testing: starfox_reference_interrupts
+3/70 Test: starfox_reference_interrupts
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_interrupt_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/reference-interrupts.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_reference_interrupts" start time: Sep 06 02:36 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+6912 native interrupt entries; 0 differences
+<end of output>
+Test time =   1.89 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_reference_interrupts" end time: Sep 06 02:36 Eastern Daylight Time
+"starfox_reference_interrupts" time elapsed: 00:00:01
+----------------------------------------------------------
+
+2/70 Testing: starfox_reference_cpu
+2/70 Test: starfox_reference_cpu
+Command: "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/starfox_reference_cpu_tests.exe" "C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current/reference-cpu.csv"
+Directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
+"starfox_reference_cpu" start time: Sep 06 02:36 Eastern Daylight Time
+Output:
+----------------------------------------------------------
+10 interrupt polling phase/status and pending-bus cases agree
+40512 CPU cases; 0 differences (0 state, 0 timing)
+524288 decimal ALU cases agree, including all 8-bit inputs
+1048576 native ADC/SBC routines agree, including all 8-bit inputs
+<end of output>
+Test time =  31.94 sec
+----------------------------------------------------------
+Test Passed.
+"starfox_reference_cpu" end time: Sep 06 02:37 Eastern Daylight Time
+"starfox_reference_cpu" time elapsed: 00:00:31
+----------------------------------------------------------
+
+End testing: Sep 06 02:37 Eastern Daylight Time

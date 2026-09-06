@@ -37,6 +37,10 @@ The opt-in CPU timeline now supplies live beam counters, blanking flags,
 timer control and interrupt status registers. Both ports' native WAITDMA_L
 routine passes scanline waits across a field boundary. This binding does not
 yet deliver hardware interrupts or arbitrate DMA; those remain scheduler work.
+The reference CPU audit now records exact last-cycle sample clocks and the I
+flag at those points, including both initial I states. Native delivery must
+also reproduce the pending-interrupt dummy read used by idleIRQ instructions;
+sampling only after an instruction misses both flag ordering and bus work.
 See STAGE-STATE-PARITY-VALIDATION.md and TIMING-PROFILE-VALIDATION.md for measured
 results and remaining limits, and BUS-TIMELINE-VALIDATION.md for the shared
 clock and bus-order validation.
