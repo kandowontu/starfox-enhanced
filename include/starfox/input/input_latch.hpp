@@ -16,7 +16,15 @@ struct TickInput {
 // This latch retains transitions until the 20 Hz simulation consumes them.
 class InputLatch {
 public:
-    void sample(ButtonMask held) noexcept {
+    void sample(ButtonMask held, ButtonMask event_pressed = 0,
+        ButtonMask event_released = 0) noexcept {
+        // Recover complete taps between presentations. Normal held-state
+        // transitions still own edges when any binding holds the action;
+        // this avoids a second device's tap retriggering an already-held key.
+        const auto taps = static_cast<ButtonMask>(event_pressed & event_released
+            & ~held & ~last_sample_);
+        pressed_ |= taps;
+        released_ |= taps;
         pressed_ |= static_cast<ButtonMask>(held & ~last_sample_);
         released_ |= static_cast<ButtonMask>(last_sample_ & ~held);
         held_ = held;
@@ -45,4 +53,3 @@ private:
 };
 
 } // namespace starfox::input
-

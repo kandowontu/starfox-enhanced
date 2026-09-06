@@ -98,6 +98,73 @@ int main() {
                 joystick, SDL_GAMEPAD_BUTTON_RIGHT_PADDLE1, false),
             "virtual Steam Deck paddle could not release");
     bindings.reset(starfox::app::BindingDevice::gamepad);
+    // A real SDL virtual-device tap completes before the next presentation
+    // samples held state. The previous desktop path sees no button at all.
+    for (const auto shoulder : {SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,
+                                SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER}) {
+        SDL_UpdateGamepads();
+        SDL_FlushEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST);
+        require(SDL_SetJoystickVirtualButton(joystick, shoulder, true),
+            "short shoulder tap could not press");
+        SDL_UpdateGamepads();
+        require(SDL_SetJoystickVirtualButton(joystick, shoulder, false),
+            "short shoulder tap could not release");
+        SDL_UpdateGamepads();
+        starfox::input::TickInput edges{};
+        SDL_Event event;
+        unsigned transitions{};
+        while (SDL_PollEvent(&event)) {
+            const auto buttons = bindings.event_buttons(event, gamepad);
+            if (!buttons) continue;
+            ++transitions;
+            if (event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) edges.pressed |= buttons;
+            else if (event.type == SDL_EVENT_GAMEPAD_BUTTON_UP) edges.released |= buttons;
+        }
+        const auto expected = shoulder == SDL_GAMEPAD_BUTTON_LEFT_SHOULDER
+            ? starfox::input::left_shoulder : starfox::input::right_shoulder;
+        require(transitions == 2 && edges.pressed == expected && edges.released == expected,
+            "SDL did not preserve both short-tap events");
+        const auto held = bindings.sample_gamepad_only(gamepad);
+        starfox::input::InputLatch previous_path;
+        previous_path.sample(held);
+        require((previous_path.consume().pressed & expected) == 0,
+            "fixture did not reproduce the final-state-only lost tap");
+        starfox::input::InputLatch recovered;
+        recovered.sample(held, edges.pressed, edges.released);
+        // Several presentations may pass before a slow source tick consumes
+        // the input. Extra polls must neither discard nor repeat the tap.
+        for (unsigned frame = 0; frame < 12; ++frame) recovered.sample(held);
+        const auto tap = recovered.consume();
+        require(tap.held == held && tap.pressed == expected && tap.released == expected,
+            "complete tap was lost before the paced simulation consumed it");
+        require(recovered.consume().pressed == 0 && recovered.consume().released == 0,
+            "short tap was delivered more than once");
+        recovered.reset(expected);
+        recovered.sample(expected, expected, expected);
+        const auto overlapping = recovered.consume();
+        require(overlapping.pressed == 0 && overlapping.released == 0,
+            "another binding's tap retriggered an already-held action");
+    }
+    {
+        SDL_Event event{};
+        event.type = SDL_EVENT_KEY_DOWN;
+        event.key.scancode = SDL_SCANCODE_K;
+        bindings.bind_keyboard(10, SDL_SCANCODE_K);
+        require(bindings.event_buttons(event, gamepad) == starfox::input::left_shoulder,
+            "queued keyboard event ignored remapping");
+        require(bindings.event_buttons(event, gamepad, false) == 0,
+            "keyboard tap leaked into a secondary player");
+        event.key.repeat = true;
+        require(bindings.event_buttons(event, gamepad) == 0,
+            "keyboard auto-repeat created another press");
+        event = {};
+        event.type = SDL_EVENT_GAMEPAD_BUTTON_DOWN;
+        event.gbutton.which = identifier + 100;
+        event.gbutton.button = SDL_GAMEPAD_BUTTON_LEFT_SHOULDER;
+        require(bindings.event_buttons(event, gamepad) == 0,
+            "another controller's event leaked into player one");
+        bindings.reset(starfox::app::BindingDevice::keyboard);
+    }
     auto second_description = description;
     second_description.vendor_id = 0x045eU;
     second_description.product_id = 0x028eU;

@@ -50,6 +50,11 @@ public:
 
     InputBindings();
 
+    // Mapped digital edges from the event queue, independent of SDL's final
+    // device state. Axis/held state continues through sample().
+    [[nodiscard]] input::ButtonMask event_buttons(const SDL_Event& event,
+        SDL_Gamepad* gamepad, bool include_keyboard = true) const noexcept;
+
     [[nodiscard]] input::ButtonMask sample(
         SDL_Gamepad* gamepad) const noexcept;
     [[nodiscard]] input::ButtonMask sample_gamepad_only(

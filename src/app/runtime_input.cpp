@@ -323,6 +323,25 @@ InputBindings::InputBindings() {
     reset(BindingDevice::gamepad);
 }
 
+input::ButtonMask InputBindings::event_buttons(const SDL_Event& event,
+    SDL_Gamepad* gamepad, bool include_keyboard) const noexcept {
+    input::ButtonMask result{};
+    const bool keyboard = include_keyboard
+        && (event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_KEY_UP)
+        && !event.key.repeat;
+    const bool button = gamepad != nullptr
+        && (event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN
+            || event.type == SDL_EVENT_GAMEPAD_BUTTON_UP)
+        && event.gbutton.which == SDL_GetGamepadID(gamepad);
+    for (std::size_t action = 0; action < action_count; ++action) {
+        if ((keyboard && keyboard_[action] == event.key.scancode)
+            || (button && gamepad_[action].kind == GamepadBindingKind::button
+                && gamepad_[action].control == event.gbutton.button))
+            result |= kActionButtons[action];
+    }
+    return result;
+}
+
 input::ButtonMask InputBindings::sample(SDL_Gamepad* gamepad) const noexcept {
     const auto* keys = SDL_GetKeyboardState(nullptr);
     input::ButtonMask result{};

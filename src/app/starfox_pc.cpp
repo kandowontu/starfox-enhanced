@@ -4361,8 +4361,13 @@ int main(int argc, char** argv) {
             bool toggle_frame_freeze{};
             bool step_frame_forward{};
             bool step_frame_backward{};
+            starfox::input::TickInput presentation_edges{};
+            std::array<starfox::input::TickInput, 4> secondary_edges{};
             SDL_Event event;
             while (SDL_PollEvent(&event)) {
+                const bool capture_edges = !remap_menu.active && !hud_editor.active
+                    && !frame_frozen;
+                const bool event_was_exit_confirmation = exit_confirmation;
                 const auto reset_to_setup_key =
                     event.type == SDL_EVENT_KEY_DOWN
                     && !event.key.repeat
@@ -4779,6 +4784,27 @@ int main(int argc, char** argv) {
                     remap_input.reset(
                         bindings.sample_fixed_menu_navigation(gamepad));
                 }
+                if (capture_edges && !remap_menu.active && !hud_editor.active
+                    && !frame_frozen && !frame_debug_key && !fullscreen_key
+                    && !toggle_rewind_key && !exit_confirmation_key
+                    && (!event_was_exit_confirmation || exit_confirmation)) {
+                    const auto collect = [&](starfox::input::TickInput& edges,
+                        SDL_Gamepad* device, bool keyboard) {
+                        auto buttons = with_swapped_face_buttons(
+                            bindings.event_buttons(event, device, keyboard),
+                            game.swap_face_buttons());
+                        if (suppress_fullscreen_start)
+                            buttons &= static_cast<ButtonMask>(~starfox::input::start);
+                        if (event.type == SDL_EVENT_KEY_DOWN
+                            || event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN)
+                            edges.pressed |= buttons;
+                        else edges.released |= buttons;
+                    };
+                    collect(presentation_edges, gamepad, true);
+                    for (std::size_t player = 0; player < secondary_edges.size(); ++player)
+                        if (player + 1U < gamepads.size())
+                            collect(secondary_edges[player], gamepads[player + 1U], false);
+                }
             }
 
             if (!running) break;
@@ -4789,6 +4815,8 @@ int main(int argc, char** argv) {
             if (toggle_frame_freeze) {
                 frame_frozen = !frame_frozen;
                 input.reset();
+                presentation_edges = {};
+                secondary_edges = {};
                 for (std::size_t player = 0;
                      player < secondary_inputs.size(); ++player) {
                     const auto held = player + 1U < gamepads.size()
@@ -4916,7 +4944,8 @@ int main(int argc, char** argv) {
                 sampled_buttons = static_cast<ButtonMask>(
                     sampled_buttons & ~starfox::input::start);
             }
-            input.sample(sampled_buttons);
+            input.sample(sampled_buttons, presentation_edges.pressed,
+                presentation_edges.released);
             if (exit_confirmation) {
                 // Host confirmation input is presentation-rate UI. Consuming
                 // it only inside a 60 Hz raster phase lost quick presses at
@@ -4946,7 +4975,8 @@ int main(int argc, char** argv) {
                         ? with_swapped_face_buttons(
                             bindings.sample_gamepad_only(gamepads[player + 1U]),
                             game.swap_face_buttons())
-                        : starfox::input::ButtonMask{});
+                        : starfox::input::ButtonMask{},
+                    secondary_edges[player].pressed, secondary_edges[player].released);
             }
             remap_input.sample(
                 bindings.sample_fixed_menu_navigation(gamepad));
