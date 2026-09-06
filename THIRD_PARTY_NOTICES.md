@@ -42,6 +42,7 @@ Pinned revision: `ea9049ab25084334f7cc1907b3a98bf1c2604a03`
 
 The build applies `cmake/retro-cpu-parity.patch` for native arithmetic, operand
 bank wrapping, read-modify-write order, block transfers and instruction cycles.
+`cmake/retro-cpu-interrupts.patch` restores native hardware-interrupt entry cycles.
 These project-owned corrections retain the MIT license.
 
 Copyright (c) 2019 Albert Chaulk

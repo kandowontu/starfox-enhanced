@@ -1,0 +1,16 @@
+diff --git a/cpu/65816/cpu_65c816.cc b/cpu/65816/cpu_65c816.cc
+index 146135a..eda458f 100644
+--- a/cpu/65816/cpu_65c816.cc
++++ b/cpu/65816/cpu_65c816.cc
+@@ -379,6 +379,11 @@ void WDC65C816::STP()
+ 
+ void WDC65C816::DoInterrupt(InterruptType type)
+ {
++	if(type == IRQ || type == NMI) {
++		uint8_t discarded;
++		ReadU8(program_address(), discarded);
++		InternalOp();
++	}
+ 	if(!mode_emulation) {
+ 		uint8_t bank = cpu_state.code_segment_base >> 16;
+ 		Push(bank);

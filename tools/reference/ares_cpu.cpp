@@ -76,6 +76,24 @@ struct AresCpu::Impl : ares::WDC65816 {
 
 AresCpu::AresCpu(simulation::Wdc65816& memory) : impl_(std::make_unique<Impl>(memory)) {}
 AresCpu::~AresCpu() = default;
+CpuInterruptRun AresCpu::enter_interrupt(std::uint32_t interrupted_pc,
+    simulation::Wdc65816Registers& registers, std::uint16_t vector, bool fast_rom) {
+    auto& cpu = *impl_;
+    auto& r = cpu.r;
+    cpu.fast_rom = fast_rom;
+    r.pc = interrupted_pc;
+    r.a = registers.a; r.x = registers.x; r.y = registers.y;
+    r.d = registers.direct; r.s = registers.stack; r.b = registers.data_bank;
+    r.p = registers.status; r.e = false;
+    r.irq = r.wai = r.stp = false; r.z = 0; r.vector = vector;
+    cpu.pushN(0x7e); cpu.pushN(0x01); cpu.pushN(0xef);
+    cpu.clocks = 0;
+    cpu.interrupt();
+    registers.a = r.a.w; registers.x = r.x.w; registers.y = r.y.w;
+    registers.direct = r.d.w; registers.stack = r.s.w;
+    registers.data_bank = r.b; registers.status = static_cast<unsigned>(r.p);
+    return {static_cast<unsigned>(r.pc.d), cpu.clocks};
+}
 void AresCpu::decimal(simulation::Wdc65816Registers& registers,
     std::uint16_t operand, bool subtract) {
     auto& cpu = *impl_;

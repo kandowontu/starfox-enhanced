@@ -328,6 +328,15 @@ transfer-word read. They are observations, not supplied inputs to the host.
 See `docs/STAGE-STATE-PARITY-VALIDATION.md` for the 58/59 result and the open
 EX LEVEL7_2 difference. A failing stage is not filtered from that result.
 
+## Native interrupt entry
+
+The optional `starfox_reference_interrupts` CTest compares 6,912 architectural
+native IRQ/NMI entries against the pinned Ares CPU, including handler PC,
+registers, stack writes and clocks. `starfox_cpu_timing_tests` covers signal
+masking, priority and returning to interrupted tasks. These checks do not model
+automatic video interrupts or CPU/GSU overlap; see
+`docs/CPU-PARITY-VALIDATION.md` for scope and the old-entry mutation result.
+
 ## Desktop audio output trace
 
 `pwsh -NoProfile -File tools/reference/run-runtime-ending-audio.ps1 -Experience ORIGINAL -Msu 0 -OutputDirectory tmp/runtime-audio-original`

@@ -113,17 +113,19 @@ FetchContent_MakeAvailable(retro_cpu)
 # Retain the pinned dependency, with the independently audited native-mode
 # arithmetic, bus-order and instruction-timing corrections in a reviewable patch.
 find_package(Git REQUIRED)
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/retro-cpu-parity.patch")
-execute_process(COMMAND "${CMAKE_COMMAND}"
-    "-DGIT_EXECUTABLE=${GIT_EXECUTABLE}"
-    "-DSOURCE_DIR=${retro_cpu_SOURCE_DIR}"
-    "-DPATCH_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/retro-cpu-parity.patch"
-    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/apply_git_patch_once.cmake"
-    RESULT_VARIABLE retro_cpu_patch_result)
-if(NOT retro_cpu_patch_result EQUAL 0)
-    message(FATAL_ERROR "Could not apply the pinned RetroCPU parity patch")
-endif()
+foreach(retro_cpu_patch IN ITEMS retro-cpu-parity.patch retro-cpu-interrupts.patch)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/${retro_cpu_patch}")
+    execute_process(COMMAND "${CMAKE_COMMAND}"
+        "-DGIT_EXECUTABLE=${GIT_EXECUTABLE}"
+        "-DSOURCE_DIR=${retro_cpu_SOURCE_DIR}"
+        "-DPATCH_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/${retro_cpu_patch}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/apply_git_patch_once.cmake"
+        RESULT_VARIABLE retro_cpu_patch_result)
+    if(NOT retro_cpu_patch_result EQUAL 0)
+        message(FATAL_ERROR "Could not apply the pinned RetroCPU patch: ${retro_cpu_patch}")
+    endif()
+endforeach()
 
 FetchContent_Declare(
     snes_spc
@@ -248,6 +250,8 @@ if(STARFOX_BUILD_TOOLS)
                 target_link_libraries(starfox_reference_cpu PRIVATE starfox_core)
                 add_executable(starfox_reference_cpu_tests tools/reference/cpu_audit.cpp)
                 target_link_libraries(starfox_reference_cpu_tests PRIVATE starfox_core starfox_reference_cpu)
+                add_executable(starfox_reference_interrupt_tests tools/reference/interrupt_audit.cpp)
+                target_link_libraries(starfox_reference_interrupt_tests PRIVATE starfox_core starfox_reference_cpu)
             endif()
         endif()
     endif()
@@ -733,6 +737,11 @@ if(STARFOX_BUILD_TESTS)
         add_test(NAME starfox_reference_cpu COMMAND starfox_reference_cpu_tests
             "${CMAKE_CURRENT_BINARY_DIR}/reference-cpu.csv")
         set_tests_properties(starfox_reference_cpu PROPERTIES TIMEOUT 120)
+    endif()
+    if(TARGET starfox_reference_interrupt_tests)
+        add_test(NAME starfox_reference_interrupts COMMAND starfox_reference_interrupt_tests
+            "${CMAKE_CURRENT_BINARY_DIR}/reference-interrupts.csv")
+        set_tests_properties(starfox_reference_interrupts PROPERTIES TIMEOUT 120)
     endif()
     add_executable(starfox_bps_tests tests/bps_tests.cpp)
     target_link_libraries(starfox_bps_tests PRIVATE starfox_core)

@@ -227,7 +227,74 @@ int main() try {
         catch (const starfox::simulation::Wdc65816ExecutionError&) { rejected = true; }
         require(rejected, "WRAM execution fix disabled the unmapped ROM guard");
     }
-    std::cout << "CPU bus regions, FastROM transitions, internal cycles and call/task accounting pass\n";
+    {
+        std::vector<std::uint8_t> bytes(0x8000U,0xeaU);
+        bytes[2]=0x6b; // NOP; NOP; RTL
+        bytes[0x40]=0xee; bytes[0x41]=0; bytes[0x42]=0x10; bytes[0x43]=0x40; // IRQ: INC $1000; RTI
+        bytes[0x60]=0xee; bytes[0x61]=1; bytes[0x62]=0x10; bytes[0x63]=0x40; // NMI: INC $1001; RTI
+        bytes[0x7fea]=0x60; bytes[0x7feb]=0x80;
+        bytes[0x7fee]=0x40; bytes[0x7fef]=0x80;
+        const starfox::assets::RomImage rom{std::move(bytes)};
+        Wdc65816 cpu{rom};
+        Wdc65816Registers regs;
+        regs.status=0x2c; // IRQ masked, decimal enabled, 8-bit A
+        regs.a=0xab12; regs.x=0x3456; regs.y=0x789a; regs.direct=0x1234; regs.data_bank=0;
+        cpu.set_irq_line(true);
+        const std::array first_stop{0x008001U};
+        auto task=cpu.begin_long_task(0x008000,regs,first_stop);
+        require(task.stop_address==first_stop[0] && task.instructions==1 && cpu.interrupts_taken()==0,
+            "masked IRQ interrupted the native task");
+        const auto before_nmi=cpu.executed_master_clocks();
+        cpu.pulse_nmi();
+        const std::array nmi_stop{0x008060U};
+        task=cpu.resume_task(regs,nmi_stop);
+        require(task.stop_address==nmi_stop[0] && task.instructions==0 && cpu.interrupts_taken()==1
+            && regs.status==0x24 && regs.stack==0x1f8
+            && regs.a==0xab12 && regs.x==0x3456 && regs.y==0x789a && regs.direct==0x1234,
+            "NMI entry replaced the task's state or counted an instruction");
+        require(cpu.executed_master_clocks()-before_nmi==62,
+            "native NMI entry omitted its discarded opcode read or idle cycle");
+        require(cpu.read8(0x1fc)==0 && cpu.read8(0x1fb)==0x80
+            && cpu.read8(0x1fa)==1 && cpu.read8(0x1f9)==0x2c,
+            "native NMI stack frame did not preserve bank, next PC and original status");
+        const std::array second_stop{0x008002U};
+        task=cpu.resume_task(regs,second_stop);
+        require(task.stop_address==second_stop[0] && task.instructions==3
+            && cpu.interrupts_taken()==1 && cpu.read8(0x1001)==1
+            && regs.status==0x2c && regs.stack==0x1fc,
+            "NMI repeated without another edge or failed to return to the interrupted task");
+        require(cpu.resume_task(regs,{}).returned && regs.stack==0x1ff,
+            "interrupt return corrupted the caller's sentinel frame");
+
+        // IRQ remains asserted until the device clears its line. NMI wins
+        // when both requests are present, then IRQ can run after NMI's RTI.
+        regs.status=0x28;
+        cpu.pulse_nmi();
+        task=cpu.begin_long_task(0x008000,regs,nmi_stop);
+        require(task.stop_address==nmi_stop[0] && cpu.interrupts_taken()==2,
+            "IRQ was delivered ahead of a pending NMI");
+        const std::array irq_stop{0x008040U};
+        task=cpu.resume_task(regs,irq_stop);
+        require(task.stop_address==irq_stop[0] && task.instructions==2
+            && cpu.interrupts_taken()==3 && cpu.read8(0x1001)==2,
+            "NMI acknowledgement lost the independently asserted IRQ line");
+        cpu.set_irq_line(false);
+        task=cpu.resume_task(regs,{});
+        require(task.returned && cpu.interrupts_taken()==3 && cpu.read8(0x1000)==1
+            && regs.stack==0x1ff && regs.a==0xab12 && regs.status==0x28,
+            "cleared IRQ repeated or failed to preserve the interrupted task");
+
+        Wdc65816 io_cpu{rom};
+        io_cpu.write8(0x2181,0x34); io_cpu.write8(0x2182,0x12); io_cpu.write8(0x2183,0);
+        regs={}; regs.status=0x24;
+        io_cpu.pulse_nmi();
+        task=io_cpu.begin_long_task(0x002180,regs,nmi_stop,1);
+        require(task.stop_address==nmi_stop[0] && task.instructions==0
+            && io_cpu.read8(0x2181)==0x35 && io_cpu.read8(0x2182)==0x12,
+            "interrupt dummy fetch omitted the interrupted I/O address's read effect");
+        clocks(io_cpu,60,"interrupt dummy fetch did not use the I/O bus speed");
+    }
+    std::cout << "CPU bus regions, FastROM transitions, internal cycles, call/task accounting and interrupt signals pass\n";
     return 0;
 } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';

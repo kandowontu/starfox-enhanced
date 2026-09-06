@@ -97,3 +97,50 @@ The production Original-pace scheduler still uses its documented workload
 approximation. Substituting this partial CPU count for the complete cartridge
 timeline would not establish native pacing. CPU/GSU overlap, transfer timing
 and full-frame reference alignment remain the next timing work.
+
+## Native IRQ/NMI entry follow-up
+
+The continuous stage audit subsequently isolated a live TRANS_FLAG read in EX
+LEVEL7_2. Its source value changes during strategies as bitmap IRQs advance;
+see STAGE-STATE-PARITY-VALIDATION.md. Delivering those IRQs requires preserving
+the executing CPU's registers, stack and return address.
+
+The bridge now exposes a level-sensitive IRQ line and latched NMI edge. NMI is
+acknowledged on entry; IRQ remains asserted until its device releases the line.
+Both operate on the existing native task rather than constructing a new
+subroutine call. Interrupt entry is counted separately from executed opcodes.
+The dependency's hardware entry omitted the discarded opcode read and internal
+cycle. The persistent patch restores both for IRQ/NMI, preserving BRK/COP's
+separate instruction-fetch sequence.
+
+An independent Ares entry audit compares **6,912 native IRQ/NMI cases** across
+all applicable status bytes, three interrupted address regions, three stack
+positions and both ROM speeds. Registers, low-WRAM stack memory, handler PC and
+master clocks agree in every case. IRQ-masked cases are exercised separately
+in the normal lifecycle test. Restoring the old entry in an isolated dependency
+worktree makes all 6,912 comparisons fail on timing. The patch set applies
+and reverses cleanly against the pinned RetroCPU revision. Keeping the new
+interrupt correction in a separate patch also permits an existing dependency
+cache with the earlier parity patch to upgrade without resetting its files;
+both clean-install and upgrade paths were exercised.
+
+The normal CPU test also verifies masking, NMI priority, one acknowledgement per
+NMI edge, preservation of a pending IRQ through NMI, source RTI continuation and
+the enclosing task's return frame. An I/O-address case additionally checks the
+discarded fetch's WRAM-port increment and six-master-clock bus access. The optional reference test is
+`starfox_reference_interrupts`; `build-ares-reference.ps1` builds and runs it.
+Evidence is recorded in `validation/cpu-interrupt-entry-summary.json`.
+
+The rebuilt full runtime suite passed **62/62 checks in 274.52 seconds**.
+The subsequently added I/O-fetch assertion passed its rebuilt CPU test in
+0.08 seconds; runtime behavior was unchanged. Both logs are preserved in
+`validation/cpu-interrupt-regression-validation.txt`. The existing local test
+candidate remains the stage-state build recorded in
+STAGE-STATE-PARITY-VALIDATION.md; this scheduler groundwork is committed in the
+source and has not been published as a release.
+
+These are architectural entry and task-lifecycle checks. Automatic raster IRQ
+generation, exact interrupt polling within an instruction, WAI/STP, emulation
+mode, DMA/refresh timing and CPU/GSU overlap remain separate work. The production
+game does not yet drive these signal APIs from its transfer scheduler. This
+change alone does not fix the open EX trajectory or Original pace approximation.

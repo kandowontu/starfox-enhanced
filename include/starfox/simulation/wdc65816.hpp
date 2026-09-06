@@ -112,10 +112,16 @@ public:
 
     [[nodiscard]] std::uint8_t read8(std::uint32_t address) const;
     [[nodiscard]] std::uint16_t read16(std::uint32_t address) const;
-    // Cumulative native-instruction bus/internal clocks. Excludes the host's
+    // Cumulative native-instruction/interrupt-entry bus and internal clocks. Excludes the host's
     // synthetic call-stack setup, DMA, refresh and translated GSU execution.
     // This is a measurement input, not the game's current pace scheduler.
     [[nodiscard]] std::uint64_t executed_master_clocks() const noexcept;
+    // Hardware signals are sampled at native instruction boundaries. IRQ is
+    // level-sensitive; the device must release it. NMI is a latched edge and
+    // is acknowledged on entry. Neither API replaces registers or the stack.
+    void set_irq_line(bool asserted) noexcept;
+    void pulse_nmi() noexcept;
+    [[nodiscard]] std::uint64_t interrupts_taken() const noexcept;
     void write8(std::uint32_t address, std::uint8_t value);
     void write16(std::uint32_t address, std::uint16_t value);
     [[nodiscard]] bool load_cartridge_ram(

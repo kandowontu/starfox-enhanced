@@ -89,6 +89,7 @@ struct Wdc65816::Impl {
     std::uint32_t rom_bank_count{};
     bool fast_rom{};
     std::uint64_t host_setup_master_clocks{};
+    std::uint64_t interrupt_entries{};
     std::map<std::uint8_t, std::vector<std::uint8_t>> compatible_rom_banks;
     std::vector<std::uint8_t> wram = std::vector<std::uint8_t>(0x20000U);
     std::array<std::uint8_t, 8> controller{};
@@ -484,7 +485,11 @@ struct Wdc65816::Impl {
         }
     }
 
-    static void irq_taken(void*, std::uint32_t) {}
+    static void irq_taken(void* context, std::uint32_t source) {
+        auto& self = *static_cast<Impl*>(context);
+        ++self.interrupt_entries;
+        if (source == 2U) self.cpu.cpu_state.ClearInterruptSource(2U);
+    }
 
     explicit Impl(const assets::RomImage& rom_image, const assets::SymbolMap* symbols)
         : rom(&rom_image),
@@ -2621,6 +2626,19 @@ std::uint64_t Wdc65816::executed_master_clocks() const noexcept {
     return impl_->cpu.cpu_state.cycle - impl_->host_setup_master_clocks;
 }
 
+void Wdc65816::set_irq_line(bool asserted) noexcept {
+    if (asserted) impl_->cpu.cpu_state.SetInterruptSource(1U);
+    else impl_->cpu.cpu_state.ClearInterruptSource(1U);
+}
+
+void Wdc65816::pulse_nmi() noexcept {
+    impl_->cpu.cpu_state.SetInterruptSource(2U);
+}
+
+std::uint64_t Wdc65816::interrupts_taken() const noexcept {
+    return impl_->interrupt_entries;
+}
+
 void Wdc65816::write8(std::uint32_t address, std::uint8_t value) {
     impl_->write8(address, value);
 }
@@ -2886,8 +2904,9 @@ std::size_t Wdc65816::call(
         }
         recent_program_counters[instructions % recent_program_counters.size()]
             = pc;
+        const auto interrupt_entries = impl_->interrupt_entries;
         cpu.SingleStep();
-        ++instructions;
+        if (impl_->interrupt_entries == interrupt_entries) ++instructions;
     }
 
     registers.a = cpu.a();
@@ -3033,8 +3052,9 @@ Wdc65816TaskResult Wdc65816::run_task(
         }
         recent_program_counters[
             result.instructions % recent_program_counters.size()] = pc;
+        const auto interrupt_entries = impl_->interrupt_entries;
         cpu.SingleStep();
-        ++result.instructions;
+        if (impl_->interrupt_entries == interrupt_entries) ++result.instructions;
         executed_instruction = true;
     }
 
