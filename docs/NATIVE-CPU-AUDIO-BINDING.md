@@ -92,3 +92,19 @@ This is not an independent full-system/campaign comparison. Timestamped MSU
 servicing is implemented in `NATIVE-MSU-AUDIO.md`. Desktop packet output and
 sample-rate configuration, scene/pace handoffs, interpolation and ACCURATE
 selection/default remain unfinished.
+
+## Desktop packet output
+
+`AudioOutput::queue_timed_packet` now accepts already-rendered music/effects
+stems and their source sample rate. It shares volume mixing, fast-forward
+sample selection and bounded playback with the legacy tick path, without
+running the SPC or MSU renderer again. Audio trace seconds derive from packet
+length and source rate instead of assuming every packet lasts 50 ms.
+
+The SDL queue accepts an explicit input rate and preserves queued packets'
+original format across changes. Tests verify that 32040 native frames become
+48000 device frames (within one resampler frame), and queued 32000/32040 Hz
+seconds together retain two seconds of output. Legacy restoration and existing
+queue bounds also pass. The rebuilt desktop passes regular, embedded and exit
+confirmation runtime smoke tests. Feeding native gameplay into this packet
+entry point remains part of desktop scheduler integration.

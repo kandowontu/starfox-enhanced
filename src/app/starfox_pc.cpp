@@ -2683,6 +2683,18 @@ public:
                 starfox::audio::Spc700Audio::sample_rate));
         const auto music=msu1_.select_music(emulator_.last_music_samples());
         const auto effects = emulator_.last_effect_samples();
+        queue_timed_packet(music, effects, starfox::audio::Spc700Audio::sample_rate,
+            speed_multiplier, queue_output);
+        return emulator_.output_ports();
+    }
+
+    // Native-clock packets already contain the selected SPC/MSU stems.
+    // Queue them without advancing either sound driver a second time.
+    void queue_timed_packet(std::span<const std::int16_t> music,
+        std::span<const std::int16_t> effects, std::uint32_t source_rate,
+        std::uint32_t speed_multiplier = 1U, bool queue_output = true) {
+        if (!source_rate || music.size()!=effects.size() || music.size()%2U)
+            throw std::invalid_argument{"Invalid timed audio packet"};
         mixed_samples_.resize(std::min(music.size(), effects.size()));
         for (std::size_t index = 0U; index < mixed_samples_.size(); ++index) {
             const auto mixed = static_cast<std::int32_t>(music[index])
@@ -2704,7 +2716,8 @@ public:
                 return value;
             };
             ++audio_trace_tick_;
-            audio_trace_ << audio_trace_tick_ << ',' << audio_trace_tick_ / 20.0 << ','
+            audio_trace_seconds_ += static_cast<double>(music.size()/2U)/source_rate;
+            audio_trace_ << audio_trace_tick_ << ',' << audio_trace_seconds_ << ','
                 << msu1_.enabled() << ',' << msu1_.selected_track() << ',' << msu1_.playing()
                 << ',' << msu1_.use_native_music_tail() << ',' << peak(music) << ','
                 << peak(effects) << ',' << peak(samples) << '\n';
@@ -2744,18 +2757,15 @@ public:
             queued_samples = fast_samples_;
         }
 #if defined(__SWITCH__)
-        constexpr auto max_queued_frames =
-            starfox::audio::Spc700Audio::sample_rate / 10U;
+        const auto max_queued_frames = source_rate / 10U;
 #else
-        constexpr auto max_queued_frames =
-            starfox::audio::Spc700Audio::sample_rate * 150U / 1'000U;
+        const auto max_queued_frames = source_rate * 150U / 1'000U;
 #endif
         if (queue_output && !starfox::app::queue_realtime_audio(
-                stream_, queued_samples, max_queued_frames)) {
+                stream_, queued_samples, max_queued_frames, source_rate)) {
             throw std::runtime_error{
                 std::string{"Audio playback queue: "} + SDL_GetError()};
         }
-        return emulator_.output_ports();
     }
 
     [[nodiscard]] std::array<std::uint8_t, 4> prime_upload_sequence(
@@ -2772,6 +2782,7 @@ private:
     std::vector<std::int16_t> mixed_samples_;
     std::ofstream audio_trace_;
     std::uint64_t audio_trace_tick_{};
+    double audio_trace_seconds_{};
     std::uint8_t music_volume_{100U};
     std::uint8_t sfx_volume_{100U};
     std::uint32_t fast_sample_phase_{};
