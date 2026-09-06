@@ -35,10 +35,30 @@ three ordinary desktop smoke tests also pass after the rebuilt change (6/6,
 180 presentations; it shows the stage launch, landscape, Arwing and HUD.
 
 These are short deterministic scheduling checks, not full timing parity or
-campaign coverage. Training still uses the host path. Native pause display,
-port enhancements and overlays, rumble, long encounters, scene exits in the
+campaign coverage. Training still uses the host path. Port enhancements and
+overlays, rumble, long encounters, scene exits in the
 desktop, real-time stalls and input latency still need integration/auditing.
 The first native attachment waits for the host sound-phase boundary. The
 desktop currently services CPU work at 60 Hz scheduling phases, while rendering
 and event collection can run faster. ACCURATE must remain gated until these
 remaining requirements, persistence and menu/default selection are complete.
+
+## Native pause presentation
+
+The desktop now observes a separate native presentation revision during an
+unfinished MAIN iteration. DMA-complete pause boundaries can publish the
+interactive EX pause bitmap without completing that iteration or advancing
+enhanced particle/dust effects. The first EX pause wait retains the previous
+geometry because its next transfer has not submitted a new view yet.
+
+The native input replay checks publication while the hold remains active,
+changes EX's MENUSELECTED with live Down input, then resumes through Start
+release/press/release. Desktop captures at presentation 500 and 650 verify a
+visible EX menu and its removal on resume; a follow-up capture verifies that
+only the native pause label is drawn. This validates navigation and resume,
+not every EX pause option or step/model-refresh behavior.
+
+After rebuilding all targets, the complete suite passes 93/93 tests in
+276.66 seconds. `validation/native-pause-presentation-regressions.txt` retains
+the full log, including both presentation-rate matrices, normal/MSU ending
+audio, native pause navigation and existing multiplayer input coverage.

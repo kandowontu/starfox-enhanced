@@ -1,6 +1,7 @@
 #include "starfox/simulation/game_simulation.hpp"
 #include "starfox/input/buttons.hpp"
 #include "starfox/simulation/snes_timeline.hpp"
+#include <algorithm>
 #include <bit>
 #include <limits>
 
@@ -100,6 +101,24 @@ void GameSimulation::begin_native_update(const input::TickInput& input, bool mai
             native_main_exit_=boundaries[0];
             native_main_pause_return_=boundaries[1];
             native_main_pause_entry_=rom_symbol("DOPAUSE");
+            native_pause_present_stops_.clear();
+            const auto pause_end=rom_symbol("PRINTPAUSE");
+            const auto wait=rom_symbol("WAITDMA_L");
+            if (pause_end<=native_main_pause_entry_ || pause_end-native_main_pause_entry_>1024U)
+                throw std::runtime_error{"Unsupported native pause routine range"};
+            for (auto pc=native_main_pause_entry_;pc+3U<pause_end;++pc) {
+                if (map_.read_native_byte(pc)==0x22U
+                    && map_.read_native_byte(pc+1U)==(wait&0xffU)
+                    && map_.read_native_byte(pc+2U)==((wait>>8U)&0xffU)
+                    && map_.read_native_byte(pc+3U)==(wait>>16U))
+                    native_pause_present_stops_.push_back(pc+4U);
+            }
+            if (native_pause_present_stops_.size()!=(starfox_ex_cartridge_ ? 4U : 3U))
+                throw std::runtime_error{"Unsupported native pause presentation boundaries"};
+            native_main_stop_addresses_={rom_symbol("SHOWVIEW_L"),rom_symbol("BUILD_DRAWLIST_L"),
+                native_main_entry_,native_main_exit_,native_main_pause_entry_,native_main_pause_return_};
+            native_main_stop_addresses_.insert(native_main_stop_addresses_.end(),
+                native_pause_present_stops_.begin(),native_pause_present_stops_.end());
         }
         auto timeline = std::make_shared<SnesCpuTimeline>();
         map_.set_cpu_timeline(timeline);
@@ -140,9 +159,7 @@ std::optional<GameTickResult> GameSimulation::advance_native_transfer(std::uint6
             const bool transfer = native_transfer_phase_ == NativeTransferPhase::transfer;
             const bool main_loop = native_transfer_phase_ == NativeTransferPhase::main;
             const std::array show_view_stop{rom_symbol("SHOWVIEW_L"),rom_symbol("BUILD_DRAWLIST_L")};
-            const std::array main_stops{show_view_stop[0],show_view_stop[1],native_main_entry_,native_main_exit_,
-                native_main_pause_entry_,native_main_pause_return_};
-            const auto stops = main_loop ? std::span<const std::uint32_t>{main_stops}
+            const auto stops = main_loop ? std::span<const std::uint32_t>{native_main_stop_addresses_}
                 : transfer ? std::span<const std::uint32_t>{show_view_stop}
                 : std::span<const std::uint32_t>{};
             Wdc65816TaskResult task;
@@ -158,6 +175,18 @@ std::optional<GameTickResult> GameSimulation::advance_native_transfer(std::uint6
             if (main_loop && !task.waiting) {
                 if (task.stop_address==native_main_pause_entry_) paused_=true;
                 if (task.stop_address==native_main_pause_return_) paused_=false;
+                if (paused_ && std::find(native_pause_present_stops_.begin(),native_pause_present_stops_.end(),
+                        task.stop_address)!=native_pause_present_stops_.end()) {
+                    if (native_draw_order_captured_) publish_native_transfer(false);
+                    else {
+                        // EX waits once before its first paused TRANSFER.
+                        // Its menu/PPU state is current, but no new geometry
+                        // submission exists to replace the last object view.
+                        map_.release_native_presentation();
+                        ++native_presentation_revision_;
+                    }
+                    map_.hold_native_presentation();
+                }
             }
             if (main_loop && !task.waiting && (task.stop_address==native_main_entry_
                     || task.stop_address==native_main_exit_)) {
@@ -246,7 +275,7 @@ void GameSimulation::capture_native_draw_order() {
     native_draw_order_captured_ = true;
 }
 
-void GameSimulation::publish_native_transfer() {
+void GameSimulation::publish_native_transfer(bool advance_effects) {
     if (!native_draw_order_captured_) throw std::runtime_error{"Native transfer did not finish its draw-list submission"};
     map_.release_native_presentation();
     map_.restore_objects_from_native();
@@ -264,9 +293,12 @@ void GameSimulation::publish_native_transfer() {
         std::bit_cast<std::int16_t>(map_.read_native_word(view_position_)),
         std::bit_cast<std::int16_t>(map_.read_native_word(view_position_+2U)),
         std::bit_cast<std::int16_t>(map_.read_native_word(view_position_+4U))};
-    dust_.tick(camera,world,map_.dots_mode()<0,dust_point_count());
-    particles_.tick(objects_,map_.read_native_word(particles_enabled_) != 0U);
+    if (advance_effects) {
+        dust_.tick(camera,world,map_.dots_mode()<0,dust_point_count());
+        particles_.tick(objects_,map_.read_native_word(particles_enabled_) != 0U);
+    }
     ++source_update_sequence_;
+    ++native_presentation_revision_;
 }
 
 } // namespace starfox::simulation

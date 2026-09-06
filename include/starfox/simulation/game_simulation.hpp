@@ -233,6 +233,7 @@ public:
     // remain the caller's responsibility to retain for the next begin call.
     void sample_native_controller_held(const std::array<input::ButtonMask,5>& held);
     [[nodiscard]] bool native_gameplay_exit_pending() const noexcept { return native_main_exit_pending_; }
+    [[nodiscard]] std::uint64_t native_presentation_revision() const noexcept { return native_presentation_revision_; }
     // Caller must first advance audio to the final native clock and detach
     // its bus bindings. Pending device work rejects the handoff unchanged.
     void finish_native_gameplay_exit();
@@ -457,7 +458,7 @@ private:
     [[nodiscard]] std::size_t update_view_flags_and_cull();
     void capture_native_draw_candidates();
     void capture_native_draw_order();
-    void publish_native_transfer();
+    void publish_native_transfer(bool advance_effects=true);
     void calculate_meters();
     void draw_ex_transfer_overlay(GameTickResult& result);
     void service_audio_irq(std::vector<std::uint8_t>& commands);
@@ -944,6 +945,9 @@ private:
     std::uint32_t native_main_exit_{};
     std::uint32_t native_main_pause_entry_{};
     std::uint32_t native_main_pause_return_{};
+    std::vector<std::uint32_t> native_main_stop_addresses_;
+    std::vector<std::uint32_t> native_pause_present_stops_;
+    std::uint64_t native_presentation_revision_{};
     std::array<input::ButtonMask,5> native_roll_pulses_{};
     std::array<std::int32_t, 6> planet_spin_remainders_{};
     std::uint8_t planet_route_blink_frames_{};

@@ -27,8 +27,21 @@ JOY2 packet when selected.
 MAIN's DOPAUSE entry and return expose the source pause through `paused()`.
 Execution continues through its actual routines and waits; physical sampling
 can release Start and later press/release it to resume the same MAIN iteration.
-This permits responsive host polling during a source wait. It does not yet
-connect desktop events, presentation or pause audio to this new backend.
+This permits responsive host polling during a source wait. The test-gated
+desktop scheduler now connects those events and native audio bus commands.
+
+Pause presentation stops on validated JSL WAITDMA_L return addresses inside
+the ROM's DOPAUSE routine (three in Original, four in EX). These DMA-complete
+boundaries publish the current view and immediately establish a new hold for
+continued CPU execution. They increment `native_presentation_revision()` even
+though the MAIN iteration remains active, so the desktop can update the pause
+screen without pretending another gameplay iteration completed. Enhanced dust
+and particles do not advance on those paused publications.
+
+EX's first wait precedes a new geometry submission. That boundary refreshes
+the held presentation while retaining the previous object view; later pause
+boundaries import completed submissions when available. The desktop relies on
+EX's native pause label rather than drawing a second host label over it.
 
 ## Scene-exit boundary
 

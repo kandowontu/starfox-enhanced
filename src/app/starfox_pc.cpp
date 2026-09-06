@@ -5150,14 +5150,17 @@ int main(int argc, char** argv) {
                         }
                         game.sample_native_controller_held(held);
                         const auto previous_scene=game.scene_revision();
+                        const auto previous_publication=game.native_presentation_revision();
                         const auto result=game.advance_native_transfer(native_phase_target-game.native_transfer_clock());
                         audio.advance_native_audio(game.native_transfer_clock());
-                        if (!result) continue;
+                        if (!result && game.native_presentation_revision()==previous_publication) continue;
                         // Live callbacks already consumed these writes. Clear diagnostics
                         // before the host exit dispatcher can produce new frontend commands.
                         static_cast<void>(game.map().take_msu_register_writes());
+                        if (!result) static_cast<void>(game.map().take_apu_port_writes());
                         const auto completed_clock=game.native_transfer_clock();
-                        native_publication_duration=std::max<std::uint64_t>(1U,completed_clock-native_last_publication);
+                        if (!game.paused())
+                            native_publication_duration=std::max<std::uint64_t>(1U,completed_clock-native_last_publication);
                         native_last_publication=completed_clock;
                         const bool leaving=game.native_gameplay_exit_pending();
                         if (leaving) {
@@ -5185,7 +5188,7 @@ int main(int argc, char** argv) {
                             previous_window_wipe=current_window_wipe;
                         } else if (raster_cut) previous_raster_motion=current_raster_motion;
                         ++source_logic_frames;
-                        ++native_completed_updates;
+                        if (result) ++native_completed_updates;
                         synchronize_ex_save();
                         if (leaving) {
                             input.reset(sampled_buttons);
@@ -6680,7 +6683,7 @@ int main(int argc, char** argv) {
                         superfx_ui);
                 }
             }
-            if (game.paused()) {
+            if (game.paused() && !(game.native_transfer_timeline() && present_native_ex_bitmap)) {
                 text_renderer.draw_game_text(
                     pause_text, 90, 90, superfx_ui);
             }

@@ -51,8 +51,18 @@ int main(int argc,char** argv) try {
             }
         };
         wait_until("entry",[&] { return game->paused(); });
+        const auto pause_revision=game->native_presentation_revision();
         game->sample_native_controller_held({});
         wait_until("released Start",[&] { return pause_reads>=2U; });
+        if (game->native_presentation_revision()==pause_revision || !game->map().native_presentation_held())
+            throw std::runtime_error{"Native pause did not publish its DMA-complete view and retain its hold"};
+        const auto menu=symbols.find("MENUSELECTED");
+        if (!menu.empty()) {
+            const auto selection=game->map().read_native_byte(menu.front());
+            game->sample_native_controller_held({input::down,0U,0U,0U,0U});
+            wait_until("pause menu navigation",[&] { return game->map().read_native_byte(menu.front())!=selection; });
+            game->sample_native_controller_held({});
+        }
         const auto previous_reads=pause_reads;
         game->sample_native_controller_held({input::start,0U,0U,0U,0U});
         wait_until("pressed Start",[&] { return pause_reads>previous_reads; });
