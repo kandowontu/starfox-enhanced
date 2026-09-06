@@ -51,6 +51,10 @@ The development-only live gameplay probe now exercises the native graphics
 pass against source-initialized stage state; see LIVE-GAME-TIMING-PROBE.md.
 It appends that pass for diagnosis and cannot supply final pace totals until
 duplicate work and source transfer ordering are resolved.
+The complete native TRANSFER_L also executes in the development probe with
+timer-driven IRQ/DMA. CPU task clock deadlines now permit cooperative yields
+without abandoning live GSU work; see TASK-CLOCK-DEADLINES.md. The surrounding
+GameSimulation input, presentation and main-loop integration remains pending.
 Production last-cycle hooks now match reference sample clocks and the I flag
 for 254 native opcodes, including both initial I states. A callback can select
 the pending-interrupt dummy read used by idleIRQ instructions. Timeline binding

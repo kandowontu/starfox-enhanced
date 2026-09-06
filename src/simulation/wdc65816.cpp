@@ -98,6 +98,7 @@ struct Wdc65816::Impl {
     InterruptSampleCallback interrupt_sample_callback;
     std::uint32_t sampled_instruction_address{};
     std::shared_ptr<SnesCpuTimeline> timeline;
+    std::optional<std::uint64_t> task_clock_deadline;
     bool sampled_nmi{}, sampled_irq{}, delivering_sampled_interrupt{};
     bool waiting{}, stopped{}, last_step_instruction{};
     std::uint32_t halt_instruction_address{};
@@ -2931,6 +2932,8 @@ void Wdc65816::set_cpu_timeline(std::shared_ptr<SnesCpuTimeline> timeline) {
         throw std::logic_error{"Cannot replace the CPU timeline during execution"};
     if (impl_->gsu && impl_->timeline != timeline)
         throw std::logic_error{"Disable GSU timing before replacing its CPU timeline"};
+    if (impl_->task_clock_deadline && impl_->timeline != timeline)
+        throw std::logic_error{"Clear the task clock deadline before replacing its timeline"};
     if (impl_->timeline && impl_->timeline != timeline && impl_->dma.requested())
         throw std::logic_error{"Cannot replace the CPU timeline while DMA is requested"};
     if (impl_->timeline != timeline) {
@@ -2980,6 +2983,14 @@ void Wdc65816::set_gsu_timing(bool enabled) {
     }
 }
 bool Wdc65816::gsu_timing_enabled() const noexcept { return bool(impl_->gsu); }
+
+void Wdc65816::set_task_clock_deadline(std::optional<std::uint64_t> deadline) {
+    if (impl_->bus_clock_active)
+        throw std::logic_error{"Cannot change a task deadline during CPU execution"};
+    if (deadline && !impl_->timeline)
+        throw std::logic_error{"A task clock deadline requires a CPU timeline"};
+    impl_->task_clock_deadline = deadline;
+}
 
 void Wdc65816::set_interrupt_sample_callback(InterruptSampleCallback callback) {
     if (impl_->bus_clock_active)
@@ -3384,6 +3395,15 @@ Wdc65816TaskResult Wdc65816::run_task(
     std::array<std::uint32_t, 32> recent_program_counters{};
     bool executed_instruction = false;
     while (true) {
+        if (impl_->task_clock_deadline && impl_->timeline
+                && impl_->timeline->raster().elapsed() >= *impl_->task_clock_deadline
+                && cpu.program_address() != impl_->task_return_sentinel) {
+            result.deadline_reached = true;
+            result.waiting = impl_->waiting;
+            result.stopped = impl_->stopped;
+            result.stop_address = cpu.program_address();
+            break;
+        }
         if (impl_->instruction_boundary_callback)
             impl_->instruction_boundary_callback(executed_master_clocks());
         if (impl_->waiting || impl_->stopped) {

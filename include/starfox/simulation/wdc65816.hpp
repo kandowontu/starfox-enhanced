@@ -88,6 +88,7 @@ struct Wdc65816TaskResult {
     // of the requested stop addresses. resume_task advances another idle.
     bool waiting{};
     bool stopped{};
+    bool deadline_reached{};
 };
 
 // Snapshot of CONTINUE.ASM's dedicated MSHOWOBJ3 launch. Unlike ordinary
@@ -169,6 +170,11 @@ public:
     // shared RAM is retained. Disable only after GO, RAM writes and IRQ finish.
     void set_gsu_timing(bool enabled);
     [[nodiscard]] bool gsu_timing_enabled() const noexcept;
+    // Cooperative task-only deadline in absolute raster master clocks.
+    // Yields at an instruction boundary; the final instruction/DMA may
+    // overrun. The task, registers and pending interrupts remain resumable.
+    // Requires a timeline. Null removes the deadline; ordinary calls ignore it.
+    void set_task_clock_deadline(std::optional<std::uint64_t> deadline);
     // Without a timeline, hardware signals use legacy instruction-boundary
     // sampling; with one they use the live last-cycle polling point. IRQ is
     // level-sensitive; the device must release it. NMI is a latched edge and

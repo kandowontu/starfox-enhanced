@@ -103,5 +103,60 @@ int main() try {
             "acknowledged GSU IRQ retriggered or corrupted RTI");
         cpu.set_gsu_timing(false);
     }
-    std::cout << "native CPU/GSU waits, split RAM, cartridge mirrors, DMA ownership, IRQ/WAI and detach passed\n";
+    {
+        // Slicing a task must preserve the overlap of CPU work, DMA,
+        // refresh and GSU IRQ entry, even with sub-instruction deadlines.
+        auto bytes = image().bytes();
+        std::fill(bytes.begin(),bytes.begin()+200U,0x01U); bytes[200U]=0U;
+        const starfox::assets::RomImage rom{std::move(bytes)};
+        struct Outcome {
+            Wdc65816Registers registers;
+            SnesClockTotals totals;
+            std::uint64_t elapsed{}, interrupts{};
+        };
+        const auto run = [&](unsigned quantum) {
+            Wdc65816 cpu{rom};
+            auto clock=std::make_shared<SnesCpuTimeline>();
+            cpu.set_cpu_timeline(clock); cpu.set_gsu_timing(true);
+            const std::array<std::uint8_t,10> program{0xa2U,0U,0U,0xe8U,0xe0U,0U,4U,0xd0U,0xfaU,0x6bU};
+            const std::array<std::uint8_t,6> handler{0x48U,0xadU,0x31U,0x30U,0x68U,0x40U};
+            put(cpu,0x1000U,program); put(cpu,0x1100U,handler);
+            cpu.write8(0x303aU,0x18U); cpu.write16(0x301eU,0x8000U);
+            cpu.write8(0x4301U,0x40U); cpu.write16(0x4302U,0x1200U);
+            cpu.write8(0x4304U,0x7eU); cpu.write16(0x4305U,1U); cpu.write8(0x420bU,1U);
+            Outcome output; output.registers.status=0x20U;
+            if (!quantum) cpu.call_long(0x1000U,output.registers,10000U);
+            else {
+                cpu.set_task_clock_deadline(0U);
+                auto result=cpu.begin_long_task(0x1000U,output.registers,{},10000U);
+                require(result.deadline_reached && result.instructions==0U && clock->raster().elapsed()==0U,
+                    "expired task deadline executed CPU or DMA work");
+                unsigned slices{};
+                while (!result.returned && slices++<100000U) {
+                    cpu.set_task_clock_deadline(clock->raster().elapsed()+quantum);
+                    result=cpu.resume_task(output.registers,{},10000U);
+                    require(result.returned || result.deadline_reached,
+                        "clock-sliced task yielded without reaching its deadline");
+                }
+                require(result.returned,"clock-sliced task did not finish");
+                cpu.set_task_clock_deadline({});
+            }
+            output.elapsed=clock->raster().elapsed(); output.totals=clock->totals();
+            output.interrupts=cpu.interrupts_taken();
+            require(output.registers.x==1024U && output.interrupts==1U,
+                "deadline fixture missed CPU work or GSU IRQ");
+            return output;
+        };
+        const auto whole=run(0U);
+        for (const auto quantum : {2U,6U,100U,4096U}) {
+            const auto sliced=run(quantum);
+            require(sliced.elapsed==whole.elapsed && sliced.totals.cpu==whole.totals.cpu
+                && sliced.totals.dma==whole.totals.dma && sliced.totals.refresh==whole.totals.refresh
+                && sliced.registers.a==whole.registers.a && sliced.registers.x==whole.registers.x
+                && sliced.registers.y==whole.registers.y && sliced.registers.stack==whole.registers.stack
+                && sliced.registers.status==whole.registers.status && sliced.interrupts==whole.interrupts,
+                "task deadlines changed CPU state, IRQ delivery or device clocks");
+        }
+    }
+    std::cout << "native CPU/GSU waits, split RAM, cartridge mirrors, DMA ownership, IRQ/WAI, task deadlines and detach passed\n";
 } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }

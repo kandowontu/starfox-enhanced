@@ -47,3 +47,7 @@ The next integration step is to place graphics work and interrupt-owned
 bitmap transfers in their source order, replacing the corresponding host
 operations. Gameplay still uses its existing pace modes; this diagnostic
 does not expose ACCURATE or change the default.
+
+The probe also now offers complete native-transfer and cooperatively sliced
+native-transfer modes. Those replace the host tick in the diagnostic rather
+than append a graphics pass; see TASK-CLOCK-DEADLINES.md for scope and results.

@@ -10,11 +10,14 @@
 
 int main(int argc, char** argv) try {
     if (argc != 5 && argc != 6) {
-        std::cerr << "Usage: live_game_timing ROM SYMBOLS MAP TICKS [native-draw]\n";
+        std::cerr << "Usage: live_game_timing ROM SYMBOLS MAP TICKS [native-draw|native-transfer|native-transfer-sliced]\n";
         return 2;
     }
-    const bool native_draw = argc == 6;
-    if (native_draw && std::string{argv[5]} != "native-draw")
+    const std::string mode = argc == 6 ? argv[5] : "shell";
+    const bool native_draw = mode == "native-draw";
+    const bool sliced = mode == "native-transfer-sliced";
+    const bool native_transfer = mode == "native-transfer" || sliced;
+    if (mode != "shell" && !native_draw && !native_transfer)
         throw std::invalid_argument{"Unknown diagnostic option"};
     const auto ticks = std::stoul(argv[4]);
     if (!ticks || ticks > 10000U) throw std::invalid_argument{"TICKS must be 1..10000"};
@@ -25,6 +28,13 @@ int main(int argc, char** argv) try {
     auto timeline = std::make_shared<starfox::simulation::SnesCpuTimeline>();
     game->map().set_cpu_timeline(timeline);
     game->map().set_gsu_timing(true);
+    if (native_transfer) {
+        // INITSCREEN_L's timer setup precedes the first gameplay transfer.
+        // The host constructor ran before the timeline was attached.
+        game->map().write_native_word(0x4209U,symbols.find("GAMEVW_POS").at(0));
+        game->map().write_native_word(0x4207U,0U);
+        game->map().write_native_byte(0x4200U,0x31U);
+    }
     std::uint64_t tick_begin{};
     std::uint64_t previous_clock{};
     std::uint32_t previous_pc{};
@@ -37,15 +47,34 @@ int main(int argc, char** argv) try {
         if (timeline->raster().elapsed() - tick_begin > 100'000'000U)
             throw std::runtime_error{"Tick exceeded the diagnostic clock budget"};
     });
-    std::cout << "tick,master_clocks,cpu_clocks,dma_clocks,refresh_clocks,wall_ms,shell_clocks,appended_draw_clocks\n" << std::flush;
+    std::cout << "tick,master_clocks,cpu_clocks,dma_clocks,refresh_clocks,wall_ms,shell_clocks,appended_draw_clocks,yields,gameframe,view_z,map_pointer,transfer\n" << std::flush;
     for (unsigned tick = 0; tick < ticks; ++tick) {
         tick_begin = timeline->raster().elapsed();
         previous_clock = tick_begin; previous_pc = 0U; instruction_clocks.clear();
         const auto before = timeline->totals();
         const auto wall = std::chrono::steady_clock::now();
         std::uint64_t shell_clocks{};
+        unsigned yields{};
         try {
-            static_cast<void>(game->tick({}));
+            if (native_transfer) {
+                starfox::simulation::Wdc65816Registers registers;
+                registers.status = 0x20U;
+                game->map().call_native_routine(symbols.find("SETBLACK_L").at(0),registers,5'000'000U);
+                if (!sliced) game->map().call_native_routine(symbols.find("TRANSFER_L").at(0),registers,5'000'000U);
+                else {
+                    game->map().set_task_clock_deadline(timeline->raster().elapsed()+4096U);
+                    auto result = game->map().begin_native_task(
+                        symbols.find("TRANSFER_L").at(0),registers,{},5'000'000U);
+                    while (!result.returned) {
+                        if (result.stopped) throw std::runtime_error{"Native transfer entered STP"};
+                        ++yields;
+                        game->map().set_task_clock_deadline(timeline->raster().elapsed()+4096U);
+                        result = game->map().resume_native_task(registers,{},5'000'000U,false,false);
+                    }
+                    game->map().set_task_clock_deadline({});
+                    game->map().restore_objects_from_native();
+                }
+            } else static_cast<void>(game->tick({}));
             shell_clocks = timeline->raster().elapsed()-tick_begin;
             // Deliberately appended for integration diagnosis. The final
             // scheduler must place these inside TRANSFER_L's source order,
@@ -77,6 +106,10 @@ int main(int argc, char** argv) try {
             << after.refresh-before.refresh << ','
             << std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-wall).count()
             << ',' << shell_clocks << ',' << timeline->raster().elapsed()-tick_begin-shell_clocks
+            << ',' << yields << ',' << game->map().read_native_word(symbols.find("GAMEFRAME").at(0))
+            << ',' << game->map().read_native_word(symbols.find("VIEWPOSZ").at(0))
+            << ',' << game->map().read_native_word(symbols.find("MAPPTR").at(0))
+            << ',' << unsigned(game->map().read_native_byte(0U))
             << '\n' << std::flush;
         std::vector<std::pair<std::uint32_t,std::uint64_t>> costs(instruction_clocks.begin(),instruction_clocks.end());
         std::sort(costs.begin(),costs.end(),[](const auto& a,const auto& b) { return a.second>b.second; });
