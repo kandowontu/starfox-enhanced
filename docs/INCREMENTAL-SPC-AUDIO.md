@@ -55,6 +55,7 @@ plays a complete packet; it is not used as an oracle for the new timestamped
 upload interval. Upload checks compare scheduling boundaries and output/state
 consistency. This is not independent hardware timing certification.
 
-The native master-clock/APU bus bridge, timestamped MSU servicing, desktop
-audio output integration, scene/pace handoffs and ACCURATE selection/default
-remain unfinished. Existing desktop audio still uses the legacy renderer.
+The native master-clock/APU bus bridge is implemented separately in
+`NATIVE-CPU-AUDIO-BINDING.md`. Timestamped MSU servicing, desktop audio output
+integration, scene/pace handoffs and ACCURATE selection/default remain
+unfinished. Existing desktop audio still uses the legacy renderer.

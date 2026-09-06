@@ -56,6 +56,7 @@ public:
     // a frame is incomplete.
     [[nodiscard]] bool advance_frame(std::uint32_t clock,
         std::span<const simulation::ApuPortWrite> writes = {});
+    [[nodiscard]] bool frame_in_progress() const noexcept;
 
     // BGM commands (CPU port 0) and effect commands (continuous engine and
     // positional audio on ports 1/2 plus queued effects on port 3) run on

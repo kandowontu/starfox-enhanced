@@ -371,6 +371,8 @@ std::vector<std::int16_t> Spc700Audio::render_logic_tick(
     return mixed;
 }
 
+bool Spc700Audio::frame_in_progress() const noexcept { return music_impl_->streaming; }
+
 bool Spc700Audio::advance_frame(std::uint32_t clock,
     std::span<const simulation::ApuPortWrite> writes) {
     auto previous=music_impl_->streaming ? music_impl_->stream_clock : 0U;

@@ -95,6 +95,7 @@ struct Wdc65816::Impl {
     std::uint64_t interrupt_entries{};
     InstructionBoundaryCallback instruction_boundary_callback;
     BusClockCallback bus_clock_callback;
+    ApuBusCallback apu_bus_callback;
     InterruptSampleCallback interrupt_sample_callback;
     std::uint32_t sampled_instruction_address{};
     std::shared_ptr<SnesCpuTimeline> timeline;
@@ -520,7 +521,10 @@ struct Wdc65816::Impl {
         } else if ((low & 0xfffcU) == 0x2140U) {
             // Model the SPC boot-ROM acknowledgement protocol: it initially
             // exposes $BBAA and then echoes CPU port writes after each byte.
-            *data = self.apu_ports[address & 3U];
+            const auto port=static_cast<std::uint8_t>(address & 3U);
+            const auto external=self.apu_bus_callback
+                ? self.apu_bus_callback(self.timeline->raster().elapsed(),port,{}) : self.apu_ports[port];
+            *data=self.apu_upload_active ? self.apu_ports[port] : external;
         } else if (low == 0x2137U) {
             // Reading SLHV latches the PPU counters and resets OPVCT's
             // low/high read phase. Bounded original routines use WAITDMA_L
@@ -596,7 +600,7 @@ struct Wdc65816::Impl {
                 self.apu_upload_active = true;
                 self.apu_upload_clear_sequence = 0U;
                 ++self.apu_upload_generation;
-            } else if (self.apu_upload_active || !self.apu_output_connected) {
+            } else if (self.apu_upload_active || (!self.apu_output_connected && !self.apu_bus_callback)) {
                 // During an IPL transfer, each CPU write is synchronously
                 // echoed by the boot ROM. Before an external SPC core is
                 // attached, retain that mirror for standalone CPU tests.
@@ -622,6 +626,8 @@ struct Wdc65816::Impl {
             }
             self.apu_writes.push_back({
                 port, *data, self.apu_clock_offset});
+            if (self.apu_bus_callback)
+                static_cast<void>(self.apu_bus_callback(self.timeline->raster().elapsed(),port,*data));
         } else if (low >= 0x2100U && low < 0x2140U) {
             self.write_ppu(static_cast<std::uint16_t>(low), *data);
         } else if (low == 0x2180U) {
@@ -2961,6 +2967,8 @@ void Wdc65816::set_bus_clock_callback(BusClockCallback callback) {
 void Wdc65816::set_cpu_timeline(std::shared_ptr<SnesCpuTimeline> timeline) {
     if (impl_->bus_clock_active)
         throw std::logic_error{"Cannot replace the CPU timeline during execution"};
+    if (impl_->apu_bus_callback && impl_->timeline != timeline)
+        throw std::logic_error{"Detach the APU bus binding before replacing its CPU timeline"};
     if (impl_->gsu && impl_->timeline != timeline)
         throw std::logic_error{"Disable GSU timing before replacing its CPU timeline"};
     if (impl_->task_clock_deadline && impl_->timeline != timeline)
@@ -3021,6 +3029,14 @@ void Wdc65816::set_task_clock_deadline(std::optional<std::uint64_t> deadline) {
     if (deadline && !impl_->timeline)
         throw std::logic_error{"A task clock deadline requires a CPU timeline"};
     impl_->task_clock_deadline = deadline;
+}
+
+void Wdc65816::set_apu_bus_callback(ApuBusCallback callback) {
+    if (impl_->bus_clock_active)
+        throw std::logic_error{"Cannot replace APU binding during CPU execution"};
+    if (callback && !impl_->timeline)
+        throw std::logic_error{"APU bus binding requires a native CPU timeline"};
+    impl_->apu_bus_callback=std::move(callback);
 }
 
 void Wdc65816::set_interrupt_sample_callback(InterruptSampleCallback callback) {

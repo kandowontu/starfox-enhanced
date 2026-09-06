@@ -158,6 +158,12 @@ public:
     void set_instruction_boundary_callback(InstructionBoundaryCallback callback,
         bool owns_gameplay_bitmap_dma = false);
     using BusClockCallback = std::function<void(std::uint32_t)>;
+    // Called at the actual timed APU bus access. A value denotes a write;
+    // otherwise return the sound processor's output port. IPL reads retain
+    // the decoded boot protocol, while still notifying the callback of time.
+    using ApuBusCallback = std::function<std::uint8_t(
+        std::uint64_t,std::uint8_t,std::optional<std::uint8_t>)>;
+    void set_apu_bus_callback(ApuBusCallback callback);
     // Advance a device timeline at native bus-operation boundaries: reads
     // step wait-4 clocks before sampling data and 4 afterward; writes step
     // their full wait before storing data; each idle steps separately.
