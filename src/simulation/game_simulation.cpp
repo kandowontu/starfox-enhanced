@@ -1781,7 +1781,10 @@ void GameSimulation::write_input(const input::TickInput& input) {
     map_.write_native_byte(controller_low_,
                            static_cast<std::uint8_t>(mapped_held));
     map_.write_native_word(trigger_, mapped_pressed);
-    map_.write_native_word(hardware_controller_, input.held);
+    // Native IRQ polling must see the same one-update shoulder pulse as
+    // the strategy controller bytes, including taps already released.
+    map_.write_native_word(hardware_controller_,
+        static_cast<input::ButtonMask>(input.held | roll_presses));
     if (starfox_ex_cartridge_) {
         const auto& second = secondary_inputs_.front();
         const auto second_roll_presses = roll_edges(second);
@@ -1795,7 +1798,8 @@ void GameSimulation::write_input(const input::TickInput& input) {
         map_.write_native_byte(ex_controller_2_low_,
             static_cast<std::uint8_t>(second.held | second_roll_presses));
         map_.write_native_word(ex_trigger_2_, second.pressed);
-        map_.write_native_word(ex_hardware_controller_2_, second.held);
+        map_.write_native_word(ex_hardware_controller_2_,
+            static_cast<input::ButtonMask>(second.held | second_roll_presses));
 
         std::array<input::ButtonMask, 5> held{
             input.held,

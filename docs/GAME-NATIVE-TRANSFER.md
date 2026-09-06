@@ -55,7 +55,29 @@ fields match the prior uninterrupted native-transfer probe. See
 an independent full-system oracle or entire campaigns.
 
 This implements the transfer lifecycle, not the complete surrounding MAIN
-and front-end flows. The desktop driver, continuous input/short-tap delivery
-across source IRQ polling, audio-clock servicing during yields, communication
+and front-end flows. The desktop driver, continuous input delivery,
+audio-clock servicing during yields, communication
 wrappers, pause/scene handoffs, pace switching and ACCURATE menu/default remain
 unfinished. The current application still uses its existing pace choices.
+
+## Shoulder taps through native IRQ polling
+
+The input mapper now exposes its one-update shoulder press pulse in the
+hardware controller ports as well as the strategy controller bytes. Without
+this, native IRQ polling replaced a complete, already-released tap with zero
+before the player strategy could observe it. The following update restores
+the physical held state. The primary port and EX's second controller port
+use the same rule; the existing multitap mapping already includes pulses.
+
+The native-transfer input replay exercises both shoulder buttons after source
+startup in Original LEVEL2_1 and EX LEVEL7_2. It checks that the first tap alone
+does not roll, the second complete tap starts a roll, and released pulses do
+not remain held. Original reaches its control gate after 323 transfers, beyond
+the diagnostic's earlier 300-transfer limit; the transfer-only path was not
+stuck at that gate. A further 32 transfers settle the launch strategy before
+each input case. These checks do not certify physical controller sampling or
+the unfinished desktop scheduler.
+
+The rebuilt desktop and all 81 regression tests pass in 235.03 seconds after
+this change, including the existing normal/MSU ending audio and multiplayer
+input suites. See `validation/native-transfer-input-regressions.txt`.
