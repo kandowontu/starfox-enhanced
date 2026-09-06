@@ -108,3 +108,30 @@ seconds together retain two seconds of output. Legacy restoration and existing
 queue bounds also pass. The rebuilt desktop passes regular, embedded and exit
 confirmation runtime smoke tests. Feeding native gameplay into this packet
 entry point remains part of desktop scheduler integration.
+
+## Combined desktop sound lifetime
+
+`GameAudioTimeline` owns the shared clock coordination for borrowed SPC/MSU
+drivers. Native APU/MSU accesses and chunk-end advancement use one timeline;
+the packet callback receives the selected music stem and effects stem. The
+desktop `AudioOutput` can bind those accesses to a native gameplay scene,
+advance through its final timestamp, and unbind before the scene handoff.
+Native playback speed/output suppression must be set before executing CPU
+chunks, because packet callbacks can fire during a bus access.
+
+After the first native attachment, frontend `queue_logic_tick` calls continue
+through this timeline instead of returning to whole-frame SPC rendering. A
+50 ms frontend tick advances 51264 SPC clocks at the selected 32040 Hz rate;
+its nominal 32000 Hz command offsets scale by 801/800. The adapter keeps each
+device's command order, merges APU/MSU events by time, validates them before
+advancing sound, and preserves any incomplete packet. The old audio path
+remains unchanged until native sound is first attached. Calls that would
+replay captured host writes while native bus callbacks are attached fail.
+
+Both cartridges' native gameplay replays now exercise this combined adapter.
+An additional 100-transition replay compares its frontend events with explicit
+SPC-domain scheduling, checking all emitted samples and exposed SPC state;
+the MSU variant includes interleaved stop/play/loop commands. The three native
+audio tests and three rebuilt desktop runtime smoke tests pass (6/6, 7.14 s).
+These desktop binding methods are not yet called by the presentation loop;
+ACCURATE selection and its scheduler remain unfinished.

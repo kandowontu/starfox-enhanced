@@ -1,4 +1,5 @@
 #include "starfox/audio/native_audio_clock.hpp"
+#include "starfox/audio/game_audio_timeline.hpp"
 #include "starfox/audio/msu_audio_timeline.hpp"
 #include "starfox/simulation/game_simulation.hpp"
 #include "starfox/simulation/snes_timeline.hpp"
@@ -164,6 +165,57 @@ void handoff_audio_test(const assets::RomImage& rom,const assets::SymbolMap& sym
     try { clock.advance_spc_to(elapsed-1U); } catch (const std::invalid_argument&) { rejected=true; }
     require(rejected && clock.spc_clock()==elapsed,"Backward host timestamp changed sound time");
     require(callback_guard_tested && !reference_pcm.empty(),"Audio handoff replay produced no complete packets");
+
+    // Compare the desktop's combined frontend adapter with explicitly placed
+    // events in the continuing SPC domain, including MSU events between APU writes.
+    audio::Spc700Audio expected_sound,host_sound;
+    for (auto* sound : {&expected_sound,&host_sound}) {
+        static_cast<void>(sound->prime_upload_sequence(boot));
+        for (unsigned i=0;i<30U;++i) static_cast<void>(sound->render_logic_tick({}));
+    }
+    audio::Msu1Audio expected_msu(recording),host_msu(recording);
+    expected_msu.set_enabled(!msu_fixture.empty()); host_msu.set_enabled(!msu_fixture.empty());
+    audio::MsuAudioTimeline expected_music(expected_msu,32040U);
+    std::vector<std::int16_t> expected_packets,host_packets;
+    audio::NativeAudioClock expected(expected_sound,11'278'080U,236'250'000U,
+        [&](auto end,auto music,auto effects) {
+            music=expected_music.finish_packet(end,music);
+            expected_packets.insert(expected_packets.end(),music.begin(),music.end());
+            expected_packets.insert(expected_packets.end(),effects.begin(),effects.end());
+        });
+    audio::GameAudioTimeline host(host_sound,host_msu,[&](auto,auto music,auto effects) {
+        host_packets.insert(host_packets.end(),music.begin(),music.end());
+        host_packets.insert(host_packets.end(),effects.begin(),effects.end());
+    });
+    for (unsigned scene=0;scene<100U;++scene) {
+        expected.rebase_master_clock(0U); host.rebase_master_clock(0U);
+        const auto native_end=123456U+scene*17U;
+        expected.advance_to(native_end); expected_music.advance_to(expected.spc_clock());
+        host.advance_to(native_end);
+        const auto start=expected.spc_clock();
+        const std::array apu_writes{simulation::ApuPortWrite{3U,1U,123U},
+            simulation::ApuPortWrite{3U,2U,30000U},simulation::ApuPortWrite{3U,0U,51000U}};
+        const std::array msu_writes{simulation::MsuRegisterWrite{0x2004U,1U,24000U},
+            simulation::MsuRegisterWrite{0x2005U,0U,24000U},
+            simulation::MsuRegisterWrite{0x2006U,255U,24000U},
+            simulation::MsuRegisterWrite{0x2007U,static_cast<std::uint8_t>(scene%3U ? 3U : 0U),24000U}};
+        static_cast<void>(expected.access_spc(start+123U*801U/800U,3U,1U));
+        expected.advance_spc_to(start+24000U*801U/800U);
+        for (const auto& write : msu_writes)
+            static_cast<void>(expected_music.access(expected.spc_clock(),write.address,write.value));
+        static_cast<void>(expected.access_spc(start+30000U*801U/800U,3U,2U));
+        static_cast<void>(expected.access_spc(start+51000U*801U/800U,3U,0U));
+        expected.advance_spc_to(start+51264U); expected_music.advance_to(expected.spc_clock());
+        host.advance_host_tick(apu_writes,msu_writes);
+        require(host.spc_clock()==expected.spc_clock() && host_packets==expected_packets
+            && host_sound.state()==expected_sound.state(),
+            "Desktop frontend sound adapter changed command timing, PCM or sound state");
+    }
+    const auto before=host.spc_clock();
+    rejected=false;
+    const std::array invalid{simulation::ApuPortWrite{4U,0U,0U}};
+    try { host.advance_host_tick(invalid,{}); } catch (const std::invalid_argument&) { rejected=true; }
+    require(rejected && host.spc_clock()==before,"Invalid frontend audio advanced the timeline");
 }
 Result run(const assets::RomImage& rom,const assets::SymbolMap& symbols,const char* map,std::uint64_t quantum,
     std::span<const std::uint8_t> msu_fixture) {
@@ -179,12 +231,10 @@ Result run(const assets::RomImage& rom,const assets::SymbolMap& symbols,const ch
     });
     msu.set_enabled(!msu_fixture.empty());
     msu.process_register_writes(game->map().take_msu_register_writes());
-    audio::MsuAudioTimeline music_timeline(msu,32040U);
     Result result;
     // Pinned ares NTSC CPU oscillator is 236250000/11 Hz; its SMP
     // executes 32040*32 clocks/second. Keep the ratio explicit in the test.
-    audio::NativeAudioClock clock(sound,11'278'080U,236'250'000U,[&](auto end,auto music,auto effects) {
-        music=music_timeline.finish_packet(end,music);
+    audio::GameAudioTimeline clock(sound,msu,[&](auto,auto music,auto effects) {
         ++result.packets;
         for (const auto samples : {music,effects}) for (const auto sample : samples) {
             result.pcm_hash^=static_cast<std::uint16_t>(sample);
@@ -195,18 +245,16 @@ Result run(const assets::RomImage& rom,const assets::SymbolMap& symbols,const ch
         game->begin_native_gameplay_update({});
         if (!frame) game->map().set_apu_bus_callback([&](auto time,auto port,auto value) {
             if (value) ++result.writes; else ++result.reads;
-            return clock.access(time,port,value);
+            return clock.access_apu(time,port,value);
         });
         if (!frame && !msu_fixture.empty()) game->map().set_msu_bus_callback([&](auto time,auto address,auto value) {
             if (value) ++result.msu_writes; else ++result.msu_reads;
-            clock.advance_to(time);
-            return music_timeline.access(clock.spc_clock(),address,value);
+            return clock.access_msu(time,address,value);
         });
         unsigned slices{};
         while (true) {
             const auto completed=game->advance_native_transfer(quantum);
             clock.advance_to(game->native_transfer_clock());
-            music_timeline.advance_to(clock.spc_clock());
             if (completed) break;
             if (++slices>100000U) throw std::runtime_error{"Native audio gameplay exceeded its execution budget"};
         }

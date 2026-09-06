@@ -1,4 +1,5 @@
 #include "starfox/audio/spc700_audio.hpp"
+#include "starfox/audio/game_audio_timeline.hpp"
 #include "starfox/audio/msu1_audio.hpp"
 #include "starfox/audio/msu1_pack.hpp"
 #include "starfox/app/runtime_input.hpp"
@@ -2672,10 +2673,48 @@ public:
         return msu1_.playing();
     }
 
+    void set_native_playback(std::uint32_t speed_multiplier,bool queue_output) noexcept {
+        native_speed_multiplier_=speed_multiplier;
+        native_queue_output_=queue_output;
+    }
+    void bind_native_audio(starfox::simulation::GameSimulation& game) {
+        if (native_audio_bound_ || !game.native_transfer_timeline())
+            throw std::logic_error{"Native audio requires a new live gameplay binding"};
+        if (!timeline_) timeline_=std::make_unique<starfox::audio::GameAudioTimeline>(emulator_,msu1_,
+            [this](auto,auto music,auto effects) {
+                queue_timed_packet(music,effects,starfox::audio::GameAudioTimeline::sample_rate,
+                    native_speed_multiplier_,native_queue_output_);
+            });
+        timeline_->rebase_master_clock(game.native_transfer_clock());
+        game.map().set_apu_bus_callback([this](auto time,auto port,auto value) {
+            return timeline_->access_apu(time,port,value);
+        });
+        game.map().set_msu_bus_callback([this](auto time,auto address,auto value) {
+            return timeline_->access_msu(time,address,value);
+        });
+        native_audio_bound_=true;
+    }
+    void advance_native_audio(std::uint64_t master_clock) {
+        if (!native_audio_bound_) throw std::logic_error{"Native audio is not bound"};
+        timeline_->advance_to(master_clock);
+    }
+    void unbind_native_audio(starfox::simulation::GameSimulation& game) {
+        advance_native_audio(game.native_transfer_clock());
+        game.map().set_apu_bus_callback({});
+        game.map().set_msu_bus_callback({});
+        native_audio_bound_=false;
+    }
+
     [[nodiscard]] std::array<std::uint8_t, 4> queue_logic_tick(
         std::span<const starfox::simulation::ApuPortWrite> writes,
         std::span<const starfox::simulation::MsuRegisterWrite> msu_writes,
         std::uint32_t speed_multiplier, bool queue_output = true) {
+        if (native_audio_bound_) throw std::logic_error{"Cannot replay host audio while native buses are bound"};
+        if (timeline_) {
+            set_native_playback(speed_multiplier,queue_output);
+            timeline_->advance_host_tick(writes,msu_writes);
+            return emulator_.output_ports();
+        }
         static_cast<void>(emulator_.render_logic_tick(writes));
         msu1_.process_register_writes(msu_writes);
         if (msu1_.enabled()) static_cast<void>(msu1_.render(
@@ -2777,6 +2816,10 @@ public:
 private:
     starfox::audio::Spc700Audio emulator_;
     starfox::audio::Msu1Audio msu1_;
+    std::unique_ptr<starfox::audio::GameAudioTimeline> timeline_;
+    std::uint32_t native_speed_multiplier_{1U};
+    bool native_queue_output_{true};
+    bool native_audio_bound_{};
     SDL_AudioStream* stream_{};
     std::vector<std::int16_t> fast_samples_;
     std::vector<std::int16_t> mixed_samples_;

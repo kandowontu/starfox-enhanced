@@ -185,6 +185,7 @@ add_library(starfox_core
     src/audio/msu1_pack.cpp
     src/audio/spc700_audio.cpp
     src/audio/native_audio_clock.cpp
+    src/audio/game_audio_timeline.cpp
     src/audio/msu_audio_timeline.cpp
     src/assets/bps.cpp
     src/assets/decrunch.cpp
