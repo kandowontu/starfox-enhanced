@@ -7,6 +7,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <stdexcept>
 #include <utility>
 
 namespace starfox::audio {
@@ -35,6 +36,7 @@ void Msu1Audio::set_enabled(bool enabled) noexcept {
     if (!enabled_) {
         playing_ = false;
         completed_ = false;
+        missing_ = false;
     }
 }
 
@@ -50,19 +52,28 @@ void Msu1Audio::process_register_writes(
             selected_track_ = static_cast<std::uint16_t>(
                 (selected_track_ & 0x00ffU)
                 | (static_cast<std::uint16_t>(write.value) << 8U));
+            if (enabled_) {
+                playing_=false;
+                completed_=false;
+                missing_=!load_selected_track();
+            }
             break;
         case 0x2006U:
             volume_ = write.value;
             break;
         case 0x2007U:
             completed_ = false;
+            repeat_ = (write.value & 0x02U) != 0U;
             if ((write.value & 0x01U) == 0U) {
                 playing_ = false;
                 source_cursor_ = 0.0;
                 break;
             }
-            repeat_ = (write.value & 0x02U) != 0U;
-            if (enabled_ && load_selected_track()) {
+            if (enabled_) {
+                missing_=!load_selected_track();
+                playing_=!missing_;
+            }
+            if (enabled_ && !missing_) {
                 // Bit 2 requests resume. Ordinary play always restarts.
                 if ((write.value & 0x04U) == 0U) source_cursor_ = 0.0;
                 playing_ = true;
@@ -121,17 +132,22 @@ bool Msu1Audio::load_selected_track() {
 std::span<const std::int16_t> Msu1Audio::render(
     std::size_t output_frames, std::uint32_t output_sample_rate) {
     output_.assign(output_frames * 2U, 0);
+    native_tail_start_=use_native_music_tail() ? 0U : output_frames;
     if (!enabled_ || paused_ || !playing_ || decoded_.empty()
         || output_sample_rate == 0U) return output_;
     const auto step = static_cast<double>(source_sample_rate_)
         / static_cast<double>(output_sample_rate);
-    const auto loop = std::min(loop_frame(selected_track_), source_frames_);
+    // A shorter replacement recording may end before the pack's loop point.
+    // Looping at EOF would never reduce the cursor and would hang playback.
+    const auto requested_loop=loop_frame(selected_track_);
+    const auto loop=requested_loop<source_frames_ ? requested_loop : 0U;
     const auto volume = static_cast<double>(volume_) / 255.0;
     for (std::size_t frame = 0; frame < output_frames; ++frame) {
         while (source_cursor_ >= static_cast<double>(source_frames_)) {
             if (!repeat_) {
                 playing_ = false;
                 completed_ = true;
+                if (use_native_music_tail()) native_tail_start_=frame;
                 return output_;
             }
             source_cursor_ = static_cast<double>(loop)
@@ -153,7 +169,21 @@ std::span<const std::int16_t> Msu1Audio::render(
                 * normalization_gain_ * volume);
         }
         source_cursor_ += step;
+        if (!repeat_ && source_cursor_>=static_cast<double>(source_frames_)) {
+            playing_=false;
+            completed_=true;
+            if (use_native_music_tail()) native_tail_start_=frame+1U;
+            return output_;
+        }
     }
+    return output_;
+}
+
+std::span<const std::int16_t> Msu1Audio::select_music(std::span<const std::int16_t> native_music) {
+    if (!enabled_) return native_music;
+    if (native_music.size()!=output_.size()) throw std::invalid_argument{"MSU and native music packet lengths differ"};
+    const auto tail=std::min(native_tail_start_*2U,output_.size());
+    std::copy(native_music.begin()+tail,native_music.end(),output_.begin()+tail);
     return output_;
 }
 

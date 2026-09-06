@@ -131,6 +131,9 @@ public:
     void set_apu_bus_callback(Wdc65816::ApuBusCallback callback) {
         cpu_.set_apu_bus_callback(std::move(callback));
     }
+    void set_msu_bus_callback(Wdc65816::MsuBusCallback callback) {
+        cpu_.set_msu_bus_callback(std::move(callback));
+    }
     void set_cpu_timeline(std::shared_ptr<SnesCpuTimeline> timeline) {
         cpu_.set_cpu_timeline(std::move(timeline));
     }

@@ -1,7 +1,10 @@
 #include "starfox/audio/native_audio_clock.hpp"
+#include "starfox/audio/msu_audio_timeline.hpp"
 #include "starfox/simulation/game_simulation.hpp"
 #include "starfox/simulation/snes_timeline.hpp"
 #include <iostream>
+#include <fstream>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -80,22 +83,33 @@ void ratio_test() {
 
 struct Result {
     std::uint64_t master{},spc{},pcm_hash{14695981039346656037ULL};
-    unsigned packets{},reads{},writes{};
+    unsigned packets{},reads{},writes{},msu_reads{},msu_writes{};
+    std::uint16_t msu_track{};
+    std::uint8_t msu_status{};
     std::uint16_t gameframe{},map_pointer{};
     audio::Spc700Audio::State state;
     friend bool operator==(const Result&,const Result&)=default;
 };
-Result run(const assets::RomImage& rom,const assets::SymbolMap& symbols,const char* map,std::uint64_t quantum) {
+Result run(const assets::RomImage& rom,const assets::SymbolMap& symbols,const char* map,std::uint64_t quantum,
+    std::span<const std::uint8_t> msu_fixture) {
     auto game=std::make_unique<simulation::GameSimulation>(rom,symbols,map,
         std::span<const std::uint8_t>{},true);
     audio::Spc700Audio sound;
     static_cast<void>(sound.prime_upload_sequence(game->map().take_apu_port_writes()));
     for (unsigned i=0;i<30U;++i) static_cast<void>(sound.render_logic_tick({}));
     game->synchronize_apu_output_ports(sound.output_ports());
+    audio::Msu1Audio msu([&](std::uint16_t track) {
+        return track && track<53U ? std::vector<std::uint8_t>(msu_fixture.begin(),msu_fixture.end())
+            : std::vector<std::uint8_t>{};
+    });
+    msu.set_enabled(!msu_fixture.empty());
+    msu.process_register_writes(game->map().take_msu_register_writes());
+    audio::MsuAudioTimeline music_timeline(msu,32040U);
     Result result;
     // Pinned ares NTSC CPU oscillator is 236250000/11 Hz; its SMP
     // executes 32040*32 clocks/second. Keep the ratio explicit in the test.
-    audio::NativeAudioClock clock(sound,11'278'080U,236'250'000U,[&](auto,auto music,auto effects) {
+    audio::NativeAudioClock clock(sound,11'278'080U,236'250'000U,[&](auto end,auto music,auto effects) {
+        music=music_timeline.finish_packet(end,music);
         ++result.packets;
         for (const auto samples : {music,effects}) for (const auto sample : samples) {
             result.pcm_hash^=static_cast<std::uint16_t>(sample);
@@ -108,32 +122,48 @@ Result run(const assets::RomImage& rom,const assets::SymbolMap& symbols,const ch
             if (value) ++result.writes; else ++result.reads;
             return clock.access(time,port,value);
         });
+        if (!frame && !msu_fixture.empty()) game->map().set_msu_bus_callback([&](auto time,auto address,auto value) {
+            if (value) ++result.msu_writes; else ++result.msu_reads;
+            clock.advance_to(time);
+            return music_timeline.access(clock.spc_clock(),address,value);
+        });
         unsigned slices{};
         while (true) {
             const auto completed=game->advance_native_transfer(quantum);
             clock.advance_to(game->native_transfer_clock());
+            music_timeline.advance_to(clock.spc_clock());
             if (completed) break;
             if (++slices>100000U) throw std::runtime_error{"Native audio gameplay exceeded its execution budget"};
         }
         require(!game->native_gameplay_exit_pending(),"Native audio replay unexpectedly left gameplay");
     }
     game->map().set_apu_bus_callback({});
+    game->map().set_msu_bus_callback({});
     result.master=game->native_transfer_clock(); result.spc=clock.spc_clock();
     result.state=sound.state();
+    result.msu_track=msu.selected_track(); result.msu_status=msu.status();
     result.gameframe=game->map().read_native_word(symbols.find("GAMEFRAME").at(0));
     result.map_pointer=game->map().read_native_word(symbols.find("MAPPTR").at(0));
     require(result.reads && result.writes && result.packets && sound.driver_loaded()
         && game->map().apu_upload_generation()>=2U,"Native audio did not exercise live traffic and a stage upload");
+    if (!msu_fixture.empty()) require(result.msu_writes && result.msu_track,
+        "Native replay did not exercise MSU register traffic and track selection");
     return result;
 }
 
 int main(int argc,char** argv) try {
     bus_test(); ratio_test();
-    if (argc!=4) throw std::invalid_argument{"Expected ROM SYMBOLS MAP"};
+    if (argc!=4 && argc!=5) throw std::invalid_argument{"Expected ROM SYMBOLS MAP [FLAC]"};
+    std::vector<std::uint8_t> msu_fixture;
+    if (argc==5) {
+        std::ifstream fixture(argv[4],std::ios::binary);
+        msu_fixture.assign(std::istreambuf_iterator<char>{fixture},std::istreambuf_iterator<char>{});
+        require(!msu_fixture.empty(),"Native MSU fixture is missing");
+    }
     const auto rom=assets::RomImage::load(argv[1]);
     const auto symbols=assets::SymbolMap::load(argv[2]);
-    const auto small=run(rom,symbols,argv[3],4096U);
-    const auto large=run(rom,symbols,argv[3],100'000'000U);
+    const auto small=run(rom,symbols,argv[3],4096U,msu_fixture);
+    const auto large=run(rom,symbols,argv[3],100'000'000U,msu_fixture);
     require(small==large,"Native CPU/audio clocks, traffic, PCM or state depend on execution quantum");
     std::cout << "12 MAIN updates: " << small.master << " master clocks, " << small.spc
         << " SPC clocks, " << small.reads << " reads, " << small.writes << " writes, "

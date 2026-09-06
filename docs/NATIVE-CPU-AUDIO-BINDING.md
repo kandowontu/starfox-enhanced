@@ -61,6 +61,7 @@ The complete desktop rebuild succeeds and all 89 tests pass in 218.18 seconds;
 see `validation/native-cpu-audio-regressions.txt`, including the existing
 standard/MSU ending-audio and multiplayer regressions.
 
-This is not an independent full-system/campaign comparison. Desktop packet
-output and sample-rate configuration, timestamped MSU servicing, scene/pace
-handoffs, interpolation and ACCURATE selection/default remain unfinished.
+This is not an independent full-system/campaign comparison. Timestamped MSU
+servicing is implemented in `NATIVE-MSU-AUDIO.md`. Desktop packet output and
+sample-rate configuration, scene/pace handoffs, interpolation and ACCURATE
+selection/default remain unfinished.

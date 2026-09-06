@@ -96,6 +96,7 @@ struct Wdc65816::Impl {
     InstructionBoundaryCallback instruction_boundary_callback;
     BusClockCallback bus_clock_callback;
     ApuBusCallback apu_bus_callback;
+    MsuBusCallback msu_bus_callback;
     InterruptSampleCallback interrupt_sample_callback;
     std::uint32_t sampled_instruction_address{};
     std::shared_ptr<SnesCpuTimeline> timeline;
@@ -504,6 +505,10 @@ struct Wdc65816::Impl {
             }
         }
         if (low >= 0x2000U && low <= 0x2007U) {
+            if (self.msu_bus_callback) {
+                *data=self.msu_bus_callback(self.timeline->raster().elapsed(),static_cast<std::uint16_t>(low),{});
+                return;
+            }
             if (low == 0x2000U) {
                 // Audio/data are immediately available. Revision 2 is enough
                 // for the cartridge's presence check and leaves the missing,
@@ -582,6 +587,8 @@ struct Wdc65816::Impl {
         }
         if (low >= 0x2000U && low <= 0x2007U) {
             self.msu_registers[low - 0x2000U] = *data;
+            if (self.msu_bus_callback)
+                static_cast<void>(self.msu_bus_callback(self.timeline->raster().elapsed(),static_cast<std::uint16_t>(low),*data));
             if (low >= 0x2004U) {
                 self.msu_writes.push_back({
                     static_cast<std::uint16_t>(low), *data,
@@ -2967,8 +2974,8 @@ void Wdc65816::set_bus_clock_callback(BusClockCallback callback) {
 void Wdc65816::set_cpu_timeline(std::shared_ptr<SnesCpuTimeline> timeline) {
     if (impl_->bus_clock_active)
         throw std::logic_error{"Cannot replace the CPU timeline during execution"};
-    if (impl_->apu_bus_callback && impl_->timeline != timeline)
-        throw std::logic_error{"Detach the APU bus binding before replacing its CPU timeline"};
+    if ((impl_->apu_bus_callback || impl_->msu_bus_callback) && impl_->timeline != timeline)
+        throw std::logic_error{"Detach audio bus bindings before replacing their CPU timeline"};
     if (impl_->gsu && impl_->timeline != timeline)
         throw std::logic_error{"Disable GSU timing before replacing its CPU timeline"};
     if (impl_->task_clock_deadline && impl_->timeline != timeline)
@@ -3037,6 +3044,12 @@ void Wdc65816::set_apu_bus_callback(ApuBusCallback callback) {
     if (callback && !impl_->timeline)
         throw std::logic_error{"APU bus binding requires a native CPU timeline"};
     impl_->apu_bus_callback=std::move(callback);
+}
+
+void Wdc65816::set_msu_bus_callback(MsuBusCallback callback) {
+    if (impl_->bus_clock_active) throw std::logic_error{"Cannot replace MSU binding during CPU execution"};
+    if (callback && !impl_->timeline) throw std::logic_error{"MSU bus binding requires a native CPU timeline"};
+    impl_->msu_bus_callback=std::move(callback);
 }
 
 void Wdc65816::set_interrupt_sample_callback(InterruptSampleCallback callback) {

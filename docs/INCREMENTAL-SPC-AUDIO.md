@@ -56,6 +56,7 @@ upload interval. Upload checks compare scheduling boundaries and output/state
 consistency. This is not independent hardware timing certification.
 
 The native master-clock/APU bus bridge is implemented separately in
-`NATIVE-CPU-AUDIO-BINDING.md`. Timestamped MSU servicing, desktop audio output
-integration, scene/pace handoffs and ACCURATE selection/default remain
-unfinished. Existing desktop audio still uses the legacy renderer.
+`NATIVE-CPU-AUDIO-BINDING.md`, with timestamped MSU selection in
+`NATIVE-MSU-AUDIO.md`. Native desktop audio output integration, scene/pace
+handoffs and ACCURATE selection/default remain unfinished. Existing desktop
+audio still uses the legacy renderer, with the corrected MSU tail selector.

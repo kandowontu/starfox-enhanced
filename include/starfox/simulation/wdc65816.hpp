@@ -164,6 +164,9 @@ public:
     using ApuBusCallback = std::function<std::uint8_t(
         std::uint64_t,std::uint8_t,std::optional<std::uint8_t>)>;
     void set_apu_bus_callback(ApuBusCallback callback);
+    using MsuBusCallback = std::function<std::uint8_t(
+        std::uint64_t,std::uint16_t,std::optional<std::uint8_t>)>;
+    void set_msu_bus_callback(MsuBusCallback callback);
     // Advance a device timeline at native bus-operation boundaries: reads
     // step wait-4 clocks before sampling data and 4 afterward; writes step
     // their full wait before storing data; each idle steps separately.

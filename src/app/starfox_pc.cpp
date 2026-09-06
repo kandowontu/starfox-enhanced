@@ -2678,13 +2678,10 @@ public:
         std::uint32_t speed_multiplier, bool queue_output = true) {
         static_cast<void>(emulator_.render_logic_tick(writes));
         msu1_.process_register_writes(msu_writes);
-        const auto lossless_music = msu1_.enabled()
-            ? std::span<const std::int16_t>{msu1_.render(
+        if (msu1_.enabled()) static_cast<void>(msu1_.render(
                 starfox::audio::Spc700Audio::stereo_frames_per_logic_tick,
-                starfox::audio::Spc700Audio::sample_rate)}
-            : emulator_.last_music_samples();
-        const auto music = msu1_.use_native_music_tail()
-            ? emulator_.last_music_samples() : lossless_music;
+                starfox::audio::Spc700Audio::sample_rate));
+        const auto music=msu1_.select_music(emulator_.last_music_samples());
         const auto effects = emulator_.last_effect_samples();
         mixed_samples_.resize(std::min(music.size(), effects.size()));
         for (std::size_t index = 0U; index < mixed_samples_.size(); ++index) {

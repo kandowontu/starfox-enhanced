@@ -185,6 +185,7 @@ add_library(starfox_core
     src/audio/msu1_pack.cpp
     src/audio/spc700_audio.cpp
     src/audio/native_audio_clock.cpp
+    src/audio/msu_audio_timeline.cpp
     src/assets/bps.cpp
     src/assets/decrunch.cpp
     src/assets/rom.cpp
@@ -910,6 +911,10 @@ if(STARFOX_BUILD_TESTS)
     add_executable(starfox_msu1_pack_tests tests/msu1_pack_tests.cpp)
     target_link_libraries(starfox_msu1_pack_tests PRIVATE starfox_core)
     add_test(NAME starfox_msu1_pack_tests COMMAND starfox_msu1_pack_tests)
+    add_executable(starfox_msu_timeline_tests tests/msu_timeline_tests.cpp)
+    target_link_libraries(starfox_msu_timeline_tests PRIVATE starfox_core)
+    add_test(NAME starfox_msu_timeline_tests COMMAND starfox_msu_timeline_tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/msu-tone-320.flac")
 
     add_executable(starfox_shape_decoder_tests tests/shape_decoder_tests.cpp)
     target_link_libraries(starfox_shape_decoder_tests PRIVATE starfox_core)
@@ -1115,6 +1120,10 @@ if(STARFOX_BUILD_TESTS)
         add_test(NAME starfox_upstream_native_audio COMMAND starfox_native_audio_tests
             "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
             "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT" LEVEL2_1)
+        add_test(NAME starfox_upstream_native_msu_audio COMMAND starfox_native_audio_tests
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT" LEVEL2_1
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/msu-tone-320.flac")
         set(STARFOX_TEST_MSU_PACK "${STARFOX_MSU1_PACK}")
         if(NOT STARFOX_TEST_MSU_PACK AND EXISTS "${CMAKE_CURRENT_BINARY_DIR}/Starfox-MSU1.PAK")
             set(STARFOX_TEST_MSU_PACK "${CMAKE_CURRENT_BINARY_DIR}/Starfox-MSU1.PAK")
