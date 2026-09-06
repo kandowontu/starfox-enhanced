@@ -2027,7 +2027,7 @@ int main(int argc, char** argv) {
 
         starfox::simulation::GameSimulation game{upstream_rom, upstream_symbols, "LEVEL1_1"};
         // This fixture audits the deterministic three-raster 20 Hz path.
-        // The user-facing cold default is Original pace, so select the
+        // The user-facing cold default is Accurate pace, so select the
         // unlocked deterministic mode explicitly instead of inheriting a UI
         // preference into low-level timing assertions.
         game.set_timing_mode(
@@ -6037,7 +6037,7 @@ int main(int argc, char** argv) {
         require(boot_game.flow_state()
                     == starfox::simulation::GameFlowState::pregame_menu
                     && boot_game.timing_mode()
-                        == starfox::simulation::TimingMode::original_speed
+                        == starfox::simulation::TimingMode::accurate
                     && boot_game.display_mode()
                         == starfox::simulation::DisplayMode::standard_4_3
                     && boot_game.presentation_fps() == 60U
@@ -6096,7 +6096,21 @@ int main(int argc, char** argv) {
         drive_boot({0, starfox::input::right, 0});
         require(boot_game.timing_mode()
                     == starfox::simulation::TimingMode::unlocked_20_fps,
-                "pre-game pace selector did not leave the Original default");
+                "pre-game pace selector did not leave the Accurate default");
+        for (const auto expected : {starfox::simulation::TimingMode::original_speed,
+                 starfox::simulation::TimingMode::accurate,
+                 starfox::simulation::TimingMode::unlocked_20_fps}) {
+            drive_boot({0, starfox::input::right, 0});
+            require(boot_game.timing_mode() == expected,
+                    "pre-game pace selector skipped a forward choice");
+        }
+        for (const auto expected : {starfox::simulation::TimingMode::accurate,
+                 starfox::simulation::TimingMode::original_speed,
+                 starfox::simulation::TimingMode::unlocked_20_fps}) {
+            drive_boot({0, starfox::input::left, 0});
+            require(boot_game.timing_mode() == expected,
+                    "pre-game pace selector skipped a backward choice");
+        }
         drive_boot({0, starfox::input::down, 0});
         require(boot_game.pregame_selection() == 2U,
                 "pre-game cursor did not reach RENDER FPS");

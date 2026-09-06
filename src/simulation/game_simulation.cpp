@@ -1013,7 +1013,7 @@ void GameSimulation::enter_pregame_menu() {
     menu_palette[14] = 0x7fffU;
     map_.write_cgram(7U * 16U, menu_palette);
     map_.set_display_brightness(15U);
-    timing_mode_ = TimingMode::original_speed;
+    timing_mode_ = TimingMode::accurate;
     display_mode_ = DisplayMode::standard_4_3;
     presentation_fps_ = 60U;
     experience_ = Experience::original;
@@ -1170,8 +1170,10 @@ GameTickResult GameSimulation::tick_pregame_menu(
             | starfox::input::select | starfox::input::a
             | starfox::input::b)) != 0U;
     if (change_timing) {
-        timing_mode_ = timing_mode_ == TimingMode::unlocked_20_fps
-            ? TimingMode::original_speed : TimingMode::unlocked_20_fps;
+        const auto direction = (menu_input.pressed & starfox::input::left) != 0U
+            ? 2U : 1U;
+        timing_mode_ = static_cast<TimingMode>(
+            (static_cast<unsigned>(timing_mode_) + direction) % 3U);
         queue_sound_effect(0x11U);
     }
 

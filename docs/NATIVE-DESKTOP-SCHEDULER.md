@@ -1,8 +1,20 @@
 # Native desktop gameplay scheduler
 
-The desktop can execute native MAIN updates with
-`STARFOX_TEST_NATIVE_GAMEPLAY=1`. This remains a test setting, not the ACCURATE
-menu selection or default. Existing pace settings and saved files are unchanged.
+The desktop executes native MAIN updates when ACCURATE is selected. ACCURATE
+uses persisted ID 2 and is the fresh/reset default. Existing saved IDs 0
+(UNLOCKED 20 HZ) and 1 (ORIGINAL) retain their meanings and host scheduler.
+`STARFOX_TRACE_NATIVE_GAMEPLAY=1` reports scheduler counters without selecting
+the backend. The older `STARFOX_TEST_NATIVE_GAMEPLAY=1` test override remains.
+This integration does not establish full parity; the remaining audits below
+still apply.
+
+The selection integration build passed. Eleven targeted tests passed in
+144.20 seconds, covering saved settings, menu choices, both simulation data
+suites, desktop pace/exit matrices and smoke tests. After adding retained-mode
+checks, both desktop matrices passed again in 17.30 seconds: ACCURATE produced
+identical native progress at 20/60/144 presentation FPS, while ORIGINAL and
+UNLOCKED produced no native updates. Logs are retained in
+`validation/accurate-pace-selection-regressions.txt`.
 
 Gameplay borrows the shared native CPU/GSU timeline and binds live SPC/MSU
 callbacks. Each 60 Hz scheduling phase budgets the rational NTSC CPU oscillator
@@ -40,8 +52,8 @@ overlays, rumble, long encounters, scene exits in the
 desktop, real-time stalls and input latency still need integration/auditing.
 The first native attachment waits for the host sound-phase boundary. The
 desktop currently services CPU work at 60 Hz scheduling phases, while rendering
-and event collection can run faster. ACCURATE must remain gated until these
-remaining requirements, persistence and menu/default selection are complete.
+and event collection can run faster. These remaining requirements still need
+verification before a release can claim full parity.
 
 ## Native pause presentation
 
@@ -86,7 +98,7 @@ rate matrices, both native MAIN tests, three native audio tests and three
 desktop smoke tests. `validation/native-desktop-exit-regressions.txt` retains
 the log. These injected exits verify the handoff itself; naturally reaching
 every exit in full campaigns and returning from every frontend remain separate
-coverage requirements. ACCURATE is still test-gated.
+coverage requirements.
 
 ## Resume checkpoint after b50612b
 
@@ -95,7 +107,7 @@ entering pause clears those pulses and restores the physical held state.
 Short taps during an already active pause menu still need coverage and handling.
 The recorded targeted run passed 15/15 tests; this is not a new full-suite run.
 
-The requested shipping state remains incomplete. Before enabling ACCURATE:
+The requested shipping state remains incomplete. Remaining work:
 
 - Audit enhanced controls, God Mode, rumble, effects and EX pause options on
   the native path, including responsiveness during slow source updates.
@@ -103,9 +115,9 @@ The requested shipping state remains incomplete. Before enabling ACCURATE:
   in both ports, with MSU enabled and disabled. Preserve enhanced input and
   presentation responsiveness rather than reproducing original input latency.
 - Complete frontend return and training integration checks.
-- Add persisted timing ID 2 for ACCURATE, retaining IDs 0 and 1 and their saved
-  meanings. Wire the menu and fresh/reset default to ACCURATE only after the
-  production selector is exercised by integration tests without the test gate.
+- Validate the ACCURATE default across complete campaigns and all enhanced
+  features. Menu/default and persisted ID 2 are now connected; the desktop
+  matrices exercise the production selector without the backend test override.
 - Retain the older pace choices and verify their boss speed independently.
 
 The delayed native credits jingle and one-ship Star Wolf reports have not been

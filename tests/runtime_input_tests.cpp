@@ -288,8 +288,8 @@ int main() {
 #endif
     const auto pregame_test_path = std::filesystem::temp_directory_path()
         / "starfox-enhanced-pregame-test.cfg";
-    require(starfox::app::PregameSettings{}.timing_mode == 1U,
-            "new pre-game settings did not default to Original pace");
+    require(starfox::app::PregameSettings{}.timing_mode == 2U,
+            "new pre-game settings did not default to Accurate pace");
     const starfox::app::PregameSettings saved_pregame{
         1U, 90U, 3U, true, true,
         3U, true, false, true, true, 1U, true, false, 5U, 1U, 70U, 30U, 3U,
@@ -302,6 +302,18 @@ int main() {
                 pregame_test_path, loaded_pregame)
                 && loaded_pregame == saved_pregame,
             "pre-game settings did not round-trip");
+    for (const auto mode : {0U, 1U, 2U}) {
+        auto settings = saved_pregame;
+        settings.timing_mode = static_cast<std::uint8_t>(mode);
+        require(starfox::app::save_pregame_settings(pregame_test_path, settings)
+                    && starfox::app::load_pregame_settings(pregame_test_path, loaded_pregame)
+                    && loaded_pregame == settings,
+                "pace setting changed its persisted meaning");
+    }
+    auto invalid_pace = saved_pregame;
+    invalid_pace.timing_mode = 3U;
+    require(!starfox::app::save_pregame_settings(pregame_test_path, invalid_pace),
+            "unsupported pace setting was saved");
     {
         std::ofstream legacy_pregame{pregame_test_path, std::ios::trunc};
         legacy_pregame
@@ -314,7 +326,8 @@ int main() {
     loaded_pregame = {};
     require(starfox::app::load_pregame_settings(
                 pregame_test_path, loaded_pregame)
-        && loaded_pregame.anti_aliasing == 2U,
+        && loaded_pregame.anti_aliasing == 2U
+        && loaded_pregame.timing_mode == 0U,
             "legacy enabled FXAA was not migrated to medium strength");
     require(loaded_pregame.music_volume == 100U
                 && loaded_pregame.sfx_volume == 100U

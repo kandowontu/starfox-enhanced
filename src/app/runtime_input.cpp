@@ -583,7 +583,7 @@ bool load_pregame_settings(
     while (input >> name >> value) {
         if (name == "TIMING_MODE") {
             loaded.timing_mode = static_cast<std::uint8_t>(value);
-            found[0] = value >= 0 && value <= 1;
+            found[0] = value >= 0 && value <= 2;
         } else if (name == "PRESENTATION_FPS") {
             constexpr std::array valid{20, 30, 60, 90, 120, 240, 360, 480};
             loaded.presentation_fps = static_cast<std::uint16_t>(value);
@@ -664,7 +664,7 @@ bool load_pregame_settings(
 bool save_pregame_settings(
     const std::filesystem::path& path,
     const PregameSettings& settings) noexcept {
-    if (path.empty() || settings.timing_mode > 1U
+    if (path.empty() || settings.timing_mode > 2U
         || settings.display_mode > 4U || settings.crosshair_colour > 7U
         || settings.anti_aliasing > 3U
         || settings.renderer_mode > 1U

@@ -3613,8 +3613,10 @@ int main(int argc, char** argv) {
                 saved_pregame.timing_mode));
             if (const auto* forced_timing = std::getenv(
                     "STARFOX_TEST_TIMING_MODE")) {
-                game.set_timing_mode(std::string_view{forced_timing}
-                        == "UNLOCKED"
+                const auto mode = std::string_view{forced_timing};
+                game.set_timing_mode(mode == "ACCURATE" || mode == "2"
+                    ? starfox::simulation::TimingMode::accurate
+                    : mode == "UNLOCKED" || mode == "0"
                     ? starfox::simulation::TimingMode::unlocked_20_fps
                     : starfox::simulation::TimingMode::original_speed);
             }
@@ -4372,8 +4374,10 @@ int main(int argc, char** argv) {
         bool suppress_fullscreen_start{};
         double last_phase_fraction{};
         const bool test_native_gameplay=std::getenv("STARFOX_TEST_NATIVE_GAMEPLAY")!=nullptr;
+        const bool trace_native_gameplay=test_native_gameplay
+            || std::getenv("STARFOX_TRACE_NATIVE_GAMEPLAY")!=nullptr;
         std::uint16_t test_native_exit{};
-        if (test_native_gameplay && test_frames!=0U) {
+        if (trace_native_gameplay && test_frames!=0U) {
             if (const auto* value=std::getenv("STARFOX_TEST_NATIVE_EXIT")) {
                 const auto exit=std::stoul(value);
                 if (!exit || exit>16U) throw std::invalid_argument{"Invalid native exit fixture"};
@@ -5124,7 +5128,8 @@ int main(int argc, char** argv) {
                     // the host confirmation card.
                     continue;
                 }
-                if (test_native_gameplay
+                if ((test_native_gameplay
+                        || game.timing_mode()==starfox::simulation::TimingMode::accurate)
                     && game.native_gameplay_ready()
                     && (game.native_transfer_timeline() || audio_video_phases==0U)) {
                     const bool attaching=!game.native_transfer_timeline();
@@ -7234,7 +7239,9 @@ int main(int argc, char** argv) {
                     } else {
                         draw_centred("PRE-GAME SETUP", 37, 10U);
                         const auto timing = game.timing_mode()
-                            == starfox::simulation::TimingMode::unlocked_20_fps
+                            == starfox::simulation::TimingMode::accurate
+                            ? std::string_view{"ACCURATE"}
+                            : game.timing_mode()==starfox::simulation::TimingMode::unlocked_20_fps
                             ? std::string_view{"UNLOCKED 20 HZ"}
                             : std::string_view{"ORIGINAL"};
                         const auto presentation =
@@ -7638,7 +7645,7 @@ int main(int argc, char** argv) {
                               << profile_raster_cuts
                               << '\n';
                 }
-                if (test_native_gameplay) {
+                if (trace_native_gameplay) {
                     std::cerr << "native-desktop updates=" << native_completed_updates
                         << " master=" << game.native_transfer_clock()
                         << " flow=" << static_cast<unsigned>(game.flow_state()) << '\n';

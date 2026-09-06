@@ -65,3 +65,6 @@ command is recorded in `tests/data/msu-tone-320.md`.
 The desktop uses the corrected final-packet selector now. Native desktop
 packet output/sample-rate setup, scene/pace handoffs, interpolation and the
 ACCURATE setting/default still require integration.
+
+For subsequent desktop integration and ACCURATE selection, see
+`NATIVE-DESKTOP-SCHEDULER.md`.

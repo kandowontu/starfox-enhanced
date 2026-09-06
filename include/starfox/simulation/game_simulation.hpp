@@ -46,8 +46,9 @@ enum class GameFlowState {
 };
 
 enum class TimingMode {
-    unlocked_20_fps,
-    original_speed,
+    unlocked_20_fps = 0,
+    original_speed = 1,
+    accurate = 2,
 };
 
 enum class Experience {
@@ -964,10 +965,9 @@ private:
     std::uint64_t scene_revision_{};
     GameFlowState flow_state_{GameFlowState::gameplay};
     FrontendPhase frontend_phase_{FrontendPhase::none};
-    // Direct simulation fixtures retain their deterministic three-raster
-    // mode until a caller chooses otherwise. BOOT and the persisted runtime
-    // settings select the user-facing Original default explicitly.
-    TimingMode timing_mode_{TimingMode::unlocked_20_fps};
+    // The desktop selects the native scheduler for ACCURATE gameplay.
+    // Direct tick() fixtures still explicitly drive the host scheduler.
+    TimingMode timing_mode_{TimingMode::accurate};
     DisplayMode display_mode_{DisplayMode::standard_4_3};
     std::uint16_t presentation_fps_{60U};
     std::uint8_t pregame_selection_{};

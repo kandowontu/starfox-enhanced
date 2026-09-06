@@ -119,3 +119,6 @@ they are not an independent full-system timing oracle or full campaign test.
 The desktop driver, timestamped audio servicing during partial updates,
 desktop scene/pace handoffs, interpolation integration and ACCURATE selection/default
 remain unfinished. No user pace or saved configuration changes in this step.
+
+Subsequent desktop integration and ACCURATE selection are tracked in
+`NATIVE-DESKTOP-SCHEDULER.md`; the paragraph above describes this earlier step.
