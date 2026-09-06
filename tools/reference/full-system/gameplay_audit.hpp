@@ -14,6 +14,10 @@ class GameplayAudit {
     std::unique_ptr<starfox::simulation::GameSimulation> game;
     std::string output_prefix;
     std::ofstream output, frames, seed;
+    std::ofstream host_phase_trace;
+    std::map<unsigned, std::string> host_phase_addresses;
+    std::uint64_t host_tick_start = 0;
+    bool tracing_host_tick = false;
     bool started = false;
     unsigned count = 0;
     unsigned required;
@@ -41,6 +45,40 @@ public:
         output << "transfer,field,host,native\n";
         frames << "transfer,gameframe,raster_phases,host_raster_phases,objects,comparisons,submitted_flags,hitflashes,differences\n";
         seed << "mode,gameframe,map,player\n";
+        host_phase_trace.open(prefix + "-host-phases.csv");
+        if (!host_phase_trace) throw std::runtime_error("Cannot create host phase trace");
+        host_phase_trace << "transfer,game_frame,phase,pc,instruction_clocks,transfer_flag,noirqbit3\n";
+        for (auto name : {"INIT_STRATS_L", "UPDATE_OBJECTS_L", "GETVIEW_L",
+                "DOSOUNDS_L", "GENERATE_COLLIST_L", "RESOLVE_COLLISIONS_L", "DO_3D_DISPLAY_L"}) {
+            const auto locations = symbols.find(name);
+            if (!locations.empty()) host_phase_addresses.emplace(locations.front(), name);
+        }
+        for (const auto& [strategy, next] : std::array{
+                std::pair{"SCORPION1_STRAT", "AIRCAR1_ISTRAT"},
+                std::pair{"SCORPION4_STRAT", "AIRCAR4_ISTRAT"}}) {
+            if (symbols.find(strategy).empty() || symbols.find(next).empty()) continue;
+            const auto first = address(strategy), last = address(next);
+            if (last <= first || last - first >= 1024U)
+                throw std::runtime_error("Invalid host transfer-read range");
+            unsigned found = 0;
+            for (auto pc = first; pc + 1 < last; ++pc) {
+                if (rom.read8(pc) != 0xa5 || rom.read8(pc + 1) != 0) continue;
+                if (found) throw std::runtime_error("Ambiguous host transfer read");
+                found = pc;
+            }
+            if (!found) throw std::runtime_error("Missing host transfer read");
+            host_phase_addresses.emplace(found, strategy);
+        }
+        game->map().set_native_instruction_boundary_callback([this](std::uint64_t clocks) {
+            if (!tracing_host_tick) return;
+            const auto pc = game->map().native_program_address();
+            const auto phase = host_phase_addresses.find(pc);
+            if (phase == host_phase_addresses.end()) return;
+            host_phase_trace << count + 1 << ',' << game->map().read_native_word(address("GAMEFRAME"))
+                << ',' << phase->second << ',' << pc << ',' << clocks - host_tick_start
+                << ',' << game->map().read_native_word(0)
+                << ',' << unsigned(game->map().read_native_byte(address("NOIRQBIT3"))) << '\n';
+        });
     }
     bool complete() const { return count == required; }
     void capture_submitted_flags() { try {
@@ -91,7 +129,11 @@ public:
             game->present_frame();
             ++host_phases;
         }
+        host_tick_start = game->map().native_master_clocks();
+        tracing_host_tick = true;
         static_cast<void>(game->tick({}));
+        tracing_host_tick = false;
+        if (!host_phase_trace) throw std::runtime_error("Cannot write host phase trace");
         ++count;
         const auto before = comparisons;
         const auto submitted_before = submitted_comparisons;

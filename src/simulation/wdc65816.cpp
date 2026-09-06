@@ -2649,6 +2649,10 @@ std::uint64_t Wdc65816::executed_master_clocks() const noexcept {
     return impl_->cpu.cpu_state.cycle - impl_->host_setup_master_clocks;
 }
 
+std::uint32_t Wdc65816::program_address() const noexcept {
+    return impl_->cpu.program_address();
+}
+
 void Wdc65816::set_instruction_boundary_callback(
     InstructionBoundaryCallback callback, bool owns_gameplay_bitmap_dma) {
     if (owns_gameplay_bitmap_dma && !callback)

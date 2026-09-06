@@ -1,6 +1,7 @@
 #include "starfox/simulation/wdc65816.hpp"
 #include <algorithm>
 #include <iostream>
+#include <map>
 #include <sstream>
 #include <stdexcept>
 #include <vector>
@@ -93,13 +94,22 @@ void check_timed_native_reads(bool resumable) {
         if (baseline.read8(0x1000 + i) != 2)
             throw std::runtime_error{"Unscheduled native control did not retain transfer state"};
     std::vector<std::uint64_t> boundaries;
-    observed.set_instruction_boundary_callback([&](auto clocks) { boundaries.push_back(clocks); });
+    std::map<std::uint32_t, std::uint64_t> read_boundaries;
+    observed.set_instruction_boundary_callback([&](auto clocks) {
+        boundaries.push_back(clocks);
+        const auto pc = observed.program_address();
+        if (pc == 0x8000 || pc == 0x8006 || pc == 0x800c)
+            read_boundaries.emplace(pc, clocks);
+    });
     if (run(observed, false) != expected_a
         || observed.executed_master_clocks() != baseline.executed_master_clocks()
         || boundaries.empty() || boundaries.front() != 0
         || boundaries.back() != observed.executed_master_clocks()
         || !std::is_sorted(boundaries.begin(), boundaries.end()))
         throw std::runtime_error{"Observation changed native timing or omitted its final boundary"};
+    if (read_boundaries != std::map<std::uint32_t, std::uint64_t>{
+            {0x8000, 0}, {0x8006, 70}, {0x800c, 140}})
+        throw std::runtime_error{"Instruction observer reported an incorrect read PC or clock"};
     simulation::Wdc65816 automatic{rom, &symbols};
     automatic.set_instruction_boundary_callback([](std::uint64_t) {});
     run(automatic, true);

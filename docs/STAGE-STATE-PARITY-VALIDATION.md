@@ -259,6 +259,41 @@ the clock/read scheduling tests, both source-DMA comparisons, input/pacing repla
 and normal/MSU ending audio. The desktop executable was rebuilt; the packaged
 candidate remains unchanged.
 
+## Host instruction-clock phase trace
+
+The full-system audit now records host routine entries and both EX direct-page
+chase reads in `-host-phases.csv`. This observer is installed only by the audit;
+it does not own DMA or change the desktop scheduler. Its clock origin is just
+before each host gameplay tick. The native reference's clock origin is its
+preceding settled transfer, so the two columns measure different work and must
+not be subtracted to obtain one universal scheduling delay.
+
+At the existing LEVEL7_2 failure (update 200, GAMEFRAME 306):
+
+| Phase | Host native instruction clocks | Reference elapsed master clocks |
+| --- | ---: | ---: |
+| INIT_STRATS_L | 13,778 | 31,442 |
+| UPDATE_OBJECTS_L | 45,536 | 65,412 |
+| SCORPION4 transfer-word read | 105,776 | 132,186 |
+| GETVIEW_L | 128,352 | 158,386 |
+| DOSOUNDS_L | 159,744 | 206,184 |
+| GENERATE_COLLIST_L | 196,448 | 370,384 |
+
+The host flag is zero at all these entries. The reference remains at two
+through DOSOUNDS_L and advances to four before GENERATE_COLLIST_L. The larger
+gap after DOSOUNDS includes the reference's first bitmap DMA. These observations
+confirm that native instruction clocks alone cannot supply the missing elapsed
+timeline. Source DMA/refresh and translated work still require accounting before
+integrating phase deadlines; no constant flag or enemy-specific delay was added.
+
+The bounded audit still fails at update 200 with Y=45 versus 46, after 163,460
+comparisons. Its ten pre-existing CSV traces are byte-identical to the previous
+7326a61 baseline. Evidence is recorded in `validation/host-boundary-summary.json`
+and `validation/host-boundary-phases.csv`. The address observer's read PCs and
+clocks are checked in both ordinary and paused/resumed native execution; all
+three bitmap and source-transition CTest checks pass. The most recent full-suite
+result remains the preceding 67/67 run, not a new full-suite run for this observer.
+
 ## Regression and candidate status
 
 The rebuilt full suite passed 60/61 checks in 238.33 seconds; its sole failure

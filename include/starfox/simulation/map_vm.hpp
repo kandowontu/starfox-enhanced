@@ -106,6 +106,13 @@ public:
     [[nodiscard]] std::uint64_t native_master_clocks() const noexcept {
         return cpu_.executed_master_clocks();
     }
+    [[nodiscard]] std::uint32_t native_program_address() const noexcept {
+        return cpu_.program_address();
+    }
+    void set_native_instruction_boundary_callback(
+        Wdc65816::InstructionBoundaryCallback callback) {
+        cpu_.set_instruction_boundary_callback(std::move(callback));
+    }
     [[nodiscard]] std::vector<MsuRegisterWrite> take_msu_register_writes() {
         return cpu_.take_msu_register_writes();
     }
