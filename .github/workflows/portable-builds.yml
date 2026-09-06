@@ -11,6 +11,10 @@ on:
         description: Rebuild only the Vita package for the selected release
         type: boolean
         default: false
+      only_xbox:
+        description: Rebuild only the Xbox package for the selected release
+        type: boolean
+        default: false
   push:
     tags:
       - 'v*'
@@ -20,7 +24,7 @@ permissions:
 
 jobs:
   windows-x64:
-    if: ${{ !inputs.only_vita }}
+    if: ${{ !inputs.only_vita && !inputs.only_xbox }}
     name: Windows x64 runtime and standalone asset builder
     runs-on: windows-latest
     steps:
@@ -85,7 +89,7 @@ jobs:
             StarFoxAssetBuilder-0.0.4.1-windows-x64.zip --clobber
 
   windows-x86:
-    if: ${{ !inputs.only_vita }}
+    if: ${{ !inputs.only_vita && !inputs.only_xbox }}
     name: Windows x86 runtime
     runs-on: windows-latest
     steps:
@@ -174,7 +178,7 @@ jobs:
           }
           $dependencies = @(Get-ChildItem -LiteralPath "$root/Dependencies/x64" `
             -File -Filter '*.appx' -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -match '^Microsoft\.VCLibs\.140\.00' })
+            Where-Object { $_.Name -match '^Microsoft\.VCLibs\.(140\.00|x64\.14\.00)' })
           if ($dependencies.Count -ne 1) {
             throw 'Xbox UWP VCLibs x64 dependency is missing or ambiguous'
           }
@@ -206,7 +210,7 @@ jobs:
             StarFoxEnhanced-0.0.4.1-xbox-uwp-x64.zip --clobber
 
   linux-x64:
-    if: ${{ !inputs.only_vita }}
+    if: ${{ !inputs.only_vita && !inputs.only_xbox }}
     name: Linux x64 native runtime
     runs-on: ubuntu-24.04
     steps:
@@ -256,7 +260,7 @@ jobs:
             StarFoxEnhanced-0.0.4.1-linux-x64.zip --clobber
 
   macos-universal:
-    if: ${{ !inputs.only_vita }}
+    if: ${{ !inputs.only_vita && !inputs.only_xbox }}
     name: macOS universal (unsigned)
     runs-on: macos-15
     steps:
@@ -301,7 +305,7 @@ jobs:
             StarFoxEnhanced-0.0.4.1-macos-universal.zip --clobber
 
   ios-device:
-    if: ${{ !inputs.only_vita }}
+    if: ${{ !inputs.only_vita && !inputs.only_xbox }}
     name: iOS arm64 device (unsigned)
     runs-on: macos-15
     steps:
@@ -342,7 +346,7 @@ jobs:
             StarFoxEnhanced-0.0.4.1-ios-arm64-unsigned.zip --clobber
 
   android-arm64:
-    if: ${{ !inputs.only_vita }}
+    if: ${{ !inputs.only_vita && !inputs.only_xbox }}
     name: Android arm64 development APK
     runs-on: ubuntu-latest
     steps:
@@ -389,7 +393,7 @@ jobs:
             StarFoxEnhanced-0.0.4.1-android-arm64.apk --clobber
 
   switch-homebrew:
-    if: ${{ !inputs.only_vita }}
+    if: ${{ !inputs.only_vita && !inputs.only_xbox }}
     name: Nintendo Switch homebrew NRO
     runs-on: ubuntu-latest
     container:
@@ -423,6 +427,7 @@ jobs:
           files: StarFoxEnhanced-0.0.4.1-switch-homebrew.zip
 
   vita-homebrew:
+    if: ${{ !inputs.only_xbox }}
     name: PS Vita native VPK
     runs-on: ubuntu-latest
     container:
