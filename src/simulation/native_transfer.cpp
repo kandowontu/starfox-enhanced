@@ -1,4 +1,5 @@
 #include "starfox/simulation/game_simulation.hpp"
+#include "starfox/input/buttons.hpp"
 #include "starfox/simulation/snes_timeline.hpp"
 #include <bit>
 #include <limits>
@@ -14,15 +15,85 @@ std::uint64_t GameSimulation::native_transfer_clock() const noexcept {
 }
 
 void GameSimulation::begin_native_transfer(const input::TickInput& input) {
+    begin_native_update(input,false);
+}
+
+void GameSimulation::begin_native_gameplay_update(const input::TickInput& input) {
+    if (flow_state_ != GameFlowState::gameplay)
+        throw std::logic_error{"Native MAIN updates require gameplay"};
+    begin_native_update(input,true);
+}
+
+std::array<std::uint32_t,2> GameSimulation::find_native_main_boundaries() const {
+    // Stop on the fall-through of MAIN's LEVELFINISHED test, before it
+    // increments STAGE or enters a non-gameplay sequence. Validate the
+    // cartridge instructions and their backward target rather than assuming
+    // a fixed offset shared by the two different MAIN implementations.
+    const auto entry = rom_symbol("GAMELOOP2");
+    std::uint32_t found{};
+    std::uint32_t pause_return{};
+    const auto pause=rom_symbol("DOPAUSE");
+    const auto byte = [&](std::uint32_t address) { return map_.read_native_byte(address); };
+    for (auto pc=entry;pc<entry+512U;++pc) {
+        if (byte(pc)==0x20U && byte(pc+1U)==(pause & 0xffU)
+                && byte(pc+2U)==((pause >> 8U) & 0xffU)) {
+            if (pause_return) throw std::runtime_error{"Ambiguous native MAIN pause call"};
+            pause_return=pc+3U;
+        }
+        if (byte(pc)!=0xc2U || byte(pc+1U)!=0x20U || byte(pc+2U)!=0xadU
+                || byte(pc+3U)!=(level_finished_ & 0xffU)
+                || byte(pc+4U)!=((level_finished_ >> 8U) & 0xffU)) continue;
+        std::uint32_t exit{};
+        if (byte(pc+5U)==0xf0U
+                && std::int64_t(pc+7U)+std::bit_cast<std::int8_t>(byte(pc+6U))==entry)
+            exit=pc+7U;
+        if (byte(pc+5U)==0xd0U && byte(pc+6U)==3U && byte(pc+7U)==0x4cU
+                && byte(pc+8U)==(entry & 0xffU) && byte(pc+9U)==((entry >> 8U) & 0xffU))
+            exit=pc+10U;
+        if (!exit) continue;
+        if (found) throw std::runtime_error{"Ambiguous native MAIN exit boundary"};
+        found=exit;
+    }
+    if (!found || !pause_return) throw std::runtime_error{"Unsupported native MAIN boundaries"};
+    return {found,pause_return};
+}
+
+void GameSimulation::sample_native_controller_held(const std::array<input::ButtonMask,5>& physical) {
+    if (!native_transfer_timeline_ || native_transfer_phase_==NativeTransferPhase::failed)
+        throw std::logic_error{"Native controller sampling requires a live native binding"};
+    auto held=physical;
+    if (native_transfer_active())
+        for (std::size_t i=0;i<held.size();++i) held[i]|=native_roll_pulses_[i];
+    map_.write_native_word(hardware_controller_,held[0]);
+    if (!starfox_ex_cartridge_) return;
+    // Scope owns JOY2's physical packet when selected.
+    if (!ex_scope_control_enabled()) map_.write_native_word(ex_hardware_controller_2_,held[1]);
+    if (map_.read_native_byte(ex_multitap_mode_)!=0U
+            && map_.read_native_byte(ex_number_players_)==1U) held.fill(held[0]);
+    for (std::size_t i=0;i<held.size();++i) map_.write_native_word(ex_multitap_controllers_[i],held[i]);
+}
+
+void GameSimulation::begin_native_update(const input::TickInput& input, bool main_loop) {
     if (native_transfer_active()) throw std::logic_error{"A native transfer is already active or failed"};
+    if (native_main_exit_pending_) throw std::logic_error{"Native MAIN requires a scene-exit handoff"};
+    if (native_transfer_timeline_ && native_main_loop_ != main_loop)
+        throw std::logic_error{"Cannot mix native MAIN and transfer-only execution"};
     if (!native_transfer_initialized_ || (flow_state_ != GameFlowState::gameplay
             && flow_state_ != GameFlowState::training))
         throw std::logic_error{"Native transfers require source-initialized gameplay or training"};
     if (!native_transfer_timeline_) {
+        if (main_loop) {
+            native_main_entry_=rom_symbol("GAMELOOP2");
+            const auto boundaries=find_native_main_boundaries();
+            native_main_exit_=boundaries[0];
+            native_main_pause_return_=boundaries[1];
+            native_main_pause_entry_=rom_symbol("DOPAUSE");
+        }
         auto timeline = std::make_shared<SnesCpuTimeline>();
         map_.set_cpu_timeline(timeline);
         map_.set_gsu_timing(true);
         native_transfer_timeline_ = std::move(timeline);
+        native_main_loop_=main_loop;
         // INITSCREEN_L established these before the late timeline attachment.
         map_.write_native_word(0x4209U,static_cast<std::uint16_t>(ram_symbol("GAMEVW_POS")));
         map_.write_native_word(0x4207U,0U);
@@ -30,13 +101,19 @@ void GameSimulation::begin_native_transfer(const input::TickInput& input) {
     }
     map_.hold_native_presentation();
     write_input(input);
+    constexpr auto shoulders=input::left_shoulder | input::right_shoulder;
+    native_roll_pulses_[0]=input.pressed & shoulders;
+    for (std::size_t i=0;i<secondary_inputs_.size();++i)
+        native_roll_pulses_[i+1U]=secondary_inputs_[i].pressed & shoulders;
     native_draw_candidates_.clear();
     native_draw_order_.clear(); native_draw_order_captured_ = false;
-    native_transfer_registers_ = {};
-    native_transfer_registers_.status = 0x20U;
+    if (!main_loop || !native_transfer_task_started_) {
+        native_transfer_registers_ = {};
+        native_transfer_registers_.status = 0x20U;
+    }
     native_transfer_result_ = {};
-    native_transfer_task_started_ = false;
-    native_transfer_phase_ = NativeTransferPhase::black;
+    if (!main_loop) native_transfer_task_started_ = false;
+    native_transfer_phase_ = main_loop ? NativeTransferPhase::main : NativeTransferPhase::black;
 }
 
 std::optional<GameTickResult> GameSimulation::advance_native_transfer(std::uint64_t master_clocks) {
@@ -49,17 +126,36 @@ std::optional<GameTickResult> GameSimulation::advance_native_transfer(std::uint6
     try {
         while (native_transfer_clock() < deadline) {
             const bool transfer = native_transfer_phase_ == NativeTransferPhase::transfer;
+            const bool main_loop = native_transfer_phase_ == NativeTransferPhase::main;
             const std::array show_view_stop{rom_symbol("SHOWVIEW_L"),rom_symbol("BUILD_DRAWLIST_L")};
-            const auto stops = transfer ? std::span<const std::uint32_t>{show_view_stop}
+            const std::array main_stops{show_view_stop[0],show_view_stop[1],native_main_entry_,native_main_exit_,
+                native_main_pause_entry_,native_main_pause_return_};
+            const auto stops = main_loop ? std::span<const std::uint32_t>{main_stops}
+                : transfer ? std::span<const std::uint32_t>{show_view_stop}
                 : std::span<const std::uint32_t>{};
             Wdc65816TaskResult task;
             if (!native_transfer_task_started_) {
                 native_transfer_task_started_ = true;
-                task = map_.begin_native_task(transfer ? rom_symbol("TRANSFER_L") : set_black_,
+                task = map_.begin_native_task(main_loop ? native_main_entry_
+                        : transfer ? rom_symbol("TRANSFER_L") : set_black_,
                     native_transfer_registers_,stops,5'000'000U,false,false);
             } else task = map_.resume_native_task(native_transfer_registers_,stops,5'000'000U,false,false);
             native_transfer_result_.prelude_instructions += task.instructions;
             if (task.stopped) throw std::runtime_error{"Native transfer entered STP"};
+            if (main_loop && task.returned) throw std::runtime_error{"Native MAIN unexpectedly returned"};
+            if (main_loop && !task.waiting) {
+                if (task.stop_address==native_main_pause_entry_) paused_=true;
+                if (task.stop_address==native_main_pause_return_) paused_=false;
+            }
+            if (main_loop && !task.waiting && (task.stop_address==native_main_entry_
+                    || task.stop_address==native_main_exit_)) {
+                map_.set_task_clock_deadline({});
+                publish_native_transfer();
+                native_main_exit_pending_=task.stop_address==native_main_exit_;
+                native_transfer_phase_=NativeTransferPhase::idle;
+                native_transfer_result_.audio_port_writes=map_.take_apu_port_writes();
+                return std::move(native_transfer_result_);
+            }
             if (task.returned) {
                 native_transfer_task_started_ = false;
                 if (!transfer) { native_transfer_phase_ = NativeTransferPhase::transfer; continue; }
@@ -71,9 +167,9 @@ std::optional<GameTickResult> GameSimulation::advance_native_transfer(std::uint6
             }
             // A deadline can land exactly on a phase entry. Capture it now:
             // resume_task executes the entry before considering stop PCs again.
-            if (!task.waiting && transfer && task.stop_address == show_view_stop[0])
+            if (!task.waiting && (transfer || main_loop) && task.stop_address == show_view_stop[0])
                 capture_native_draw_candidates();
-            if (!task.waiting && transfer && task.stop_address == show_view_stop[1])
+            if (!task.waiting && (transfer || main_loop) && task.stop_address == show_view_stop[1])
                 capture_native_draw_order();
             if (task.deadline_reached || task.waiting) break;
         }

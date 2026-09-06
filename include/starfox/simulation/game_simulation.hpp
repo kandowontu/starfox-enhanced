@@ -226,6 +226,13 @@ public:
     // a source-initialized gameplay/training scene. This is TRANSFER_L, not
     // the complete MAIN/front-end flow; it is not yet a selectable pace.
     void begin_native_transfer(const input::TickInput& input);
+    // Execute the cartridge's complete MAIN iteration, retaining its CPU
+    // continuation between updates. Cannot mix with transfer-only execution.
+    void begin_native_gameplay_update(const input::TickInput& input);
+    // Refresh physical held states between execution chunks. Button edges
+    // remain the caller's responsibility to retain for the next begin call.
+    void sample_native_controller_held(const std::array<input::ButtonMask,5>& held);
+    [[nodiscard]] bool native_gameplay_exit_pending() const noexcept { return native_main_exit_pending_; }
     [[nodiscard]] std::optional<GameTickResult> advance_native_transfer(std::uint64_t master_clocks);
     [[nodiscard]] bool native_transfer_active() const noexcept;
     [[nodiscard]] std::uint64_t native_transfer_clock() const noexcept;
@@ -440,6 +447,8 @@ private:
     [[nodiscard]] ObjectHandle handle_from_native_pointer(std::uint16_t pointer) const noexcept;
     void refresh_player_reference();
     void write_input(const input::TickInput& input);
+    void begin_native_update(const input::TickInput& input, bool main_loop);
+    [[nodiscard]] std::array<std::uint32_t,2> find_native_main_boundaries() const;
     void service_transfer_request();
     void calculate_view();
     [[nodiscard]] std::size_t update_view_flags_and_cull();
@@ -915,7 +924,7 @@ private:
     std::uint8_t current_tick_video_phases_{3U};
     std::uint8_t planet_rotation_video_phases_{};
     std::uint32_t source_update_sequence_{};
-    enum class NativeTransferPhase { idle, black, transfer, failed };
+    enum class NativeTransferPhase { idle, black, transfer, main, failed };
     NativeTransferPhase native_transfer_phase_{NativeTransferPhase::idle};
     std::shared_ptr<SnesCpuTimeline> native_transfer_timeline_;
     std::unique_ptr<NativePresentationSnapshot> native_transfer_capture_;
@@ -926,6 +935,13 @@ private:
     GameTickResult native_transfer_result_;
     bool native_transfer_task_started_{};
     bool native_transfer_initialized_{};
+    bool native_main_loop_{};
+    bool native_main_exit_pending_{};
+    std::uint32_t native_main_entry_{};
+    std::uint32_t native_main_exit_{};
+    std::uint32_t native_main_pause_entry_{};
+    std::uint32_t native_main_pause_return_{};
+    std::array<input::ButtonMask,5> native_roll_pulses_{};
     std::array<std::int32_t, 6> planet_spin_remainders_{};
     std::uint8_t planet_route_blink_frames_{};
     std::uint32_t pending_map_{};

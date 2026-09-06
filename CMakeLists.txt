@@ -1097,6 +1097,13 @@ if(STARFOX_BUILD_TESTS)
             "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
             "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT" LEVEL2_1)
         set_tests_properties(starfox_upstream_native_transfer_input PROPERTIES TIMEOUT 180)
+        add_test(NAME starfox_upstream_native_main COMMAND starfox_native_transfer_tests
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT" LEVEL2_1 --main)
+        add_test(NAME starfox_upstream_native_main_input COMMAND starfox_native_transfer_input_tests
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT" LEVEL2_1 --main)
+        set_tests_properties(starfox_upstream_native_main starfox_upstream_native_main_input PROPERTIES TIMEOUT 180)
         set(STARFOX_TEST_MSU_PACK "${STARFOX_MSU1_PACK}")
         if(NOT STARFOX_TEST_MSU_PACK AND EXISTS "${CMAKE_CURRENT_BINARY_DIR}/Starfox-MSU1.PAK")
             set(STARFOX_TEST_MSU_PACK "${CMAKE_CURRENT_BINARY_DIR}/Starfox-MSU1.PAK")
@@ -1286,6 +1293,11 @@ if(STARFOX_BUILD_TESTS)
         add_test(NAME starfox_ex_native_transfer_input COMMAND starfox_native_transfer_input_tests
             "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}" LEVEL7_2)
         set_tests_properties(starfox_ex_native_transfer_input PROPERTIES TIMEOUT 180)
+        add_test(NAME starfox_ex_native_main COMMAND starfox_native_transfer_tests
+            "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}" LEVEL7_2 --main)
+        add_test(NAME starfox_ex_native_main_input COMMAND starfox_native_transfer_input_tests
+            "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}" LEVEL7_2 --main)
+        set_tests_properties(starfox_ex_native_main starfox_ex_native_main_input PROPERTIES TIMEOUT 180)
         add_test(NAME starfox_ex_multiplayer_input COMMAND starfox_multiplayer_input_tests
             "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}")
         set_tests_properties(starfox_ex_multiplayer_input PROPERTIES TIMEOUT 120)

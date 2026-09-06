@@ -54,11 +54,12 @@ fields match the prior uninterrupted native-transfer probe. See
 `ex-game-transfer.csv` in that directory. These compare runtime paths, not
 an independent full-system oracle or entire campaigns.
 
-This implements the transfer lifecycle, not the complete surrounding MAIN
-and front-end flows. The desktop driver, continuous input delivery,
-audio-clock servicing during yields, communication
-wrappers, pause/scene handoffs, pace switching and ACCURATE menu/default remain
-unfinished. The current application still uses its existing pace choices.
+This transfer-only entry point remains available for diagnostics. The new
+`begin_native_gameplay_update` entry point runs the actual cartridge MAIN loop,
+including communications and pause; see `NATIVE-MAIN-LOOP.md`. Desktop input
+and scheduling, audio-clock servicing during yields, scene handoffs, pace
+switching and ACCURATE menu/default remain unfinished. The current application
+still uses its existing pace choices.
 
 ## Shoulder taps through native IRQ polling
 
