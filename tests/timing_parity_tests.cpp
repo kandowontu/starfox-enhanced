@@ -24,7 +24,7 @@ struct Sample {
 
 void short_tap_replay(const assets::RomImage& rom, const assets::SymbolMap& symbols,
     const char* level, simulation::TimingMode mode, unsigned schedule,
-    input::ButtonMask shoulder, unsigned tap_count) {
+    input::ButtonMask shoulder, unsigned tap_count, unsigned tap_spacing_ms = 120) {
     using namespace std::chrono;
     auto game = std::make_unique<simulation::GameSimulation>(rom, symbols, level);
     game->set_timing_mode(mode);
@@ -66,7 +66,7 @@ void short_tap_replay(const assets::RomImage& rom, const assets::SymbolMap& symb
                     symbols.find("PSHIPFLAGS").at(0)) & 0xe0U) == 0U) {
                 scheduled = true;
                 tap_times = {elapsed + milliseconds{25}, elapsed + milliseconds{26},
-                    elapsed + milliseconds{145}, elapsed + milliseconds{146}};
+                    elapsed + milliseconds{25 + tap_spacing_ms}, elapsed + milliseconds{26 + tap_spacing_ms}};
             }
             if (controls.pressed) {
                 tap_state += " flags=" + std::to_string(game->map().read_native_byte(symbols.find("PSHIPFLAGS").at(0)))
@@ -166,6 +166,11 @@ int main(int argc, char** argv) {
                             short_tap_replay(rom, symbols, level, mode, schedule, shoulder, count);
                 std::cout << level << ' ' << static_cast<unsigned>(mode)
                     << ": 16 presentation-sampled short-tap cases pass\n";
+                for (unsigned schedule = 0; schedule < 2; ++schedule)
+                    for (const auto shoulder : {input::left_shoulder, input::right_shoulder})
+                        short_tap_replay(rom, symbols, level, mode, schedule, shoulder, 2, 25);
+                std::cout << level << ' ' << static_cast<unsigned>(mode)
+                    << ": 4 tightly spaced presentation-sampled pairs pass\n";
                 if (short_only) continue;
                 const auto expected = replay(rom, symbols, level, mode, 0, false);
                 for (unsigned schedule = 1; schedule <= 3; ++schedule) {

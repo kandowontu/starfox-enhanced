@@ -81,11 +81,43 @@ cases also pass after the correction. The log is preserved in
 rebuilt; the packaged candidate remains unchanged.
 These are native strategy tests, not a physical five-gamepad playthrough.
 
+## Repeated presses before a pending update
+
+InputLatch now counts each sampled press/release edge per button. A source update
+consumes one of each pending edge per button, retaining additional edges for later
+updates. Held state always remains the latest physical sample. This fixes repeated
+presses collapsing into a single bit across multiple presentations while source
+logic is pending; it introduces no additional simulation updates.
+
+A three-tap latch regression failed with the prior implementation and passes with
+the edge counts. The primary replay adds 25 ms-spaced pairs at 60/90 presentations
+per second, both shoulders, routes 2/3 and both pace modes (16 additional cases per
+port). The native EX multiplayer fixture now supplies both taps before either game
+update, so all 24 slot/mirror cases exercise pending input as well as native rolls.
+The desktop clears pending edges at flow/page/scene/pause transitions while retaining
+physical held state, preventing old confirms from replaying on a new screen.
+
+`tools/reference/verify-queued-input-baseline.py` builds these current fixtures with
+the `1b4a06e` latch header in a separate include directory. Both primary games lose
+one of the 25 ms-spaced presses (one delivered press, no roll), and the secondary
+fixture also fails to roll. The current latch passes all three paths. This changes
+only the isolated baseline test binaries; the worktree and production libraries
+are not replaced.
+
+The full regression run passes 66/66 checks in 348.68 seconds with the counted
+latch. The final desktop transition guard and stronger held-reset assertion were
+rebuilt afterward; all four affected input/embedded-launch checks pass in 30.98
+seconds. The two runs are archived together in
+`validation/queued-input-regression-validation.txt`. The packaged candidate has
+not been refreshed.
+
 ## Limits and next checks
 
-The event latch still does not queue multiple presses of the same button inside
-one simulation tick. Two taps compressed into a single pending press bit remain
-an open case. Primary and EX secondary/multitap shoulder strategies are covered. Analog
+The desktop SDL event collector still combines edges inside a single presentation
+into masks. Multiple same-button taps entirely inside that one event batch remain
+an open case; edge counts cannot recover information already merged by the collector.
+The counts preserve repeated edges received in separate samples, not a timestamped
+ordering across different buttons. Counter saturation is bounded at UINT32_MAX. Primary and EX secondary/multitap shoulder strategies are covered. Analog
 axis events, fixed remapping-menu navigation, and touch taps are not addressed
 by this change. Existing held-state sampling for those paths is unchanged.
 

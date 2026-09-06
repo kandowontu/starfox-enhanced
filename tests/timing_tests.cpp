@@ -425,6 +425,28 @@ void test_input_edges_survive_between_ticks() {
             "input edges were consumed more than once");
 }
 
+void test_repeated_presses_survive_one_pending_tick() {
+    constexpr starfox::input::ButtonMask shoulder = 1U << 5;
+    starfox::input::InputLatch input;
+    for (unsigned tap = 0; tap < 3; ++tap) {
+        input.sample(shoulder);
+        input.sample(0);
+    }
+    for (unsigned tap = 0; tap < 3; ++tap) {
+        const auto next = input.consume();
+        require(next.held == 0 && next.pressed == shoulder && next.released == shoulder,
+            "repeated presses collapsed while a game update was pending");
+    }
+    require(input.consume().pressed == 0, "queued presses repeated after being drained");
+    input.sample(0, shoulder, shoulder);
+    input.sample(0, shoulder, shoulder);
+    input.reset(shoulder);
+    input.sample(shoulder);
+    const auto cleared = input.consume();
+    require(cleared.held == shoulder && cleared.pressed == 0 && cleared.released == 0,
+        "reset leaked queued presses or retriggered a held control on a new screen");
+}
+
 } // namespace
 
 int main() {
@@ -447,6 +469,7 @@ int main() {
     test_stationary_source_matrix_stays_exact();
     test_invalid_frequency_is_rejected();
     test_input_edges_survive_between_ticks();
+    test_repeated_presses_survive_one_pending_tick();
     std::cout << "All timing tests passed.\n";
     return 0;
 }

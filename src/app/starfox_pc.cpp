@@ -5154,7 +5154,20 @@ int main(int argc, char** argv) {
                     game.set_ntt_input(remap_menu.active || hud_editor.active
                             ? 0U
                             : sample_ntt_data_pad(keyboard_state));
+                    const auto input_flow = game.flow_state();
+                    const auto input_page = game.pregame_page();
+                    const auto input_scene = game.scene_revision();
+                    const auto input_paused = game.paused();
                     const auto tick_result = game.tick(controls);
+                    if (game.flow_state() != input_flow || game.pregame_page() != input_page
+                        || game.scene_revision() != input_scene || game.paused() != input_paused) {
+                        // Pending presses belong to the screen that received
+                        // them. Do not replay a second Start/confirm after a
+                        // transition, or a combat tap after a new stage loads.
+                        input.reset(sampled_buttons);
+                        for (std::size_t player = 0; player < secondary_inputs.size(); ++player)
+                            secondary_inputs[player].reset(secondary_controls[player].held);
+                    }
                     // Cartridge PAUSESND commands still run through the SPC
                     // streams so their pause/unpause effects are audible.
                     // Companion MSU playback is host-decoded, so freeze only

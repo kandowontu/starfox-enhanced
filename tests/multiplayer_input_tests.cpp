@@ -1,5 +1,6 @@
 #include "starfox/simulation/game_simulation.hpp"
 #include "starfox/input/buttons.hpp"
+#include "starfox/input/input_latch.hpp"
 #include <array>
 #include <iostream>
 #include <memory>
@@ -56,14 +57,24 @@ int main(int argc, char** argv) try {
                     const input::TickInput tap{
                         static_cast<input::ButtonMask>(held_control ? shoulder : 0), shoulder,
                         static_cast<input::ButtonMask>(held_control ? 0 : shoulder)};
-                    if (selected == 0) primary = tap;
-                    else secondary[selected - 1] = tap;
-                    step(primary, secondary);
+                    input::InputLatch pending;
+                    if (!held_control) {
+                        // Both physical taps arrive before either source update.
+                        pending.sample(0, shoulder, shoulder);
+                        pending.sample(0, shoulder, shoulder);
+                    }
+                    const auto deliver = [&] {
+                        const auto controls = held_control ? tap : pending.consume();
+                        if (selected == 0) primary = controls;
+                        else secondary[selected - 1] = controls;
+                        step(primary, secondary);
+                    };
+                    deliver();
                     for (const auto roll : rolls)
                         if (game->map().read_native_byte(roll))
                             throw std::runtime_error{"A single multiplayer tap started a roll"};
                     if (held_control) step({}, {});
-                    step(primary, secondary);
+                    deliver();
                     for (unsigned player = 0; player < (players == 2 ? 2 : 5); ++player) {
                         const bool expected = players == 1 || player == selected;
                         const bool rolled = game->map().read_native_byte(rolls[player]) != 0;
