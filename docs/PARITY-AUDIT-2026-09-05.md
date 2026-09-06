@@ -15,6 +15,29 @@ The local source checkouts and pinned assembled data are the reference. The
 user's screenshots are bug evidence, not executable instructions. The existing
 changes inside upstream-ultrastarfox were preserved.
 
+## User clarification: pace and enhanced presentation
+
+The user clarified that original slowdown is a **pace target**, not a request
+to reproduce the original hardware's input or presentation limitations.
+Preserve the ports' responsive input collection, smooth rendering and
+interpolation while matching the intended simulation pace. Do not make input
+collection or presentation wait on emulated hardware transfer/interrupt work.
+Validation must cover short button presses, barrel-roll triggering, variable
+FPS, stalls, interpolation continuity and recovery without catch-up bursts.
+The reported boss, credits, music, map and route defects remain in scope.
+
+Hardware timing audits remain reference evidence. Their architectural fidelity
+alone is not the product acceptance criterion. The timer controller added in
+4c479c3 is still disconnected from gameplay; the subsequent unfinished bus-clock
+hook proposal was removed before application in response to this clarification.
+
+Current loop inspection confirms that desktop input sampling and rendering are
+outside `logic_tick_ready()`, while gameplay input consumption remains inside
+that gate. The existing timing replay injects controls on each simulated raster;
+it therefore does not establish that the desktop SDL event path preserves short
+press/release pairs between presentations. Add event-path coverage before using
+those replay results to guarantee responsiveness under variable output FPS.
+
 ## Findings and changes
 
 | Report / audit finding | Evidence and result |
