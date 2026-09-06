@@ -24,7 +24,7 @@ struct Sample {
 
 void short_tap_replay(const assets::RomImage& rom, const assets::SymbolMap& symbols,
     const char* level, simulation::TimingMode mode, unsigned schedule,
-    input::ButtonMask shoulder, unsigned tap_count, unsigned tap_spacing_ms = 120) {
+    input::ButtonMask shoulder, unsigned tap_count, unsigned tap_spacing_ms = 120, unsigned first_hold_ms = 1) {
     using namespace std::chrono;
     auto game = std::make_unique<simulation::GameSimulation>(rom, symbols, level);
     game->set_timing_mode(mode);
@@ -47,10 +47,11 @@ void short_tap_replay(const assets::RomImage& rom, const assets::SymbolMap& symb
         if (schedule == 3 && frame % 29 == 0) delta = milliseconds{100};
         elapsed += delta;
         input::DigitalInputEvents events;
+        events.begin_sources({0, held, 0});
         while (scheduled && event < tap_count * 2 && tap_times[event] <= elapsed) {
             if ((event & 1) == 0) held = shoulder;
             else held = 0;
-            events.record(shoulder, (event & 1) == 0);
+            events.record_source(shoulder, (event & 1) == 0, 1);
             ++event;
         }
         // Match the desktop path: event collection and held sampling happen
@@ -66,7 +67,7 @@ void short_tap_replay(const assets::RomImage& rom, const assets::SymbolMap& symb
             if (!scheduled && (game->map().read_native_byte(
                     symbols.find("PSHIPFLAGS").at(0)) & 0xe0U) == 0U) {
                 scheduled = true;
-                tap_times = {elapsed + milliseconds{25}, elapsed + milliseconds{26},
+                tap_times = {elapsed + milliseconds{25}, elapsed + milliseconds{25 + first_hold_ms},
                     elapsed + milliseconds{25 + tap_spacing_ms}, elapsed + milliseconds{26 + tap_spacing_ms}};
             }
             if (controls.pressed) {
@@ -172,6 +173,11 @@ int main(int argc, char** argv) {
                         short_tap_replay(rom, symbols, level, mode, schedule, shoulder, 2, 25);
                 std::cout << level << ' ' << static_cast<unsigned>(mode)
                     << ": 8 tightly spaced presentation-sampled pairs pass\n";
+                for (unsigned schedule = 0; schedule < 4; ++schedule)
+                    for (const auto shoulder : {input::left_shoulder, input::right_shoulder})
+                        short_tap_replay(rom, symbols, level, mode, schedule, shoulder, 2, 120, 119);
+                std::cout << level << ' ' << static_cast<unsigned>(mode)
+                    << ": 8 held release/repress pairs pass\n";
                 if (short_only) continue;
                 const auto expected = replay(rom, symbols, level, mode, 0, false);
                 for (unsigned schedule = 1; schedule <= 3; ++schedule) {

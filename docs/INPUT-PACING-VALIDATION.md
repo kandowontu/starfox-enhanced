@@ -138,13 +138,42 @@ and repeated old-latch rejection evidence are preserved in
 `validation/event-batch-regression-validation.txt`. The desktop executable is
 rebuilt; the packaged candidate remains unchanged.
 
+## Source-aware release and repress
+
+The desktop now seeds each event batch from the previous keyboard, gamepad-button
+and non-digital held masks. Digital events update only their own source, and action
+edges are counted only when the combined held state changes. This retains release
+and repress of an already-held action without manufacturing a release when another
+binding is still down. The final held sample reconciles axes, touch and filtered
+events. Primary and all secondary slots use this path. Controller reconnection
+resets both the source masks and queued edges for the newly assigned devices.
+
+SDL virtual-device tests start with a held shoulder, then deliver release, press
+and release before one poll. The old mask path loses the new press; the new path
+retains one press and both releases. Separate overlap tests keep a keyboard-held
+action active through a gamepad tap. Both desktop and UWP input tests pass.
+
+The primary replays add pairs with a 119 ms first hold and a 1 ms release gap,
+followed by a 1 ms second tap. All four presentation schedules, both shoulders,
+both paces and routes 2/3 pass: 32 more cases per port, bringing the primary total
+to 256 cases across both ports. The existing 56 one-minute pacing replays also
+pass. EX's native player fixture now checks both complete-tap batches and held
+release/repress, for 48 passing slot/mirror cases.
+
+The final rebuilt suite passes 66/66 checks in 377.34 seconds, including the
+expanded primary and multiplayer fixtures and the desktop launch checks. The
+full log and old-latch rejections are in
+`validation/source-input-regression-validation.txt`. Physical controller reconnect
+playthroughs are not established by these automated checks. The desktop executable
+is rebuilt; the packaged candidate remains unchanged.
+
 ## Limits and next checks
 
-Completed taps are counted when the action was up at the previous sample.
-A previously held action that releases and is tapped again inside one batch still
-uses the existing held-sampling path; mixed binding transitions across batch
-boundaries need separate source-aware event tracking. Counts do not retain a
-timestamped ordering across different buttons and saturate at UINT32_MAX.
+The desktop source-aware path covers digital release/repress across samples.
+The mask-only compatibility API still cannot reconstruct ordering already lost
+by a caller. Counts do not retain timestamped ordering across different buttons
+and saturate at UINT32_MAX. Analog/touch transitions remain final-state samples;
+a complete analog/touch excursion between polls is not recovered by this change.
 Primary and EX secondary/multitap shoulder strategies are covered. Analog
 axis events, fixed remapping-menu navigation, and touch taps are not addressed
 by this change. Existing held-state sampling for those paths is unchanged.

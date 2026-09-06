@@ -482,6 +482,31 @@ void test_event_batch_taps_and_overlapping_bindings() {
     require(input.consume().pressed == 0, "event batch retriggered a previously held action");
 }
 
+void test_source_aware_release_repress() {
+    constexpr starfox::input::ButtonMask button = 1U << 5;
+    starfox::input::InputLatch input;
+    input.reset(button);
+    starfox::input::DigitalInputEvents batch;
+    batch.begin_sources({button, button, 0});
+    batch.record_source(button, false, 1);
+    batch.record_source(button, true, 1);
+    batch.record_source(button, false, 1);
+    input.sample(button, batch);
+    const auto overlap = input.consume();
+    require(overlap.pressed == 0 && overlap.released == 0,
+        "gamepad tap released or retriggered a keyboard-held action");
+    batch.begin_sources({button, 0, 0});
+    batch.record_source(button, false, 0);
+    batch.record_source(button, true, 0);
+    batch.record_source(button, false, 0);
+    input.sample(0, batch);
+    const auto first = input.consume(), second = input.consume();
+    require(first.held == 0 && first.pressed == button && first.released == button
+        && second.pressed == 0 && second.released == button,
+        "previously held release/repress transitions were merged");
+    require(input.consume().released == 0, "source-aware release repeated");
+}
+
 } // namespace
 
 int main() {
@@ -506,6 +531,7 @@ int main() {
     test_input_edges_survive_between_ticks();
     test_repeated_presses_survive_one_pending_tick();
     test_event_batch_taps_and_overlapping_bindings();
+    test_source_aware_release_repress();
     std::cout << "All timing tests passed.\n";
     return 0;
 }

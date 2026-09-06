@@ -22,6 +22,36 @@ struct DigitalInputEvents {
     ButtonMask released{};
     std::array<std::uint32_t, 16> complete_taps{};
 
+    bool source_tracking{};
+    ButtonMask initial_held{};
+    std::array<ButtonMask, 3> sources{};
+    std::array<std::uint32_t, 16> source_presses{}, source_releases{};
+
+    void begin_sources(const std::array<ButtonMask, 3>& held) noexcept {
+        *this = {};
+        source_tracking = true;
+        sources = held;
+        initial_held = source_held();
+    }
+    [[nodiscard]] ButtonMask source_held() const noexcept {
+        return static_cast<ButtonMask>(sources[0] | sources[1] | sources[2]);
+    }
+    void record_source(ButtonMask buttons, bool down, unsigned source) noexcept {
+        if (source >= sources.size()) return;
+        const auto before = source_held();
+        if (down) sources[source] = static_cast<ButtonMask>(sources[source] | buttons);
+        else sources[source] = static_cast<ButtonMask>(sources[source] & ~buttons);
+        const auto after = source_held();
+        for (unsigned bit = 0; bit < source_presses.size(); ++bit) {
+            const auto button = 1U << bit;
+            if ((before & button) == (after & button)) continue;
+            if ((after & button) != 0U) pressed = static_cast<ButtonMask>(pressed | button);
+            else released = static_cast<ButtonMask>(released | button);
+            auto& count = (after & button) != 0U ? source_presses[bit] : source_releases[bit];
+            if (count != std::numeric_limits<std::uint32_t>::max()) ++count;
+        }
+    }
+
     void record(ButtonMask buttons, bool down) noexcept {
         if (down) pressed = static_cast<ButtonMask>(pressed | buttons);
         else released = static_cast<ButtonMask>(released | buttons);
@@ -56,6 +86,20 @@ public:
     }
 
     void sample(ButtonMask held, const DigitalInputEvents& events) noexcept {
+        if (events.source_tracking) {
+            retain(pressed_, static_cast<ButtonMask>(events.initial_held & ~last_sample_));
+            retain(released_, static_cast<ButtonMask>(last_sample_ & ~events.initial_held));
+            for (unsigned bit = 0; bit < events.source_presses.size(); ++bit) {
+                add(pressed_[bit], events.source_presses[bit]);
+                add(released_[bit], events.source_releases[bit]);
+            }
+            // Axes, touch and filtered events still reconcile through the
+            // final held sample; recorded digital transitions are not merged.
+            retain(pressed_, static_cast<ButtonMask>(held & ~events.source_held()));
+            retain(released_, static_cast<ButtonMask>(events.source_held() & ~held));
+            held_ = last_sample_ = held;
+            return;
+        }
         const auto previously_held = last_sample_;
         sample(held, events.pressed, events.released);
         for (unsigned bit = 0; bit < events.complete_taps.size(); ++bit) {

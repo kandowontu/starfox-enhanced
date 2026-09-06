@@ -23,71 +23,83 @@ int main(int argc, char** argv) try {
             for (unsigned selected = players == 1 ? 0 : 1;
                  selected < (players == 1 ? 1 : players); ++selected) {
                 for (const auto shoulder : {input::left_shoulder, input::right_shoulder}) {
-                    auto game = std::make_unique<simulation::GameSimulation>(rom, symbols, "LEVEL2_1");
-                    game->set_timing_mode(mode);
-                    game->set_god_mode(true);
-                    const auto step = [&](input::TickInput primary,
-                        const std::array<input::TickInput, 4>& secondary) {
-                        game->set_secondary_inputs(secondary);
-                        unsigned phases{};
+                    for (const bool held_repress : {false, true}) {
+                        if (held_control && held_repress) continue;
+                        auto game = std::make_unique<simulation::GameSimulation>(rom, symbols, "LEVEL2_1");
+                        game->set_timing_mode(mode);
+                        game->set_god_mode(true);
+                        const auto step = [&](input::TickInput primary,
+                            const std::array<input::TickInput, 4>& secondary) {
+                            game->set_secondary_inputs(secondary);
+                            unsigned phases{};
+                            do {
+                                game->present_frame();
+                                if (++phases > 120) throw std::runtime_error{"Multiplayer input did not advance"};
+                            } while (!game->logic_tick_ready());
+                            static_cast<void>(game->tick(primary));
+                        };
+                        unsigned launch{};
                         do {
-                            game->present_frame();
-                            if (++phases > 120) throw std::runtime_error{"Multiplayer input did not advance"};
-                        } while (!game->logic_tick_ready());
-                        static_cast<void>(game->tick(primary));
-                    };
-                    unsigned launch{};
-                    do {
-                        step({}, {});
-                        if (++launch > 1000) throw std::runtime_error{"Launch did not enable controls"};
-                    } while (game->map().read_native_byte(address("PSHIPFLAGS")) & 0xe0);
-                    game->map().write_native_byte(address("MULTITAPMODE"), players != 2);
-                    game->map().write_native_byte(address("NUMPLAYERS"), players);
-                    game->map().write_native_byte(address("PLAYERTWOACTIVATED"), 1);
-                    game->map().write_native_byte(address("M_PLAYERTWOACTIVATED"), 1);
-                    simulation::Wdc65816Registers registers;
-                    registers.status = 0x24;
-                    registers.data_bank = 0x7e;
-                    game->map().call_native_routine(address("ACTIVATESECONDPLAYER_L"), registers);
-                    for (unsigned settle = 0; settle < 20; ++settle) step({}, {});
-                    if (!game->map().read_native_word(address("PLAYPTTWO")))
-                        throw std::runtime_error{"Native activation did not create player two"};
-                    std::array<input::TickInput, 4> secondary{};
-                    input::TickInput primary{};
-                    const input::TickInput tap{
-                        static_cast<input::ButtonMask>(held_control ? shoulder : 0), shoulder,
-                        static_cast<input::ButtonMask>(held_control ? 0 : shoulder)};
-                    input::InputLatch pending;
-                    if (!held_control) {
-                        // Both physical taps arrive before either source update.
-                        input::DigitalInputEvents batch;
-                        for (unsigned tap_index = 0; tap_index < 2; ++tap_index) {
-                            batch.record(shoulder, true);
-                            batch.record(shoulder, false);
+                            step({}, {});
+                            if (++launch > 1000) throw std::runtime_error{"Launch did not enable controls"};
+                        } while (game->map().read_native_byte(address("PSHIPFLAGS")) & 0xe0);
+                        game->map().write_native_byte(address("MULTITAPMODE"), players != 2);
+                        game->map().write_native_byte(address("NUMPLAYERS"), players);
+                        game->map().write_native_byte(address("PLAYERTWOACTIVATED"), 1);
+                        game->map().write_native_byte(address("M_PLAYERTWOACTIVATED"), 1);
+                        simulation::Wdc65816Registers registers;
+                        registers.status = 0x24;
+                        registers.data_bank = 0x7e;
+                        game->map().call_native_routine(address("ACTIVATESECONDPLAYER_L"), registers);
+                        for (unsigned settle = 0; settle < 20; ++settle) step({}, {});
+                        if (!game->map().read_native_word(address("PLAYPTTWO")))
+                            throw std::runtime_error{"Native activation did not create player two"};
+                        std::array<input::TickInput, 4> secondary{};
+                        input::TickInput primary{};
+                        const input::TickInput tap{
+                            static_cast<input::ButtonMask>(held_control ? shoulder : 0), shoulder,
+                            static_cast<input::ButtonMask>(held_control ? 0 : shoulder)};
+                        input::InputLatch pending;
+                        if (held_repress) pending.sample(shoulder);
+                        else if (!held_control) {
+                            // Both physical taps arrive before either source update.
+                            input::DigitalInputEvents batch;
+                            for (unsigned tap_index = 0; tap_index < 2; ++tap_index) {
+                                batch.record(shoulder, true);
+                                batch.record(shoulder, false);
+                            }
+                            pending.sample(0, batch);
                         }
-                        pending.sample(0, batch);
+                        const auto deliver = [&] {
+                            const auto controls = held_control ? tap : pending.consume();
+                            if (selected == 0) primary = controls;
+                            else secondary[selected - 1] = controls;
+                            step(primary, secondary);
+                        };
+                        deliver();
+                        for (const auto roll : rolls)
+                            if (game->map().read_native_byte(roll))
+                                throw std::runtime_error{"A single multiplayer tap started a roll"};
+                        if (held_control) step({}, {});
+                        if (held_repress) {
+                            input::DigitalInputEvents batch;
+                            batch.begin_sources({0, shoulder, 0});
+                            batch.record_source(shoulder, false, 1);
+                            batch.record_source(shoulder, true, 1);
+                            batch.record_source(shoulder, false, 1);
+                            pending.sample(0, batch);
+                        }
+                        deliver();
+                        for (unsigned player = 0; player < (players == 2 ? 2 : 5); ++player) {
+                            const bool expected = players == 1 || player == selected;
+                            const bool rolled = game->map().read_native_byte(rolls[player]) != 0;
+                            if (rolled != expected)
+                                throw std::runtime_error{"Multiplayer roll differs: players=" + std::to_string(players)
+                                    + " selected=" + std::to_string(selected + 1) + " observed="
+                                    + std::to_string(player + 1) + " rolled=" + std::to_string(rolled)};
+                        }
+                        ++cases;
                     }
-                    const auto deliver = [&] {
-                        const auto controls = held_control ? tap : pending.consume();
-                        if (selected == 0) primary = controls;
-                        else secondary[selected - 1] = controls;
-                        step(primary, secondary);
-                    };
-                    deliver();
-                    for (const auto roll : rolls)
-                        if (game->map().read_native_byte(roll))
-                            throw std::runtime_error{"A single multiplayer tap started a roll"};
-                    if (held_control) step({}, {});
-                    deliver();
-                    for (unsigned player = 0; player < (players == 2 ? 2 : 5); ++player) {
-                        const bool expected = players == 1 || player == selected;
-                        const bool rolled = game->map().read_native_byte(rolls[player]) != 0;
-                        if (rolled != expected)
-                            throw std::runtime_error{"Multiplayer roll differs: players=" + std::to_string(players)
-                                + " selected=" + std::to_string(selected + 1) + " observed="
-                                + std::to_string(player + 1) + " rolled=" + std::to_string(rolled)};
-                    }
-                    ++cases;
                 }
             }
         }

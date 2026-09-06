@@ -175,6 +175,35 @@ int main() {
         }
         require(counted.consume().pressed == 0, "batch taps repeated after delivery");
     }
+    for (const auto shoulder : {SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,
+                                SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER}) {
+        require(SDL_SetJoystickVirtualButton(joystick, shoulder, true), "initial held press failed");
+        SDL_UpdateGamepads();
+        const auto sources = bindings.sample_sources(gamepad, false);
+        const auto held_before = bindings.sample_gamepad_only(gamepad);
+        SDL_FlushEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST);
+        starfox::input::InputLatch old_path, recovered;
+        old_path.reset(held_before);
+        recovered.reset(held_before);
+        for (bool down : {false, true, false}) {
+            require(SDL_SetJoystickVirtualButton(joystick, shoulder, down), "release/repress event failed");
+            SDL_UpdateGamepads();
+        }
+        starfox::input::DigitalInputEvents batch;
+        batch.begin_sources(sources);
+        SDL_Event event;
+        while (SDL_PollEvent(&event))
+            batch.record_source(bindings.event_buttons(event, gamepad, false),
+                event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN, 1);
+        const auto held = bindings.sample_gamepad_only(gamepad);
+        old_path.sample(held, batch.pressed, batch.released);
+        require(old_path.consume().pressed == 0, "old path did not lose the held release/repress");
+        recovered.sample(held, batch);
+        const auto first = recovered.consume(), second = recovered.consume();
+        require(held_before != 0 && first.held == 0 && first.pressed == held_before
+            && first.released == held_before && second.pressed == 0 && second.released == held_before,
+            "SDL held release/repress was not delivered exactly once");
+    }
     {
         SDL_Event event{};
         event.type = SDL_EVENT_KEY_DOWN;

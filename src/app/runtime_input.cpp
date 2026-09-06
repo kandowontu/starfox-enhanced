@@ -343,43 +343,36 @@ input::ButtonMask InputBindings::event_buttons(const SDL_Event& event,
 }
 
 input::ButtonMask InputBindings::sample(SDL_Gamepad* gamepad) const noexcept {
-    const auto* keys = SDL_GetKeyboardState(nullptr);
-    input::ButtonMask result{};
-    for (std::size_t action = 0; action < action_count; ++action) {
-        add_keyboard_button(
-            result, keys, keyboard_[action], kActionButtons[action]);
-    }
-    return static_cast<input::ButtonMask>(
-        result | sample_gamepad_only(gamepad));
+    const auto sources = sample_sources(gamepad);
+    return static_cast<input::ButtonMask>(sources[0] | sources[1] | sources[2]);
 }
 
-input::ButtonMask InputBindings::sample_gamepad_only(
-    SDL_Gamepad* gamepad) const noexcept {
-    input::ButtonMask result{};
-    if (gamepad == nullptr) return result;
+input::ButtonMask InputBindings::sample_gamepad_only(SDL_Gamepad* gamepad) const noexcept {
+    const auto sources = sample_sources(gamepad, false);
+    return static_cast<input::ButtonMask>(sources[1] | sources[2]);
+}
+
+std::array<input::ButtonMask, 3> InputBindings::sample_sources(
+    SDL_Gamepad* gamepad, bool include_keyboard) const noexcept {
+    std::array<input::ButtonMask, 3> result{};
+    const auto* keys = SDL_GetKeyboardState(nullptr);
     for (std::size_t action = 0; action < action_count; ++action) {
+        if (include_keyboard)
+            add_keyboard_button(result[0], keys, keyboard_[action], kActionButtons[action]);
+        if (gamepad == nullptr) continue;
         const auto binding = gamepad_[action];
         if (binding.kind == GamepadBindingKind::button) {
-            add_gamepad_button(result, gamepad,
-                static_cast<SDL_GamepadButton>(binding.control),
-                kActionButtons[action]);
-            // The standard Xbox/Steam layout uses both the D-pad and left
-            // stick for movement out of the box. Once a direction is remapped
-            // away from its default D-pad binding, that custom binding fully
-            // replaces this fallback.
+            add_gamepad_button(result[1], gamepad,
+                static_cast<SDL_GamepadButton>(binding.control), kActionButtons[action]);
             if (is_default_direction(action, binding)) {
                 const auto vertical = action == 4U || action == 5U;
-                add_gamepad_axis(result, gamepad,
-                    vertical ? SDL_GAMEPAD_AXIS_LEFTY
-                             : SDL_GAMEPAD_AXIS_LEFTX,
-                    action == 5U || action == 7U,
-                    kActionButtons[action]);
+                add_gamepad_axis(result[2], gamepad,
+                    vertical ? SDL_GAMEPAD_AXIS_LEFTY : SDL_GAMEPAD_AXIS_LEFTX,
+                    action == 5U || action == 7U, kActionButtons[action]);
             }
         } else {
-            add_gamepad_axis(result, gamepad,
-                static_cast<SDL_GamepadAxis>(binding.control),
-                binding.kind == GamepadBindingKind::axis_positive,
-                kActionButtons[action]);
+            add_gamepad_axis(result[2], gamepad, static_cast<SDL_GamepadAxis>(binding.control),
+                binding.kind == GamepadBindingKind::axis_positive, kActionButtons[action]);
         }
     }
     return result;
