@@ -166,6 +166,34 @@ evidence; the host mismatch is still open.
 python tools/reference/verify-transfer-reads.py tmp/scorpion-both-native --output tmp/scorpion-both-native-summary.json
 ```
 
+## Counterfactual isolation of the chase input
+
+`tools/reference/diagnose-transfer-chase.py` creates a separate reference source
+and executable under `tmp/zero-transfer-diagnostic`. After each of the two native
+word loads, its observation hook replaces A with zero and sets N=0/Z=1. It verifies
+D=0 and word accumulator mode. The load still executes with its original cycles;
+no ROM bytes or production code are changed. Later execution may change as a
+consequence of the substituted value. This is explicitly a counterfactual, not a
+parity correction, and its summary always marks `host_parity_passed` false.
+
+Against host revision `7326a61`, that diagnostic reaches 1,000 consecutive LEVEL7_2
+updates with 1,604,355 matching state comparisons. It substitutes 25 SCORPION1
+loads and 46 SCORPION4 loads; all 71 substitutions match observed load executions.
+The separate normal reference was rebuilt against the same host and still rejects
+update 200 with Y=45 versus 46 after 163,460 comparisons. No production fix or
+comparison exemption was introduced. The input isolation exposes no additional
+state difference within this 1,000-update interval; it does not establish that
+these are the only mismatches in the entire stage or campaign.
+
+The normal baseline and counterfactual summaries, logs and read/difference rows
+are preserved under `validation/transfer-chase-*`. This strengthens the case for
+correcting the live transfer input and preserving its varying phases. Substituting
+zero or a fixed nonzero value in production is not justified by this experiment.
+
+```powershell
+python tools/reference/diagnose-transfer-chase.py --updates 1000
+```
+
 ## Regression and candidate status
 
 The rebuilt full suite passed 60/61 checks in 238.33 seconds; its sole failure

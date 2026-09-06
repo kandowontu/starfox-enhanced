@@ -1,0 +1,9 @@
+Boot PC $7e400f
+GSU register policy: source (generic Ares GSU, shared NTSC oscillator)
+Stage entry at video frame 3, GSU idle
+Gameplay clone at GAMEFRAME=106 after the preceding display interrupt
+200 complete camera calls, 0 field differences
+COUNTERFACTUAL: native transfer loads replaced with zero; NOT PARITY
+ZEROED SCORPION1_STRAT 25
+ZEROED SCORPION4_STRAT 46
+Gameplay: 1000/1000 updates, 1604355 comparisons, 0 differences
