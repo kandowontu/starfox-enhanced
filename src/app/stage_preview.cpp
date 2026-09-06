@@ -323,9 +323,7 @@ int main(int argc, char** argv) {
                 static_cast<double>(camera_z), static_cast<double>(camera_pitch),
                 static_cast<double>(camera_yaw), static_cast<double>(camera_roll)};
             dust_renderer.draw(game.dust(), game.dust_point_count(),
-                camera, view_matrix, framebuffer,
-                {false, game.map().read_native_byte(mario_symbol("M_PLANETSTARS")),
-                    vanish_x, vanish_y});
+                camera, view_matrix, framebuffer);
         } else if (game.map().dots_mode() > 0) {
             const starfox::timing::RenderTransform camera{
                 static_cast<double>(camera_x), static_cast<double>(camera_y),
@@ -338,10 +336,9 @@ int main(int argc, char** argv) {
                 ? static_cast<std::uint32_t>(object_frame & 0x7fU)
                 : static_cast<std::uint32_t>(game_frame);
         };
-        const auto effective_colour_table = [&game, special_colour, red_colour,
-                                               white_colour](const auto handle) {
-            const auto& object = game.objects().at(handle);
-            const auto flags = game.submitted_strategy_flags(handle);
+        const auto effective_colour_table = [special_colour, red_colour,
+                                               white_colour](const auto& object) {
+            const auto flags = object.strategy_flags[0];
             if ((flags & 0x40U) != 0U) return std::uint16_t{};
             if ((flags & 0x02U) != 0U && (flags & 0x20U) == 0U) {
                 return static_cast<std::uint16_t>(
@@ -380,7 +377,7 @@ int main(int argc, char** argv) {
             if (!game.objects().is_active(handle)) continue;
             const auto& object = game.objects().at(handle);
             if ((object.strategy_flags[3] & 0x08U) != 0U || object.shape == 0U) continue;
-            const auto colour_table = effective_colour_table(handle);
+            const auto colour_table = effective_colour_table(object);
             const auto base_shape_key = (static_cast<std::uint32_t>(object.shape) << 16U)
                 | colour_table;
             if (invalid.contains(base_shape_key)) continue;
@@ -407,7 +404,7 @@ int main(int argc, char** argv) {
         const auto make_pose = [&](const RenderItem& item, bool shadow) {
             const auto& object = game.objects().at(item.handle);
             const auto true_colour_shadow =
-                (game.submitted_strategy_flags(item.handle) & 0x04U) != 0U;
+                (object.strategy_flags[0] & 0x04U) != 0U;
             auto position = item.position;
             if (shadow && !true_colour_shadow) {
                 position = starfox::simulation::transform_q15(view_matrix, {
@@ -424,7 +421,7 @@ int main(int argc, char** argv) {
             pose.roll = static_cast<std::uint16_t>(object.rotation_z) << 8U;
             pose.vanish_x = vanish_x;
             pose.vanish_y = vanish_y;
-            const auto object_matrix = starfox::simulation::transpose_q15(
+            auto object_matrix = starfox::simulation::transpose_q15(
                 starfox::simulation::rotation_matrix_q15(
                     trigonometry,
                     starfox::simulation::wrap16(-static_cast<std::int32_t>(
@@ -433,12 +430,17 @@ int main(int argc, char** argv) {
                         static_cast<std::uint16_t>(object.rotation_y) << 8U)),
                     starfox::simulation::wrap16(-static_cast<std::int32_t>(
                         static_cast<std::uint16_t>(object.rotation_z) << 8U))));
-            if (shadow && !true_colour_shadow) {
-                pose.force_colour = true;
-                pose.forced_colour = 0x09U;
+            if (shadow) {
+                object_matrix[1] = 0;
+                object_matrix[4] = 0;
+                object_matrix[7] = 0;
+                if (!true_colour_shadow) {
+                    pose.force_colour = true;
+                    pose.forced_colour = 0x09U;
+                }
             }
-            pose.rotation_matrix = starfox::simulation::compose_model_matrix_q15(
-                object_matrix, view_matrix, pose.pitch, pose.yaw, pose.roll, shadow);
+            pose.rotation_matrix = starfox::simulation::multiply_matrix_q15(
+                object_matrix, view_matrix);
             pose.use_rotation_matrix = true;
             pose.animation_frame = display_frame(object.animation_frame);
             pose.colour_frame = display_frame(object.colour_frame);
@@ -454,8 +456,8 @@ int main(int argc, char** argv) {
         if ((game.map().read_native_byte(ram_symbol("PLAYERFLYMODE")) & 0x08U) != 0U) {
             for (const auto& item : items) {
                 const auto& object = game.objects().at(item.handle);
-                if ((game.submitted_strategy_flags(item.handle) & 0x0cU) == 0U) continue;
-                const auto colour_table = effective_colour_table(item.handle);
+                if ((object.strategy_flags[0] & 0x0cU) == 0U) continue;
+                const auto colour_table = effective_colour_table(object);
                 const auto base_shape_key =
                     (static_cast<std::uint32_t>(object.shape) << 16U)
                     | colour_table;
@@ -484,19 +486,19 @@ int main(int argc, char** argv) {
         for (const auto& item : items) {
             const auto handle = item.handle;
             const auto& object = game.objects().at(handle);
-            if ((game.submitted_strategy_flags(item.handle) & 0x04U) != 0U) continue;
-            const auto colour_table = effective_colour_table(handle);
+            if ((object.strategy_flags[0] & 0x04U) != 0U) continue;
+            const auto colour_table = effective_colour_table(object);
             const auto base_shape_key = (static_cast<std::uint32_t>(object.shape) << 16U)
                 | colour_table;
             const auto base = cache.find(base_shape_key);
             if (base == cache.end()) continue;
-            if ((game.submitted_strategy_flags(item.handle) & 0x10U) != 0U) {
+            if ((object.strategy_flags[0] & 0x10U) != 0U) {
                 particle_renderer.draw_owner(game.particles(), item.handle,
                     make_pose(item, false), 1.0, framebuffer);
                 ++rendered;
                 continue;
             }
-            if ((game.submitted_strategy_flags(item.handle) & 0x40U) != 0U) {
+            if ((object.strategy_flags[0] & 0x40U) != 0U) {
                 text_renderer.draw(object.colour_table, object.extended[21],
                     std::bit_cast<std::int8_t>(object.texture_scroll_x),
                     make_pose(item, false), framebuffer);
@@ -520,11 +522,20 @@ int main(int argc, char** argv) {
                 }
             }
             auto pose = make_pose(item, false);
-            if ((game.submitted_strategy_flags(item.handle) & 0x20U) != 0U) {
+            if ((object.strategy_flags[0] & 0x20U) != 0U) {
+                auto size_adjustment = static_cast<std::int16_t>(
+                    std::bit_cast<std::int8_t>(object.texture_scroll_x));
+                for (std::uint8_t shift = 0; shift < base_header.shift; ++shift) {
+                    size_adjustment = starfox::simulation::add16(
+                        size_adjustment, size_adjustment);
+                }
+                auto diameter = starfox::simulation::add16(
+                    base_header.size, size_adjustment);
+                diameter = starfox::simulation::add16(diameter, diameter);
+                if (diameter == 0) diameter = 1;
                 pose.simple_scaled_sprite = true;
                 pose.simple_sprite_colour = object.extended[21];
-                pose.simple_sprite_world_size = decoder.simple_sprite_diameter(
-                    base_header, std::bit_cast<std::int8_t>(object.texture_scroll_x));
+                pose.simple_sprite_world_size = diameter;
             }
             if (std::getenv("STARFOX_DUMP_OBJECTS") != nullptr || diagnostics++ < 12) {
                 std::cout << "object=" << handle << " shape=$" << std::hex << object.shape

@@ -25,18 +25,6 @@ public:
     [[nodiscard]] bool enabled() const noexcept { return enabled_; }
     [[nodiscard]] bool paused() const noexcept { return paused_; }
     [[nodiscard]] bool playing() const noexcept { return playing_; }
-    [[nodiscard]] std::uint8_t status() const noexcept {
-        return static_cast<std::uint8_t>(2U | (missing_ ? 8U : 0U)
-            | (playing_ ? 16U : 0U) | (repeat_ ? 32U : 0U));
-    }
-    // First stereo frame in the last render that should use the continuing
-    // native credits music. Equals the render length when no tail is due.
-    [[nodiscard]] std::size_t native_tail_start_frame() const noexcept { return native_tail_start_; }
-    // The optional staff-roll recording ends before the cartridge's hidden
-    // delayed jingle. Its SPC driver keeps the source timeline running.
-    [[nodiscard]] bool use_native_music_tail() const noexcept {
-        return enabled_ && !paused_ && completed_ && selected_track_ == 49U;
-    }
     [[nodiscard]] std::uint16_t selected_track() const noexcept {
         return selected_track_;
     }
@@ -44,10 +32,6 @@ public:
         std::span<const simulation::MsuRegisterWrite> writes);
     [[nodiscard]] std::span<const std::int16_t> render(
         std::size_t output_frames, std::uint32_t output_sample_rate);
-    // Select the last rendered music packet, replacing only its completed
-    // credits tail with native PCM. Reuses the render buffer when enabled.
-    [[nodiscard]] std::span<const std::int16_t> select_music(
-        std::span<const std::int16_t> native_music);
 
 private:
     bool load_selected_track();
@@ -68,10 +52,7 @@ private:
     bool enabled_{};
     bool paused_{};
     bool playing_{};
-    bool completed_{};
     bool repeat_{};
-    bool missing_{};
-    std::size_t native_tail_start_{};
 };
 
 } // namespace starfox::audio

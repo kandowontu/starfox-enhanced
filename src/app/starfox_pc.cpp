@@ -1,5 +1,4 @@
 #include "starfox/audio/spc700_audio.hpp"
-#include "starfox/audio/game_audio_timeline.hpp"
 #include "starfox/audio/msu1_audio.hpp"
 #include "starfox/audio/msu1_pack.hpp"
 #include "starfox/app/runtime_input.hpp"
@@ -2603,11 +2602,6 @@ public:
             throw std::runtime_error{
                 std::string{"SDL_OpenAudioDeviceStream: "} + SDL_GetError()};
         }
-        if (const auto* trace = std::getenv("STARFOX_TRACE_AUDIO")) {
-            audio_trace_.open(trace);
-            if (audio_trace_) audio_trace_ << "audio_tick,seconds,msu_enabled,msu_track,"
-                "msu_playing,native_tail,music_peak,effects_peak,mixed_peak\n";
-        }
     }
 
     ~AudioOutput() { SDL_DestroyAudioStream(stream_); }
@@ -2673,67 +2667,18 @@ public:
         return msu1_.playing();
     }
 
-    void set_native_playback(std::uint32_t speed_multiplier,bool queue_output) noexcept {
-        native_speed_multiplier_=speed_multiplier;
-        native_queue_output_=queue_output;
-    }
-    void bind_native_audio(starfox::simulation::GameSimulation& game) {
-        if (native_audio_bound_ || !game.native_transfer_timeline())
-            throw std::logic_error{"Native audio requires a new live gameplay binding"};
-        if (!timeline_) timeline_=std::make_unique<starfox::audio::GameAudioTimeline>(emulator_,msu1_,
-            [this](auto,auto music,auto effects) {
-                queue_timed_packet(music,effects,starfox::audio::GameAudioTimeline::sample_rate,
-                    native_speed_multiplier_,native_queue_output_);
-            });
-        timeline_->rebase_master_clock(game.native_transfer_clock());
-        game.map().set_apu_bus_callback([this](auto time,auto port,auto value) {
-            return timeline_->access_apu(time,port,value);
-        });
-        game.map().set_msu_bus_callback([this](auto time,auto address,auto value) {
-            return timeline_->access_msu(time,address,value);
-        });
-        native_audio_bound_=true;
-    }
-    void advance_native_audio(std::uint64_t master_clock) {
-        if (!native_audio_bound_) throw std::logic_error{"Native audio is not bound"};
-        timeline_->advance_to(master_clock);
-    }
-    void unbind_native_audio(starfox::simulation::GameSimulation& game) {
-        advance_native_audio(game.native_transfer_clock());
-        game.map().set_apu_bus_callback({});
-        game.map().set_msu_bus_callback({});
-        native_audio_bound_=false;
-    }
-
     [[nodiscard]] std::array<std::uint8_t, 4> queue_logic_tick(
         std::span<const starfox::simulation::ApuPortWrite> writes,
         std::span<const starfox::simulation::MsuRegisterWrite> msu_writes,
         std::uint32_t speed_multiplier, bool queue_output = true) {
-        if (native_audio_bound_) throw std::logic_error{"Cannot replay host audio while native buses are bound"};
-        if (timeline_) {
-            set_native_playback(speed_multiplier,queue_output);
-            timeline_->advance_host_tick(writes,msu_writes);
-            return emulator_.output_ports();
-        }
         static_cast<void>(emulator_.render_logic_tick(writes));
         msu1_.process_register_writes(msu_writes);
-        if (msu1_.enabled()) static_cast<void>(msu1_.render(
+        const auto music = msu1_.enabled()
+            ? std::span<const std::int16_t>{msu1_.render(
                 starfox::audio::Spc700Audio::stereo_frames_per_logic_tick,
-                starfox::audio::Spc700Audio::sample_rate));
-        const auto music=msu1_.select_music(emulator_.last_music_samples());
+                starfox::audio::Spc700Audio::sample_rate)}
+            : emulator_.last_music_samples();
         const auto effects = emulator_.last_effect_samples();
-        queue_timed_packet(music, effects, starfox::audio::Spc700Audio::sample_rate,
-            speed_multiplier, queue_output);
-        return emulator_.output_ports();
-    }
-
-    // Native-clock packets already contain the selected SPC/MSU stems.
-    // Queue them without advancing either sound driver a second time.
-    void queue_timed_packet(std::span<const std::int16_t> music,
-        std::span<const std::int16_t> effects, std::uint32_t source_rate,
-        std::uint32_t speed_multiplier = 1U, bool queue_output = true) {
-        if (!source_rate || music.size()!=effects.size() || music.size()%2U)
-            throw std::invalid_argument{"Invalid timed audio packet"};
         mixed_samples_.resize(std::min(music.size(), effects.size()));
         for (std::size_t index = 0U; index < mixed_samples_.size(); ++index) {
             const auto mixed = static_cast<std::int32_t>(music[index])
@@ -2748,19 +2693,6 @@ public:
                     std::numeric_limits<std::int16_t>::max())));
         }
         auto& samples = mixed_samples_;
-        if (audio_trace_.is_open() && audio_trace_) {
-            const auto peak = [](std::span<const std::int16_t> pcm) {
-                int value = 0;
-                for (const auto sample : pcm) value = std::max(value, std::abs(static_cast<int>(sample)));
-                return value;
-            };
-            ++audio_trace_tick_;
-            audio_trace_seconds_ += static_cast<double>(music.size()/2U)/source_rate;
-            audio_trace_ << audio_trace_tick_ << ',' << audio_trace_seconds_ << ','
-                << msu1_.enabled() << ',' << msu1_.selected_track() << ',' << msu1_.playing()
-                << ',' << msu1_.use_native_music_tail() << ',' << peak(music) << ','
-                << peak(effects) << ',' << peak(samples) << '\n';
-        }
         std::span<const std::int16_t> queued_samples{samples};
         speed_multiplier = std::max(1U, speed_multiplier);
         if (speed_multiplier != previous_speed_multiplier_) {
@@ -2796,15 +2728,18 @@ public:
             queued_samples = fast_samples_;
         }
 #if defined(__SWITCH__)
-        const auto max_queued_frames = source_rate / 10U;
+        constexpr auto max_queued_frames =
+            starfox::audio::Spc700Audio::sample_rate / 10U;
 #else
-        const auto max_queued_frames = source_rate * 150U / 1'000U;
+        constexpr auto max_queued_frames =
+            starfox::audio::Spc700Audio::sample_rate * 150U / 1'000U;
 #endif
         if (queue_output && !starfox::app::queue_realtime_audio(
-                stream_, queued_samples, max_queued_frames, source_rate)) {
+                stream_, queued_samples, max_queued_frames)) {
             throw std::runtime_error{
                 std::string{"Audio playback queue: "} + SDL_GetError()};
         }
+        return emulator_.output_ports();
     }
 
     [[nodiscard]] std::array<std::uint8_t, 4> prime_upload_sequence(
@@ -2816,16 +2751,9 @@ public:
 private:
     starfox::audio::Spc700Audio emulator_;
     starfox::audio::Msu1Audio msu1_;
-    std::unique_ptr<starfox::audio::GameAudioTimeline> timeline_;
-    std::uint32_t native_speed_multiplier_{1U};
-    bool native_queue_output_{true};
-    bool native_audio_bound_{};
     SDL_AudioStream* stream_{};
     std::vector<std::int16_t> fast_samples_;
     std::vector<std::int16_t> mixed_samples_;
-    std::ofstream audio_trace_;
-    std::uint64_t audio_trace_tick_{};
-    double audio_trace_seconds_{};
     std::uint8_t music_volume_{100U};
     std::uint8_t sfx_volume_{100U};
     std::uint32_t fast_sample_phase_{};
@@ -2843,31 +2771,20 @@ public:
           table_(address(symbols, "RUMBLE_TABLE")) {}
 
     void advance(starfox::simulation::MapVm& map, SDL_Gamepad* gamepad,
-        bool enabled, bool native_gameplay = false) {
+        bool enabled) noexcept {
         if (!available() || !enabled || gamepad == nullptr) {
             stop(gamepad);
             return;
         }
-        if (native_gameplay) {
-            if (!live_state_) live_state_ = std::make_unique<
-                starfox::simulation::NativePresentationSnapshot>();
-            map.capture_live_presentation(*live_state_);
-        }
-        const auto read = [&](std::uint32_t address) {
-            if (native_gameplay) {
-                if (const auto value=live_state_->read_ram(address)) return *value;
-            }
-            return map.read_native_byte(address);
-        };
         auto output = std::uint8_t{};
-        auto sequence_index = read(index_);
+        auto sequence_index = map.read_native_byte(index_);
         for (std::size_t guard = 0U; guard < 4U; ++guard) {
             if (sequence_index == 0U) {
-                output = read(time_) == 0U
-                    ? 0U : read(command_);
+                output = map.read_native_byte(time_) == 0U
+                    ? 0U : map.read_native_byte(command_);
                 break;
             }
-            output = read(
+            output = map.read_native_byte(
                 table_ + static_cast<std::uint32_t>(sequence_index - 1U));
             sequence_index = static_cast<std::uint8_t>(sequence_index + 1U);
             map.write_native_byte(index_, sequence_index);
@@ -2880,7 +2797,7 @@ public:
             sequence_index = 1U;
             map.write_native_byte(index_, sequence_index);
         }
-        const auto remaining = read(time_);
+        const auto remaining = map.read_native_byte(time_);
         if (remaining != 0U) {
             map.write_native_byte(time_,
                 static_cast<std::uint8_t>(remaining - 1U));
@@ -2917,7 +2834,6 @@ private:
     std::uint32_t index_{};
     std::uint32_t table_{};
     bool active_{};
-    std::unique_ptr<starfox::simulation::NativePresentationSnapshot> live_state_;
 };
 
 class MsuFadeOutput {
@@ -2952,15 +2868,36 @@ class PresentationPacer {
 public:
     void wait_for_next_frame(
         std::uint32_t presentation_hz = starfox::timing::kPresentationHz) {
-        const auto now = std::chrono::steady_clock::now();
-        const auto deadline = clock_.next_deadline(now, presentation_hz);
+        if (presentation_hz == 0U) {
+            throw std::invalid_argument{"presentation FPS cannot be zero"};
+        }
+        auto now = std::chrono::steady_clock::now();
+        if (presentation_hz != presentation_hz_) {
+            epoch_ = now;
+            frame_ = 0U;
+            presentation_hz_ = presentation_hz;
+        }
+        ++frame_;
+        auto deadline = epoch_ + std::chrono::nanoseconds{
+            static_cast<std::chrono::nanoseconds::rep>(
+                frame_ * 1'000'000'000ULL / presentation_hz_)};
+        now = std::chrono::steady_clock::now();
         if (now < deadline) {
             std::this_thread::sleep_until(deadline);
+            return;
+        }
+        // Do not emit a burst of catch-up presentations after a debugger stop
+        // or suspended laptop; the simulation clock already clamps that gap.
+        if (now - deadline > std::chrono::milliseconds{250}) {
+            epoch_ = now;
+            frame_ = 0;
         }
     }
 
 private:
-    starfox::timing::PresentationDeadlineClock clock_;
+    std::chrono::steady_clock::time_point epoch_{std::chrono::steady_clock::now()};
+    std::uint64_t frame_{};
+    std::uint32_t presentation_hz_{starfox::timing::kPresentationHz};
 };
 
 struct RemapMenuState {
@@ -3292,19 +3229,10 @@ starfox::simulation::CircleEffectState interpolate_circle_effect(
 CameraPoint world_to_camera(
     double x, double y, double z,
     const starfox::timing::RenderTransform& camera,
-    const starfox::simulation::MatrixQ15& matrix,
-    bool word_exact = false) {
+    const starfox::simulation::MatrixQ15& matrix) {
     x = source_word_difference(x, camera.x);
     y = source_word_difference(y, camera.y);
     z = source_word_difference(z, camera.z);
-    if (word_exact) {
-        const auto point = starfox::simulation::transform_q15(matrix, {
-            starfox::simulation::wrap16(std::llround(x)),
-            starfox::simulation::wrap16(std::llround(y)),
-            starfox::simulation::wrap16(std::llround(z))});
-        return {static_cast<double>(point[0]), static_cast<double>(point[1]),
-            static_cast<double>(point[2])};
-    }
     constexpr auto q15 = 32'768.0;
     return {
         (x * matrix[0] + y * matrix[3] + z * matrix[6]) / q15,
@@ -3625,10 +3553,8 @@ int main(int argc, char** argv) {
                 saved_pregame.timing_mode));
             if (const auto* forced_timing = std::getenv(
                     "STARFOX_TEST_TIMING_MODE")) {
-                const auto mode = std::string_view{forced_timing};
-                game.set_timing_mode(mode == "ACCURATE" || mode == "2"
-                    ? starfox::simulation::TimingMode::accurate
-                    : mode == "UNLOCKED" || mode == "0"
+                game.set_timing_mode(std::string_view{forced_timing}
+                        == "UNLOCKED"
                     ? starfox::simulation::TimingMode::unlocked_20_fps
                     : starfox::simulation::TimingMode::original_speed);
             }
@@ -3888,7 +3814,6 @@ int main(int argc, char** argv) {
         const auto stay_black_address = ram_symbol("STAYBLACK");
         const auto vanish_x_address = mario_symbol("M_VANISHX");
         const auto vanish_y_address = mario_symbol("M_VANISHY");
-        const auto planet_stars_address = mario_symbol("M_PLANETSTARS");
         const auto native_model_z_address = active_experience
                 == starfox::simulation::Experience::starfox_ex
             ? mario_symbol("M_BIGZ") : 0U;
@@ -4093,8 +4018,6 @@ int main(int argc, char** argv) {
         static_cast<void>(starfox::app::load_hud_layout(
             hud_layout_path, hud_layouts));
         starfox::input::InputLatch input;
-        std::array<ButtonMask, 3> previous_input_sources{};
-        std::array<std::array<ButtonMask, 3>, 4> previous_secondary_sources{};
         std::array<starfox::input::InputLatch, 4> secondary_inputs{};
         starfox::input::InputLatch remap_input;
         RemapMenuState remap_menu;
@@ -4385,20 +4308,6 @@ int main(int argc, char** argv) {
         std::optional<bool> volume_slider_drag_music;
         bool suppress_fullscreen_start{};
         double last_phase_fraction{};
-        const bool test_native_gameplay=std::getenv("STARFOX_TEST_NATIVE_GAMEPLAY")!=nullptr;
-        const bool trace_native_gameplay=test_native_gameplay
-            || std::getenv("STARFOX_TRACE_NATIVE_GAMEPLAY")!=nullptr;
-        std::uint16_t test_native_exit{};
-        if (trace_native_gameplay && test_frames!=0U) {
-            if (const auto* value=std::getenv("STARFOX_TEST_NATIVE_EXIT")) {
-                const auto exit=std::stoul(value);
-                if (!exit || exit>16U) throw std::invalid_argument{"Invalid native exit fixture"};
-                test_native_exit=static_cast<std::uint16_t>(exit);
-            }
-        }
-        std::uint64_t native_phase_target{},native_phase_remainder{};
-        std::uint64_t native_completed_updates{};
-        std::uint64_t native_last_publication{},native_publication_duration{1'073'864U};
 #if defined(STARFOX_UWP)
         log_uwp_startup("starting first-frame preroll");
 #endif
@@ -4442,16 +4351,8 @@ int main(int argc, char** argv) {
             bool toggle_frame_freeze{};
             bool step_frame_forward{};
             bool step_frame_backward{};
-            starfox::input::DigitalInputEvents presentation_edges{};
-            std::array<starfox::input::DigitalInputEvents, 4> secondary_edges{};
-            presentation_edges.begin_sources(previous_input_sources);
-            for (std::size_t player = 0; player < secondary_edges.size(); ++player)
-                secondary_edges[player].begin_sources(previous_secondary_sources[player]);
             SDL_Event event;
             while (SDL_PollEvent(&event)) {
-                const bool capture_edges = !remap_menu.active && !hud_editor.active
-                    && !frame_frozen;
-                const bool event_was_exit_confirmation = exit_confirmation;
                 const auto reset_to_setup_key =
                     event.type == SDL_EVENT_KEY_DOWN
                     && !event.key.repeat
@@ -4571,21 +4472,12 @@ int main(int argc, char** argv) {
                 } else if (event.type == SDL_EVENT_GAMEPAD_ADDED
                            || event.type == SDL_EVENT_GAMEPAD_REMOVED) {
                     refresh_gamepads();
-                    previous_input_sources = bindings.sample_sources(gamepad);
-                    if (game.on_screen_controls()) previous_input_sources[2] |= touch_controls.buttons();
-                    for (auto& source : previous_input_sources)
-                        source = with_swapped_face_buttons(source, game.swap_face_buttons());
-                    presentation_edges.begin_sources(previous_input_sources);
-                    input.reset(presentation_edges.source_held());
-                    for (std::size_t player = 0; player < secondary_inputs.size(); ++player) {
-                        auto& sources = previous_secondary_sources[player];
-                        sources = player + 1U < gamepads.size()
-                            ? bindings.sample_sources(gamepads[player + 1U], false)
-                            : std::array<ButtonMask, 3>{};
-                        for (auto& source : sources)
-                            source = with_swapped_face_buttons(source, game.swap_face_buttons());
-                        secondary_edges[player].begin_sources(sources);
-                        secondary_inputs[player].reset(secondary_edges[player].source_held());
+                    for (std::size_t player = 0;
+                         player < secondary_inputs.size(); ++player) {
+                        const auto held = player + 1U < gamepads.size()
+                            ? bindings.sample_gamepad_only(gamepads[player + 1U])
+                            : starfox::input::ButtonMask{};
+                        secondary_inputs[player].reset(held);
                     }
                 }
                 if (event.type == SDL_EVENT_FINGER_DOWN
@@ -4877,26 +4769,6 @@ int main(int argc, char** argv) {
                     remap_input.reset(
                         bindings.sample_fixed_menu_navigation(gamepad));
                 }
-                if (capture_edges && !remap_menu.active && !hud_editor.active
-                    && !frame_frozen && !frame_debug_key && !fullscreen_key
-                    && !toggle_rewind_key && !exit_confirmation_key
-                    && (!event_was_exit_confirmation || exit_confirmation)) {
-                    const auto collect = [&](starfox::input::DigitalInputEvents& edges,
-                        SDL_Gamepad* device, bool keyboard) {
-                        auto buttons = with_swapped_face_buttons(
-                            bindings.event_buttons(event, device, keyboard),
-                            game.swap_face_buttons());
-                        if (suppress_fullscreen_start)
-                            buttons &= static_cast<ButtonMask>(~starfox::input::start);
-                        edges.record_source(buttons, event.type == SDL_EVENT_KEY_DOWN
-                            || event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN,
-                            event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_KEY_UP ? 0U : 1U);
-                    };
-                    collect(presentation_edges, gamepad, true);
-                    for (std::size_t player = 0; player < secondary_edges.size(); ++player)
-                        if (player + 1U < gamepads.size())
-                            collect(secondary_edges[player], gamepads[player + 1U], false);
-                }
             }
 
             if (!running) break;
@@ -4907,8 +4779,6 @@ int main(int argc, char** argv) {
             if (toggle_frame_freeze) {
                 frame_frozen = !frame_frozen;
                 input.reset();
-                presentation_edges = {};
-                secondary_edges = {};
                 for (std::size_t player = 0;
                      player < secondary_inputs.size(); ++player) {
                     const auto held = player + 1U < gamepads.size()
@@ -5011,7 +4881,7 @@ int main(int argc, char** argv) {
                 && !keyboard_state[SDL_SCANCODE_KP_ENTER]) {
                 suppress_fullscreen_start = false;
             }
-            auto sampled_sources = bindings.sample_sources(gamepad);
+            auto sampled_buttons = bindings.sample(gamepad);
 #if defined(STARFOX_UWP)
             if (!logged_controller_input && gamepad != nullptr
                 && bindings.sample_gamepad_only(gamepad) != 0U) {
@@ -5020,26 +4890,23 @@ int main(int argc, char** argv) {
             }
 #endif
             if (game.on_screen_controls()) {
-                sampled_sources[2] = static_cast<ButtonMask>(
-                    sampled_sources[2] | touch_controls.buttons());
+                sampled_buttons = static_cast<ButtonMask>(
+                    sampled_buttons | touch_controls.buttons());
             }
-            for (auto& source : sampled_sources)
-                source = with_swapped_face_buttons(source, game.swap_face_buttons());
+            sampled_buttons = with_swapped_face_buttons(
+                sampled_buttons, game.swap_face_buttons());
             for (const auto& press : scripted_presses) {
                 if (presented_frames >= press.presentation_frame
                     && presented_frames < press.presentation_frame + 3U) {
-                    sampled_sources[2] = static_cast<ButtonMask>(
-                        sampled_sources[2] | press.buttons);
+                    sampled_buttons = static_cast<ButtonMask>(
+                        sampled_buttons | press.buttons);
                 }
             }
             if (suppress_fullscreen_start) {
-                for (auto& source : sampled_sources)
-                    source = static_cast<ButtonMask>(source & ~starfox::input::start);
+                sampled_buttons = static_cast<ButtonMask>(
+                    sampled_buttons & ~starfox::input::start);
             }
-            const auto sampled_buttons = static_cast<ButtonMask>(
-                sampled_sources[0] | sampled_sources[1] | sampled_sources[2]);
-            input.sample(sampled_buttons, presentation_edges);
-            previous_input_sources = sampled_sources;
+            input.sample(sampled_buttons);
             if (exit_confirmation) {
                 // Host confirmation input is presentation-rate UI. Consuming
                 // it only inside a 60 Hz raster phase lost quick presses at
@@ -5064,14 +4931,12 @@ int main(int argc, char** argv) {
             if (!running) break;
             for (std::size_t player = 0;
                  player < secondary_inputs.size(); ++player) {
-                auto sources = player + 1U < gamepads.size()
-                    ? bindings.sample_sources(gamepads[player + 1U], false)
-                    : std::array<ButtonMask, 3>{};
-                for (auto& source : sources)
-                    source = with_swapped_face_buttons(source, game.swap_face_buttons());
-                secondary_inputs[player].sample(static_cast<ButtonMask>(sources[0] | sources[1] | sources[2]),
-                    secondary_edges[player]);
-                previous_secondary_sources[player] = sources;
+                secondary_inputs[player].sample(
+                    player + 1U < gamepads.size()
+                        ? with_swapped_face_buttons(
+                            bindings.sample_gamepad_only(gamepads[player + 1U]),
+                            game.swap_face_buttons())
+                        : starfox::input::ButtonMask{});
             }
             remap_input.sample(
                 bindings.sample_fixed_menu_navigation(gamepad));
@@ -5138,102 +5003,6 @@ int main(int argc, char** argv) {
                 if (exit_confirmation) {
                     // Freeze source video, simulation and input underneath
                     // the host confirmation card.
-                    continue;
-                }
-                if ((test_native_gameplay
-                        || game.timing_mode()==starfox::simulation::TimingMode::accurate)
-                    && game.native_gameplay_ready()
-                    && (game.native_transfer_timeline() || audio_video_phases==0U)) {
-                    const bool attaching=!game.native_transfer_timeline();
-                    if (attaching) {
-                        native_phase_target=0U; native_phase_remainder=0U;
-                        native_last_publication=0U;
-                        native_publication_duration=1'073'864U;
-                    }
-                    native_phase_remainder+=236'250'000U;
-                    native_phase_target+=native_phase_remainder/660U;
-                    native_phase_remainder%=660U;
-                    audio.set_native_playback(speed_multiplier,!advance_frozen_frame);
-                    audio.set_volumes(game.music_volume(),game.sfx_volume());
-                    audio.set_game_paused(false); // Native PAUSESND/MSU commands own source pause.
-                    while (game.native_transfer_clock()<native_phase_target) {
-                        if (!game.native_transfer_active()) {
-                            std::array<starfox::input::TickInput,4> secondary_controls{};
-                            for (std::size_t player=0;player<secondary_controls.size();++player)
-                                secondary_controls[player]=secondary_inputs[player].consume();
-                            game.set_secondary_inputs(secondary_controls);
-                            game.set_mouse_input(ex_mouse_input.consume());
-                            game.set_ntt_input(sample_ntt_data_pad(keyboard_state));
-                            game.begin_native_gameplay_update(input.consume());
-                            if (attaching && game.native_transfer_clock()==0U) audio.bind_native_audio(game);
-                        }
-                        std::array<ButtonMask,5> held{};
-                        held[0]=sampled_buttons;
-                        for (std::size_t player=0;player<previous_secondary_sources.size();++player) {
-                            const auto& sources=previous_secondary_sources[player];
-                            held[player+1U]=sources[0] | sources[1] | sources[2];
-                        }
-                        game.sample_native_controller_held(held);
-                        const auto previous_scene=game.scene_revision();
-                        const auto previous_publication=game.native_presentation_revision();
-                        const auto result=game.advance_native_transfer(native_phase_target-game.native_transfer_clock());
-                        audio.advance_native_audio(game.native_transfer_clock());
-                        if (!result && game.native_presentation_revision()==previous_publication) continue;
-                        // Live callbacks already consumed these writes. Clear diagnostics
-                        // before the host exit dispatcher can produce new frontend commands.
-                        static_cast<void>(game.map().take_msu_register_writes());
-                        if (!result) static_cast<void>(game.map().take_apu_port_writes());
-                        const auto completed_clock=game.native_transfer_clock();
-                        if (!game.paused())
-                            native_publication_duration=std::max<std::uint64_t>(1U,completed_clock-native_last_publication);
-                        native_last_publication=completed_clock;
-                        const bool leaving=game.native_gameplay_exit_pending();
-                        if (leaving) {
-                            audio.unbind_native_audio(game);
-                            game.finish_native_gameplay_exit();
-                            if (test_native_exit) std::cerr << "native-handoff exit=" << test_native_exit
-                                << " flow=" << static_cast<unsigned>(game.flow_state())
-                                << " ready=" << game.native_gameplay_ready() << '\n';
-                            pending_audio_writes=game.map().take_apu_port_writes();
-                            pending_msu_writes=game.map().take_msu_register_writes();
-                        }
-                        previous=current; previous_camera=current_camera;
-                        previous_raster_motion=current_raster_motion; previous_oam=current_oam;
-                        previous_cockpit_roll=current_cockpit_roll; previous_circle=current_circle;
-                        previous_window_wipe=current_window_wipe;
-                        current=capture(); current_camera=capture_camera();
-                        current_raster_motion=capture_raster_motion(); current_oam=game.map().ppu_state().oam;
-                        current_cockpit_roll=game.map().read_native_word(hud_rotation_address);
-                        current_circle=game.circle_effect_state(); current_window_wipe=game.window_wipe_state();
-                        const bool scene_cut=game.scene_revision()!=previous_scene;
-                        const bool camera_cut=starfox::timing::camera_transform_is_discontinuous(previous_camera,current_camera);
-                        const bool raster_cut=raster_source_changed(previous_raster_motion,current_raster_motion,!leaving);
-                        profile_scene_cuts+=scene_cut; profile_camera_cuts+=camera_cut; profile_raster_cuts+=raster_cut;
-                        if (scene_cut || camera_cut || leaving) {
-                            previous=current; previous_camera=current_camera;
-                            previous_raster_motion=current_raster_motion; previous_oam=current_oam;
-                            previous_cockpit_roll=current_cockpit_roll; previous_circle=current_circle;
-                            previous_window_wipe=current_window_wipe;
-                        } else if (raster_cut) previous_raster_motion=current_raster_motion;
-                        ++source_logic_frames;
-                        if (result) ++native_completed_updates;
-                        if (test_native_exit && native_completed_updates==12U && !leaving)
-                            game.map().write_native_word(ram_symbol("LEVELFINISHED"),test_native_exit);
-                        synchronize_ex_save();
-                        if (leaving) {
-                            input.reset(sampled_buttons);
-                            for (std::size_t player=0;player<secondary_inputs.size();++player)
-                                secondary_inputs[player].reset(held[player+1U]);
-                            break;
-                        }
-                    }
-                    // Rumble is a host peripheral in these cartridge builds.
-                    // Service it once per raster phase, even while MAIN has
-                    // not published a completed view. Read live RAM without
-                    // releasing the renderer's held presentation snapshot.
-                    rumble.advance(game.map(), gamepad,
-                        game.rumble() && active_experience
-                            == starfox::simulation::Experience::original, true);
                     continue;
                 }
                 game.present_frame();
@@ -5345,20 +5114,7 @@ int main(int argc, char** argv) {
                     game.set_ntt_input(remap_menu.active || hud_editor.active
                             ? 0U
                             : sample_ntt_data_pad(keyboard_state));
-                    const auto input_flow = game.flow_state();
-                    const auto input_page = game.pregame_page();
-                    const auto input_scene = game.scene_revision();
-                    const auto input_paused = game.paused();
                     const auto tick_result = game.tick(controls);
-                    if (game.flow_state() != input_flow || game.pregame_page() != input_page
-                        || game.scene_revision() != input_scene || game.paused() != input_paused) {
-                        // Pending presses belong to the screen that received
-                        // them. Do not replay a second Start/confirm after a
-                        // transition, or a combat tap after a new stage loads.
-                        input.reset(sampled_buttons);
-                        for (std::size_t player = 0; player < secondary_inputs.size(); ++player)
-                            secondary_inputs[player].reset(secondary_controls[player].held);
-                    }
                     // Cartridge PAUSESND commands still run through the SPC
                     // streams so their pause/unpause effects are audible.
                     // Companion MSU playback is host-decoded, so freeze only
@@ -5535,13 +5291,7 @@ int main(int argc, char** argv) {
             // source state is frozen; that made star/dust pixels alternate
             // between adjacent integer projections on high-refresh displays.
             const auto interpolation_alpha = game.paused() ? 1.0
-                : game.native_transfer_timeline()
-                    ? std::clamp((static_cast<double>(native_phase_target)-static_cast<double>(native_last_publication)
-                        + raster_batch.phase_fraction*(236'250'000.0/660.0))
-                        /static_cast<double>(native_publication_duration),0.0,1.0)
                 : game.logic_interpolation_alpha(raster_batch.phase_fraction);
-            const auto exact_source_positions = render_scale == 1U
-                && (interpolation_alpha == 0.0 || interpolation_alpha == 1.0);
             if (interpolation_alpha > 0.0 && interpolation_alpha < 1.0) {
                 ++profile_fractional_presentations;
             }
@@ -6169,17 +5919,8 @@ int main(int argc, char** argv) {
                 || game.flow_state()
                     == starfox::simulation::GameFlowState::controls_choice;
             if (!planet_screen && game.map().dots_mode() < 0) {
-                starfox::render::DustRenderState dust_state;
-                dust_state.subpixel_projection = !game.paused()
-                    && interpolation_alpha > 0.0 && interpolation_alpha < 1.0;
-                dust_state.planet_stars = game.map().read_native_byte(planet_stars_address);
-                dust_state.vanish_x = static_cast<std::int16_t>(
-                    game.map().read_native_word(vanish_x_address) + superfx_ui_offset_x);
-                dust_state.vanish_y = static_cast<std::int16_t>(
-                    game.map().read_native_word(vanish_y_address)
-                    + (extend_scene_vertical ? superfx_offset_y : 0));
                 dust_renderer.draw(game.dust(), game.dust_point_count(),
-                    camera, view_matrix, superfx_frame, dust_state);
+                    camera, view_matrix, superfx_frame);
             } else if (!planet_screen && game.map().dots_mode() > 0) {
                 if (grid_lines_address != 0U
                     && game.map().read_native_word(grid_lines_address) != 0U) {
@@ -6268,13 +6009,12 @@ int main(int argc, char** argv) {
                         current_transform->second.rotation_matrix,
                         transform_alpha);
                 const auto position = world_to_camera(
-                    transform.x, transform.y, transform.z, camera, view_matrix,
-                    exact_source_positions);
+                    transform.x, transform.y, transform.z, camera, view_matrix);
                 const auto source_position = world_to_camera(
                     current_transform->second.transform.x,
                     current_transform->second.transform.y,
                     current_transform->second.transform.z,
-                    source_camera, source_view_matrix, true);
+                    source_camera, source_view_matrix);
                 visible.push_back({handle, transform, position,
                     source_position.z, object_matrix,
                     current_transform->second.rotation_matrix});
@@ -6292,16 +6032,15 @@ int main(int argc, char** argv) {
             };
             const auto model_colour_override =
                 game.model_colour_table_override();
-            const auto effective_colour_table = [&game, special_colour, red_colour,
+            const auto effective_colour_table = [special_colour, red_colour,
                                                    white_colour,
                                                    model_colour_override](
-                                                      const auto handle) {
-                const auto& object = game.objects().at(handle);
+                                                      const auto& object) {
                 // MDRAWLIS.MC's -NAN modes 1-5 replace M_COLOURPTR before
                 // hit-flash/special-colour handling, so the selected texture
                 // table has priority for every object in the source list.
                 if (model_colour_override) return *model_colour_override;
-                const auto flags = game.submitted_strategy_flags(handle);
+                const auto flags = object.strategy_flags[0];
                 if ((flags & 0x40U) != 0U) return std::uint16_t{};
                 if ((flags & 0x02U) != 0U && (flags & 0x20U) == 0U) {
                     return static_cast<std::uint16_t>(
@@ -6321,8 +6060,8 @@ int main(int argc, char** argv) {
                 // actual raster data. Requiring NULLSHAPE to decode before
                 // this branch silently discarded Meteor's chained fire trail
                 // whenever that placeholder was absent from the shape cache.
-                if ((game.submitted_strategy_flags(item.handle) & 0x40U) != 0U) continue;
-                const auto colour_table = effective_colour_table(item.handle);
+                if ((object.strategy_flags[0] & 0x40U) != 0U) continue;
+                const auto colour_table = effective_colour_table(object);
                 const auto base_shape_key = (static_cast<std::uint32_t>(object.shape) << 16U)
                     | colour_table;
                 if (object.shape == 0 || invalid_shapes.contains(base_shape_key)) continue;
@@ -6347,10 +6086,10 @@ int main(int argc, char** argv) {
             const auto make_pose = [&](const VisibleObject& item, bool shadow) {
                 const auto& object = game.objects().at(item.handle);
                 const auto true_colour_shadow =
-                    (game.submitted_strategy_flags(item.handle) & 0x04U) != 0U;
+                    (object.strategy_flags[0] & 0x04U) != 0U;
                 const auto position = shadow && !true_colour_shadow
                     ? world_to_camera(item.transform.x, shadow_height,
-                        item.transform.z, camera, view_matrix, exact_source_positions)
+                        item.transform.z, camera, view_matrix)
                     : item.position;
                 starfox::render::RenderPose pose;
                 pose.x = position.x;
@@ -6366,21 +6105,31 @@ int main(int argc, char** argv) {
                 pose.vanish_y = static_cast<std::int16_t>(
                     game.map().read_native_word(vanish_y_address)
                     + (extend_scene_vertical ? superfx_offset_y : 0));
-                if (shadow && !true_colour_shadow) {
-                    pose.force_colour = true;
-                    pose.forced_colour = 0x09U;
+                auto object_matrix = item.object_matrix;
+                if (shadow) {
+                    // mshowshadow clears rmat12/rmat22/rmat32 before the
+                    // object matrix is composed with the view matrix.
+                    object_matrix[1] = 0;
+                    object_matrix[4] = 0;
+                    object_matrix[7] = 0;
+                    if (!true_colour_shadow) {
+                        pose.force_colour = true;
+                        pose.forced_colour = 0x09U;
+                    }
                 }
-                pose.rotation_matrix = starfox::simulation::compose_model_matrix_q15(
-                    item.object_matrix, view_matrix, item.transform.pitch,
-                    item.transform.yaw, item.transform.roll, shadow);
+                pose.rotation_matrix = starfox::simulation::multiply_matrix_q15(
+                    object_matrix, view_matrix);
                 pose.use_rotation_matrix = true;
+                auto source_object_matrix = item.source_object_matrix;
+                if (shadow) {
+                    source_object_matrix[1] = 0;
+                    source_object_matrix[4] = 0;
+                    source_object_matrix[7] = 0;
+                }
                 pose.source_depth = item.source_depth;
                 pose.source_lighting_matrix =
-                    starfox::simulation::compose_model_matrix_q15(
-                        item.source_object_matrix, source_view_matrix,
-                        static_cast<unsigned>(object.rotation_x) * 256U,
-                        static_cast<unsigned>(object.rotation_y) * 256U,
-                        static_cast<unsigned>(object.rotation_z) * 256U, shadow);
+                    starfox::simulation::multiply_matrix_q15(
+                        source_object_matrix, source_view_matrix);
                 pose.use_source_lighting_state = true;
                 pose.subpixel_projection = !game.paused()
                     && game.presentation_fps() > 20U
@@ -6440,8 +6189,8 @@ int main(int argc, char** argv) {
             if (shadows_enabled) {
                 for (const auto& item : visible) {
                     const auto& object = game.objects().at(item.handle);
-                    if ((game.submitted_strategy_flags(item.handle) & 0x0cU) == 0U) continue;
-                    const auto colour_table = effective_colour_table(item.handle);
+                    if ((object.strategy_flags[0] & 0x0cU) == 0U) continue;
+                    const auto colour_table = effective_colour_table(object);
                     const auto base_shape_key =
                         (static_cast<std::uint32_t>(object.shape) << 16U)
                         | colour_table;
@@ -6470,22 +6219,22 @@ int main(int argc, char** argv) {
             }
             for (const auto& item : visible) {
                 const auto& object = game.objects().at(item.handle);
-                if ((game.submitted_strategy_flags(item.handle) & 0x04U) != 0U) continue;
+                if ((object.strategy_flags[0] & 0x04U) != 0U) continue;
                 auto& target = controls_screen && item.handle == game.player()
                     ? controls_player_layer : superfx_frame;
-                if ((game.submitted_strategy_flags(item.handle) & 0x40U) != 0U) {
+                if ((object.strategy_flags[0] & 0x40U) != 0U) {
                     text_renderer.draw(object.colour_table, object.extended[21],
                         std::bit_cast<std::int8_t>(object.texture_scroll_x),
                         make_pose(item, false), target);
                     continue;
                 }
-                const auto colour_table = effective_colour_table(item.handle);
+                const auto colour_table = effective_colour_table(object);
                 const auto base_shape_key = (static_cast<std::uint32_t>(object.shape) << 16U)
                     | colour_table;
                 if (object.shape == 0 || invalid_shapes.contains(base_shape_key)) continue;
                 const auto base = shape_cache.find(base_shape_key);
                 if (base == shape_cache.end()) continue;
-                if ((game.submitted_strategy_flags(item.handle) & 0x10U) != 0U) {
+                if ((object.strategy_flags[0] & 0x10U) != 0U) {
                     particle_renderer.draw_owner(game.particles(), item.handle,
                         make_pose(item, false), interpolation_alpha,
                         target);
@@ -6507,11 +6256,20 @@ int main(int argc, char** argv) {
                     }
                 }
                 auto pose = make_pose(item, false);
-                if ((game.submitted_strategy_flags(item.handle) & 0x20U) != 0U) {
+                if ((object.strategy_flags[0] & 0x20U) != 0U) {
+                    auto size_adjustment = static_cast<std::int16_t>(
+                        std::bit_cast<std::int8_t>(object.texture_scroll_x));
+                    for (std::uint8_t shift = 0; shift < base_header.shift; ++shift) {
+                        size_adjustment = starfox::simulation::add16(
+                            size_adjustment, size_adjustment);
+                    }
+                    auto diameter = starfox::simulation::add16(
+                        base_header.size, size_adjustment);
+                    diameter = starfox::simulation::add16(diameter, diameter);
+                    if (diameter == 0) diameter = 1;
                     pose.simple_scaled_sprite = true;
                     pose.simple_sprite_colour = object.extended[21];
-                    pose.simple_sprite_world_size = decoder.simple_sprite_diameter(
-                        base_header, std::bit_cast<std::int8_t>(object.texture_scroll_x));
+                    pose.simple_sprite_world_size = diameter;
                 }
                 renderer.draw(found->second, pose, target, false,
                     &target == &superfx_frame
@@ -6720,7 +6478,7 @@ int main(int argc, char** argv) {
                         superfx_ui);
                 }
             }
-            if (game.paused() && !(game.native_transfer_timeline() && present_native_ex_bitmap)) {
+            if (game.paused()) {
                 text_renderer.draw_game_text(
                     pause_text, 90, 90, superfx_ui);
             }
@@ -7258,9 +7016,7 @@ int main(int argc, char** argv) {
                     } else {
                         draw_centred("PRE-GAME SETUP", 37, 10U);
                         const auto timing = game.timing_mode()
-                            == starfox::simulation::TimingMode::accurate
-                            ? std::string_view{"ACCURATE"}
-                            : game.timing_mode()==starfox::simulation::TimingMode::unlocked_20_fps
+                            == starfox::simulation::TimingMode::unlocked_20_fps
                             ? std::string_view{"UNLOCKED 20 HZ"}
                             : std::string_view{"ORIGINAL"};
                         const auto presentation =
@@ -7663,11 +7419,6 @@ int main(int argc, char** argv) {
                               << profile_camera_cuts << '/'
                               << profile_raster_cuts
                               << '\n';
-                }
-                if (trace_native_gameplay) {
-                    std::cerr << "native-desktop updates=" << native_completed_updates
-                        << " master=" << game.native_transfer_clock()
-                        << " flow=" << static_cast<unsigned>(game.flow_state()) << '\n';
                 }
                 if (std::getenv("STARFOX_TRACE_MSU1") != nullptr) {
                     std::cerr << "msu1 enabled=" << game.msu1_music()

@@ -19,7 +19,7 @@ first launch it validates the user's own unmodified Star Fox USA v1.2 (Rev 2)
 ROM, reconstructs the Original and Star Fox EX runtime data locally, and writes
 one version-bound `Starfox-Assets.BIN` companion beside the executable. Later
 launches use that validated companion without requiring the retail ROM to stay
-present. `v0.0.4.1` is the current public alpha release.
+present. `v0.0.4` is the current public alpha release.
 
 This project utilizes Codex GPT 5.6 Sol at Ex-High thought.
 
@@ -343,9 +343,8 @@ change the deterministic game pace.
 
 Unlocked 20 FPS uses one logic/strategy update for every three fixed 60 Hz
 cartridge raster phases. Original Speed additionally retains source frames
-using a workload estimate with separate launch and boss handling. It is not
-yet a cycle-exact reproduction of cartridge slowdown; the outstanding timing
-work is recorded in `docs/PARITY-AUDIT-2026-09-05.md`. The selected render FPS
+according to the measured 10.7 MHz workload schedule, reproducing the
+characteristic cartridge slowdown. The independently selected render FPS
 changes only how often frames are presented: an exact rational scheduler
 services the same raster phases, logic ticks, frontend timing, and audio pace
 at 20, 30, 60, 90, 120, 240, 360, and 480 FPS. Object and camera
@@ -364,12 +363,6 @@ Useful diagnostics include `starfox_stage_trace`, `starfox_stage_preview`,
 and licenses are recorded in `THIRD_PARTY_NOTICES.md`. The original Nintendo/
 Argonaut staff, Star Fox EX team, UltraStarFox contributors, native-port
 credit, and MSU-set attribution are recorded separately in `CREDITS.md`.
-
-The original code and documentation contributed to Star Fox Enhanced are
-licensed under the [MIT License](LICENSE). Third-party code retains its own
-licenses, including snes_spc's LGPL; see [third-party notices](THIRD_PARTY_NOTICES.md).
-The MIT license does not cover the underlying games, upstream game source,
-cartridge images, game patches and assets, music, or third-party trademarks.
 
 The EX regression runs every one of the 40 stage labels shipped through
 `PLANETS` and `PLANETS2` for 2,000 deterministic logic ticks. The source-only

@@ -98,132 +98,6 @@ int main() {
                 joystick, SDL_GAMEPAD_BUTTON_RIGHT_PADDLE1, false),
             "virtual Steam Deck paddle could not release");
     bindings.reset(starfox::app::BindingDevice::gamepad);
-    // A real SDL virtual-device tap completes before the next presentation
-    // samples held state. The previous desktop path sees no button at all.
-    for (const auto shoulder : {SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,
-                                SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER}) {
-        SDL_UpdateGamepads();
-        SDL_FlushEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST);
-        require(SDL_SetJoystickVirtualButton(joystick, shoulder, true),
-            "short shoulder tap could not press");
-        SDL_UpdateGamepads();
-        require(SDL_SetJoystickVirtualButton(joystick, shoulder, false),
-            "short shoulder tap could not release");
-        SDL_UpdateGamepads();
-        starfox::input::TickInput edges{};
-        SDL_Event event;
-        unsigned transitions{};
-        while (SDL_PollEvent(&event)) {
-            const auto buttons = bindings.event_buttons(event, gamepad);
-            if (!buttons) continue;
-            ++transitions;
-            if (event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) edges.pressed |= buttons;
-            else if (event.type == SDL_EVENT_GAMEPAD_BUTTON_UP) edges.released |= buttons;
-        }
-        const auto expected = shoulder == SDL_GAMEPAD_BUTTON_LEFT_SHOULDER
-            ? starfox::input::left_shoulder : starfox::input::right_shoulder;
-        require(transitions == 2 && edges.pressed == expected && edges.released == expected,
-            "SDL did not preserve both short-tap events");
-        const auto held = bindings.sample_gamepad_only(gamepad);
-        starfox::input::InputLatch previous_path;
-        previous_path.sample(held);
-        require((previous_path.consume().pressed & expected) == 0,
-            "fixture did not reproduce the final-state-only lost tap");
-        starfox::input::InputLatch recovered;
-        recovered.sample(held, edges.pressed, edges.released);
-        // Several presentations may pass before a slow source tick consumes
-        // the input. Extra polls must neither discard nor repeat the tap.
-        for (unsigned frame = 0; frame < 12; ++frame) recovered.sample(held);
-        const auto tap = recovered.consume();
-        require(tap.held == held && tap.pressed == expected && tap.released == expected,
-            "complete tap was lost before the paced simulation consumed it");
-        require(recovered.consume().pressed == 0 && recovered.consume().released == 0,
-            "short tap was delivered more than once");
-        recovered.reset(expected);
-        recovered.sample(expected, expected, expected);
-        const auto overlapping = recovered.consume();
-        require(overlapping.pressed == 0 && overlapping.released == 0,
-            "another binding's tap retriggered an already-held action");
-    }
-    for (const auto shoulder : {SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,
-                                SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER}) {
-        SDL_UpdateGamepads();
-        SDL_FlushEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST);
-        for (unsigned tap = 0; tap < 2; ++tap) {
-            require(SDL_SetJoystickVirtualButton(joystick, shoulder, true), "batch tap press failed");
-            SDL_UpdateGamepads();
-            require(SDL_SetJoystickVirtualButton(joystick, shoulder, false), "batch tap release failed");
-            SDL_UpdateGamepads();
-        }
-        starfox::input::DigitalInputEvents batch;
-        SDL_Event event;
-        while (SDL_PollEvent(&event))
-            batch.record(bindings.event_buttons(event, gamepad),
-                event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN);
-        const auto expected = shoulder == SDL_GAMEPAD_BUTTON_LEFT_SHOULDER
-            ? starfox::input::left_shoulder : starfox::input::right_shoulder;
-        const auto held = bindings.sample_gamepad_only(gamepad);
-        starfox::input::InputLatch merged, counted;
-        merged.sample(held, batch.pressed, batch.released);
-        require(merged.consume().pressed == expected && merged.consume().pressed == 0,
-            "old event masks did not reproduce the merged pair");
-        counted.sample(held, batch);
-        for (unsigned tap = 0; tap < 2; ++tap) {
-            const auto controls = counted.consume();
-            require(controls.held == held && controls.pressed == expected && controls.released == expected,
-                "two virtual SDL taps in one presentation were not both retained");
-        }
-        require(counted.consume().pressed == 0, "batch taps repeated after delivery");
-    }
-    for (const auto shoulder : {SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,
-                                SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER}) {
-        require(SDL_SetJoystickVirtualButton(joystick, shoulder, true), "initial held press failed");
-        SDL_UpdateGamepads();
-        const auto sources = bindings.sample_sources(gamepad, false);
-        const auto held_before = bindings.sample_gamepad_only(gamepad);
-        SDL_FlushEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST);
-        starfox::input::InputLatch old_path, recovered;
-        old_path.reset(held_before);
-        recovered.reset(held_before);
-        for (bool down : {false, true, false}) {
-            require(SDL_SetJoystickVirtualButton(joystick, shoulder, down), "release/repress event failed");
-            SDL_UpdateGamepads();
-        }
-        starfox::input::DigitalInputEvents batch;
-        batch.begin_sources(sources);
-        SDL_Event event;
-        while (SDL_PollEvent(&event))
-            batch.record_source(bindings.event_buttons(event, gamepad, false),
-                event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN, 1);
-        const auto held = bindings.sample_gamepad_only(gamepad);
-        old_path.sample(held, batch.pressed, batch.released);
-        require(old_path.consume().pressed == 0, "old path did not lose the held release/repress");
-        recovered.sample(held, batch);
-        const auto first = recovered.consume(), second = recovered.consume();
-        require(held_before != 0 && first.held == 0 && first.pressed == held_before
-            && first.released == held_before && second.pressed == 0 && second.released == held_before,
-            "SDL held release/repress was not delivered exactly once");
-    }
-    {
-        SDL_Event event{};
-        event.type = SDL_EVENT_KEY_DOWN;
-        event.key.scancode = SDL_SCANCODE_K;
-        bindings.bind_keyboard(10, SDL_SCANCODE_K);
-        require(bindings.event_buttons(event, gamepad) == starfox::input::left_shoulder,
-            "queued keyboard event ignored remapping");
-        require(bindings.event_buttons(event, gamepad, false) == 0,
-            "keyboard tap leaked into a secondary player");
-        event.key.repeat = true;
-        require(bindings.event_buttons(event, gamepad) == 0,
-            "keyboard auto-repeat created another press");
-        event = {};
-        event.type = SDL_EVENT_GAMEPAD_BUTTON_DOWN;
-        event.gbutton.which = identifier + 100;
-        event.gbutton.button = SDL_GAMEPAD_BUTTON_LEFT_SHOULDER;
-        require(bindings.event_buttons(event, gamepad) == 0,
-            "another controller's event leaked into player one");
-        bindings.reset(starfox::app::BindingDevice::keyboard);
-    }
     auto second_description = description;
     second_description.vendor_id = 0x045eU;
     second_description.product_id = 0x028eU;
@@ -288,8 +162,8 @@ int main() {
 #endif
     const auto pregame_test_path = std::filesystem::temp_directory_path()
         / "starfox-enhanced-pregame-test.cfg";
-    require(starfox::app::PregameSettings{}.timing_mode == 2U,
-            "new pre-game settings did not default to Accurate pace");
+    require(starfox::app::PregameSettings{}.timing_mode == 1U,
+            "new pre-game settings did not default to Original pace");
     const starfox::app::PregameSettings saved_pregame{
         1U, 90U, 3U, true, true,
         3U, true, false, true, true, 1U, true, false, 5U, 1U, 70U, 30U, 3U,
@@ -302,18 +176,6 @@ int main() {
                 pregame_test_path, loaded_pregame)
                 && loaded_pregame == saved_pregame,
             "pre-game settings did not round-trip");
-    for (const auto mode : {0U, 1U, 2U}) {
-        auto settings = saved_pregame;
-        settings.timing_mode = static_cast<std::uint8_t>(mode);
-        require(starfox::app::save_pregame_settings(pregame_test_path, settings)
-                    && starfox::app::load_pregame_settings(pregame_test_path, loaded_pregame)
-                    && loaded_pregame == settings,
-                "pace setting changed its persisted meaning");
-    }
-    auto invalid_pace = saved_pregame;
-    invalid_pace.timing_mode = 3U;
-    require(!starfox::app::save_pregame_settings(pregame_test_path, invalid_pace),
-            "unsupported pace setting was saved");
     {
         std::ofstream legacy_pregame{pregame_test_path, std::ios::trunc};
         legacy_pregame
@@ -326,8 +188,7 @@ int main() {
     loaded_pregame = {};
     require(starfox::app::load_pregame_settings(
                 pregame_test_path, loaded_pregame)
-        && loaded_pregame.anti_aliasing == 2U
-        && loaded_pregame.timing_mode == 0U,
+        && loaded_pregame.anti_aliasing == 2U,
             "legacy enabled FXAA was not migrated to medium strength");
     require(loaded_pregame.music_volume == 100U
                 && loaded_pregame.sfx_volume == 100U

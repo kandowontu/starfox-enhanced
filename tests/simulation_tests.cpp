@@ -792,7 +792,7 @@ int main(int argc, char** argv) {
     const auto head = objects.allocate_after();
     require((objects.active_handles() == std::vector<starfox::simulation::ObjectHandle>{head, first, second}),
             "object insertion order differs from l_add");
-    objects.at(second).attached = objects.native_pointer(first);
+    objects.at(second).attached = first;
     require(objects.remove(first), "active object could not be removed");
     require(objects.at(second).attached == 0, "object references were not divorced on removal");
     const auto reused = objects.allocate_after(head);
@@ -896,10 +896,6 @@ int main(int argc, char** argv) {
     put8(0x018380U, 20U); // SETBGM
     put8(0x018381U, 0x42U);
     put8(0x018382U, 2U); // END
-    put8(0x018390U, 16U); put16(0x018391U, 0x1234U); // SETBG
-    put8(0x018393U, 100U); // WAITSETBG
-    put8(0x018394U, 18U); put16(0x018395U, 2000U); // MAPWAIT
-    put8(0x018397U, 2U); // END
 
     const starfox::assets::RomImage map_rom{rom_bytes};
     starfox::simulation::ObjectPool map_objects;
@@ -917,30 +913,6 @@ int main(int argc, char** argv) {
     map_vm.advance_distance(11);
     require(map_objects.active_count() == 3, "timed map object did not spawn");
     require(map_vm.countdown() == 5, "spawn distance was not loaded exactly");
-
-    starfox::simulation::ObjectPool background_objects;
-    const auto background_player = background_objects.allocate_after();
-    starfox::simulation::MapVm background_map{
-        map_rom, starfox::simulation::MapDatabase{map_rom, 0x018000, 0x018100}, background_objects};
-    background_map.start(0x018390U, background_player);
-    background_map.advance_distance(1);
-    require(background_map.background_request_pending() && background_map.cursor() == 0x018393U,
-        "background fixture did not stop at WAITSETBG");
-    // A native owner may have newer map registers than the host cache.
-    background_map.write_native_word(0x001782U, 0x4567U);
-    background_map.write_native_word(0x001780U, 0x89abU);
-    background_map.complete_background_request();
-    require(!background_map.background_request_pending()
-        && background_map.cursor() == 0x018393U && background_map.countdown() == 1
-        && background_map.read_native_word(0x001782U) == 0x4567U
-        && background_map.read_native_word(0x001780U) == 0x89abU,
-        "background completion advanced the map or overwrote native registers");
-    background_map.advance_distance(1);
-    require(background_map.countdown() == 0 && background_map.cursor() == 0x018393U,
-        "WAITSETBG resumed before its distance counter became negative");
-    background_map.advance_distance(1);
-    require(background_map.countdown() == 2000 && background_map.cursor() == 0x018397U,
-        "the next host map update did not resume after background completion");
 
     starfox::simulation::ObjectPool inline_objects;
     const auto inline_player = inline_objects.allocate_after();
@@ -1004,44 +976,7 @@ int main(int argc, char** argv) {
     put8(score_path++, 167);
     put16(score_path, 0x0102U); score_path += 2U;
     put8(score_path++, 166); // P_WAIT1
-    auto link_path = std::uint32_t{0x018400 + 70U};
-    put8(link_path++, 41); // pair two objects
-    put8(link_path++, 166); // P_WAIT1
-    put8(link_path++, 25); // mutual collision immunity
-    put8(link_path++, 166); // P_WAIT1
-    put8(link_path++, 148); put8(link_path++, 0); // remove attached object
-    put8(link_path++, 166); // P_WAIT1
     const starfox::assets::RomImage path_rom{rom_bytes};
-    for (const auto layout : {starfox::simulation::ObjectMemoryLayout::original,
-             starfox::simulation::ObjectMemoryLayout::starfox_ex}) {
-        starfox::simulation::ObjectPool links{4, layout};
-        const auto player = links.allocate_after();
-        const auto left = links.allocate_after(), right = links.allocate_after();
-        const auto spare = links.allocate_after();
-        starfox::simulation::OriginalPrng random;
-        starfox::simulation::PathVm paths{path_rom, 0x018400, 0x029999,
-            links, starfox::simulation::TrigTables{}, random};
-        paths.set_player(player);
-        paths.attach(left, 70);
-        paths.attach(right, 70);
-        paths.tick(left);
-        paths.tick(right);
-        require(links.at(left).attached == links.native_pointer(right)
-            && links.at(right).attached == links.native_pointer(left),
-            "PATH pairing did not store cartridge pointers");
-        paths.tick(left);
-        paths.tick(right);
-        require(links.at(left).immune_object == links.native_pointer(right)
-            && links.at(right).immune_object == links.native_pointer(left),
-            "PATH immunity did not resolve the paired cartridge pointers");
-        links.at(left).attached = spare; // scalar 4 is not a cartridge pointer
-        paths.tick(left);
-        require(links.is_active(spare), "PATH removal interpreted a scalar as a host handle");
-        paths.tick(right);
-        require(!links.is_active(left) && links.is_active(right)
-            && links.at(right).attached == 0 && links.at(right).immune_object == 0,
-            "PATH removal did not remove and divorce its attached cartridge object");
-    }
     starfox::simulation::ObjectPool path_objects;
     const auto path_player = path_objects.allocate_after();
     const auto path_actor = path_objects.allocate_after(path_player);
@@ -1947,7 +1882,6 @@ int main(int argc, char** argv) {
         // it as a direct native-dispatch fixture so the compatibility core
         // cannot regress into an instruction-limit crash here again.
         if (!starfox_ex_cartridge) {
-          for (const bool whole_list : {false, true}) {
             starfox::simulation::ObjectPool reported_crash_objects;
             starfox::simulation::ObjectHandle reported_object{};
             for (std::size_t index = 0; index < 7U; ++index) {
@@ -1976,12 +1910,11 @@ int main(int argc, char** argv) {
             }
             starfox::simulation::NativeStrategyScheduler reported_crash_scheduler{
                 upstream_symbols, reported_crash_objects,
-                reported_crash_map, whole_list ? 100U : 1U};
-            if (whole_list) static_cast<void>(reported_crash_scheduler.tick_all());
-            else static_cast<void>(reported_crash_scheduler.tick_object(reported_object));
+                reported_crash_map, 1U};
+            static_cast<void>(
+                reported_crash_scheduler.tick_object(reported_object));
             require(!reported_crash_objects.is_active(reported_object),
                     "failed PATH_ISTRAT object was not recovered and removed");
-          }
         }
 
         const auto map1_1b = upstream_symbols.find("MAP1_1B");
@@ -2027,7 +1960,7 @@ int main(int argc, char** argv) {
 
         starfox::simulation::GameSimulation game{upstream_rom, upstream_symbols, "LEVEL1_1"};
         // This fixture audits the deterministic three-raster 20 Hz path.
-        // The user-facing cold default is Accurate pace, so select the
+        // The user-facing cold default is Original pace, so select the
         // unlocked deterministic mode explicitly instead of inheriting a UI
         // preference into low-level timing assertions.
         game.set_timing_mode(
@@ -2162,15 +2095,11 @@ int main(int argc, char** argv) {
                 if (scramble_fade_game.map().fade_direction() < 0) {
                     saw_scramble_fade = true;
                     require(scramble_fade_game.map().screen_enabled()
-                                && scramble_fade_game.map().display_brightness() == 14U,
-                            "scramble transfer did not perform its first native fade step");
-                    for (unsigned raster = 0; raster < 7U; ++raster)
-                        scramble_fade_game.present_frame();
+                                && scramble_fade_game.map().display_brightness() == 15U,
+                            "scramble fade started from stale forced-black state");
+                    scramble_fade_game.present_frame();
                     require(scramble_fade_game.map().display_brightness() == 14U,
-                            "scramble fade advanced while its bitmap transfer was pending");
-                    static_cast<void>(scramble_fade_game.tick({}));
-                    require(scramble_fade_game.map().display_brightness() == 13U,
-                            "scramble fade did not advance once after seven raster phases");
+                            "scramble fade did not advance through a visible step");
                     break;
                 }
             }
@@ -2222,9 +2151,6 @@ int main(int argc, char** argv) {
                                 & 0x08U) != 0U,
                         "Star Fox EX Select view did not enter its immediate "
                         "invisible-player cockpit mode");
-                require((first_person_game.objects().at(
-                            first_person_game.player()).flags & 0x1eU) == 0x08U,
-                    "EX invisible player retained stale view flags instead of the source reset state");
                 for (std::size_t tick = 0U; tick < 240U; ++tick) {
                     static_cast<void>(first_person_game.tick({
                         starfox::input::right,
@@ -2233,8 +2159,7 @@ int main(int argc, char** argv) {
                         0U,
                     }));
                     if (first_person_game.objects().at(
-                            first_person_game.player()).world_x >= static_cast<std::int16_t>(
-                                upstream_symbols.find("SPACE_MAXX").front())) break;
+                            first_person_game.player()).world_x >= 600) break;
                 }
             } else {
                 for (std::size_t tick = 0; tick < 240U; ++tick) {
@@ -2268,20 +2193,17 @@ int main(int argc, char** argv) {
                             hud_rotation.front()) & 0x8000U) != 0U,
                     "first-person aim did not move the native crosshair");
             if (starfox_ex) {
-                // Select enters the cockpit during the outdoor SPACE section.
-                // Background completion must not skip its remaining map and
-                // move this fixture into a later tunnel's movement regime.
-                require(first_person_game.objects().at(first_person_game.player()).strategy_address
-                            == upstream_symbols.find("PLAYERINSPACE_STRAT").front()
-                        && first_person_game.objects().at(first_person_game.player()).world_x
-                            == static_cast<std::int16_t>(upstream_symbols.find("SPACE_MAXX").front())
-                        && first_person_game.map().read_native_byte(
-                            upstream_symbols.find("PMOVELIMITAND").front())
-                            == upstream_symbols.find("SPACE_PMOVELIMITAND").front(),
-                    "EX cockpit left its source SPACE movement regime");
+                // EX's Ktunnel_pmovelimitAND deliberately omits the right
+                // body-limit bit, so this segment must not synthesize the
+                // retail right-edge arrow.
+                require((first_person_game.map().read_native_byte(arrows.front())
+                            & 8U) == 0U,
+                        "Star Fox EX showed a retail-only K-tunnel right arrow");
+            } else {
+                require((first_person_game.map().read_native_byte(arrows.front())
+                            & 8U) != 0U,
+                        "cockpit right-bound indicator was not raised at its limit");
             }
-            require((first_person_game.map().read_native_byte(arrows.front()) & 8U) != 0U,
-                "cockpit right-bound indicator was not raised at its limit");
 
             // Meters gate the original OAM reticle. Direct sub-map entry does
             // not execute the parent route's METERS_ON, so reproduce that
@@ -2781,11 +2703,8 @@ int main(int argc, char** argv) {
         require(!current_background.empty()
                     && game.map().read_native_word(current_background.front()) == 3,
                 "transfer bridge did not run Corneria's original background request");
-        // PLAYEROPENING arms the fade on update three: four completed
-        // SETINIDISP calls have published 3, 6, 9, 12 by update six.
-        require(game.map().display_brightness() == 12
-                    && game.map().fade_direction() == 2,
-                "player-opening quick fade did not preserve its source transfer cadence");
+        require(game.map().display_brightness() == 15,
+                "player-opening strategy did not drive the original quick fade-up");
         require(!player_opening.empty()
                     && (game.objects().at(game.player()).strategy_address >> 16U)
                         == (player_opening.front() >> 16U),
@@ -4210,9 +4129,6 @@ int main(int argc, char** argv) {
                 && dimension_exit_game.flow_state()
                     == starfox::simulation::GameFlowState::gameplay;
              ++tick) {
-            // Reassert the outgoing exit while TRANSFER continues. MAIN's
-            // accepted transition must not restart its forty-frame counter.
-            dimension_exit_game.map().write_native_word(level_finished.front(),16U);
             static_cast<void>(dimension_exit_game.tick({}));
             saw_dimension_white = saw_dimension_white
                 || dimension_exit_game.colour_math_effect_state().active;
@@ -4664,16 +4580,11 @@ int main(int argc, char** argv) {
 
         starfox::simulation::GameSimulation completed_credits{
             upstream_rom, upstream_symbols, "CREDITSMAP"};
+        completed_credits.map().write_native_word(level_finished.front(), 8U);
+        static_cast<void>(completed_credits.tick({}));
         if (starfox_ex_cartridge) {
-            // Completion is a source map/input gate, not a host flag that
-            // permits skipping directly into FOXY_CONTINUE. Include its fade.
-            for (unsigned tick = 0; tick < 4000
-                    && completed_credits.flow_state()
-                        != starfox::simulation::GameFlowState::ex_pregame_menu; ++tick) {
-                const auto button = static_cast<starfox::input::ButtonMask>(
-                    tick >= 3500 ? starfox::input::start : 0);
-                static_cast<void>(completed_credits.tick({button, button, 0}));
-            }
+            static_cast<void>(completed_credits.tick(
+                {0, starfox::input::start, 0}));
             if (completed_credits.flow_state()
                     != starfox::simulation::GameFlowState::ex_pregame_menu) {
                 std::cerr << "EX credits return diagnostic: flow="
@@ -4686,8 +4597,6 @@ int main(int argc, char** argv) {
                             == starfox::simulation::GameFlowState::ex_pregame_menu,
                     "EX completed credits did not return to its source menu");
         } else {
-            completed_credits.map().write_native_word(level_finished.front(), 8U);
-            static_cast<void>(completed_credits.tick({}));
             for (std::size_t frame = 0; frame < 500U
                     && completed_credits.flow_state()
                         != starfox::simulation::GameFlowState::finished;
@@ -5736,15 +5645,11 @@ int main(int argc, char** argv) {
             static_cast<void>(title_game.tick({}));
         }
         static_cast<void>(title_game.tick({0, starfox::input::start, 0}));
-        require(title_game.map().display_brightness() == 15U
-                    && title_game.map().fade_direction() == -1,
-                "training exit did not arm its fifteen-transfer fade");
-        for (std::size_t tick = 0; tick < 14U; ++tick) {
+        for (std::size_t tick = 0; tick < 12U
+             && title_game.flow_state()
+                 == starfox::simulation::GameFlowState::training; ++tick) {
             static_cast<void>(title_game.tick({}));
-            require(title_game.flow_state() == starfox::simulation::GameFlowState::training,
-                    "training exit skipped a native fade transfer");
         }
-        static_cast<void>(title_game.tick({}));
         require(title_game.flow_state()
                     == starfox::simulation::GameFlowState::controls_choice,
                 "training START exit did not return to the source GAME/TRAINING choice");
@@ -6040,7 +5945,7 @@ int main(int argc, char** argv) {
         require(boot_game.flow_state()
                     == starfox::simulation::GameFlowState::pregame_menu
                     && boot_game.timing_mode()
-                        == starfox::simulation::TimingMode::accurate
+                        == starfox::simulation::TimingMode::original_speed
                     && boot_game.display_mode()
                         == starfox::simulation::DisplayMode::standard_4_3
                     && boot_game.presentation_fps() == 60U
@@ -6099,21 +6004,7 @@ int main(int argc, char** argv) {
         drive_boot({0, starfox::input::right, 0});
         require(boot_game.timing_mode()
                     == starfox::simulation::TimingMode::unlocked_20_fps,
-                "pre-game pace selector did not leave the Accurate default");
-        for (const auto expected : {starfox::simulation::TimingMode::original_speed,
-                 starfox::simulation::TimingMode::accurate,
-                 starfox::simulation::TimingMode::unlocked_20_fps}) {
-            drive_boot({0, starfox::input::right, 0});
-            require(boot_game.timing_mode() == expected,
-                    "pre-game pace selector skipped a forward choice");
-        }
-        for (const auto expected : {starfox::simulation::TimingMode::accurate,
-                 starfox::simulation::TimingMode::original_speed,
-                 starfox::simulation::TimingMode::unlocked_20_fps}) {
-            drive_boot({0, starfox::input::left, 0});
-            require(boot_game.timing_mode() == expected,
-                    "pre-game pace selector skipped a backward choice");
-        }
+                "pre-game pace selector did not leave the Original default");
         drive_boot({0, starfox::input::down, 0});
         require(boot_game.pregame_selection() == 2U,
                 "pre-game cursor did not reach RENDER FPS");

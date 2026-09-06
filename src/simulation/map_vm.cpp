@@ -109,15 +109,7 @@ MapVm::MapVm(
           symbols, "FADEDIR", kOriginalFadeDirection)),
       fade_address_(symbol_or(symbols, "FADE", kOriginalFade)),
       display_address_(symbol_or(symbols, "XINIDISP1", kOriginalDisplay)),
-      display_second_address_(symbol_or(symbols, "XINIDISP2", kOriginalDisplay + 2U)),
-      display_alternate_address_(symbol_or(symbols, "XINIDISP1A", kOriginalDisplay + 4U)),
       game_frame_address_(symbol_or(symbols, "GAMEFRAME", kOriginalGameFrame)),
-      flash_tunnel_address_(symbol_or(symbols, "FLASHTUNNELON", 0U)),
-      flash_background_address_(symbol_or(symbols, "FLASHBG", 0U)),
-      red_tunnel_palette_(symbol_or(symbols, "REDTUNNEL", 0U)),
-      thunder_palette_(symbol_or(symbols, "THUNDERCOL", 0U)),
-      random_address_(symbol_or(symbols, "RAND", 0U)),
-      irq_random_(symbol_or(symbols, "IRQRAND", 0U)),
       background_flags_address_(symbol_or(symbols, "BGFLAGS", kOriginalBackgroundFlags)),
       background_dma_list_address_(symbol_or(
           symbols, "BG_DMALIST", kOriginalBackgroundDmaList)),
@@ -154,7 +146,6 @@ MapVm::MapVm(
             + " does not match host object pool capacity "
             + std::to_string(objects_->capacity())};
     }
-    objects_->set_native_layout(object_base_, object_size_);
     if (symbols != nullptr) {
         constexpr std::array names{
             "SEND_MESSAGE_L", "SEND_MESSAGE2_L",
@@ -193,26 +184,11 @@ std::int16_t MapVm::player_world_z() const noexcept {
 }
 
 std::uint8_t MapVm::read_native_byte(std::uint32_t address) const noexcept {
-    if (presentation_held_)
-        if (const auto value = presentation_->read_ram(address)) return *value;
     return cpu_.read8(address);
 }
 
 std::uint16_t MapVm::read_native_word(std::uint32_t address) const noexcept {
-    return static_cast<std::uint16_t>(read_native_byte(address))
-        | (static_cast<std::uint16_t>(read_native_byte(address+1U)) << 8U);
-}
-
-void MapVm::hold_native_presentation() {
-    if (presentation_held_) throw std::logic_error{"Native presentation is already held"};
-    if (!presentation_) presentation_ = std::make_unique<NativePresentationSnapshot>();
-    cpu_.capture_presentation(*presentation_);
-    presentation_held_ = true;
-}
-
-void MapVm::release_native_presentation() noexcept {
-    presentation_held_ = false;
-    sync_display_from_cpu();
+    return cpu_.read16(address);
 }
 
 std::int8_t MapVm::dots_mode() const noexcept {
@@ -234,7 +210,6 @@ void MapVm::write_native_word(std::uint32_t address, std::uint16_t value) {
 }
 
 void MapVm::sync_display_from_cpu() noexcept {
-    if (presentation_held_) return;
     fade_direction_ = std::bit_cast<std::int8_t>(cpu_.read8(fade_direction_address_));
     fade_value_ = static_cast<std::uint8_t>(cpu_.read8(fade_address_) & 0x0fU);
     const auto display = cpu_.read8(display_address_);
@@ -262,10 +237,20 @@ void MapVm::set_display_brightness(std::uint8_t brightness) {
 }
 
 void MapVm::start_display_fade(std::int8_t direction) {
-    // WORLD.ASM writes only the direction. In particular INITBLACK_L may
-    // intentionally reset FADE without changing the current display byte.
-    write_native_byte(fade_direction_address_, std::bit_cast<std::uint8_t>(direction));
-    sync_display_from_cpu();
+    fade_direction_ = direction;
+    // Map streams change FADEDIR independently of INIDISP. FADE can still
+    // contain zero from the preceding forced-black setup even though native
+    // code has since restored a fully bright display. IRQ.ASM starts a
+    // fade-down from the brightness that is actually visible; retaining the
+    // stale counter turns that transition into an immediate black cut.
+    if (direction < 0 && screen_enabled_) {
+        fade_value_ = display_brightness_;
+    }
+    if (direction > 0 && !screen_enabled_) {
+        fade_value_ = 0U;
+        screen_enabled_ = true;
+    }
+    sync_display_to_cpu();
 }
 
 std::optional<std::array<std::int16_t, 2>> MapVm::background_scroll_override() const {
@@ -277,7 +262,7 @@ std::optional<std::array<std::int16_t, 2>> MapVm::background_scroll_override() c
         std::bit_cast<std::int16_t>(read_native_word(background_scroll_requested_y_))};
 }
 
-void MapVm::tick_video_phase(bool advance_display) {
+void MapVm::tick_video_phase() {
     cpu_.tick_ending_video_phase();
     cpu_.tick_background_video_phase();
     // Standard FOXIRQ3's SETBG2VOFS owns this override, not CALCBGSCROLL's
@@ -288,82 +273,64 @@ void MapVm::tick_video_phase(bool advance_display) {
             cpu_.set_bg2_scroll((*scroll)[0], (*scroll)[1]);
         }
     }
-    if (advance_display) tick_display_transfer();
-}
-
-void MapVm::tick_display_transfer() {
-    sync_display_from_cpu();
-    if (fade_direction_ == 0) return;
-    // Preserve SETINIDISP's stores, including the fade-up completion path
-    // that clears FADEDIR without rewriting any XINIDISP alias.
-    const auto publish = [this](std::uint8_t display) {
-        for (const auto address : {display_address_, display_second_address_,
-                                   display_alternate_address_}) {
-            write_native_byte(address, display);
-        }
-    };
+    if (fade_direction_ == 0) {
+        return;
+    }
     if (fade_direction_ < 0) {
+        // Native work later in the same transfer can restore the cartridge's
+        // stale FADE byte while leaving INIDISP and FADEDIR intact. Reconcile
+        // that split state at the raster boundary where IRQ.ASM consumes it.
+        if (fade_value_ == 0U && screen_enabled_ && display_brightness_ != 0U) {
+            fade_value_ = display_brightness_;
+        }
+        // IRQ.ASM's -3 path branches around the decrement while GAMEFRAME is
+        // odd. SETINIDISP still runs once per raster, so all three 60 Hz
+        // presentations belonging to an even 20 Hz source frame decrement
+        // FADE. Do not collapse those three calls into one source-frame step.
         if (fade_direction_ == -3) {
             const auto game_frame = cpu_.read8(game_frame_address_);
             if ((game_frame & 1U) != 0U) return;
         }
-        // QFADEDOWN decrements once before branching to SETDOWN's DEC.
-        const auto steps = fade_direction_ == -2 ? 2U : 1U;
+        // -2 selects QFADEDOWN in IRQ.ASM. Despite the name it has a single
+        // DEC before sharing the normal store path; unlike +2, it does not
+        // perform multiple brightness changes in one raster.
+        constexpr auto steps = 1U;
         if (fade_value_ <= steps) {
             fade_value_ = 0;
             fade_direction_ = 0;
-            publish(0x80U);
+            screen_enabled_ = false;
         } else {
             fade_value_ = static_cast<std::uint8_t>(fade_value_ - steps);
-            publish(fade_value_);
+            screen_enabled_ = true;
         }
-    } else {
-        const auto before_setup = fade_direction_ == 2 ? 2U : 0U;
-        if (fade_value_ + before_setup >= 15U) {
+    } else if (fade_direction_ > 0) {
+        // IRQ.ASM's quick fade-up path increments twice before falling into
+        // the normal increment/store path, for three brightness steps total.
+        const auto steps = fade_direction_ == 2 ? 3U : 1U;
+        if (fade_value_ + steps >= 15U) {
             fade_value_ = 15;
             fade_direction_ = 0;
         } else {
-            fade_value_ = static_cast<std::uint8_t>(fade_value_ + before_setup + 1U);
-            publish(fade_value_);
+            fade_value_ = static_cast<std::uint8_t>(fade_value_ + steps);
         }
+        screen_enabled_ = true;
     }
-    write_native_byte(fade_address_, fade_value_);
-    write_native_byte(fade_direction_address_, std::bit_cast<std::uint8_t>(fade_direction_));
-    sync_display_from_cpu();
-}
-
-std::size_t MapVm::apply_irq_palette_flashes() {
-    if (!random_address_) return 0;
-    std::size_t instructions = 0;
-    const auto apply = [&](std::uint32_t flag, unsigned threshold,
-                           std::uint32_t palette, unsigned first, unsigned colours) {
-        if (!flag || !palette || !cpu_.read8(flag)) return;
-        auto random = cpu_.read8(random_address_);
-        if (irq_random_) {
-            // The original RNG mode advances all four bytes for each enabled
-            // effect, even when it does not flash. EX's IRQ reads RAND only.
-            Wdc65816Registers registers;
-            registers.status = 0x24U;
-            instructions += cpu_.call_near(irq_random_, registers);
-            random = static_cast<std::uint8_t>(registers.a);
-        }
-        if (random >= threshold) return;
-        std::array<std::uint16_t, 32> values{};
-        for (unsigned i = 0; i < colours; ++i) values[i] = cpu_.read16(palette + i * 2U);
-        cpu_.write_cgram(first, std::span{values}.first(colours));
-    };
-    apply(flash_tunnel_address_, 51U, red_tunnel_palette_, 0U, 32U);
-    apply(flash_background_address_, 5U, thunder_palette_, 80U, 16U);
-    return instructions;
+    sync_display_to_cpu();
 }
 
 void MapVm::complete_background_request() {
     background_request_pending_ = false;
-    // Finishing the transfer releases WAITSETBG. WORLD.ASM (or the host
-    // interpreter's next advance_distance) owns resuming the map. Running
-    // bytecode here skipped ahead during native gameplay and overwrote its
-    // map registers with the host interpreter's stale cached values.
+    // The original NMI-side mode-change code walks BG_DMALIST until its
+    // terminator before WORLD.ASM's waitsetbg can advance. The PC renderer
+    // does not DMA SNES character/tile data, so completion is represented by
+    // the transfer-side background routine returning.
     write_native_word(background_dma_list_address_, 0);
+    if (!ended_ && rom_->read8(cursor_) == 100U) {
+        ++cursor_;
+        countdown_ = 0;
+        execute_ready_records();
+    }
+    sync_map_state_to_cpu();
 }
 
 void MapVm::sync_map_state_to_cpu() {
@@ -513,12 +480,10 @@ Wdc65816TaskResult MapVm::begin_native_task(
     Wdc65816Registers& registers,
     std::span<const std::uint32_t> stop_addresses,
     std::size_t instruction_limit,
-    bool service_transfer_flag,
-    bool sync_returned_objects) {
+    bool service_transfer_flag) {
     sync_objects_to_cpu();
     const auto result = cpu_.begin_long_task(address, registers,
         stop_addresses, instruction_limit, service_transfer_flag);
-    if (sync_returned_objects && result.returned) sync_objects_from_cpu();
     sync_display_from_cpu();
     return result;
 }
@@ -528,10 +493,10 @@ Wdc65816TaskResult MapVm::begin_native_near_task(
     Wdc65816Registers& registers,
     std::span<const std::uint32_t> stop_addresses,
     std::size_t instruction_limit,
-    bool service_transfer_flag, std::optional<std::uint8_t> saved_data_bank) {
+    bool service_transfer_flag) {
     sync_objects_to_cpu();
     const auto result = cpu_.begin_near_task(address, registers,
-        stop_addresses, instruction_limit, service_transfer_flag, saved_data_bank);
+        stop_addresses, instruction_limit, service_transfer_flag);
     sync_objects_from_cpu();
     sync_display_from_cpu();
     return result;
@@ -661,10 +626,14 @@ void MapVm::sync_objects_to_cpu() {
         for (std::uint16_t offset = 4; offset < object_size_; ++offset) {
             cpu_.write8(base + offset, read_native_object_byte(handle, offset));
         }
+        const auto& object = objects_->at(handle);
+        cpu_.write16(base + 6U, original_object_pointer(object.attached));
+        cpu_.write16(base + 25U, original_object_pointer(object.immune_object));
+        cpu_.write16(base + 27U, original_object_pointer(object.collision_object));
         for (std::size_t offset = 0; offset < extended_object_bytes_; ++offset) {
-            cpu_.write8(extended_base + offset, objects_->read_path_byte(
-                handle, static_cast<std::uint8_t>(0x80U + offset)));
+            cpu_.write8(extended_base + offset, object.extended[offset]);
         }
+        cpu_.write16(extended_base + 19U, original_object_pointer(object.fire_object));
     }
     for (std::size_t index = 0; index < free.size(); ++index) {
         const auto base = static_cast<std::uint32_t>(
@@ -703,10 +672,15 @@ void MapVm::sync_objects_from_cpu() {
         for (std::uint16_t offset = 4; offset < object_size_; ++offset) {
             write_native_object_byte(handle, offset, cpu_.read8(base + offset));
         }
+        auto& object = objects_->at(handle);
+        object.attached = object_handle(cpu_.read16(base + 6U));
+        object.immune_object = object_handle(cpu_.read16(base + 25U));
+        object.collision_object = object_handle(cpu_.read16(base + 27U));
         for (std::size_t offset = 0; offset < extended_object_bytes_; ++offset) {
             objects_->write_path_byte(handle, static_cast<std::uint8_t>(0x80U + offset),
                                       cpu_.read8(extended_base + offset));
         }
+        object.fire_object = object_handle(cpu_.read16(extended_base + 19U));
     }
 }
 

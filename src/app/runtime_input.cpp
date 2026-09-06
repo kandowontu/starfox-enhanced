@@ -323,56 +323,44 @@ InputBindings::InputBindings() {
     reset(BindingDevice::gamepad);
 }
 
-input::ButtonMask InputBindings::event_buttons(const SDL_Event& event,
-    SDL_Gamepad* gamepad, bool include_keyboard) const noexcept {
-    input::ButtonMask result{};
-    const bool keyboard = include_keyboard
-        && (event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_KEY_UP)
-        && !event.key.repeat;
-    const bool button = gamepad != nullptr
-        && (event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN
-            || event.type == SDL_EVENT_GAMEPAD_BUTTON_UP)
-        && event.gbutton.which == SDL_GetGamepadID(gamepad);
-    for (std::size_t action = 0; action < action_count; ++action) {
-        if ((keyboard && keyboard_[action] == event.key.scancode)
-            || (button && gamepad_[action].kind == GamepadBindingKind::button
-                && gamepad_[action].control == event.gbutton.button))
-            result |= kActionButtons[action];
-    }
-    return result;
-}
-
 input::ButtonMask InputBindings::sample(SDL_Gamepad* gamepad) const noexcept {
-    const auto sources = sample_sources(gamepad);
-    return static_cast<input::ButtonMask>(sources[0] | sources[1] | sources[2]);
-}
-
-input::ButtonMask InputBindings::sample_gamepad_only(SDL_Gamepad* gamepad) const noexcept {
-    const auto sources = sample_sources(gamepad, false);
-    return static_cast<input::ButtonMask>(sources[1] | sources[2]);
-}
-
-std::array<input::ButtonMask, 3> InputBindings::sample_sources(
-    SDL_Gamepad* gamepad, bool include_keyboard) const noexcept {
-    std::array<input::ButtonMask, 3> result{};
     const auto* keys = SDL_GetKeyboardState(nullptr);
+    input::ButtonMask result{};
     for (std::size_t action = 0; action < action_count; ++action) {
-        if (include_keyboard)
-            add_keyboard_button(result[0], keys, keyboard_[action], kActionButtons[action]);
-        if (gamepad == nullptr) continue;
+        add_keyboard_button(
+            result, keys, keyboard_[action], kActionButtons[action]);
+    }
+    return static_cast<input::ButtonMask>(
+        result | sample_gamepad_only(gamepad));
+}
+
+input::ButtonMask InputBindings::sample_gamepad_only(
+    SDL_Gamepad* gamepad) const noexcept {
+    input::ButtonMask result{};
+    if (gamepad == nullptr) return result;
+    for (std::size_t action = 0; action < action_count; ++action) {
         const auto binding = gamepad_[action];
         if (binding.kind == GamepadBindingKind::button) {
-            add_gamepad_button(result[1], gamepad,
-                static_cast<SDL_GamepadButton>(binding.control), kActionButtons[action]);
+            add_gamepad_button(result, gamepad,
+                static_cast<SDL_GamepadButton>(binding.control),
+                kActionButtons[action]);
+            // The standard Xbox/Steam layout uses both the D-pad and left
+            // stick for movement out of the box. Once a direction is remapped
+            // away from its default D-pad binding, that custom binding fully
+            // replaces this fallback.
             if (is_default_direction(action, binding)) {
                 const auto vertical = action == 4U || action == 5U;
-                add_gamepad_axis(result[2], gamepad,
-                    vertical ? SDL_GAMEPAD_AXIS_LEFTY : SDL_GAMEPAD_AXIS_LEFTX,
-                    action == 5U || action == 7U, kActionButtons[action]);
+                add_gamepad_axis(result, gamepad,
+                    vertical ? SDL_GAMEPAD_AXIS_LEFTY
+                             : SDL_GAMEPAD_AXIS_LEFTX,
+                    action == 5U || action == 7U,
+                    kActionButtons[action]);
             }
         } else {
-            add_gamepad_axis(result[2], gamepad, static_cast<SDL_GamepadAxis>(binding.control),
-                binding.kind == GamepadBindingKind::axis_positive, kActionButtons[action]);
+            add_gamepad_axis(result, gamepad,
+                static_cast<SDL_GamepadAxis>(binding.control),
+                binding.kind == GamepadBindingKind::axis_positive,
+                kActionButtons[action]);
         }
     }
     return result;
@@ -583,7 +571,7 @@ bool load_pregame_settings(
     while (input >> name >> value) {
         if (name == "TIMING_MODE") {
             loaded.timing_mode = static_cast<std::uint8_t>(value);
-            found[0] = value >= 0 && value <= 2;
+            found[0] = value >= 0 && value <= 1;
         } else if (name == "PRESENTATION_FPS") {
             constexpr std::array valid{20, 30, 60, 90, 120, 240, 360, 480};
             loaded.presentation_fps = static_cast<std::uint16_t>(value);
@@ -664,7 +652,7 @@ bool load_pregame_settings(
 bool save_pregame_settings(
     const std::filesystem::path& path,
     const PregameSettings& settings) noexcept {
-    if (path.empty() || settings.timing_mode > 2U
+    if (path.empty() || settings.timing_mode > 1U
         || settings.display_mode > 4U || settings.crosshair_colour > 7U
         || settings.anti_aliasing > 3U
         || settings.renderer_mode > 1U

@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <array>
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -31,7 +30,6 @@ struct PointBlock {
 struct ShapeFrame {
     std::vector<PointBlock> point_blocks;
     std::vector<Vec3i> vertices;
-    std::vector<PointEncoding> vertex_encodings;
 };
 
 struct Visibility {
@@ -41,9 +39,7 @@ struct Visibility {
 };
 
 struct Face {
-    // The cartridge reads this as an unsigned byte. Larger EX meshes use
-    // indices 128..255; reserve -1 only for host-generated uncullable faces.
-    std::int16_t visibility_index{};
+    std::int8_t visibility_index{};
     std::uint8_t colour_id{};
     Vec3i normal{};
     std::vector<std::uint8_t> vertex_indices;
@@ -59,8 +55,6 @@ struct Face {
 struct FaceBatch {
     std::uint32_t address{};
     std::vector<Face> faces;
-    // Fend continues the shape command stream; FendQ returns to BSP output.
-    std::uint32_t continuation_address{};
 };
 
 struct BspNode {
@@ -96,13 +90,10 @@ struct TextureImage {
     std::uint8_t v_mask{};
     std::array<TextureCoordinate, 4> coordinates{};
     std::vector<std::uint8_t> texels;
-    // The command interpreter keeps reading UV pairs for faces with more
-    // than four vertices, including bytes following the nominal quad table.
-    std::array<TextureCoordinate, 8> additional_coordinates{};
 };
 
 using DiffuseShadeTables = std::array<
-    std::array<std::array<std::uint8_t, 10>, 62>, 4>;
+    std::array<std::array<std::uint8_t, 10>, 12>, 4>;
 
 struct ShapeHeader {
     std::uint32_t address{};
@@ -123,20 +114,12 @@ struct ShapeHeader {
     std::uint16_t lod3_pointer{};
 };
 
-struct ProjectionTable {
-    std::int16_t maximum_z{};
-    // All even 16-bit offsets relative to ZTAB, including wrapped near-plane
-    // lookups into adjacent cartridge data after the source's Z << 4.
-    std::vector<std::int16_t> values;
-};
-
 struct Shape {
     std::string name;
     ShapeHeader header;
     std::uint8_t declared_frame_count{1};
     std::vector<PointBlock> point_blocks;
     std::vector<Vec3i> vertices;
-    std::vector<PointEncoding> vertex_encodings;
     std::vector<ShapeFrame> frames;
     std::vector<Visibility> visibilities;
     std::vector<Face> faces;
@@ -149,10 +132,6 @@ struct Shape {
     std::vector<TextureImage> textures;
     DiffuseShadeTables diffuse_shade_tables{};
     bool has_diffuse_shade_tables{};
-    bool sprite_commands_enabled{true};
-    // MOBJ's fast point projection uses the cartridge's signed Q15 ZTAB.
-    // Shared by all models decoded from the same cartridge.
-    std::shared_ptr<const ProjectionTable> projection_reciprocals;
 };
 
 } // namespace starfox::assets

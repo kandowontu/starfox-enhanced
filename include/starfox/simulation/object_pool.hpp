@@ -20,9 +20,7 @@ enum class ObjectMemoryLayout : std::uint8_t {
 // retain the 65816 wrapping behavior expected by strategy code.
 struct GameObject {
     std::uint16_t shape{};
-    // These cartridge words can hold pointers, counters or sentinels. Keep
-    // their literal value; resolve pointers through ObjectPool when needed.
-    std::uint16_t attached{};
+    ObjectHandle attached{};
     std::uint8_t flags{};
     std::uint8_t type{};
     std::uint8_t count{};
@@ -35,8 +33,8 @@ struct GameObject {
     std::uint8_t rotation_z{};
     std::int8_t velocity{};
     std::uint32_t strategy_address{};
-    std::uint16_t immune_object{};
-    std::uint16_t collision_object{};
+    ObjectHandle immune_object{};
+    ObjectHandle collision_object{};
     std::array<std::uint8_t, 4> strategy_flags{};
     std::int8_t skid_y{};
     std::array<std::int8_t, 6> scratch_bytes{};
@@ -58,7 +56,7 @@ struct GameObject {
     std::uint16_t colour_table{};
     std::uint8_t texture_scroll_x{};
     std::uint8_t texture_scroll_y{};
-    std::uint16_t fire_object{};
+    ObjectHandle fire_object{};
     std::uint8_t strategy_state{};
     // PALVAROFFSET encodes the original parallel alx_ block as 0x80 plus
     // this zero-based index. Keeping its complete byte image lets the path
@@ -77,9 +75,6 @@ public:
     [[nodiscard]] bool remove(ObjectHandle handle) noexcept;
     [[nodiscard]] bool is_active(ObjectHandle handle) const noexcept;
     [[nodiscard]] std::uint64_t generation(ObjectHandle handle) const noexcept;
-    void set_native_layout(std::uint16_t base, std::uint16_t stride);
-    [[nodiscard]] std::uint16_t native_pointer(ObjectHandle handle) const noexcept;
-    [[nodiscard]] ObjectHandle native_handle(std::uint16_t pointer) const noexcept;
     [[nodiscard]] GameObject& at(ObjectHandle handle);
     [[nodiscard]] const GameObject& at(ObjectHandle handle) const;
     [[nodiscard]] std::vector<ObjectHandle> active_handles() const;
@@ -120,8 +115,6 @@ private:
     std::size_t active_count_{};
     std::size_t capacity_{kOriginalMaximumObjects};
     ObjectMemoryLayout layout_{ObjectMemoryLayout::original};
-    std::uint16_t native_base_{0x0338U};
-    std::uint16_t native_stride_{56U};
 };
 
 } // namespace starfox::simulation

@@ -342,33 +342,6 @@ void test_rotation_matrix_interpolation_is_orthonormal() {
             "near-180-degree interpolation flipped between adjacent frames");
 }
 
-void test_output_limiter_drops_missed_presentations() {
-    using namespace std::chrono_literals;
-    using Pacer = starfox::timing::PresentationDeadlineClock;
-    for (const auto fps : {60U, 90U, 120U, 240U, 480U}) {
-        Pacer pacer;
-        Pacer::time_point now{};
-        now = pacer.next_deadline(now, fps);
-        const auto period = 1'000'000'000ns / fps;
-        // Busy geometry misses several deadlines, then an empty frame costs
-        // just 1 ms. The old limiter paid back up to 250 ms of accumulated
-        // deadlines with an uncapped burst as the scene became cheaper.
-        for (unsigned cycle = 0; cycle < 20; ++cycle) {
-            now += 100ms;
-            require(pacer.next_deadline(now, fps) <= now,
-                "late output waited to present an already completed frame");
-            for (unsigned frame = 0; frame < 12; ++frame) {
-                const auto next = pacer.next_deadline(now + 1ms, fps);
-                require(next - now >= period,
-                    "a missed output deadline created a catch-up presentation burst");
-                now = next;
-            }
-        }
-        const auto changed = pacer.next_deadline(now, 90);
-        require(changed > now, "changing the cap retained old output debt");
-    }
-}
-
 void test_camera_cuts_are_not_interpolated() {
     const starfox::timing::TransformSnapshot scramble_camera{
         0, -24, 10'625, 0, 0, 0};
@@ -385,18 +358,6 @@ void test_camera_cuts_are_not_interpolated() {
     require(!starfox::timing::camera_transform_is_discontinuous(
                 near_word_wrap, after_word_wrap),
             "short camera motion across the source-word wrap became a cut");
-}
-
-void test_stationary_source_matrix_stays_exact() {
-    // Native Q15 rotations are not perfectly orthonormal. Normalizing two
-    // identical endpoints changed constant geometry between source updates.
-    const starfox::simulation::MatrixQ15 matrix{
-        32766, 0, 0, 0, 32766, 0, 0, 0, 32766};
-    for (const auto alpha : {0.0, 0.01, 0.25, 0.5, 0.99, 1.0}) {
-        require(starfox::simulation::interpolate_rotation_matrix_q15(matrix, matrix, alpha)
-                == matrix,
-            "stationary source matrix changed between presentation frames");
-    }
 }
 
 void test_invalid_frequency_is_rejected() {
@@ -425,88 +386,6 @@ void test_input_edges_survive_between_ticks() {
             "input edges were consumed more than once");
 }
 
-void test_repeated_presses_survive_one_pending_tick() {
-    constexpr starfox::input::ButtonMask shoulder = 1U << 5;
-    starfox::input::InputLatch input;
-    for (unsigned tap = 0; tap < 3; ++tap) {
-        input.sample(shoulder);
-        input.sample(0);
-    }
-    for (unsigned tap = 0; tap < 3; ++tap) {
-        const auto next = input.consume();
-        require(next.held == 0 && next.pressed == shoulder && next.released == shoulder,
-            "repeated presses collapsed while a game update was pending");
-    }
-    require(input.consume().pressed == 0, "queued presses repeated after being drained");
-    input.sample(0, shoulder, shoulder);
-    input.sample(0, shoulder, shoulder);
-    input.reset(shoulder);
-    input.sample(shoulder);
-    const auto cleared = input.consume();
-    require(cleared.held == shoulder && cleared.pressed == 0 && cleared.released == 0,
-        "reset leaked queued presses or retriggered a held control on a new screen");
-}
-
-void test_event_batch_taps_and_overlapping_bindings() {
-    constexpr starfox::input::ButtonMask button = 1U << 5;
-    for (bool finish_held : {false, true}) {
-        starfox::input::DigitalInputEvents batch;
-        batch.record(button, true);
-        batch.record(button, false);
-        batch.record(button, true);
-        batch.record(button, false);
-        if (finish_held) batch.record(button, true);
-        starfox::input::InputLatch input;
-        input.sample(finish_held ? button : 0, batch);
-        unsigned presses{}, releases{};
-        for (unsigned update = 0; update < 4; ++update) {
-            const auto controls = input.consume();
-            require(controls.held == (finish_held ? button : 0), "batch events extended held input");
-            presses += controls.pressed != 0;
-            releases += controls.released != 0;
-        }
-        require(presses == 2U + finish_held && releases == 2,
-            "complete taps and a final held interval were counted incorrectly");
-    }
-    starfox::input::DigitalInputEvents overlap;
-    overlap.record(button, true);
-    overlap.record(button, true);
-    overlap.record(button, false);
-    overlap.record(button, false);
-    starfox::input::InputLatch input;
-    input.sample(0, overlap);
-    require(input.consume().pressed == button && input.consume().pressed == 0,
-        "overlapping bindings manufactured a double tap");
-    input.reset(button);
-    input.sample(button, overlap);
-    require(input.consume().pressed == 0, "event batch retriggered a previously held action");
-}
-
-void test_source_aware_release_repress() {
-    constexpr starfox::input::ButtonMask button = 1U << 5;
-    starfox::input::InputLatch input;
-    input.reset(button);
-    starfox::input::DigitalInputEvents batch;
-    batch.begin_sources({button, button, 0});
-    batch.record_source(button, false, 1);
-    batch.record_source(button, true, 1);
-    batch.record_source(button, false, 1);
-    input.sample(button, batch);
-    const auto overlap = input.consume();
-    require(overlap.pressed == 0 && overlap.released == 0,
-        "gamepad tap released or retriggered a keyboard-held action");
-    batch.begin_sources({button, 0, 0});
-    batch.record_source(button, false, 0);
-    batch.record_source(button, true, 0);
-    batch.record_source(button, false, 0);
-    input.sample(0, batch);
-    const auto first = input.consume(), second = input.consume();
-    require(first.held == 0 && first.pressed == button && first.released == button
-        && second.pressed == 0 && second.released == button,
-        "previously held release/repress transitions were merged");
-    require(input.consume().released == 0, "source-aware release repeated");
-}
-
 } // namespace
 
 int main() {
@@ -519,19 +398,14 @@ int main() {
     test_presentation_history_compresses_and_rewinds_many_frames();
     test_missed_render_target_preserves_realtime_raster_pace();
     test_live_fps_counter_reports_actual_output_and_lag();
-    test_output_limiter_drops_missed_presentations();
     test_stall_is_bounded();
     test_negative_time_is_ignored();
     test_interpolation_does_not_modify_snapshots();
     test_coordinate_interpolation_wraps_like_source_words();
     test_rotation_matrix_interpolation_is_orthonormal();
     test_camera_cuts_are_not_interpolated();
-    test_stationary_source_matrix_stays_exact();
     test_invalid_frequency_is_rejected();
     test_input_edges_survive_between_ticks();
-    test_repeated_presses_survive_one_pending_tick();
-    test_event_batch_taps_and_overlapping_bindings();
-    test_source_aware_release_repress();
     std::cout << "All timing tests passed.\n";
     return 0;
 }

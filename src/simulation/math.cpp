@@ -142,33 +142,11 @@ MatrixQ15 multiply_matrix_q15(
     return result;
 }
 
-MatrixQ15 compose_model_matrix_q15(
-    const MatrixQ15& object, const MatrixQ15& view,
-    double pitch, double yaw, double roll, bool shadow) noexcept {
-    pitch = std::remainder(pitch, 65536.0);
-    yaw = std::remainder(yaw, 65536.0);
-    roll = std::remainder(roll, 65536.0);
-    if (pitch == 0 && roll == 0 && (yaw == 0 || std::abs(yaw) == 32768)) {
-        auto result = view;
-        if (yaw != 0) {
-            for (unsigned column = 0; column < 3; ++column) {
-                result[column] = wrap16(-static_cast<std::int32_t>(result[column]));
-                result[6 + column] = wrap16(-static_cast<std::int32_t>(result[6 + column]));
-            }
-        }
-        if (shadow) result[3] = result[4] = result[5] = 0;
-        return result;
-    }
-    auto rotation = object;
-    if (shadow) rotation[1] = rotation[4] = rotation[7] = 0;
-    return multiply_matrix_q15(rotation, view);
-}
-
 MatrixQ15 interpolate_rotation_matrix_q15(
     const MatrixQ15& previous,
     const MatrixQ15& current,
     double alpha) noexcept {
-    if (alpha <= 0.0 || previous == current) return previous;
+    if (alpha <= 0.0) return previous;
     if (alpha >= 1.0) return current;
     alpha = std::clamp(alpha, 0.0, 1.0);
 

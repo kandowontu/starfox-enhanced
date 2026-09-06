@@ -50,15 +50,6 @@ public:
 
     InputBindings();
 
-    // Mapped digital edges from the event queue, independent of SDL's final
-    // device state. Axis/held state continues through sample().
-    [[nodiscard]] input::ButtonMask event_buttons(const SDL_Event& event,
-        SDL_Gamepad* gamepad, bool include_keyboard = true) const noexcept;
-
-    // Keyboard, gamepad buttons, and gamepad axes respectively. Keep
-    // overlapping bindings distinct while replaying queued digital events.
-    [[nodiscard]] std::array<input::ButtonMask, 3> sample_sources(
-        SDL_Gamepad* gamepad, bool include_keyboard = true) const noexcept;
     [[nodiscard]] input::ButtonMask sample(
         SDL_Gamepad* gamepad) const noexcept;
     [[nodiscard]] input::ButtonMask sample_gamepad_only(
@@ -87,7 +78,7 @@ private:
 };
 
 struct PregameSettings {
-    std::uint8_t timing_mode{2U};
+    std::uint8_t timing_mode{1U};
     std::uint16_t presentation_fps{60U};
     std::uint8_t display_mode{};
     bool god_mode{};

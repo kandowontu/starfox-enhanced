@@ -46,9 +46,8 @@ enum class GameFlowState {
 };
 
 enum class TimingMode {
-    unlocked_20_fps = 0,
-    original_speed = 1,
-    accurate = 2,
+    unlocked_20_fps,
+    original_speed,
 };
 
 enum class Experience {
@@ -223,31 +222,6 @@ public:
         bool source_initialize_direct_map = false);
 
     [[nodiscard]] GameTickResult tick(const input::TickInput& input);
-    // Internal native-transfer lifecycle for the accurate scheduler. Requires
-    // a source-initialized gameplay/training scene. This is TRANSFER_L, not
-    // the complete MAIN/front-end flow; it is not yet a selectable pace.
-    void begin_native_transfer(const input::TickInput& input);
-    // Execute the cartridge's complete MAIN iteration, retaining its CPU
-    // continuation between updates. Cannot mix with transfer-only execution.
-    void begin_native_gameplay_update(const input::TickInput& input);
-    [[nodiscard]] bool native_gameplay_ready() const noexcept {
-        return native_transfer_initialized_ && flow_state_==GameFlowState::gameplay
-            && frontend_phase_==FrontendPhase::none && !ending_task_active_;
-    }
-    // Refresh physical held states between execution chunks. Button edges
-    // remain the caller's responsibility to retain for the next begin call.
-    void sample_native_controller_held(const std::array<input::ButtonMask,5>& held);
-    [[nodiscard]] bool native_gameplay_exit_pending() const noexcept { return native_main_exit_pending_; }
-    [[nodiscard]] std::uint64_t native_presentation_revision() const noexcept { return native_presentation_revision_; }
-    // Caller must first advance audio to the final native clock and detach
-    // its bus bindings. Pending device work rejects the handoff unchanged.
-    void finish_native_gameplay_exit();
-    [[nodiscard]] std::optional<GameTickResult> advance_native_transfer(std::uint64_t master_clocks);
-    [[nodiscard]] bool native_transfer_active() const noexcept;
-    [[nodiscard]] std::uint64_t native_transfer_clock() const noexcept;
-    [[nodiscard]] const SnesCpuTimeline* native_transfer_timeline() const noexcept {
-        return native_transfer_timeline_.get();
-    }
     void present_frame();
     void start_map(const std::string& symbol);
     void synchronize_apu_output_ports(
@@ -266,7 +240,6 @@ public:
     [[nodiscard]] const std::vector<ObjectHandle>& draw_order() const noexcept {
         return draw_order_;
     }
-    [[nodiscard]] std::uint8_t submitted_strategy_flags(ObjectHandle handle) const;
     [[nodiscard]] std::array<std::uint16_t, 16> palette_words() const noexcept;
     [[nodiscard]] GameFlowState flow_state() const noexcept { return flow_state_; }
     [[nodiscard]] bool boss_roll_active() const {
@@ -456,14 +429,9 @@ private:
     [[nodiscard]] ObjectHandle handle_from_native_pointer(std::uint16_t pointer) const noexcept;
     void refresh_player_reference();
     void write_input(const input::TickInput& input);
-    void begin_native_update(const input::TickInput& input, bool main_loop);
-    [[nodiscard]] std::array<std::uint32_t,2> find_native_main_boundaries() const;
     void service_transfer_request();
     void calculate_view();
     [[nodiscard]] std::size_t update_view_flags_and_cull();
-    void capture_native_draw_candidates();
-    void capture_native_draw_order();
-    void publish_native_transfer(bool advance_effects=true);
     void calculate_meters();
     void draw_ex_transfer_overlay(GameTickResult& result);
     void service_audio_irq(std::vector<std::uint8_t>& commands);
@@ -846,12 +814,29 @@ private:
     std::uint32_t credits_music_original_{};
     std::uint32_t credits_music_ex_{};
     std::uint32_t msu_play_{};
-    std::uint32_t get_view_{};
     std::uint32_t previous_view_position_{};
     std::uint32_t view_position_{};
+    std::uint32_t view_shake_{};
+    std::uint32_t view_float_{};
+    std::uint32_t previous_view_z_offset_{};
+    std::uint32_t view_type_{};
+    std::uint32_t no_x_rotation_{};
+    std::uint32_t output_rotation_{};
+    std::uint32_t output_distance_{};
+    std::uint32_t player_turn_rotation_{};
+    std::uint32_t player_roll_{};
+    std::uint32_t do_z_rotation_{};
     std::uint32_t view_rotation_{};
+    std::uint32_t matrix_{};
     std::uint32_t world_matrix_{};
+    std::uint32_t view_to_object_{};
     std::uint32_t view_point_{};
+    std::uint16_t view_block_{};
+    std::uint32_t secondary_player_fly_mode_{};
+    std::uint32_t crosshair_x_{};
+    std::uint32_t crosshair_y_{};
+    std::uint32_t x_angle_{};
+    std::uint32_t y_angle_{};
     std::uint32_t player_collision_box_{};
     std::uint32_t player_left_wing_collision_box_{};
     std::uint32_t player_right_wing_collision_box_{};
@@ -917,11 +902,6 @@ private:
     std::uint32_t nuke_explosion_strategy_{};
     std::array<std::uint16_t, 8> god_nuke_protected_shapes_{};
     std::vector<ObjectHandle> draw_order_;
-    struct SubmittedObjectFlags {
-        std::uint64_t generation{};
-        std::uint8_t flags{};
-    };
-    std::array<SubmittedObjectFlags, kMaximumObjects + 1> submitted_object_flags_{};
     std::vector<ObjectHandle> armed_god_nukes_;
     Wdc65816Registers ex_menu_registers_{};
     Wdc65816Registers ex_results_registers_{};
@@ -933,28 +913,6 @@ private:
     std::uint8_t current_tick_video_phases_{3U};
     std::uint8_t planet_rotation_video_phases_{};
     std::uint32_t source_update_sequence_{};
-    enum class NativeTransferPhase { idle, black, transfer, main, failed };
-    NativeTransferPhase native_transfer_phase_{NativeTransferPhase::idle};
-    std::shared_ptr<SnesCpuTimeline> native_transfer_timeline_;
-    std::unique_ptr<NativePresentationSnapshot> native_transfer_capture_;
-    std::vector<ObjectHandle> native_draw_candidates_;
-    std::vector<std::pair<ObjectHandle,std::uint8_t>> native_draw_order_;
-    bool native_draw_order_captured_{};
-    Wdc65816Registers native_transfer_registers_{};
-    GameTickResult native_transfer_result_;
-    bool native_transfer_task_started_{};
-    bool native_transfer_initialized_{};
-    bool native_main_loop_{};
-    bool native_main_exit_pending_{};
-    std::uint32_t native_main_entry_{};
-    std::uint32_t native_main_exit_{};
-    std::uint32_t native_main_pause_entry_{};
-    std::uint32_t native_main_pause_return_{};
-    std::vector<std::uint32_t> native_main_stop_addresses_;
-    std::vector<std::uint32_t> native_pause_present_stops_;
-    std::uint64_t native_presentation_revision_{};
-    std::array<input::ButtonMask,5> native_input_pulses_{};
-    std::array<input::ButtonMask,5> native_controller_held_{};
     std::array<std::int32_t, 6> planet_spin_remainders_{};
     std::uint8_t planet_route_blink_frames_{};
     std::uint32_t pending_map_{};
@@ -965,9 +923,10 @@ private:
     std::uint64_t scene_revision_{};
     GameFlowState flow_state_{GameFlowState::gameplay};
     FrontendPhase frontend_phase_{FrontendPhase::none};
-    // The desktop selects the native scheduler for ACCURATE gameplay.
-    // Direct tick() fixtures still explicitly drive the host scheduler.
-    TimingMode timing_mode_{TimingMode::accurate};
+    // Direct simulation fixtures retain their deterministic three-raster
+    // mode until a caller chooses otherwise. BOOT and the persisted runtime
+    // settings select the user-facing Original default explicitly.
+    TimingMode timing_mode_{TimingMode::unlocked_20_fps};
     DisplayMode display_mode_{DisplayMode::standard_4_3};
     std::uint16_t presentation_fps_{60U};
     std::uint8_t pregame_selection_{};

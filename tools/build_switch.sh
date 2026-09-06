@@ -22,5 +22,5 @@ cp "${build_root}/StarFoxEnhanced.nro" \
 cp "${source_root}/platform/switch/README.md" "${dist_root}/README.md"
 cp "${source_root}/platform/mobile/ASSET_BUILDER.md" \
     "${dist_root}/ASSET_BUILDER.md"
-cp "${source_root}/LICENSE" "${source_root}/CREDITS.md" "${source_root}/THIRD_PARTY_NOTICES.md" "${dist_root}/"
+cp "${source_root}/CREDITS.md" "${source_root}/THIRD_PARTY_NOTICES.md" "${dist_root}/"
 cp "${source_root}/tools/package_switch_nsp.ps1" "${dist_root}/"

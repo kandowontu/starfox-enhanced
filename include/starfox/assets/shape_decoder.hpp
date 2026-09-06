@@ -25,8 +25,6 @@ public:
         const ShapeHeader& header, double camera_z) noexcept;
     [[nodiscard]] Shape decode_by_name(const SymbolMap& symbols, const std::string& name) const;
     [[nodiscard]] bool looks_like_shape_header(std::uint32_t address) const noexcept;
-    [[nodiscard]] std::int16_t simple_sprite_diameter(
-        const ShapeHeader& header, std::int8_t adjustment) const noexcept;
 
 private:
     [[nodiscard]] ShapeHeader decode_header(std::uint32_t address) const;
@@ -40,13 +38,9 @@ private:
     std::uint32_t texture_address_table_{};
     std::uint32_t texture_coordinate_table_{};
     std::uint8_t colour_table_bank_{0x03U};
-    std::uint16_t default_colour_pointer_{0x8213U};
     DiffuseShadeTables diffuse_shade_tables_{};
     bool has_diffuse_shade_tables_{};
     bool has_lod_pointers_{true};
-    bool sprite_commands_enabled_{true};
-    bool sprite_size_shift_enabled_{true};
-    std::shared_ptr<const ProjectionTable> projection_reciprocals_;
 };
 
 } // namespace starfox::assets

@@ -76,30 +76,11 @@ public:
     }
     [[nodiscard]] const std::vector<std::uint8_t>& messages() const noexcept { return messages_; }
     void clear_messages() noexcept { messages_.clear(); }
-    void tick_video_phase(bool advance_display = true);
-    // IRQ.ASM SETINIDISP: one call per completed normal bitmap transfer.
-    void tick_display_transfer();
-    std::size_t apply_irq_palette_flashes();
+    void tick_video_phase();
     void complete_background_request();
     // Import WORLD.ASM interpreter registers after an original routine such
     // as RESTART_L has advanced the native map directly.
     void restore_map_state_from_native();
-    // Import only at a settled gameplay yield; a native restart can clear
-    // the pool before handing control to a host-owned front-end screen.
-    void restore_objects_from_native() { sync_objects_from_cpu(); }
-    [[nodiscard]] std::uint16_t original_object_pointer(ObjectHandle handle) const noexcept;
-    [[nodiscard]] ObjectHandle native_object_handle(std::uint16_t pointer) const noexcept;
-    // Import the display cache after restoring an external native snapshot.
-    void restore_display_from_native() noexcept { sync_display_from_cpu(); }
-    // Hold completed presentation data while resumable native work runs.
-    // Native CPU execution and writes keep using live memory. Release only
-    // at a settled publication boundary, then import objects/map state.
-    void hold_native_presentation();
-    void capture_live_presentation(NativePresentationSnapshot& snapshot) const {
-        cpu_.capture_presentation(snapshot);
-    }
-    void release_native_presentation() noexcept;
-    [[nodiscard]] bool native_presentation_held() const noexcept { return presentation_held_; }
     void write_native_byte(std::uint32_t address, std::uint8_t value);
     [[nodiscard]] std::uint8_t read_native_byte(std::uint32_t address) const noexcept;
     [[nodiscard]] std::uint16_t read_native_word(std::uint32_t address) const noexcept;
@@ -109,41 +90,10 @@ public:
         return cpu_.load_cartridge_ram(bytes);
     }
     [[nodiscard]] std::span<const std::uint8_t> cartridge_ram() const noexcept {
-        if (presentation_held_) return presentation_->cartridge_ram;
         return cpu_.cartridge_ram();
     }
     [[nodiscard]] std::vector<ApuPortWrite> take_apu_port_writes() {
         return cpu_.take_apu_port_writes();
-    }
-    [[nodiscard]] std::uint64_t native_master_clocks() const noexcept {
-        return cpu_.executed_master_clocks();
-    }
-    [[nodiscard]] std::uint32_t native_program_address() const noexcept {
-        return cpu_.program_address();
-    }
-    void set_native_instruction_boundary_callback(
-        Wdc65816::InstructionBoundaryCallback callback) {
-        cpu_.set_instruction_boundary_callback(std::move(callback));
-    }
-    void set_native_bus_clock_callback(Wdc65816::BusClockCallback callback) {
-        cpu_.set_bus_clock_callback(std::move(callback));
-    }
-    void set_apu_bus_callback(Wdc65816::ApuBusCallback callback) {
-        cpu_.set_apu_bus_callback(std::move(callback));
-    }
-    void set_msu_bus_callback(Wdc65816::MsuBusCallback callback) {
-        cpu_.set_msu_bus_callback(std::move(callback));
-    }
-    void set_cpu_timeline(std::shared_ptr<SnesCpuTimeline> timeline) {
-        cpu_.set_cpu_timeline(std::move(timeline));
-    }
-    void set_gsu_timing(bool enabled) { cpu_.set_gsu_timing(enabled); }
-    void detach_native_task() { cpu_.detach_native_task(); }
-    void set_task_clock_deadline(std::optional<std::uint64_t> deadline) {
-        cpu_.set_task_clock_deadline(deadline);
-    }
-    void set_interrupt_sample_callback(Wdc65816::InterruptSampleCallback callback) {
-        cpu_.set_interrupt_sample_callback(std::move(callback));
     }
     [[nodiscard]] std::vector<MsuRegisterWrite> take_msu_register_writes() {
         return cpu_.take_msu_register_writes();
@@ -156,11 +106,9 @@ public:
         cpu_.set_apu_output_ports(ports);
     }
     [[nodiscard]] const SnesPpuState& ppu_state() const noexcept {
-        if (presentation_held_) return presentation_->ppu;
         return cpu_.ppu_state();
     }
     [[nodiscard]] const NativeModelDrawState& native_model_draw() const noexcept {
-        if (presentation_held_) return presentation_->model;
         return cpu_.native_model_draw();
     }
     void set_native_model_draw(const NativeModelDrawState& state) noexcept {
@@ -236,15 +184,13 @@ public:
         Wdc65816Registers& registers,
         std::span<const std::uint32_t> stop_addresses,
         std::size_t instruction_limit = 1'000'000,
-        bool service_transfer_flag = false,
-        bool sync_returned_objects = false);
+        bool service_transfer_flag = false);
     Wdc65816TaskResult begin_native_near_task(
         std::uint32_t address,
         Wdc65816Registers& registers,
         std::span<const std::uint32_t> stop_addresses,
         std::size_t instruction_limit = 1'000'000,
-        bool service_transfer_flag = false,
-        std::optional<std::uint8_t> saved_data_bank = std::nullopt);
+        bool service_transfer_flag = false);
     Wdc65816TaskResult resume_native_task(
         Wdc65816Registers& registers,
         std::span<const std::uint32_t> stop_addresses,
@@ -261,6 +207,8 @@ private:
     [[nodiscard]] std::uint32_t read_map_pointer(std::uint32_t address) const;
     [[nodiscard]] std::int16_t player_world_z() const noexcept;
     [[nodiscard]] std::uint32_t skip_inline_65816(std::uint32_t address) const;
+    [[nodiscard]] std::uint16_t original_object_pointer(ObjectHandle handle) const noexcept;
+    [[nodiscard]] ObjectHandle native_object_handle(std::uint16_t pointer) const noexcept;
     [[nodiscard]] ObjectHandle object_handle(std::uint16_t pointer) const noexcept;
     [[nodiscard]] std::uint8_t read_native_object_byte(
         ObjectHandle handle, std::uint16_t offset) const;
@@ -319,15 +267,7 @@ private:
     std::uint32_t fade_direction_address_{0x001930U};
     std::uint32_t fade_address_{0x001931U};
     std::uint32_t display_address_{0x7e4655U};
-    std::uint32_t display_second_address_{};
-    std::uint32_t display_alternate_address_{};
     std::uint32_t game_frame_address_{0x001640U};
-    std::uint32_t flash_tunnel_address_{};
-    std::uint32_t flash_background_address_{};
-    std::uint32_t red_tunnel_palette_{};
-    std::uint32_t thunder_palette_{};
-    std::uint32_t random_address_{};
-    std::uint32_t irq_random_{};
     std::uint32_t background_flags_address_{0x001a16U};
     std::uint32_t background_dma_list_address_{0x001764U};
     std::uint32_t current_background_address_{0x0017c6U};
@@ -350,8 +290,6 @@ private:
     std::uint32_t number_map_loops_address_{0x0017d8U};
     std::uint32_t map_bank_address_{0x001af7U};
     Wdc65816 cpu_;
-    std::unique_ptr<NativePresentationSnapshot> presentation_;
-    bool presentation_held_{};
 };
 
 } // namespace starfox::simulation

@@ -6,7 +6,6 @@
 #include <array>
 #include <cstdlib>
 #include <iostream>
-#include <vector>
 
 namespace {
 void require(bool condition, const char* message) {
@@ -67,46 +66,6 @@ int main() {
     require(!starfox::app::queue_realtime_audio(stream,
         std::span<const std::int16_t>{packet}.first(3U), switch_limit),
         "accepted incomplete stereo frame");
-    SDL_DestroyAudioStream(stream);
-    // One second from the native oscillator must still be one second at
-    // the device. Interpreting these frames as nominal 32 kHz drifts by
-    // sixty output frames per second at a 48 kHz device.
-    stream = SDL_CreateAudioStream(&source, &switch_device);
-    require(stream != nullptr, "create native-rate stream");
-    constexpr std::uint32_t native_rate=32'040U;
-    for (unsigned frames=0;frames<native_rate;) {
-        const auto count=std::min(1600U,native_rate-frames);
-        require(starfox::app::queue_realtime_audio(stream,
-            std::span<const std::int16_t>{packet}.first(count*2U),native_rate,native_rate),
-            "enqueue native-clock packet");
-        frames+=count;
-    }
-    SDL_AudioSpec actual{};
-    require(SDL_GetAudioStreamFormat(stream,&actual,nullptr) && actual.freq==32040,
-        "native source rate was not installed");
-    require(SDL_FlushAudioStream(stream),"flush native oscillator second");
-    const auto available=SDL_GetAudioStreamAvailable(stream);
-    require(available>=47999*4 && available<=48001*4,
-        "native oscillator drifted from device playback time");
-    std::vector<std::int16_t> native_output(static_cast<std::size_t>(available)/2U);
-    require(SDL_GetAudioStreamData(stream,native_output.data(),available)==available,
-        "drain native oscillator second");
-    require(starfox::app::queue_realtime_audio(stream,packet,switch_limit,32000U),
-        "restore legacy source rate");
-    require(SDL_GetAudioStreamFormat(stream,&actual,nullptr) && actual.freq==32000,
-        "legacy source rate was not restored");
-    SDL_DestroyAudioStream(stream);
-    stream = SDL_CreateAudioStream(&source, &switch_device);
-    require(stream != nullptr,"create mixed-rate stream");
-    const std::vector<std::int16_t> legacy_second(32000U*2U,100);
-    const std::vector<std::int16_t> native_second(native_rate*2U,100);
-    require(starfox::app::queue_realtime_audio(stream,legacy_second,native_rate*3U,32000U)
-        && starfox::app::queue_realtime_audio(stream,native_second,native_rate*3U,native_rate),
-        "queue pace change with previous audio pending");
-    require(SDL_FlushAudioStream(stream),"flush mixed-rate stream");
-    const auto mixed_available=SDL_GetAudioStreamAvailable(stream);
-    require(mixed_available>=95998*4 && mixed_available<=96002*4,
-        "pace change reinterpreted or discarded previously queued audio");
     SDL_DestroyAudioStream(stream);
     SDL_Quit();
     std::cout << "Realtime audio queue tests passed.\n";

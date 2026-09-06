@@ -1,8 +1,0 @@
-Boot PC $7e400f
-GSU register policy: source (generic Ares GSU, shared NTSC oscillator)
-Stage entry at video frame 3, GSU idle
-Gameplay clone at GAMEFRAME=106 after the preceding display interrupt
-Gameplay differences at transfer 200: 1
-200 complete camera calls, 0 field differences
-Gameplay: 200/300 updates, 163460 comparisons, 1 differences
-Gameplay state differs from native execution

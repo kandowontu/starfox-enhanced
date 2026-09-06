@@ -1,8 +1,0 @@
-Internal ctest changing into directory: C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
-Test project C:/Users/kando/Documents/ChatGPT/Starfox Enhanced/build/current
-    Start 20: starfox_upstream_simulation_data
-1/1 Test #20: starfox_upstream_simulation_data ...   Passed   12.05 sec
-
-100% tests passed, 0 tests failed out of 1
-
-Total Test time (real) =  12.08 sec

@@ -5,7 +5,6 @@
 #include "starfox/simulation/object_pool.hpp"
 
 #include <cstddef>
-#include <array>
 #include <cstdint>
 #include <span>
 
@@ -30,21 +29,15 @@ public:
         std::size_t object_instruction_limit = 1'000'000U);
 
     [[nodiscard]] StrategyTickStats tick_all();
-    // Continue from UPDATE_OBJECTS_L's returned CPU state. The standalone
-    // overload above retains its historical 8-bit accumulator entry.
-    [[nodiscard]] StrategyTickStats tick_all(Wdc65816Registers registers);
     [[nodiscard]] StrategyTickStats tick_all_no_objects(
         std::span<const ObjectHandle> protected_objects);
     [[nodiscard]] std::size_t tick_object(ObjectHandle object);
     [[nodiscard]] std::size_t begin_tick();
 
 private:
-    std::size_t recover_strategy_failure(ObjectHandle object, const std::exception& error);
     ObjectPool* objects_{};
     MapVm* native_state_{};
     std::uint32_t do_strategy_{};
-    std::uint32_t dispatch_loop_{};
-    std::array<std::uint32_t, 2> dispatch_calls_{};
     std::uint32_t initialize_strategies_{};
     std::uint32_t remove_dead_{};
     std::uint32_t path_strategy_begin_{};

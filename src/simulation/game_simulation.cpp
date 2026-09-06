@@ -289,12 +289,29 @@ GameSimulation::GameSimulation(
       vsc_base_2_(static_cast<std::uint16_t>(ram_symbol("VSC_BASE2"))),
       vobj_base_(static_cast<std::uint16_t>(ram_symbol("VOBJ_BASE"))),
       credits_map_(rom_symbol("CREDITSMAP")),
-      get_view_(rom_symbol("GETVIEW_L")),
       previous_view_position_(ram_symbol("PVIEWPOSX")),
       view_position_(ram_symbol("VIEWPOSX")),
+      view_shake_(ram_symbol("VIEWSHAKEX")),
+      view_float_(ram_symbol("VIEWFLOATX")),
+      previous_view_z_offset_(ram_symbol("PVIEWPOSZOFF")),
+      view_type_(ram_symbol("VIEWTYPE")),
+      no_x_rotation_(ram_symbol("NOXROT")),
+      output_rotation_(ram_symbol("OUTVX")),
+      output_distance_(ram_symbol("OUTDIST")),
+      player_turn_rotation_(ram_symbol("PLAYER_TURNROT")),
+      player_roll_(ram_symbol("PLROTZ")),
+      do_z_rotation_(ram_symbol("DOZROT")),
       view_rotation_(ram_symbol("VIEWROTXW")),
-      world_matrix_(ram_symbol("WMAT11W")),
+      matrix_(ram_symbol("MAT11W")),
+      world_matrix_(ram_symbol("WMAT11")),
+      view_to_object_(ram_symbol("VIEWTOOBJ")),
       view_point_(ram_symbol("VIEWPT")),
+      view_block_(static_cast<std::uint16_t>(ram_symbol("VIEWBLK"))),
+      secondary_player_fly_mode_(ram_symbol("SPLAYERFLYMODE")),
+      crosshair_x_(ram_symbol("ARSEBANDX")),
+      crosshair_y_(ram_symbol("ARSEBANDY")),
+      x_angle_(rom_symbol("XANGLEXY_L")),
+      y_angle_(rom_symbol("YANGLEXY_L")),
       player_collision_box_(ram_symbol("PCBOXOBJ_B")),
       player_left_wing_collision_box_(ram_symbol("PCBOXOBJ_LW")),
       player_right_wing_collision_box_(ram_symbol("PCBOXOBJ_RW")),
@@ -1013,7 +1030,7 @@ void GameSimulation::enter_pregame_menu() {
     menu_palette[14] = 0x7fffU;
     map_.write_cgram(7U * 16U, menu_palette);
     map_.set_display_brightness(15U);
-    timing_mode_ = TimingMode::accurate;
+    timing_mode_ = TimingMode::original_speed;
     display_mode_ = DisplayMode::standard_4_3;
     presentation_fps_ = 60U;
     experience_ = Experience::original;
@@ -1170,10 +1187,8 @@ GameTickResult GameSimulation::tick_pregame_menu(
             | starfox::input::select | starfox::input::a
             | starfox::input::b)) != 0U;
     if (change_timing) {
-        const auto direction = (menu_input.pressed & starfox::input::left) != 0U
-            ? 2U : 1U;
-        timing_mode_ = static_cast<TimingMode>(
-            (static_cast<unsigned>(timing_mode_) + direction) % 3U);
+        timing_mode_ = timing_mode_ == TimingMode::unlocked_20_fps
+            ? TimingMode::original_speed : TimingMode::unlocked_20_fps;
         queue_sound_effect(0x11U);
     }
 
@@ -1753,55 +1768,34 @@ void GameSimulation::refresh_player_reference() {
 }
 
 void GameSimulation::write_input(const input::TickInput& input) {
-    // A complete shoulder tap can arrive between paced simulation updates.
-    // Roll strategies inspect current/previous held bits rather than TRIG.
-    // Present that edge for this update, and preserve the physical release
-    // before a new press even when no intervening simulation sample saw it.
-    const auto roll_edges = [&](const input::TickInput& controls) {
-        return static_cast<input::ButtonMask>(
-            (flow_state_ == GameFlowState::gameplay || flow_state_ == GameFlowState::training)
-                ? controls.pressed & (input::left_shoulder | input::right_shoulder) : 0U);
-    };
-    const auto roll_presses = roll_edges(input);
     const auto control_type = static_cast<std::uint8_t>(
         map_.read_native_byte(control_type_) & 3U);
     const auto mapped_held = map_control_type_buttons(
-        static_cast<input::ButtonMask>(input.held | roll_presses), control_type);
+        input.held, control_type);
     const auto mapped_pressed = map_control_type_buttons(
         input.pressed, control_type);
-    if (roll_presses != 0U)
-        map_.write_native_byte(last_controller_low_, static_cast<std::uint8_t>(
-            map_.read_native_byte(last_controller_low_) & ~roll_presses));
     // IRQ.ASM stores old/current high and low bytes interleaved rather than
     // as one contiguous 16-bit word: CONT0L, CONT0, CONTL0L, CONTL0.
     map_.write_native_byte(previous_controller_high_,
                            map_.read_native_byte(controller_high_));
     map_.write_native_byte(previous_controller_low_,
-        static_cast<std::uint8_t>(map_.read_native_byte(controller_low_) & ~roll_presses));
+                           map_.read_native_byte(controller_low_));
     map_.write_native_byte(controller_high_,
                            static_cast<std::uint8_t>(mapped_held >> 8U));
     map_.write_native_byte(controller_low_,
                            static_cast<std::uint8_t>(mapped_held));
     map_.write_native_word(trigger_, mapped_pressed);
-    // Native IRQ polling must see the same one-update shoulder pulse as
-    // the strategy controller bytes, including taps already released.
-    map_.write_native_word(hardware_controller_,
-        static_cast<input::ButtonMask>(input.held | roll_presses));
+    map_.write_native_word(hardware_controller_, input.held);
     if (starfox_ex_cartridge_) {
         const auto& second = secondary_inputs_.front();
-        const auto second_roll_presses = roll_edges(second);
-        if (second_roll_presses != 0U)
-            map_.write_native_byte(ex_last_controller_2_low_, static_cast<std::uint8_t>(
-                map_.read_native_byte(ex_last_controller_2_low_) & ~second_roll_presses));
         map_.write_native_byte(ex_previous_controller_2_high_,
             map_.read_native_byte(ex_controller_2_high_));
         map_.write_native_byte(ex_controller_2_high_,
             static_cast<std::uint8_t>(second.held >> 8U));
         map_.write_native_byte(ex_controller_2_low_,
-            static_cast<std::uint8_t>(second.held | second_roll_presses));
+            static_cast<std::uint8_t>(second.held));
         map_.write_native_word(ex_trigger_2_, second.pressed);
-        map_.write_native_word(ex_hardware_controller_2_,
-            static_cast<input::ButtonMask>(second.held | second_roll_presses));
+        map_.write_native_word(ex_hardware_controller_2_, second.held);
 
         std::array<input::ButtonMask, 5> held{
             input.held,
@@ -1810,29 +1804,16 @@ void GameSimulation::write_input(const input::TickInput& input) {
             secondary_inputs_[2].held,
             secondary_inputs_[3].held,
         };
-        std::array<input::ButtonMask, 5> roll_pressed{
-            roll_presses, second_roll_presses, roll_edges(secondary_inputs_[1]),
-            roll_edges(secondary_inputs_[2]), roll_edges(secondary_inputs_[3]),
-        };
-        for (std::size_t index = 0; index < held.size(); ++index)
-            held[index] = static_cast<input::ButtonMask>(held[index] | roll_pressed[index]);
         // EX's one-controller multitap mode deliberately mirrors player 1
         // into all five controller slots. Preserve that source convenience
         // while allowing distinct native PC devices in every other mode.
         if (map_.read_native_byte(ex_multitap_mode_) != 0U
             && map_.read_native_byte(ex_number_players_) == 1U) {
-            held.fill(static_cast<input::ButtonMask>(input.held | roll_presses));
-            roll_pressed.fill(roll_presses);
+            held.fill(input.held);
         }
         for (std::size_t index = 0; index < held.size(); ++index) {
             map_.write_native_word(ex_multitap_controllers_[index],
                 held[index]);
-        }
-        for (std::size_t index = 0; index < ex_last_multitap_controllers_.size(); ++index) {
-            if (roll_pressed[index + 2U] == 0U) continue;
-            map_.write_native_word(ex_last_multitap_controllers_[index],
-                static_cast<std::uint16_t>(map_.read_native_word(ex_last_multitap_controllers_[index])
-                    & ~roll_pressed[index + 2U]));
         }
 
         if (ex_mouse_control_enabled()) {
@@ -2139,9 +2120,6 @@ void GameSimulation::complete_video_phases_for_tick() {
 }
 
 void GameSimulation::start_map(const std::string& symbol) {
-    if (native_transfer_timeline_)
-        throw std::logic_error{"Native transfer scene changes require a scheduler handoff"};
-    native_transfer_initialized_ = false;
     reset_scene_transition_state();
     map_.start(rom_symbol(symbol), player_);
     map_.advance_distance(1);
@@ -2189,17 +2167,10 @@ std::uint32_t GameSimulation::resolve_route_stage(std::uint16_t remaining_stage)
     }
     auto cursor = stage_paths_ + rom_->read16(
         stage_paths_ + static_cast<std::uint32_t>(route) * 2U);
-    std::uint32_t last_map{};
 
     for (std::size_t guard = 0; guard < 512U; ++guard) {
         const auto record = rom_->read8(cursor);
         if (record == 0U) {
-            // DRAWPLANETLINES_L returns carry at the terminator and leaves
-            // NEWMAP/CURRENTPLANET on the last PATHSTART. EX's L+R+Select
-            // cheat can reach this boundary without the usual ending exit.
-            // Preserve that source destination instead of treating a valid
-            // route end as corrupt data and aborting the application.
-            if (last_map != 0U) return last_map;
             throw std::runtime_error{"planet route ended before the requested stage"};
         }
         if (record == 1U) {
@@ -2208,7 +2179,7 @@ std::uint32_t GameSimulation::resolve_route_stage(std::uint16_t remaining_stage)
         }
         if (record == 2U) {
             const auto slot = rom_->read16(cursor + 1U);
-            if (slot >= (starfox_ex_cartridge_ ? 12U : 8U) || (slot & 1U) != 0U) {
+            if (slot >= 8U || (slot & 1U) != 0U) {
                 throw std::runtime_error{"invalid planet route-choice slot"};
             }
             cursor = stage_paths_ + map_.read_native_word(routes_ + slot);
@@ -2221,7 +2192,6 @@ std::uint32_t GameSimulation::resolve_route_stage(std::uint16_t remaining_stage)
         const auto map_address =
             (static_cast<std::uint32_t>(rom_->read8(cursor + 6U)) << 16U)
             | 0x8000U | (rom_->read16(cursor + 4U) & 0x7fffU);
-        last_map = map_address;
         map_.write_native_byte(current_planet_, rom_->read8(cursor + 3U));
         map_.write_native_byte(new_map_, static_cast<std::uint8_t>(map_address));
         map_.write_native_byte(new_map_ + 1U, static_cast<std::uint8_t>(map_address >> 8U));
@@ -2250,7 +2220,6 @@ void GameSimulation::reset_scene_transition_state() {
     frontend_phase_ = FrontendPhase::none;
     source_update_sequence_ = 0U;
     draw_order_.clear();
-    submitted_object_flags_.fill({});
 
     boss_music_before_death_.reset();
     post_boss_dialogue_active_ = false;
@@ -2318,8 +2287,6 @@ void GameSimulation::reset_scene_transition_state() {
 }
 
 void GameSimulation::initialize_native_map(std::uint32_t address) {
-    if (native_transfer_timeline_)
-        throw std::logic_error{"Native transfer scene changes require a scheduler handoff"};
     reset_scene_transition_state();
     map_.write_native_word(ram_symbol("MAPPTR"),
         static_cast<std::uint16_t>(address & 0x7fffU));
@@ -2352,7 +2319,6 @@ void GameSimulation::initialize_native_map(std::uint32_t address) {
     refresh_player_reference();
     draw_order_ = objects_.active_handles();
     ++scene_revision_;
-    native_transfer_initialized_ = true;
 }
 
 void GameSimulation::clear_communications() {
@@ -2960,25 +2926,10 @@ GameTickResult GameSimulation::tick_end_game_sequence(
     }
 
     const std::array stops{ending_transfer_, ending_end_transfer_,
-        credits_entry_ != 0U ? credits_entry_ : ending_transfer_,
-        ending_final_score_ ? rom_symbol("BRIEFING_L") : ending_transfer_,
-        ending_final_score_ ? rom_symbol("TITLESEQ_L") : ending_transfer_};
+        credits_entry_ != 0U ? credits_entry_ : ending_transfer_};
     const auto task = map_.resume_native_task(ending_registers_, stops,
-        50'000'000U, true, false);
+        50'000'000U, true, true);
     result.prelude_instructions += task.instructions;
-    if (ending_final_score_
-        && (task.stop_address == stops[3] || task.stop_address == stops[4])) {
-        // Held START can leave CREDITSMAP inside MAKETOTALSCORE2's own
-        // TRANSFER before that short-lived score task has returned.
-        ending_task_active_ = false;
-        ending_final_score_ = false;
-        credits_complete_ = false;
-        if (task.stop_address == stops[4]) enter_title();
-        else enter_controls(GameFlowState::controls_type);
-        result.audio_port_writes = map_.take_apu_port_writes();
-        return result;
-    }
-    map_.restore_objects_from_native();
     const auto native_map =
         (static_cast<std::uint32_t>(map_.read_native_byte(ram_symbol("MAPBANK")))
             << 16U)
@@ -3703,11 +3654,7 @@ void GameSimulation::begin_planet_selection_sequence() {
 }
 
 void GameSimulation::present_frame() {
-    if (native_transfer_timeline_)
-        throw std::logic_error{"Native transfer pacing owns source video advancement"};
-    map_.tick_video_phase(ending_task_active_
-        || (flow_state_ != GameFlowState::gameplay
-            && flow_state_ != GameFlowState::training));
+    map_.tick_video_phase();
     if (deferred_msu_track_) {
         if (deferred_msu_frames_ != 0U) --deferred_msu_frames_;
         if (deferred_msu_frames_ == 0U) {
@@ -3733,10 +3680,8 @@ void GameSimulation::present_frame() {
             // writing brightness 1. Starting here, after this presentation's
             // SETINIDISP phase, preserves that first black frame.
             map_.start_display_fade(1);
-        } else if (map_.display_brightness() == 15U) {
-            // CONTINUE's manual FADELOOP accepts input as soon as it stores
-            // 15. It does not take SETINIDISP's extra completion-only call.
-            map_.set_display_brightness(15U);
+        } else if (map_.fade_direction() == 0
+                   && map_.display_brightness() == 15U) {
             frontend_frames_ = 0U;
             frontend_phase_ = FrontendPhase::none;
         }
@@ -4125,14 +4070,6 @@ GameTickResult GameSimulation::tick_planet_map(const input::TickInput& input) {
 }
 
 void GameSimulation::service_level_exit() {
-    // MAIN has already accepted the exit and is running its transfer-only
-    // transition loop. Outgoing strategies may leave/reassert LEVELFINISHED;
-    // interpreting it again resets the white-fade counter every update.
-    if (frontend_phase_ == FrontendPhase::special_exit_white
-        || frontend_phase_ == FrontendPhase::special_exit_fade_down) {
-        map_.write_native_word(level_finished_, 0U);
-        return;
-    }
     const auto exit = map_.read_native_word(level_finished_);
     if (exit == 0U) return;
     if (flow_state_ == GameFlowState::stage_results) {
@@ -4545,21 +4482,135 @@ void GameSimulation::service_transfer_request() {
 }
 
 void GameSimulation::calculate_view() {
-    // Keep GETVIEW_L's camera offsets, target angles, matrix storage and
-    // integer crosshair projection together. Its two GSU math entries are
-    // implemented by the native bridge and checked against the cartridge.
-    // In particular, WMAT11W is the low byte of the world-matrix word;
-    // WMAT11 addresses only its high byte for the source's 8-bit helpers.
-    Wdc65816Registers registers;
-    registers.status = 0x24U;
-    map_.call_native_routine(get_view_, registers);
-}
+    const auto read_word = [this](std::uint32_t address) {
+        return signed_word(map_.read_native_word(address));
+    };
+    const auto write_word = [this](std::uint32_t address, std::int16_t value) {
+        map_.write_native_word(address, std::bit_cast<std::uint16_t>(value));
+    };
+    auto rotation_x = read_word(output_rotation_);
+    if (map_.read_native_byte(no_x_rotation_) != 0U) {
+        rotation_x = 0;
+        write_word(output_rotation_, 0);
+    }
+    auto rotation_y = subtract16(
+        read_word(output_rotation_ + 2U), read_word(player_turn_rotation_));
+    auto rotation_z = subtract16(
+        read_word(output_rotation_ + 4U), read_word(player_roll_));
+    if (map_.read_native_byte(do_z_rotation_) == 0U) rotation_z = 0;
 
-std::uint8_t GameSimulation::submitted_strategy_flags(ObjectHandle handle) const {
-    if (!objects_.is_active(handle)) return 0U;
-    const auto& submitted = submitted_object_flags_[handle];
-    return submitted.generation == objects_.generation(handle)
-        ? submitted.flags : objects_.at(handle).strategy_flags[0];
+    if ((map_.read_native_byte(view_type_) & 2U) == 0U) {
+        std::array<std::int16_t, 3> position{};
+        for (std::size_t index = 0; index < 3U; ++index) {
+            const auto shake = std::bit_cast<std::int8_t>(
+                map_.read_native_byte(view_shake_ + static_cast<std::uint32_t>(index)));
+            position[index] = add16(
+                read_word(previous_view_position_ + static_cast<std::uint32_t>(index * 2U)),
+                shake);
+        }
+        position[0] = add16(position[0], read_word(view_float_));
+        position[1] = add16(position[1], read_word(view_float_ + 2U));
+        position[2] = add16(position[2], read_word(previous_view_z_offset_));
+
+        const auto pitch_matrix = rotation_matrix_q15(trigonometry_,
+            wrap16(-static_cast<std::int32_t>(rotation_x)), 0, 0);
+        auto offset = transform_q15(pitch_matrix,
+            {0, 0, wrap16(-static_cast<std::int32_t>(read_word(output_distance_)))});
+        const auto yaw_matrix = rotation_matrix_q15(trigonometry_, 0,
+            wrap16(-static_cast<std::int32_t>(rotation_y)), 0);
+        offset = transform_q15(yaw_matrix, offset);
+        for (std::size_t index = 0; index < 3U; ++index) {
+            write_word(view_position_ + static_cast<std::uint32_t>(index * 2U),
+                add16(position[index], offset[index]));
+        }
+        write_word(view_rotation_, rotation_x);
+        write_word(view_rotation_ + 2U, rotation_y);
+        write_word(view_rotation_ + 4U, rotation_z);
+    } else {
+        rotation_x = read_word(view_rotation_);
+        rotation_y = read_word(view_rotation_ + 2U);
+        rotation_z = read_word(view_rotation_ + 4U);
+    }
+
+    for (std::size_t index = 0; index < 3U; ++index) {
+        write_word(view_block_ + 12U + static_cast<std::uint32_t>(index * 2U),
+            read_word(view_position_ + static_cast<std::uint32_t>(index * 2U)));
+    }
+    // GETVIEW_L always publishes VIEWBLK as VIEWPT after resolving either
+    // a following camera or a fixed-position camera. Native strategies use
+    // that synthetic object for distance gates (notably Corneria's gradual
+    // ExitBase pullback), as well as positional sound. Leaving VIEWPT on the
+    // player made those gates read a zero distance and collapse instantly.
+    map_.write_native_word(view_point_, view_block_);
+    if ((map_.read_native_byte(view_type_) & 1U) != 0U) {
+        const auto target = map_.read_native_word(view_to_object_);
+        Wdc65816Registers registers;
+        registers.x = view_block_;
+        registers.y = target;
+        registers.status = 0x04U;
+        map_.call_native_routine(x_angle_, registers);
+        rotation_x = wrap16(-static_cast<std::int32_t>(signed_word(registers.a)));
+        write_word(view_rotation_, rotation_x);
+        write_word(output_rotation_, rotation_x);
+
+        registers = {};
+        registers.x = view_block_;
+        registers.y = target;
+        registers.status = 0x04U;
+        map_.call_native_routine(y_angle_, registers);
+        rotation_y = signed_word(registers.a);
+        rotation_z = read_word(output_rotation_ + 4U);
+        write_word(view_rotation_ + 2U, rotation_y);
+        write_word(output_rotation_ + 2U, rotation_y);
+        write_word(view_rotation_ + 4U, rotation_z);
+    }
+
+    const auto world = rotation_matrix_q15(
+        trigonometry_, rotation_x, rotation_y, rotation_z);
+    for (std::size_t index = 0; index < world.size(); ++index) {
+        write_word(matrix_ + static_cast<std::uint32_t>(index * 2U), world[index]);
+        write_word(world_matrix_ + static_cast<std::uint32_t>(index * 2U), world[index]);
+    }
+
+    // The tail of GETVIEW_L projects a point 500 world units along the
+    // player's current aim and publishes its displacement from the Super FX
+    // vanishing point. DO_CROSSHAIR consumes ARSEBANDX/Y later in the same
+    // source frame. The host replaces the Super FX call above, so it must also
+    // reproduce this output; otherwise the first-person reticle is frozen at
+    // its initial centre even though the player is turning.
+    if (objects_.is_active(player_)) {
+        const auto& player = objects_.at(player_);
+        const auto aim_matrix = rotation_matrix_q15(trigonometry_,
+            static_cast<std::int16_t>(
+                static_cast<std::uint16_t>(player.rotation_x) << 8U),
+            static_cast<std::int16_t>(
+                static_cast<std::uint16_t>(player.rotation_y) << 8U),
+            0);
+        const auto aim_offset = transform_q15(aim_matrix, {0, 0, 500});
+        auto relative = transform_q15(world, {
+            subtract16(add16(player.world_x, aim_offset[0]),
+                signed_word(map_.read_native_word(view_position_))),
+            subtract16(add16(player.world_y, aim_offset[1]),
+                signed_word(map_.read_native_word(view_position_ + 2U))),
+            subtract16(add16(player.world_z, aim_offset[2]),
+                signed_word(map_.read_native_word(view_position_ + 4U))),
+        });
+        if (map_.read_native_byte(secondary_player_fly_mode_) == 3U) {
+            relative[1] = add16(relative[1], 50);
+        }
+        const auto project_displacement = [](std::int16_t coordinate,
+                                              std::int16_t depth) {
+            if (depth == 0) depth = 1;
+            const auto quotient = static_cast<std::int64_t>(coordinate) * 256
+                / static_cast<std::int64_t>(depth);
+            return wrap16(std::clamp<std::int64_t>(
+                quotient, -16'383, 16'383));
+        };
+        map_.write_native_word(crosshair_x_, static_cast<std::uint16_t>(
+            project_displacement(relative[0], relative[2])));
+        map_.write_native_word(crosshair_y_, static_cast<std::uint16_t>(
+            project_displacement(relative[1], relative[2])));
+    }
 }
 
 std::size_t GameSimulation::update_view_flags_and_cull() {
@@ -4586,23 +4637,12 @@ std::size_t GameSimulation::update_view_flags_and_cull() {
     };
     std::vector<DrawEntry> ordered;
     std::vector<ObjectHandle> removals;
-    submitted_object_flags_.fill({});
     for (const auto handle : objects_.active_handles()) {
         auto& object = objects_.at(handle);
-        // MARIOSHOWVIEW resets these flags and provisionally sets AFFRONTPL
-        // before its invisible-object branch. ALIENFLAGS skips invisible
-        // objects later, so they retain that reset state for strategies.
-        object.flags = static_cast<std::uint8_t>(
-            (object.flags & ~view_flag_mask) | 0x08U);
+        // showview jumps over invisible objects before touching their cached
+        // player-relative flags or considering behind-view removal.
         if ((object.strategy_flags[3] & 0x08U) != 0U) continue;
-        // MARIOSHOWVIEW copies AL_SFLAGS to DL_SFLAGS and immediately clears
-        // ASF_HITFLASH in object RAM. Keep the submitted flags separately so
-        // every presentation can use that frame's flash without exposing it
-        // to native routines after the draw-list build. Invisible objects
-        // skip both the copy and the clear in the cartridge.
-        submitted_object_flags_[handle] = {
-            objects_.generation(handle), object.strategy_flags[0]};
-        object.strategy_flags[0] &= static_cast<std::uint8_t>(~0x02U);
+        object.flags &= static_cast<std::uint8_t>(~view_flag_mask);
         const auto position = transform_q15(world, {
             subtract16(object.world_x, camera[0]),
             subtract16(object.world_y, camera[1]),
@@ -4642,15 +4682,9 @@ std::size_t GameSimulation::update_view_flags_and_cull() {
             if (position[0] < 0) object.flags |= left_of_view;
             continue;
         }
-        object.flags &= static_cast<std::uint8_t>(~0x08U);
         if ((map_.read_native_byte(game_flags_) & 0x01U) != 0U
             || (object.collision_flags & first_frame) != 0U
             || (object.type & remove_behind) == 0U) {
-            // Behind-view objects which survive still take .dontkill and
-            // receive AFINVIEWPL/AFLEFTPL. Only AFFRONTPL distinguishes them
-            // from objects in front; strategies read these independently.
-            object.flags |= 0x10U;
-            if (position[0] < 0) object.flags |= left_of_view;
             continue;
         }
         removals.push_back(handle);
@@ -4670,8 +4704,6 @@ std::size_t GameSimulation::update_view_flags_and_cull() {
 }
 
 GameTickResult GameSimulation::tick(const input::TickInput& input) {
-    if (native_transfer_timeline_)
-        throw std::logic_error{"Native transfer execution cannot mix with host ticks"};
     // MAIN.ASM's final-score loop keeps calling TRANSFER_L. The text paths
     // still need to fade in and settle, and the space backdrop keeps moving.
     // Only non-credits terminal states stop the simulation outright.
@@ -4723,6 +4755,25 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
     complete_video_phases_for_tick();
     if (ending_task_active_) {
         return tick_end_game_sequence(input);
+    }
+    if (flow_state_ == GameFlowState::credits && credits_complete_
+        && starfox_ex_cartridge_
+        && (input.pressed & starfox::input::start) != 0U) {
+        // EX's completed CREDITSMAP tail-jumps into FOXY_CONTINUE_L. A native
+        // tail jump cannot return to the host's bounded map-code call, so make
+        // that exact ownership handoff here once the source prompt accepts
+        // START.
+        queue_sound_effect(0xabU);
+        Wdc65816Registers registers;
+        registers.status = 0x24U;
+        map_.call_native_routine(
+            ex_randomize_background_, registers, 5'000'000U, true);
+        map_.write_native_byte(ex_fade_palette_fx_pink_, 33U);
+        map_.write_native_byte(ex_fade_palette_yamao_, 33U);
+        enter_ex_pregame_menu(false);
+        GameTickResult result;
+        result.audio_port_writes = map_.take_apu_port_writes();
+        return result;
     }
     if (starfox_ex_cartridge_) {
         // EX's source MAX FPS experiment is intentionally disabled. Keep the
@@ -4884,6 +4935,13 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
         && map_.read_native_byte(doing_wipe_) == 0U
         && map_.read_native_byte(stay_black_) == 0xffU;
     if (pause_after_tick) map_.write_native_byte(pause_sound_, 2U);
+    // build_drawlist copies hitflash into the just-submitted frame and clears
+    // it from al_sflags. Presentation consumes object state after tick(), so
+    // perform that clear at the following boundary: the flag remains visible
+    // for exactly the three 60 Hz presentations belonging to one logic tick.
+    for (const auto handle : objects_.active_handles()) {
+        objects_.at(handle).strategy_flags[0] &= static_cast<std::uint8_t>(~0x02U);
+    }
     // MDRAWLIS clears m_bossHP after every source frame. Strategies rebuild
     // it by summing the surviving boss components during this update.
     map_.write_native_word(boss_health_, 0U);
@@ -5182,42 +5240,8 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
         // bytecode dispatch, native call stacks and loop state during gameplay.
         registers = {};
         registers.status = 0x24U;
-        if (flow_state_ == GameFlowState::credits
-            || (flow_state_ == GameFlowState::finished && credits_complete_)) {
-            // The credits map can tail-jump out of UPDATE_OBJECTS_L on the
-            // very transfer that sets LE_ENDOFCREDS, including held START.
-            // Let its source input gate and restart initialization run, then
-            // hand control back at the next host-owned screen's entry.
-            const std::array stops = starfox_ex_cartridge_
-                ? std::array{ex_foxy_continue_, rom_symbol("GAMESTART")}
-                : std::array{rom_symbol("BRIEFING_L"), rom_symbol("TITLESEQ_L")};
-            const auto task = map_.begin_native_task(update_objects_, registers,
-                stops, 50'000'000U, true, true);
-            result.prelude_instructions += task.instructions;
-            if (!task.returned) {
-                ending_task_active_ = false;
-                ending_final_score_ = false;
-                credits_complete_ = false;
-                if (!starfox_ex_cartridge_) {
-                    if (task.stop_address == stops[1]) enter_title();
-                    else enter_controls(GameFlowState::controls_type);
-                } else if (task.stop_address == ex_foxy_continue_) {
-                    enter_ex_pregame_menu(false);
-                } else {
-                    const auto destination =
-                        (static_cast<std::uint32_t>(map_.read_native_byte(
-                            ram_symbol("MAPBANK"))) << 16U)
-                        | 0x8000U | map_.read_native_word(ram_symbol("MAPPTR"));
-                    initialize_native_map(destination);
-                    flow_state_ = GameFlowState::gameplay;
-                }
-                result.audio_port_writes = map_.take_apu_port_writes();
-                return result;
-            }
-        } else {
-            result.prelude_instructions += map_.call_native_routine(
-                update_objects_, registers, 10'000'000, true);
-        }
+        result.prelude_instructions += map_.call_native_routine(
+            update_objects_, registers, 10'000'000, true);
         map_.restore_map_state_from_native();
         refresh_player_reference();
         apply_god_mode_state();
@@ -5250,7 +5274,7 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
             result.strategies =
                 strategies_.tick_all_no_objects(protected_objects);
         } else {
-            result.strategies = strategies_.tick_all(registers);
+            result.strategies = strategies_.tick_all();
         }
         refresh_player_reference();
         apply_god_mode_state();
@@ -5280,7 +5304,9 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
         }
     }
 
-    // GETVIEW_L publishes both CPU and GSU camera state before view sorting.
+    // GETVIEW_L delegates its matrices and camera offset to Super FX. Model
+    // that fixed-point path natively; running it against the temporary
+    // coprocessor-complete stub would reuse stale m_wmat/m_big values.
     if (!ex_pause_model_refresh) calculate_view();
     {
         const std::array<std::int16_t, 3> camera{
@@ -5449,16 +5475,7 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
     registers.status = 0x24U;
     result.prelude_instructions += map_.call_native_routine(
         resolve_collisions_, registers, 10'000'000);
-    if (flow_state_ == GameFlowState::gameplay
-        || flow_state_ == GameFlowState::training) {
-        map_.tick_display_transfer();
-    }
     service_transfer_request();
-    // TRANSWAP installs pending background flags before IRQBIT3 overlays
-    // its flash palettes. Advance that RNG once for the completed transfer,
-    // including the first frame of a newly loaded storm/tunnel background.
-    if (map_.read_native_byte(0U) <= 14U)
-        result.prelude_instructions += map_.apply_irq_palette_flashes();
     if (flow_state_ == GameFlowState::title) {
         // TITLE.ASM prints the current EX version through PRINTT_L into the
         // Super FX bitmap. The host replaces geometry rendering, but the

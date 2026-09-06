@@ -1,76 +1,10 @@
 # Third-party notices
 
-## Ares GSU adaptation and development reference tools
-
-The resumable GSU device in `src/simulation/gsu_device.cpp` and the generated
-files under `src/simulation/gsu` adapt the pinned Ares instruction, cache,
-pixel, transfer and I/O implementations to project-owned C++ coroutine
-scheduling. These adapted files retain the ISC license below, also saved in
-`src/simulation/gsu/LICENSE-ARES.txt`. Normal builds use these checked-in
-files; they do not require Ares, nall or an OS coroutine library. The device
-is compiled into the core but is not yet installed in the game-loop pace path.
-
-### Separate development adapters
-
-Source: <https://github.com/ares-emulator/ares>
-
-Pinned revision: `0aafd85789215e84e1e43415c07d4c88461b7899` (v148).
-
-The optional `starfox_reference_ares_*` and `starfox_reference_cpu*` tools use the CPU/GSU components and nall
-headers from an independently downloaded checkout. Those separate tools and nall headers are not linked into
-the game or included in game packages. `tools/reference/ares_gsu.cpp` adapts
-GSU initialization; `tools/reference/ares_cpu.cpp` adapts the bus timing expression.
-Both retain the following ISC notice. Other project-owned
-files remain under the repository's MIT license.
-
-`starfox_reference_timer_tests` compiles `ares/sfc/cpu/irq.cpp` directly from
-that pinned checkout with a minimal development harness in
-`tools/reference/timer_audit.cpp`. Its independent interrupt-controller oracle
-also retains the ISC notice below and is not linked into game builds.
-
-`starfox_reference_raster_tests` similarly compiles the pinned PPU counter
-implementation in `tools/reference/raster_audit.cpp` for a development-only
-raster/beam-history comparison.
-
-`starfox_reference_gsu_overlap_tests` compiles the pinned CPU step/scanline
-and GSU device bodies with nall and libco for an independent scheduling
-comparison. These development-only components are not linked into the game.
-
-`tools/reference/full-system` also builds the pinned full SNES accuracy core,
-libco, nall and SLJIT as a separate development reference. It generates source
-copies with observation hooks and a reproducible power-on RAM seed outside
-the reference checkout. The underlying Ares sources retain the ISC license;
-SLJIT retains its BSD two-clause license in `thirdparty/sljit/LICENSE` in that
-checkout. None of these full-system reference components enters a game build.
-
-Copyright (c) 2004-2025 ares team, Near et al
-
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted, provided that the above
-copyright notice and this permission notice appear in all copies.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
-OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-
 ## RetroCPU
 
 Source: <https://github.com/achaulk/retro_cpu>
 
 Pinned revision: `ea9049ab25084334f7cc1907b3a98bf1c2604a03`
-
-The build applies `cmake/retro-cpu-parity.patch` for native arithmetic, operand
-bank wrapping, read-modify-write order, block transfers and instruction cycles.
-`cmake/retro-cpu-interrupts.patch` restores native hardware-interrupt entry cycles.
-`cmake/retro-cpu-direct-index.patch` removes the unsupported direct-index page
-crossing penalty. `cmake/retro-cpu-bus-clock.patch` exposes bus/idle clock hooks,
-and `cmake/retro-cpu-bus-order.patch` corrects their order within instructions.
-The build validates the cumulative patch series against the pinned source.
-These project-owned corrections retain the MIT license.
 
 Copyright (c) 2019 Albert Chaulk
 

@@ -6,9 +6,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
-#include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -16,8 +14,6 @@
 #include <vector>
 
 namespace starfox::simulation {
-
-class SnesCpuTimeline;
 
 class Wdc65816ExecutionError : public std::runtime_error {
 public:
@@ -56,12 +52,6 @@ struct Wdc65816Registers {
     // Native mode, 16-bit accumulator and index registers, IRQ disabled.
     std::uint8_t status{0x04};
 };
-struct Wdc65816InterruptSample {
-    std::uint32_t instruction_address{};
-    std::uint64_t master_clocks{};
-    bool masked{};
-    bool operator==(const Wdc65816InterruptSample&) const = default;
-};
 
 struct ApuPortWrite {
     std::uint8_t port{};
@@ -84,11 +74,6 @@ struct Wdc65816TaskResult {
     std::size_t instructions{};
     std::uint32_t stop_address{};
     bool returned{};
-    // Live WAI/STP yield here; stop_address is the next PC and may not be one
-    // of the requested stop addresses. resume_task advances another idle.
-    bool waiting{};
-    bool stopped{};
-    bool deadline_reached{};
 };
 
 // Snapshot of CONTINUE.ASM's dedicated MSHOWOBJ3 launch. Unlike ordinary
@@ -110,18 +95,6 @@ struct NativeModelDrawState {
     std::uint16_t colour_table{};
 };
 
-// Presentation data only: not a CPU/GSU save state. Capturing it has no bus
-// side effects, including when a paused GSU still owns cartridge RAM.
-struct NativePresentationSnapshot {
-    std::array<std::uint8_t,0x20000U> wram{};
-    std::array<std::uint8_t,0x10000U> gsu_ram{};
-    std::array<std::uint8_t,0x10000U> cartridge_ram{};
-    SnesPpuState ppu;
-    NativeModelDrawState model;
-    bool live_gsu{}, extended_gsu_ram{};
-    [[nodiscard]] std::optional<std::uint8_t> read_ram(std::uint32_t address) const noexcept;
-};
-
 // Project-owned adapter around the pinned MIT RetroCPU core. It supplies the
 // SNES LoROM/WRAM address map and bounded native-mode subroutine execution.
 class Wdc65816 {
@@ -139,76 +112,6 @@ public:
 
     [[nodiscard]] std::uint8_t read8(std::uint32_t address) const;
     [[nodiscard]] std::uint16_t read16(std::uint32_t address) const;
-    void capture_presentation(NativePresentationSnapshot& snapshot) const;
-    // Cumulative native-instruction/interrupt-entry bus and internal clocks. Excludes the host's
-    // synthetic call-stack setup, DMA, refresh and translated GSU execution.
-    // This is a measurement input, not the game's current pace scheduler.
-    [[nodiscard]] std::uint64_t executed_master_clocks() const noexcept;
-    [[nodiscard]] std::uint32_t program_address() const noexcept;
-    // Current native P, including during bus callbacks. Reading it does not
-    // sample interrupts or advance the CPU.
-    [[nodiscard]] std::uint8_t status_register() const noexcept;
-    using InstructionBoundaryCallback = std::function<void(std::uint64_t)>;
-    // Observe cumulative native clocks before instructions and at call/task
-    // boundaries. Resuming a paused task may repeat the same timestamp.
-    // The callback may update device state, but must not reenter CPU execution
-    // or replace itself. With DMA ownership enabled, bounded calls stop
-    // automatically draining gameplay bitmap states 2/4/6.
-    // This does not supply raster timing or clocks for DMA/translated GSU work.
-    void set_instruction_boundary_callback(InstructionBoundaryCallback callback,
-        bool owns_gameplay_bitmap_dma = false);
-    using BusClockCallback = std::function<void(std::uint32_t)>;
-    // Called at the actual timed APU bus access. A value denotes a write;
-    // otherwise return the sound processor's output port. IPL reads retain
-    // the decoded boot protocol, while still notifying the callback of time.
-    using ApuBusCallback = std::function<std::uint8_t(
-        std::uint64_t,std::uint8_t,std::optional<std::uint8_t>)>;
-    void set_apu_bus_callback(ApuBusCallback callback);
-    using MsuBusCallback = std::function<std::uint8_t(
-        std::uint64_t,std::uint16_t,std::optional<std::uint8_t>)>;
-    void set_msu_bus_callback(MsuBusCallback callback);
-    // Advance a device timeline at native bus-operation boundaries: reads
-    // step wait-4 clocks before sampling data and 4 afterward; writes step
-    // their full wait before storing data; each idle steps separately.
-    // Excludes synthetic call setup, DMA and translated GSU work. The callback
-    // may update device state but must not reenter CPU execution or replace itself.
-    void set_bus_clock_callback(BusClockCallback callback);
-    using InterruptSampleCallback = std::function<bool(const Wdc65816InterruptSample&)>;
-    // Observe the native last-cycle polling point. A true return selects the
-    // pending-interrupt dummy read on idleIRQ instructions. This does not
-    // itself enter a handler; live halt scheduling requires timeline binding.
-    // Like bus callbacks, it must not reenter execution or replace callbacks.
-    void set_interrupt_sample_callback(InterruptSampleCallback callback);
-    // Bind live timer/blanking/counter registers and advance their shared
-    // timeline during native bus operations. Null restores bounded-call I/O.
-    // Native IRQ/NMI requests are sampled at lastCycle and delivered at the
-    // next CPU step. Accepted requests and halt states survive detach. Live
-    // WAI/STP yield through the task API; STP needs CPU reconstruction to reset.
-    // DMA and scanline HDMA share bus ownership after their startup delay.
-    // Disable HDMA and finish pending DMA before replacing the timeline.
-    void set_cpu_timeline(std::shared_ptr<SnesCpuTimeline> timeline);
-    // Opt in to the resumable GSU and cartridge bus map. Requires a live CPU
-    // timeline. First enable starts cold internal state from recorded CPU I/O;
-    // shared RAM is retained. Disable only after GO, RAM writes and IRQ finish.
-    void set_gsu_timing(bool enabled);
-    [[nodiscard]] bool gsu_timing_enabled() const noexcept;
-    // End a suspended native continuation at a host-owned scene boundary.
-    // Rejects live audio bindings, halted execution and unfinished device work
-    // before changing any binding. RAM and accepted interrupts are retained.
-    void detach_native_task();
-    // Cooperative task-only deadline in absolute raster master clocks.
-    // Yields at an instruction boundary; the final instruction/DMA may
-    // overrun. The task, registers and pending interrupts remain resumable.
-    // Requires a timeline. Null removes the deadline; ordinary calls ignore it.
-    void set_task_clock_deadline(std::optional<std::uint64_t> deadline);
-    // Without a timeline, hardware signals use legacy instruction-boundary
-    // sampling; with one they use the live last-cycle polling point. IRQ is
-    // level-sensitive; the device must release it. NMI is a latched edge and
-    // is acknowledged on acceptance in live mode (on entry in legacy mode).
-    // Neither API replaces registers or the stack.
-    void set_irq_line(bool asserted) noexcept;
-    void pulse_nmi() noexcept;
-    [[nodiscard]] std::uint64_t interrupts_taken() const noexcept;
     void write8(std::uint32_t address, std::uint8_t value);
     void write16(std::uint32_t address, std::uint16_t value);
     [[nodiscard]] bool load_cartridge_ram(
@@ -237,11 +140,6 @@ public:
     // VRAM transfers and buffer swap. Native front-end text is CPU-drawn
     // into this bitmap even when model geometry is host-rendered.
     void submit_superfx_bitmap();
-    // Advance one NTSC gameplay bitmap DMA phase (2 -> 4 -> 6 -> 0).
-    // The final phase honors NOIRQBIT3 and uploads 328 OAM bytes. This handles
-    // bitmap/OAM/page state only; palette, controller and scroll work retain
-    // their existing owners. Returns false when gated or outside these phases.
-    [[nodiscard]] bool advance_gameplay_bitmap_dma_phase();
     void set_bg1_scroll(std::int16_t x, std::int16_t y) noexcept;
     void set_bg2_scroll(std::int16_t x, std::int16_t y) noexcept;
     // ENDSEQ's SEQSCROLL runs once per raster, independently of CPU tasks.
@@ -282,20 +180,14 @@ public:
     // Starts a same-bank RTS routine as a resumable task. This is the task
     // counterpart of call_near() and is used by source screen sequences such
     // as END_LEVEL_SEQ that yield once per TRANSFER_L call.
-    // A saved_data_bank seeds a prior PHB stack frame when entering a source
-    // block after its prologue. Its PLB/RTS still execute normally; synthetic
-    // frame setup is excluded from native execution clocks.
     Wdc65816TaskResult begin_near_task(
         std::uint32_t address,
         Wdc65816Registers& registers,
         std::span<const std::uint32_t> stop_addresses,
         std::size_t instruction_limit = 1'000'000,
-        bool service_transfer_flag = false,
-        std::optional<std::uint8_t> saved_data_bank = std::nullopt);
+        bool service_transfer_flag = false);
 
-    // Continues the active task. Waiting/stopped tasks advance one polling
-    // idle and yield again while halted; a wake resumes ordinary execution.
-    // The instruction at the address where the
+    // Continues the active task. The instruction at the address where the
     // previous call paused is executed before stop addresses are considered
     // again, allowing frame loops to use one stable source label as a yield.
     Wdc65816TaskResult resume_task(

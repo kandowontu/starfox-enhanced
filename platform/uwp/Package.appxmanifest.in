@@ -8,7 +8,7 @@
     Name="StarFoxEnhanced.Dev"
     Publisher="CN=StarFoxEnhanced"
     ProcessorArchitecture="x64"
-    Version="@PROJECT_VERSION_MAJOR@.@PROJECT_VERSION_MINOR@.@PROJECT_VERSION_PATCH@.@STARFOX_UWP_BUILD_REVISION@" />
+    Version="@PROJECT_VERSION@.@STARFOX_UWP_BUILD_REVISION@" />
   <mp:PhoneIdentity
     PhoneProductId="21cc9162-ecf4-40ed-b7e7-b16fdb867d1e"
     PhonePublisherId="00000000-0000-0000-0000-000000000000" />

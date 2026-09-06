@@ -6,7 +6,6 @@
 #include "starfox/render/software_renderer.hpp"
 #include "starfox/simulation/game_simulation.hpp"
 #include "starfox/simulation/strategy_scheduler.hpp"
-#include "starfox/simulation/snes_timeline.hpp"
 #include "starfox/timing/fixed_step.hpp"
 
 #include <algorithm>
@@ -220,61 +219,6 @@ void check_strategy_cadence(const starfox::assets::RomImage& rom,
     std::cout << "native self-removal cannot double-tick player/boss logic\n";
 }
 
-void check_live_native_wait(const starfox::assets::RomImage& rom,
-    const starfox::assets::SymbolMap& symbols) {
-    using namespace starfox::simulation;
-    Wdc65816 cpu{rom, &symbols};
-    auto clock = std::make_shared<SnesCpuTimeline>();
-    cpu.set_cpu_timeline(clock);
-    for (const auto line : {200U, 20U}) {
-        cpu.write16(symbols.find("DMATEMP").at(0), static_cast<std::uint16_t>(line));
-        Wdc65816Registers registers;
-        registers.status = 0x24U;
-        registers.a = 0xbeefU;
-        registers.x = 0xabcdU;
-        const auto count = cpu.call_long(symbols.find("WAITDMA_L").at(0), registers, 100000U);
-        require(count > 100U && clock->raster().vertical() == line,
-            "native WAITDMA did not wait for its requested live scanline");
-        require(registers.a == 0xbeefU && registers.x == 0xabcdU && registers.status == 0x24U,
-            "live native WAITDMA failed to preserve caller registers");
-    }
-    require(clock->raster().fields() == 1U, "native WAITDMA failed across the field boundary");
-    std::cout << "native WAITDMA waits on live counters across a field boundary\n";
-}
-
-void check_dispatch_width(const starfox::assets::RomImage& rom,
-    const starfox::assets::SymbolMap& symbols) {
-    using namespace starfox::simulation;
-    const auto ex = !symbols.find("PLANETSEQ2_L").empty();
-    for (const auto status : {0x04U, 0x24U}) {
-        ObjectPool objects{ex ? kMaximumObjects : kOriginalMaximumObjects,
-            ex ? ObjectMemoryLayout::starfox_ex : ObjectMemoryLayout::original};
-        MapVm map{rom, MapDatabase{rom, symbols}, objects, &symbols};
-        const auto object = objects.allocate_after();
-        objects.at(object).strategy_address = 0x7e6800U;
-        objects.at(object).health = 1;
-        map.write_native_byte(0x7e6800U, 0x6bU); // RTL
-        const auto dead = symbols.find("ALDEAD").at(0);
-        const auto loop = symbols.find("STRATLP").at(0);
-        require(map.read_native_byte(loop) == 0x9cU,
-            "source dispatcher no longer begins with STZ ALDEAD");
-        map.write_native_byte(dead + 1U, 0xa5U);
-        bool observed = false;
-        map.set_native_instruction_boundary_callback([&](std::uint64_t) {
-            if (map.native_program_address() != loop + 3U || observed) return;
-            observed = true;
-            require(map.read_native_byte(dead + 1U) == (status == 0x04U ? 0U : 0xa5U),
-                "dispatcher discarded caller accumulator width");
-        });
-        NativeStrategyScheduler scheduler{symbols, objects, map};
-        Wdc65816Registers registers;
-        registers.status = static_cast<std::uint8_t>(status);
-        static_cast<void>(scheduler.tick_all(registers));
-        require(observed, "source dispatcher width check did not execute");
-    }
-    std::cout << "source dispatcher preserves caller accumulator width\n";
-}
-
 void check_black_hole_music(const starfox::assets::RomImage& rom,
     const starfox::assets::SymbolMap& symbols) {
     using namespace starfox::simulation;
@@ -468,8 +412,6 @@ int main(int argc, char** argv) {
         check_tunnel(rom, symbols);
         check_damage(rom, symbols);
         check_strategy_cadence(rom, symbols);
-        check_dispatch_width(rom, symbols);
-        check_live_native_wait(rom, symbols);
         check_black_hole_music(rom, symbols);
         check_map_cadence(rom, symbols);
         check_venom_handoff(rom, symbols);

@@ -37,7 +37,6 @@ NativeStrategyScheduler::NativeStrategyScheduler(
     : objects_(&objects),
       native_state_(&native_state),
       do_strategy_(rom_symbol(symbols, "DO_STRAT_L")),
-      dispatch_loop_(rom_symbol(symbols, "STRATLP") - 3U),
       initialize_strategies_(rom_symbol(symbols, "INIT_STRATS_L")),
       remove_dead_(rom_symbol(symbols, "REMOVEDEADAL_L")),
       path_strategy_begin_(rom_symbol(symbols, "PATHDHA_ISTRAT")),
@@ -49,28 +48,6 @@ NativeStrategyScheduler::NativeStrategyScheduler(
         throw std::invalid_argument{
             "native object instruction limit cannot be zero"};
     }
-    const auto allst = ram_symbol(symbols, "ALLST");
-    if (native_state_->read_native_byte(dispatch_loop_) != 0xaeU
-        || native_state_->read_native_word(dispatch_loop_ + 1U) != allst)
-        throw std::runtime_error{"Source strategy dispatcher does not begin with LDX ALLST"};
-    bool found_return = false;
-    for (auto pc = dispatch_loop_ + 3U; pc < dispatch_loop_ + 256U; ++pc) {
-        if (native_state_->read_native_byte(pc) == 0xabU
-            && native_state_->read_native_byte(pc + 1U) == 0x60U) {
-            found_return = true;
-            break;
-        }
-        if (native_state_->read_native_byte(pc) != 0x22U) continue;
-        const auto target = native_state_->read_native_word(pc + 1U)
-            | (std::uint32_t{native_state_->read_native_byte(pc + 3U)} << 16U);
-        for (unsigned i = 0; i < dispatch_calls_.size(); ++i) {
-            if (target != (i == 0 ? do_strategy_ : remove_dead_)) continue;
-            if (dispatch_calls_[i]) throw std::runtime_error{"Ambiguous source dispatcher call"};
-            dispatch_calls_[i] = pc;
-        }
-    }
-    if (!found_return || !dispatch_calls_[0] || !dispatch_calls_[1])
-        throw std::runtime_error{"Incomplete source strategy dispatcher"};
 }
 
 std::size_t NativeStrategyScheduler::begin_tick() {
@@ -89,80 +66,63 @@ std::size_t NativeStrategyScheduler::tick_object(ObjectHandle object) {
             do_strategy_, object, 0x7eU, 0x24U,
             object_instruction_limit_);
     } catch (const std::exception& error) {
-        return recover_strategy_failure(object, error);
-    }
-}
-
-std::size_t NativeStrategyScheduler::recover_strategy_failure(
-    ObjectHandle object, const std::exception& error) {
-    std::ostringstream message;
-    const auto& state = objects_->at(object);
-    const auto stratmem = static_cast<std::uint16_t>(state.extended[48])
-        | (static_cast<std::uint16_t>(state.extended[49]) << 8U);
-    message << "native strategy dispatch failed for object " << object
-            << " at $" << std::hex << state.strategy_address
-            << " shape=$" << state.shape
-            << " sword2=$" << static_cast<std::uint16_t>(state.scratch_words[1])
-            << " rot=(" << static_cast<unsigned>(state.rotation_x)
-            << ',' << static_cast<unsigned>(state.rotation_y)
-            << ',' << static_cast<unsigned>(state.rotation_z) << ')'
-            << " sflags=(" << static_cast<unsigned>(state.strategy_flags[0])
-            << ',' << static_cast<unsigned>(state.strategy_flags[1])
-            << ',' << static_cast<unsigned>(state.strategy_flags[2])
-            << ',' << static_cast<unsigned>(state.strategy_flags[3]) << ')'
-            << " coll=$" << static_cast<std::uint16_t>(state.collision_object)
-            << " stratmem=$" << stratmem
-            << " pathptr=$" << native_state_->read_native_word(0x7ef13bU)
-            << " heap=";
-    for (std::uint16_t offset = 0; offset < 16U; ++offset) {
-        message << static_cast<unsigned>(native_state_->read_native_byte(
-            0x7ea12fU + stratmem + offset)) << ',';
-    }
-    message
-            << ": " << error.what();
-
-    // A damaged path trigger stack can return through an invalid bank.
-    // This is isolated to one ordinary path-controlled object; ending the
-    // entire native runtime is both harsher than the cartridge and makes
-    // a long playthrough unrecoverable. Run the source removal routine so
-    // its trigger heap and linked-list allocation are released normally.
-    const auto* execution_error =
-        dynamic_cast<const Wdc65816ExecutionError*>(&error);
-    const auto path_controlled = state.strategy_address
-            >= path_strategy_begin_
-        && state.strategy_address < path_data_begin_;
-    if (execution_error != nullptr && path_controlled) {
-        std::cerr << "warning: recovered failed path object: "
-                  << message.str() << '\n';
-        try {
-            return native_state_->call_native_object_routine(
-                remove_dead_, object, 0x7eU, 0x24U,
-                1'000'000U);
-        } catch (const std::exception& cleanup_error) {
-            std::cerr << "warning: native path cleanup failed; "
-                      << "dropping host object " << object << ": "
-                      << cleanup_error.what() << '\n';
-            static_cast<void>(objects_->remove(object));
-            return 0U;
+        std::ostringstream message;
+        const auto& state = objects_->at(object);
+        const auto stratmem = static_cast<std::uint16_t>(state.extended[48])
+            | (static_cast<std::uint16_t>(state.extended[49]) << 8U);
+        message << "native strategy dispatch failed for object " << object
+                << " at $" << std::hex << state.strategy_address
+                << " shape=$" << state.shape
+                << " sword2=$" << static_cast<std::uint16_t>(state.scratch_words[1])
+                << " rot=(" << static_cast<unsigned>(state.rotation_x)
+                << ',' << static_cast<unsigned>(state.rotation_y)
+                << ',' << static_cast<unsigned>(state.rotation_z) << ')'
+                << " sflags=(" << static_cast<unsigned>(state.strategy_flags[0])
+                << ',' << static_cast<unsigned>(state.strategy_flags[1])
+                << ',' << static_cast<unsigned>(state.strategy_flags[2])
+                << ',' << static_cast<unsigned>(state.strategy_flags[3]) << ')'
+                << " coll=$" << static_cast<std::uint16_t>(state.collision_object)
+                << " stratmem=$" << stratmem
+                << " pathptr=$" << native_state_->read_native_word(0x7ef13bU)
+                << " heap=";
+        for (std::uint16_t offset = 0; offset < 16U; ++offset) {
+            message << static_cast<unsigned>(native_state_->read_native_byte(
+                0x7ea12fU + stratmem + offset)) << ',';
         }
+        message
+                << ": " << error.what();
+
+        // A damaged path trigger stack can return through an invalid bank.
+        // This is isolated to one ordinary path-controlled object; ending the
+        // entire native runtime is both harsher than the cartridge and makes
+        // a long playthrough unrecoverable. Run the source removal routine so
+        // its trigger heap and linked-list allocation are released normally.
+        const auto* execution_error =
+            dynamic_cast<const Wdc65816ExecutionError*>(&error);
+        const auto path_controlled = state.strategy_address
+                >= path_strategy_begin_
+            && state.strategy_address < path_data_begin_;
+        if (execution_error != nullptr && path_controlled) {
+            std::cerr << "warning: recovered failed path object: "
+                      << message.str() << '\n';
+            try {
+                return native_state_->call_native_object_routine(
+                    remove_dead_, object, 0x7eU, 0x24U,
+                    1'000'000U);
+            } catch (const std::exception& cleanup_error) {
+                std::cerr << "warning: native path cleanup failed; "
+                          << "dropping host object " << object << ": "
+                          << cleanup_error.what() << '\n';
+                static_cast<void>(objects_->remove(object));
+                return 0U;
+            }
+        }
+        throw std::runtime_error{message.str()};
     }
-    throw std::runtime_error{message.str()};
 }
 
 StrategyTickStats NativeStrategyScheduler::tick_all() {
-    Wdc65816Registers registers;
-    registers.status = 0x24U;
-    return tick_all(registers);
-}
-
-StrategyTickStats NativeStrategyScheduler::tick_all(Wdc65816Registers registers) {
     StrategyTickStats result;
-    if (objects_->first_active() == 0U) return result;
-    // UPDATE_OBJECTS_L owns the incoming accumulator width and direct page.
-    // Only reconstruct the stack frame for this partial-routine entry.
-    registers.stack = 0x1ffU;
-    registers.data_bank = 0x7eU;
-    const auto& stops = dispatch_calls_;
     std::array<std::uint64_t, kMaximumObjects + 1> visited{};
     const auto next_unvisited = [&]() {
         for (auto candidate = objects_->first_active(); candidate != 0;
@@ -171,61 +131,37 @@ StrategyTickStats NativeStrategyScheduler::tick_all(Wdc65816Registers registers)
         }
         return ObjectHandle{};
     };
-    // Enter after DOSTRATS's initialization calls, with its saved caller DB
-    // above the near return address. The source owns traversal and removal,
-    // and executes its matching PLB/RTS when the list is exhausted.
-    auto task = native_state_->begin_native_near_task(dispatch_loop_, registers,
-        stops, object_instruction_limit_, false, std::uint8_t{0});
-    for (std::size_t guard = 0; ; ++guard) {
-        result.instructions += task.instructions;
-        if (task.returned) break;
-        if (guard >= 4096U)
-            throw std::runtime_error{"native strategy list exceeded the per-tick execution limit"};
-        const auto object = native_state_->native_object_handle(registers.x);
-        if (!objects_->is_active(object)
-            || (task.stop_address == stops[0]
-                && visited[object] == objects_->generation(object))) {
-            // A strategy that removes itself can return a recycled list
-            // cursor. Preserve the port's once-per-generation update rule.
-            const auto next = next_unvisited();
-            if (!next) break;
-            registers.stack = 0x1ffU;
-            registers.data_bank = 0x7eU;
-            registers.x = native_state_->original_object_pointer(next);
-            registers.y = registers.x;
-            task = native_state_->begin_native_near_task(dispatch_loop_ + 3U,
-                registers, stops, object_instruction_limit_, false, std::uint8_t{0});
+    auto object = objects_->first_active();
+    for (std::size_t guard = 0; object != 0 && guard < 4096; ++guard) {
+        if (visited[object] == objects_->generation(object)) {
+            object = next_unvisited();
             continue;
         }
-        if (task.stop_address == stops[0]) {
-            ++result.objects_run;
-            visited[object] = objects_->generation(object);
+        visited[object] = objects_->generation(object);
+        const auto prior_next = objects_->next_active(object);
+        result.instructions += tick_object(object);
+        ++result.objects_run;
+
+        if (!objects_->is_active(object)) {
+            // A native strategy can remove itself and its following object.
+            // Restarting at ALLST reran already-completed player/boss logic
+            // in the same source tick (irrespective of Original pace).
+            object = objects_->is_active(prior_next) ? prior_next : next_unvisited();
+            continue;
         }
-        else if (task.stop_address == stops[1]) ++result.objects_removed;
-        else throw std::runtime_error{"unexpected source strategy dispatcher pause"};
-        // Import each settled boundary so removal followed by slot reuse in
-        // the same update still receives a new presentation generation.
-        try {
-            task = native_state_->resume_native_task(registers, stops,
-                object_instruction_limit_, false, true);
-        } catch (const Wdc65816ExecutionError& error) {
-            if (task.stop_address != stops[0]) throw;
-            // Preserve the existing narrowly scoped corrupt-path recovery.
-            // Cleanup invalidates the failed CPU task; continue the remaining
-            // list from a fresh source dispatch frame without rerunning players.
-            result.instructions += recover_strategy_failure(object, error);
-            const auto next = next_unvisited();
-            if (!next) break;
-            registers.stack = 0x1ffU;
-            registers.data_bank = 0x7eU;
-            registers.x = native_state_->original_object_pointer(next);
-            registers.y = registers.x;
-            task = native_state_->begin_native_near_task(dispatch_loop_ + 3U,
-                registers, stops, object_instruction_limit_, false, std::uint8_t{0});
+        const auto next = objects_->next_active(object);
+        if (native_state_->read_native_byte(alien_dead_) != 0) {
+            result.instructions += native_state_->call_native_object_routine(remove_dead_, object);
+            ++result.objects_removed;
         }
+        object = next;
+    }
+    if (object != 0) {
+        throw std::runtime_error{"native strategy list exceeded the per-tick execution limit"};
     }
     return result;
 }
+
 StrategyTickStats NativeStrategyScheduler::tick_all_no_objects(
     std::span<const ObjectHandle> protected_objects) {
     StrategyTickStats result;

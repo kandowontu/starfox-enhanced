@@ -20,7 +20,7 @@ cp "${build_root}/StarFoxEnhanced.vpk" "${dist_root}/"
 cp "${source_root}/platform/vita/README.md" "${dist_root}/"
 cp "${source_root}/platform/mobile/ASSET_BUILDER.md" \
     "${dist_root}/ASSET_BUILDER.md"
-cp "${source_root}/LICENSE" "${source_root}/CREDITS.md" "${dist_root}/"
+cp "${source_root}/CREDITS.md" "${dist_root}/"
 cp "${source_root}/THIRD_PARTY_NOTICES.md" "${dist_root}/"
 
 printf 'PS Vita package: %s\n' "${dist_root}/StarFoxEnhanced.vpk"

@@ -163,41 +163,9 @@ ScreenPoint project_point(
     bool word_exact,
     double vanish_x,
     double vanish_y,
-    bool subpixel = false,
-    const assets::ProjectionTable* reciprocals = nullptr) {
+    bool subpixel = false) {
     if (word_exact && focal_length == 256.0) {
         const auto original_z = rounded_word(point.z);
-        if (reciprocals != nullptr && !reciprocals->values.empty()) {
-            // MOBJ PROJECTPNTS/OUTPROJZNEAR uses ZTAB and FMULT/ROL,
-            // including signed floor rounding and even-Z quantization.
-            // MDO_PROJECT's division path is used separately by clipped and
-            // exploding faces; using it for every vertex shifts model edges.
-            auto x = rounded_word(point.x);
-            auto y = rounded_word(point.y);
-            auto z = original_z;
-            const auto maximum_z = reciprocals->maximum_z;
-            if (starfox::simulation::subtract16(maximum_z, z) < 0)
-                z = maximum_z - 1;
-            if (starfox::simulation::subtract16(256, z) >= 0) {
-                if (z < 0) {
-                    x = starfox::simulation::wrap16(-static_cast<std::int32_t>(x));
-                    y = starfox::simulation::wrap16(-static_cast<std::int32_t>(y));
-                    z = starfox::simulation::wrap16(-static_cast<std::int32_t>(z));
-                }
-                x = starfox::simulation::wrap16(std::clamp<int>(x, -1024, 1024) * 16);
-                y = starfox::simulation::wrap16(std::clamp<int>(y, -1024, 1024) * 16);
-                z = starfox::simulation::wrap16(static_cast<std::int32_t>(z) * 16);
-            }
-            const auto index = static_cast<std::uint16_t>(z) / 2U;
-            if (index < reciprocals->values.size()) {
-                const auto scale = reciprocals->values[index];
-                return {static_cast<double>(starfox::simulation::add16(
-                            starfox::simulation::multiply_q15(x, scale), rounded_word(vanish_x))),
-                    static_cast<double>(starfox::simulation::add16(
-                            starfox::simulation::multiply_q15(y, scale), rounded_word(vanish_y))),
-                    point.z, original_z >= 0};
-            }
-        }
         auto z = original_z;
         if (z < 0) z = starfox::simulation::wrap16(-static_cast<std::int32_t>(z));
         if (z == 0) z = 1;
@@ -269,35 +237,14 @@ ScreenPoint project_point(
 bool source_visibility(
     const assets::Visibility& visibility,
     const std::vector<ScreenPoint>& projected,
-    const std::vector<Vec3>& transformed,
-    const RenderPose& pose,
-    bool wholly_onscreen = false) {
+    const std::vector<Vec3>& transformed) {
     if (visibility.a >= projected.size() || visibility.b >= projected.size()
         || visibility.c >= projected.size()) {
         return false;
     }
-    const auto source_point = [&](std::uint8_t index) {
-        if (!wholly_onscreen && index >= 128U) {
-            // MSH_VIZIS uses signed MULT #6, whereas MSHON_VIZIS uses
-            // UMULT. M_PROJPNTS follows 255 six-byte rotated points, so a
-            // negative index aliases rotated vertex index-1. Preserve those
-            // words (including Z interpreted as an outcode) for large EX
-            // meshes that cross the screen boundary.
-            const auto& point = transformed[index - 1U];
-            const auto raw_z = starfox::simulation::subtract16(
-                rounded_word(point.z), rounded_word(pose.z));
-            return ScreenPoint{
-                static_cast<double>(starfox::simulation::subtract16(
-                    rounded_word(point.x), rounded_word(pose.x))),
-                static_cast<double>(starfox::simulation::subtract16(
-                    rounded_word(point.y), rounded_word(pose.y))),
-                0.0, (raw_z & 0x10) == 0};
-        }
-        return projected[index];
-    };
-    const auto a = source_point(visibility.a);
-    const auto b = source_point(visibility.b);
-    const auto c = source_point(visibility.c);
+    const auto& a = projected[visibility.a];
+    const auto& b = projected[visibility.b];
+    const auto& c = projected[visibility.c];
     // MSH_VIZIS performs all four projected differences in 16-bit Super FX
     // registers, then subtracts the two signed 16x16 products as a wrapping
     // 32-bit value. Using host doubles here gave a different facing result
@@ -312,20 +259,13 @@ bool source_visibility(
         rounded_word(c.x), rounded_word(a.x));
     const auto cy = starfox::simulation::subtract16(
         rounded_word(c.y), rounded_word(a.y));
-    if (wholly_onscreen) {
-        // MSHON_VIZIS halves each difference with ASR before its signed
-        // byte MULTs. Tiny faces can become edge-on only in this fast path.
-        const auto half = [](std::int16_t value) {
-            return std::bit_cast<std::int8_t>(static_cast<std::uint8_t>(
-                starfox::simulation::arithmetic_shift_right(value, 1)));
-        };
-        return starfox::simulation::wrap16(half(bx) * half(cy) - half(by) * half(cx)) < 0;
-    }
     const auto cross = static_cast<std::int64_t>(bx) * cy
         - static_cast<std::int64_t>(by) * cx;
     const auto signed_area = std::bit_cast<std::int32_t>(
         static_cast<std::uint32_t>(cross));
-    const auto odd_behind = !a.visible != (!b.visible != !c.visible);
+    const auto odd_behind = (transformed[visibility.a].z < 0.0)
+        != ((transformed[visibility.b].z < 0.0)
+            != (transformed[visibility.c].z < 0.0));
     return (signed_area < 0) != odd_behind;
 }
 
@@ -425,10 +365,11 @@ void scale_to_stored(ScreenPoint& point, std::uint32_t scale) noexcept {
 std::vector<RasterVertex> clip_screen_polygon(
     std::vector<RasterVertex> polygon,
     const Framebuffer& target,
-    bool source_exact,
-    bool textured) {
-    // MAIN/OBJ store the final pixel coordinates (223/191). MCLIP accepts
-    // points on those boundaries; the polygon raster omits its terminal row.
+    bool source_exact) {
+    // MOBJ.MC stores m_xright/m_ybot as the first coordinates outside the
+    // viewport (224/192), and MCLIP.MC intersects edges with those values.
+    // Keeping the intersection on that exclusive plane is important because
+    // the source scan converter omits its terminal bottom scanline.
     const auto right = static_cast<double>(target.width());
     const auto bottom = static_cast<double>(target.height());
     if (source_exact) {
@@ -449,7 +390,7 @@ std::vector<RasterVertex> clip_screen_polygon(
             return starfox::simulation::add16(inside_value,
                 starfox::simulation::wrap16(quotient));
         };
-        const auto clip_edge = [&source_value_at, textured](
+        const auto clip_edge = [&source_value_at](
                                    const std::vector<RasterVertex>& input,
                                    bool vertical,
                                    std::int16_t boundary,
@@ -464,21 +405,18 @@ std::vector<RasterVertex> clip_screen_polygon(
             const auto inside = [&coordinate, boundary, keep_less](
                                     const RasterVertex& vertex) {
                 const auto value = coordinate(vertex);
-                return keep_less ? value <= boundary : value >= boundary;
+                return keep_less ? value < boundary : value >= boundary;
             };
             auto previous = input.back();
             auto previous_inside = inside(previous);
             for (const auto& current : input) {
                 const auto current_inside = inside(current);
                 if (current_inside != previous_inside) {
-                    // Only untextured left/right edges use MCLIP's *2
-                    // entries to swap outside->inside endpoints. Top/bottom
-                    // and textured edges retain their traversal direction.
-                    const auto retain_direction = textured || !vertical;
-                    const auto& anchor = retain_direction || previous_inside
-                        ? previous : current;
-                    const auto& outside = retain_direction || previous_inside
-                        ? current : previous;
+                    // MCLIP.MC's *2 entry points swap an outside->inside
+                    // edge, so every signed division is anchored at the
+                    // endpoint that remains inside the clip window.
+                    const auto& anchor = previous_inside ? previous : current;
+                    const auto& outside = previous_inside ? current : previous;
                     const auto anchor_axis = coordinate(anchor);
                     const auto outside_axis = coordinate(outside);
                     auto intersection = anchor;
@@ -514,10 +452,10 @@ std::vector<RasterVertex> clip_screen_polygon(
         };
         polygon = clip_edge(polygon, true, 0, false);
         polygon = clip_edge(polygon, true,
-            static_cast<std::int16_t>(target.width() - 1U), true);
+            static_cast<std::int16_t>(target.width()), true);
         polygon = clip_edge(polygon, false, 0, false);
         polygon = clip_edge(polygon, false,
-            static_cast<std::int16_t>(target.height() - 1U), true);
+            static_cast<std::int16_t>(target.height()), true);
         return polygon;
     }
     polygon = clip_screen_edge(polygon,
@@ -565,7 +503,7 @@ bool clip_screen_line(
                 return rounded_word(vertical ? point.x : point.y);
             };
             const auto inside = [keep_less, boundary](std::int16_t value) {
-                return keep_less ? value <= boundary : value >= boundary;
+                return keep_less ? value < boundary : value >= boundary;
             };
             const auto a_axis = coordinate(a);
             const auto b_axis = coordinate(b);
@@ -573,14 +511,10 @@ bool clip_screen_line(
             const auto b_inside = inside(b_axis);
             if (!a_inside && !b_inside) return false;
             if (a_inside && b_inside) return true;
-            // MTCLIPLINE2D emits the first two clipped vertices from its
-            // directed two-point polygon. Its divisions remain anchored at
-            // the first endpoint even when that endpoint is outside.
             auto& outside = a_inside ? b : a;
-            const auto first = a;
-            const auto second = b;
-            const auto anchor_axis = a_axis;
-            const auto outside_axis = b_axis;
+            const auto& anchor = a_inside ? a : b;
+            const auto anchor_axis = coordinate(anchor);
+            const auto outside_axis = coordinate(outside);
             const auto denominator = starfox::simulation::subtract16(
                 outside_axis, anchor_axis);
             const auto interpolate = [anchor_axis, outside_axis, boundary,
@@ -599,18 +533,18 @@ bool clip_screen_line(
             };
             if (vertical) {
                 outside.x = boundary;
-                outside.y = interpolate(first.y, second.y);
+                outside.y = interpolate(anchor.y, outside.y);
             } else {
-                outside.x = interpolate(first.x, second.x);
+                outside.x = interpolate(anchor.x, outside.x);
                 outside.y = boundary;
             }
             outside.visible = true;
             return true;
         };
         return clip_edge(true, 0, false)
-            && clip_edge(true, static_cast<std::int16_t>(target.width() - 1U), true)
+            && clip_edge(true, static_cast<std::int16_t>(target.width()), true)
             && clip_edge(false, 0, false)
-            && clip_edge(false, static_cast<std::int16_t>(target.height() - 1U), true);
+            && clip_edge(false, static_cast<std::int16_t>(target.height()), true);
     }
     auto first = RasterVertex{a, {}};
     auto second = RasterVertex{b, {}};
@@ -709,58 +643,6 @@ Vec3 rotate(const assets::Vec3i& point, const RenderPose& pose, std::uint8_t shi
     value.y += pose.y;
     value.z += pose.z;
     return value;
-}
-
-Vec3 rotate_source_point(const assets::Vec3i& point, assets::PointEncoding encoding,
-    bool reflected, const RenderPose& pose, std::uint8_t shift) {
-    const bool word = encoding == assets::PointEncoding::signed16
-        || encoding == assets::PointEncoding::mirrored_x_signed16;
-    auto effective_pose = pose;
-    if (word) effective_pose.scale = 1.0;
-    if (!pose.use_rotation_matrix || pose.subpixel_projection)
-        return rotate(point, effective_pose, word ? 0U : shift);
-    const auto scale = word ? 1 : static_cast<int>(std::bit_cast<std::int8_t>(
-        static_cast<std::uint8_t>(std::lround(pose.scale * (std::uint32_t{1} << shift)))));
-    const auto component = [&](std::size_t column) {
-        if (!word && shift < 3) {
-            // MSH_ROTPOINTS8 uses the signed high bytes of M_MAT, then
-            // ADD/HIB before multiplying by M_SCALE. It is not a Q15 dot.
-            const auto high = [&](std::size_t index) {
-                return std::bit_cast<std::int8_t>(static_cast<std::uint8_t>(
-                    static_cast<std::uint16_t>(pose.rotation_matrix[index]) >> 8));
-            };
-            const auto sum = starfox::simulation::wrap16(point.x * high(column)
-                + point.y * high(column + 3) + point.z * high(column + 6));
-            const auto doubled = starfox::simulation::add16(sum, sum);
-            return static_cast<std::int16_t>(std::bit_cast<std::int8_t>(
-                static_cast<std::uint8_t>(static_cast<std::uint16_t>(doubled) >> 8)) * scale);
-        }
-        const auto x = starfox::simulation::wrap16((reflected ? -point.x : point.x) * scale);
-        const auto y = starfox::simulation::wrap16(point.y * scale);
-        const auto z = starfox::simulation::wrap16(point.z * scale);
-        const bool mirrored = encoding == assets::PointEncoding::mirrored_x_signed8
-            || encoding == assets::PointEncoding::mirrored_x_signed16;
-        if (!word && !mirrored) {
-            // The non-mirrored large byte path accumulates LMULT products
-            // with carry before truncation (MDOTPROD16M).
-            const auto sum = static_cast<std::int64_t>(x) * pose.rotation_matrix[column]
-                + static_cast<std::int64_t>(y) * pose.rotation_matrix[column + 3]
-                + static_cast<std::int64_t>(z) * pose.rotation_matrix[column + 6];
-            return starfox::simulation::wrap16(starfox::simulation::arithmetic_shift_right(
-                std::bit_cast<std::int32_t>(static_cast<std::uint32_t>(sum)), 15));
-        }
-        const auto x_product = starfox::simulation::multiply_q15(x, pose.rotation_matrix[column]);
-        auto yz = starfox::simulation::add16(
-            starfox::simulation::multiply_q15(y, pose.rotation_matrix[column + 3]),
-            starfox::simulation::multiply_q15(z, pose.rotation_matrix[column + 6]));
-        // MDOTPROD16MQX subtracts the already-rounded X product for the
-        // reflected partner. Rounding a negated source X differs by one.
-        return reflected ? starfox::simulation::subtract16(yz, x_product)
-                         : starfox::simulation::add16(yz, x_product);
-    };
-    return {static_cast<double>(starfox::simulation::add16(component(0), rounded_word(pose.x))),
-        static_cast<double>(starfox::simulation::add16(component(1), rounded_word(pose.y))),
-        static_cast<double>(starfox::simulation::add16(component(2), rounded_word(pose.z)))};
 }
 
 Vec3 explosion_offset(
@@ -1148,14 +1030,10 @@ void fill_source_textured_polygon(
             tracer.v = fixed(start_v);
             tracer.x_increment = edge_increment(
                 endpoint.x - start_x, scanlines);
-            // MTNEWX1/2 use LOB/SWAP before FMULT. A rounded UV just
-            // below zero becomes 255; its next delta must wrap as a byte.
-            const auto reciprocal = static_cast<std::int16_t>(
-                scanlines == 1 ? 32767 : 32768 / scanlines);
-            tracer.u_increment = starfox::simulation::multiply_q15(
-                fixed(endpoint.u - start_u), reciprocal);
-            tracer.v_increment = starfox::simulation::multiply_q15(
-                fixed(endpoint.v - start_v), reciprocal);
+            tracer.u_increment = source_edge_increment(
+                endpoint.u - start_u, scanlines);
+            tracer.v_increment = source_edge_increment(
+                endpoint.v - start_v, scanlines);
             tracer.remaining = scanlines;
             return true;
         }
@@ -1168,37 +1046,32 @@ void fill_source_textured_polygon(
         if (right.remaining == 0 && !begin_segment(right)) return;
         auto x1 = integer_x(left.x);
         auto x2 = integer_x(right.x);
-        const auto next_left_u = starfox::simulation::add16(
+        const auto next_left_u = source_advance_edge(
             left.u, left.u_increment);
-        const auto next_left_v = starfox::simulation::add16(
+        const auto next_left_v = source_advance_edge(
             left.v, left.v_increment);
-        const auto next_right_u = starfox::simulation::add16(
+        const auto next_right_u = source_advance_edge(
             right.u, right.u_increment);
-        const auto next_right_v = starfox::simulation::add16(
+        const auto next_right_v = source_advance_edge(
             right.v, right.v_increment);
         auto span_u = left.u;
         auto span_v = left.v;
-        auto span_right_u = right.u;
-        auto span_right_v = right.v;
+        auto span_right_u = next_right_u;
+        auto span_right_v = next_right_v;
         if (winding_independent && x2 < x1) {
             // Keep the corresponding affine texture endpoints attached to
             // whichever edge is now the left side of the stored raster.
             std::swap(x1, x2);
             span_u = right.u;
             span_v = right.v;
-            span_right_u = left.u;
-            span_right_v = left.v;
+            span_right_u = next_left_u;
+            span_right_v = next_left_v;
         }
-        // THLINES1 substitutes a one-pixel span when the two quantized
-        // texture edges cross. Solid HLINES instead skips such a span.
-        x2 = std::max(x1, x2);
         if (x2 >= x1) {
-            // THLINES1 increments R12 in the branch delay slot, so the
-            // divisor is the inclusive pixel count. R4 retains the old
-            // right UV while its successor is stored for the next row.
-            const auto span = x2 - x1 + 1;
-            const auto reciprocal = static_cast<std::int16_t>(
-                span == 1 ? 32'767 : 32'768 / span);
+            const auto span = x2 - x1;
+            const auto reciprocal = span == 0 ? std::int16_t{}
+                : static_cast<std::int16_t>(
+                    span == 1 ? 32'767 : 32'768 / span);
             const auto u_increment = starfox::simulation::multiply_q15(
                 starfox::simulation::subtract16(span_right_u, span_u), reciprocal);
             const auto v_increment = starfox::simulation::multiply_q15(
@@ -1256,10 +1129,11 @@ void draw_line(
             + (colour.dither && ((x0 ^ y0) & 1) != 0
                 ? colour.odd : colour.even)));
     };
-    // MDRAWC.MC mline halves the difference between the axis lengths.
-    // Preserve its strict-underflow tie rule and traversal direction.
+    // MDRAWC.MC mline uses a major-axis counter and a floor(major/2)
+    // accumulator. Its strict-underflow tie rule differs from the common
+    // symmetric Bresenham formulation by one pixel on half-slope lines.
     if (dx >= dy) {
-        auto error = (dx - dy) >> 1;
+        auto error = dx >> 1;
         for (auto count = dx + 1; count != 0; --count) {
             plot();
             error -= dy;
@@ -1270,7 +1144,7 @@ void draw_line(
             x0 += sx;
         }
     } else {
-        auto error = (dy - dx) >> 1;
+        auto error = dy >> 1;
         for (auto count = dy + 1; count != 0; --count) {
             plot();
             error -= dx;
@@ -1371,95 +1245,38 @@ void draw_simple_scaled_sprite(
     const assets::TextureImage& texture,
     const RenderPose& pose,
     double focal_length,
-    std::uint8_t colour_index_base,
-    const assets::ProjectionTable* projection) {
-    if (pose.z <= 128.0 || pose.simple_sprite_world_size <= 0) return;
+    std::uint8_t colour_index_base) {
+    if (pose.z < 128.0 || pose.simple_sprite_world_size <= 0) return;
     auto dimension = static_cast<int>(std::trunc(
         static_cast<double>(pose.simple_sprite_world_size) * focal_length / pose.z));
-    auto centre_x = static_cast<int>(std::lround(pose.vanish_x))
-        + static_cast<int>(std::trunc(pose.x * focal_length / pose.z));
-    auto centre_y = static_cast<int>(std::lround(pose.vanish_y))
-        + static_cast<int>(std::trunc(pose.y * focal_length / pose.z));
-    if (projection != nullptr && focal_length == 256.0) {
-        auto x = rounded_word(pose.x), y = rounded_word(pose.y);
-        auto z = rounded_word(pose.z), size = pose.simple_sprite_world_size;
-        if (z <= 128) return;
-        if (starfox::simulation::subtract16(projection->maximum_z, z) < 0)
-            z = projection->maximum_z - 1;
-        while (z <= 256) {
-            x = starfox::simulation::add16(x, x);
-            y = starfox::simulation::add16(y, y);
-            size = starfox::simulation::add16(size, size);
-            z = starfox::simulation::add16(z, z);
-        }
-        const auto reciprocal = projection->values[static_cast<std::uint16_t>(z) / 2U];
-        dimension = starfox::simulation::multiply_q15(size, reciprocal);
-        centre_x = starfox::simulation::add16(
-            starfox::simulation::multiply_q15(x, reciprocal), rounded_word(pose.vanish_x));
-        centre_y = starfox::simulation::add16(
-            starfox::simulation::multiply_q15(y, reciprocal), rounded_word(pose.vanish_y));
-    }
     dimension = std::clamp(dimension, 0, 240);
     if (dimension == 0) return;
-    const auto left = centre_x - (dimension + 1) / 2;
-    const auto top = centre_y - (dimension + 1) / 2;
+    const auto centre_x = static_cast<int>(std::lround(pose.vanish_x))
+        + static_cast<int>(std::trunc(pose.x * focal_length / pose.z));
+    const auto centre_y = static_cast<int>(std::lround(pose.vanish_y))
+        + static_cast<int>(std::trunc(pose.y * focal_length / pose.z));
+    const auto left = centre_x - dimension / 2;
+    const auto top = centre_y - dimension / 2;
     const auto source_width = static_cast<int>(texture.u_mask) + 1;
     const auto source_height = static_cast<int>(texture.v_mask) + 1;
-    std::vector<int> columns, rows;
-    if (dimension < source_width) {
-        const auto reciprocal = static_cast<std::int16_t>(
-            dimension == 1 ? 32767 : 32768 / dimension);
-        const auto increment = static_cast<std::uint16_t>(starfox::simulation::multiply_q15(
-            static_cast<std::int16_t>(source_width << 8), reciprocal));
-        for (int pixel = 0; pixel < dimension; ++pixel) {
-            columns.push_back((pixel * increment) >> 8);
-            rows.push_back((pixel * increment) >> 8);
-        }
-        if (left < 0) {
-            const auto skipped = std::min(-left, dimension);
-            const auto start = (skipped * increment) >> 8;
-            for (int pixel = skipped; pixel < dimension; ++pixel)
-                columns[pixel] = start + (((pixel - skipped) * increment) >> 8);
-        }
-    } else {
-        const auto increment = ((dimension == source_width ? 65535U
-            : (static_cast<unsigned>(source_width) << 16) / dimension) & ~1U);
-        // MLARGESSPR clips in source texels before running its carry loop.
-        // Trimming destination pixels instead retains part of the final
-        // texel that the cartridge drops at the right edge.
-        const auto source_columns = std::clamp(static_cast<int>(
-            (static_cast<std::int64_t>(static_cast<int>(target.width()) - 1 - left)
-                * increment) >> 16), 0, source_width);
-        unsigned phase = 0;
-        for (int source = 0; source < source_columns;) {
-            columns.push_back(source);
-            phase += increment;
-            if (phase >= 65536U) { phase -= 65536U; ++source; }
-        }
-        int vertical_phase = 0;
-        for (int source = 0; source < source_height;) {
-            rows.push_back(source);
-            vertical_phase -= static_cast<int>(increment);
-            if (vertical_phase < 0) { vertical_phase += 65536; ++source; }
-        }
-    }
-    auto first_x = std::max(0, -left);
-    auto last_x = std::min(static_cast<int>(columns.size()),
-        static_cast<int>(target.width()) - left);
+    auto first_x = 0;
+    auto last_x = dimension;
     if (pose.effect_clip_right > pose.effect_clip_left) {
         first_x = std::max(first_x, pose.effect_clip_left - left);
         last_x = std::min(last_x, pose.effect_clip_right - left);
     }
     if (first_x >= last_x) return;
-    for (std::size_t y = 0; y < rows.size(); ++y) {
-        const auto source_y = std::min(source_height - 1, rows[y]);
+    for (auto y = 0; y < dimension; ++y) {
+        const auto source_y = std::min(source_height - 1,
+            static_cast<int>(static_cast<std::int64_t>(y) * source_height / dimension));
         for (auto x = first_x; x < last_x; ++x) {
-            const auto source_x = std::min(source_width - 1, columns[x]);
+            const auto source_x = std::min(source_width - 1,
+                static_cast<int>(static_cast<std::int64_t>(x) * source_width / dimension));
             const auto texel = texture.texels[
                 static_cast<std::size_t>(source_y) * source_width
                 + static_cast<std::size_t>(source_x)];
             if (texel != 0U) {
-                target.set(left + x, top + static_cast<int>(y),
+                target.set(left + x, top + y,
                     static_cast<std::uint8_t>(colour_index_base + texel));
             }
         }
@@ -1703,8 +1520,7 @@ void SoftwareRenderer::draw(
             shape, pose.simple_sprite_colour, pose.colour_frame);
         if (texture != nullptr) {
             draw_simple_scaled_sprite(target, *texture, pose,
-                settings_.focal_length, settings_.colour_index_base,
-                shape.projection_reciprocals.get());
+                settings_.focal_length, settings_.colour_index_base);
         }
         return;
     }
@@ -1715,9 +1531,6 @@ void SoftwareRenderer::draw(
     const auto& vertices = shape.frames.empty()
         ? shape.vertices
         : shape.frames[pose.animation_frame % shape.frames.size()].vertices;
-    const auto& encodings = shape.frames.empty()
-        ? shape.vertex_encodings
-        : shape.frames[pose.animation_frame % shape.frames.size()].vertex_encodings;
     const auto shading_depth = pose.use_source_lighting_state
         ? pose.source_depth : pose.z;
     auto depth_band = std::size_t{};
@@ -1747,32 +1560,12 @@ void SoftwareRenderer::draw(
         upscaled_vertices.reserve(vertices.size());
         upscaled_projected.reserve(vertices.size());
     }
-    auto word_pose = pose;
-    auto word_raster_pose = raster_pose;
-    word_pose.scale = 1.0;
-    word_raster_pose.scale = 1.0;
-    bool reflected = false;
-    for (std::size_t index = 0; index < vertices.size(); ++index) {
-        const auto& point = vertices[index];
-        // MOBJ's word-coordinate commands rotate their full-size coordinates
-        // directly. Only byte commands multiply by M_SCALE (SH_SHIFT), which
-        // also carries EX's big-head modes. Streams may mix both encodings.
-        const auto word = index < encodings.size()
-            && (encodings[index] == assets::PointEncoding::signed16
-                || encodings[index] == assets::PointEncoding::mirrored_x_signed16);
-        const auto shift = word ? std::uint8_t{} : shape.header.shift;
-        const auto encoded = index < encodings.size();
-        const auto mirrored = encoded && (encodings[index] == assets::PointEncoding::mirrored_x_signed8
-            || encodings[index] == assets::PointEncoding::mirrored_x_signed16);
-        if (!mirrored) reflected = false;
-        const auto transformed = encoded ? rotate_source_point(
-            point, encodings[index], reflected, pose, shape.header.shift)
-            : rotate(point, word ? word_pose : pose, shift);
-        if (mirrored) reflected = !reflected;
+    for (const auto& point : vertices) {
+        const auto transformed = rotate(point, pose, shape.header.shift);
         transformed_vertices.push_back(transformed);
         if (continuous_upscaled_geometry) {
             const auto upscaled = rotate(
-                point, word ? word_raster_pose : raster_pose, shift);
+                point, raster_pose, shape.header.shift);
             upscaled_vertices.push_back(upscaled);
             upscaled_projected.push_back(project_point(
                 upscaled, settings_.focal_length,
@@ -1782,24 +1575,18 @@ void SoftwareRenderer::draw(
         projected.push_back(project_point(
             transformed, settings_.focal_length,
             word_exact, pose.vanish_x, pose.vanish_y,
-            pose.subpixel_projection, shape.projection_reciprocals.get()));
+            pose.subpixel_projection));
     }
     const auto& raster_vertices = continuous_upscaled_geometry
         ? upscaled_vertices : transformed_vertices;
     const auto& visibility_vertices = raster_vertices;
     const auto& visibility_projected = continuous_upscaled_geometry
         ? upscaled_projected : projected;
-    const auto wholly_onscreen = shape.projection_reciprocals && word_exact
-        && std::all_of(projected.begin(), projected.end(), [&pose](const auto& point) {
-            const auto x = point.x - (pose.vanish_x - 112);
-            const auto y = point.y - (pose.vanish_y - 96);
-            return point.visible && x >= 0 && x < 223 && y >= 0 && y < 191;
-        });
     const auto face_visible = [&](const assets::Visibility& visibility) {
         return settings_.render_scale > 1U
             ? continuous_visibility(visibility, visibility_vertices)
             : source_visibility(
-                visibility, visibility_projected, visibility_vertices, pose, wholly_onscreen);
+                visibility, visibility_projected, visibility_vertices);
     };
 
     // MOBJ.MC enters the face pass with r8 holding the end of M_PROJPNTS,
@@ -1912,7 +1699,7 @@ void SoftwareRenderer::draw(
             batches.emplace(batch.address, &batch);
         }
 
-        std::function<void(std::uint32_t)> append_batch = [&](std::uint32_t address) {
+        const auto append_batch = [&ordered_faces, &batches](std::uint32_t address) {
             const auto batch = batches.find(address);
             if (batch == batches.end()) {
                 return;
@@ -1920,8 +1707,6 @@ void SoftwareRenderer::draw(
             for (const auto& face : batch->second->faces) {
                 ordered_faces.push_back(&face);
             }
-            if (batch->second->continuation_address != 0U)
-                append_batch(batch->second->continuation_address);
         };
         std::unordered_set<std::uint32_t> active;
         std::function<void(std::uint32_t)> traverse = [&](std::uint32_t address) {
@@ -1965,9 +1750,7 @@ void SoftwareRenderer::draw(
 
     for (const auto* face_pointer : ordered_faces) {
         const auto& face = *face_pointer;
-        // MFACES branches directly to MISLINE for two-point faces before
-        // consulting M_VISTAB. Their visibility byte is only padding.
-        if (!face.is_line() && pose.explosion_progress == 0U && face.visibility_index >= 0
+        if (pose.explosion_progress == 0U && face.visibility_index >= 0
             && static_cast<std::size_t>(face.visibility_index) < shape.visibilities.size()) {
             const auto& visibility = shape.visibilities[
                 static_cast<std::size_t>(face.visibility_index)];
@@ -1984,16 +1767,8 @@ void SoftwareRenderer::draw(
         const auto material = face_material(
             shape, face, pose.colour_frame, depth_band, light, pose,
             next_colour_warp_word());
-        // PLOT tests the low colour nibble before selecting the dither
-        // nibble. A material such as $e0 is entirely transparent, while
-        // $0e draws both its coloured and black checkerboard pixels.
-        if (material.texture == nullptr && material.colour.even == 0U) continue;
-        // MTXCLIPPOLY2D rejects two-point textured faces before drawing.
-        // Texture variants can reuse a mesh containing ordinary line faces.
-        if (face.is_line() && material.texture != nullptr) continue;
         const auto face_offset = explosion_offset(face, pose);
         if (face.sprite) {
-            if (!shape.sprite_commands_enabled) continue;
             if (material.texture != nullptr && face.vertex_indices.size() == 1U
                 && face.vertex_indices[0] < visibility_projected.size()
                 && visibility_projected[face.vertex_indices[0]].visible) {
@@ -2004,8 +1779,7 @@ void SoftwareRenderer::draw(
                 draw_textured_sprite(target, project_point(centre,
                     settings_.focal_length, raster_word_exact,
                     raster_pose.vanish_x, raster_pose.vanish_y,
-                    raster_pose.subpixel_projection,
-                    pose.explosion_progress == 0 ? shape.projection_reciprocals.get() : nullptr),
+                    raster_pose.subpixel_projection),
                     *material.texture, settings_.colour_index_base);
             }
             continue;
@@ -2079,22 +1853,7 @@ void SoftwareRenderer::draw(
             polygon.push_back(project_point(
                 point, settings_.focal_length,
                 raster_word_exact, raster_pose.vanish_x,
-                raster_pose.vanish_y, raster_pose.subpixel_projection,
-                !any_behind && pose.explosion_progress == 0
-                    ? shape.projection_reciprocals.get() : nullptr));
-        }
-
-        if (!any_behind && raster_word_exact) {
-            // Source outcodes mark x>=right and y>=bottom as outside. A
-            // primitive entirely on either final pixel is rejected before
-            // clipping, though an edge crossing it may retain that pixel.
-            const auto all = [&](auto outside) {
-                return std::all_of(polygon.begin(), polygon.end(), outside);
-            };
-            if (all([](const auto& p) { return p.x < 0; })
-                || all([](const auto& p) { return p.y < 0; })
-                || all([&](const auto& p) { return p.x >= target.width() - 1U; })
-                || all([&](const auto& p) { return p.y >= target.height() - 1U; })) continue;
+                raster_pose.vanish_y, raster_pose.subpixel_projection));
         }
 
         if (polygon.size() == 2) {
@@ -2125,18 +1884,15 @@ void SoftwareRenderer::draw(
         for (std::size_t index = 0; index < polygon.size(); ++index) {
             auto texture = TexturePoint{};
             if (material.texture != nullptr) {
-                const auto& coordinate = index < material.texture->coordinates.size()
-                    ? material.texture->coordinates[index]
-                    : material.texture->additional_coordinates.at(
-                        index - material.texture->coordinates.size());
+                const auto& coordinate = material.texture->coordinates[
+                    index % material.texture->coordinates.size()];
                 texture = {static_cast<double>(coordinate.u),
                     static_cast<double>(coordinate.v)};
             }
             raster_polygon.push_back({polygon[index], texture});
         }
         raster_polygon = clip_screen_polygon(
-            std::move(raster_polygon), target, raster_word_exact,
-            material.texture != nullptr);
+            std::move(raster_polygon), target, raster_word_exact);
         if (raster_polygon.size() < 3U) continue;
         const StoredRasterScope raster{target, settings_.render_scale};
         for (auto& vertex : raster_polygon) {
