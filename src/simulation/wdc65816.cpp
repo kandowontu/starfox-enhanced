@@ -1060,24 +1060,28 @@ struct Wdc65816::Impl {
             if ((enabled_channels & (1U << channel)) == 0U) continue;
             const auto base = channel * 16U;
             const auto parameters = dma_registers[base];
-            auto source = static_cast<std::uint32_t>(dma_registers[base + 2U])
-                | (static_cast<std::uint32_t>(dma_registers[base + 3U]) << 8U)
-                | (static_cast<std::uint32_t>(dma_registers[base + 4U]) << 16U);
+            auto source = static_cast<std::uint16_t>(dma_registers[base + 2U]
+                | (static_cast<std::uint16_t>(dma_registers[base + 3U]) << 8U));
+            const auto source_bank =
+                static_cast<std::uint32_t>(dma_registers[base + 4U]) << 16U;
             auto length = static_cast<std::uint32_t>(dma_registers[base + 5U])
                 | (static_cast<std::uint32_t>(dma_registers[base + 6U]) << 8U);
             if (length == 0U) length = 0x10000U;
             const auto mode = static_cast<std::uint8_t>(parameters & 7U);
-            const auto ppu_base = static_cast<std::uint16_t>(
-                0x2100U + dma_registers[base + 1U]);
+            const auto ppu_base = dma_registers[base + 1U];
             const auto decrement = (parameters & 0x10U) != 0U;
             const auto fixed = (parameters & 0x08U) != 0U;
             for (std::uint32_t index = 0; index < length; ++index) {
-                const auto ppu_address = static_cast<std::uint16_t>(ppu_base
-                    + patterns[mode][index % pattern_lengths[mode]]);
+                // A1T and BBAD are independent 16- and 8-bit counters;
+                // neither can carry into its bus bank/page.
+                const auto ppu_address = static_cast<std::uint16_t>(0x2100U
+                    | static_cast<std::uint8_t>(ppu_base
+                        + patterns[mode][index % pattern_lengths[mode]]));
                 if ((parameters & 0x80U) == 0U) {
-                    write_bbus(ppu_address, bus.ReadByte(source));
+                    write_bbus(ppu_address, bus.ReadByte(source_bank | source));
                 }
-                if (!fixed) source = decrement ? source - 1U : source + 1U;
+                if (!fixed) source = static_cast<std::uint16_t>(
+                    decrement ? source - 1U : source + 1U);
             }
             dma_registers[base + 2U] = static_cast<std::uint8_t>(source);
             dma_registers[base + 3U] = static_cast<std::uint8_t>(source >> 8U);

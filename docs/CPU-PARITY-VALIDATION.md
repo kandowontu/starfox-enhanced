@@ -144,3 +144,29 @@ generation, exact interrupt polling within an instruction, WAI/STP, emulation
 mode, DMA/refresh timing and CPU/GSU overlap remain separate work. The production
 game does not yet drive these signal APIs from its transfer scheduler. This
 change alone does not fix the open EX trajectory or Original pace approximation.
+
+## DMA address counters
+
+The transfer bridge now retains A1B while incrementing/decrementing the 16-bit
+A1T counter, and wraps BBAD plus the transfer-mode offset within the $21xx
+B-bus page. Previously, a transfer crossing $ffff carried into the next bank,
+and a mode offset past BBAD=$ff wrote outside the PPU page. Fixed addressing
+continues to take precedence over decrement.
+
+The independent specification used here is the pinned Ares revision listed
+above: `ares/sfc/cpu/cpu.hpp` declares sourceAddress as n16 and targetAddress
+as n8; `ares/sfc/cpu/dma.cpp` holds sourceBank separately in dmaRun and narrows
+the mode offset before transfer. No Ares implementation code was copied.
+`starfox_dma_tests` observes actual VRAM writes in 96 combinations of channel,
+increment/decrement/fixed control and boundary address, plus PPU register writes
+for five transfer modes crossing BBAD=$ff. The test failed against the old
+bridge on bank crossing, then all 101 cases passed after the correction.
+
+The rebuilt full suite passed **63/63 checks in 286.75 seconds**, including
+normal/MSU ending audio, native interrupt entry and both games' data checks.
+The log is preserved in `validation/dma-boundary-regression-validation.txt`.
+The local packaged candidate has not been refreshed for this source correction.
+
+This establishes those address-counter behaviors only. Reverse DMA, prohibited
+A-bus/WRAM-to-WRAM transfers, DMA clock scheduling, HDMA and refresh interactions
+remain unaudited or incomplete. It does not resolve the live EX transfer read.

@@ -824,6 +824,10 @@ if(STARFOX_BUILD_TESTS)
     target_link_libraries(starfox_cpu_timing_tests PRIVATE starfox_core)
     add_test(NAME starfox_cpu_timing_tests COMMAND starfox_cpu_timing_tests)
 
+    add_executable(starfox_dma_tests tests/dma_tests.cpp)
+    target_link_libraries(starfox_dma_tests PRIVATE starfox_core)
+    add_test(NAME starfox_dma_tests COMMAND starfox_dma_tests)
+
     add_executable(starfox_direct_audio_tests tests/direct_audio_tests.cpp)
     target_link_libraries(starfox_direct_audio_tests PRIVATE starfox_core)
 
