@@ -17,6 +17,8 @@ int main(int argc,char** argv) try {
         else game->begin_native_transfer(controls);
         const std::array<input::ButtonMask,5> physical{controls.held,0U,0U,0U,0U};
         game->sample_native_controller_held(physical);
+        if ((game->map().read_native_word(0x4218U)&controls.pressed)!=controls.pressed)
+            throw std::runtime_error{"Physical resampling discarded an accepted native button press"};
         unsigned slices{};
         while (!game->advance_native_transfer(32768U)) {
             game->sample_native_controller_held(physical);
@@ -31,6 +33,8 @@ int main(int argc,char** argv) try {
     if (main_loop) {
         // The control flag clears before the launch wipe/pause gate settles.
         for (unsigned frame=0;frame<32U;++frame) step({});
+        step({0U,input::b,input::b});
+        step({});
         const auto pause=symbols.find("DOPAUSE").at(0);
         const auto print_pause=symbols.find("PRINTPAUSE").at(0);
         unsigned pause_reads{};
@@ -40,8 +44,11 @@ int main(int argc,char** argv) try {
                     && game->map().read_native_byte(pc+1U)==0x19U
                     && game->map().read_native_byte(pc+2U)==0x42U) ++pause_reads;
         });
-        step({input::start,input::start,0U});
-        game->begin_native_gameplay_update({input::start,0U,0U});
+        // Start can be pressed and released entirely between source updates.
+        // MAIN observes the preceding controller sample, then DOPAUSE must
+        // see the physical release rather than an indefinitely latched pulse.
+        step({0U,input::start,input::start});
+        game->begin_native_gameplay_update({0U,input::b,input::b});
         const auto wait_until=[&](const char* phase,const auto& ready) {
             unsigned slices{};
             while (!ready()) {
@@ -51,6 +58,8 @@ int main(int argc,char** argv) try {
             }
         };
         wait_until("entry",[&] { return game->paused(); });
+        if (game->map().read_native_word(0x4218U)&(input::start|input::b))
+            throw std::runtime_error{"Gameplay press pulses leaked into the native pause menu"};
         const auto pause_revision=game->native_presentation_revision();
         game->sample_native_controller_held({});
         wait_until("released Start",[&] { return pause_reads>=2U; });

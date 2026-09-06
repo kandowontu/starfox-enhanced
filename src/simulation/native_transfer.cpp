@@ -23,7 +23,7 @@ void GameSimulation::finish_native_gameplay_exit() {
     native_transfer_task_started_ = false;
     native_main_loop_ = false;
     native_main_exit_pending_ = false;
-    native_roll_pulses_.fill(0U);
+    native_input_pulses_.fill(0U);
     service_level_exit();
 }
 
@@ -74,9 +74,10 @@ std::array<std::uint32_t,2> GameSimulation::find_native_main_boundaries() const 
 void GameSimulation::sample_native_controller_held(const std::array<input::ButtonMask,5>& physical) {
     if (!native_transfer_timeline_ || native_transfer_phase_==NativeTransferPhase::failed)
         throw std::logic_error{"Native controller sampling requires a live native binding"};
+    native_controller_held_=physical;
     auto held=physical;
     if (native_transfer_active())
-        for (std::size_t i=0;i<held.size();++i) held[i]|=native_roll_pulses_[i];
+        for (std::size_t i=0;i<held.size();++i) held[i]|=native_input_pulses_[i];
     map_.write_native_word(hardware_controller_,held[0]);
     if (!starfox_ex_cartridge_) return;
     // Scope owns JOY2's physical packet when selected.
@@ -132,10 +133,12 @@ void GameSimulation::begin_native_update(const input::TickInput& input, bool mai
     }
     map_.hold_native_presentation();
     write_input(input);
-    constexpr auto shoulders=input::left_shoulder | input::right_shoulder;
-    native_roll_pulses_[0]=input.pressed & shoulders;
-    for (std::size_t i=0;i<secondary_inputs_.size();++i)
-        native_roll_pulses_[i+1U]=secondary_inputs_[i].pressed & shoulders;
+    native_input_pulses_[0]=input.pressed;
+    native_controller_held_[0]=input.held;
+    for (std::size_t i=0;i<secondary_inputs_.size();++i) {
+        native_input_pulses_[i+1U]=secondary_inputs_[i].pressed;
+        native_controller_held_[i+1U]=secondary_inputs_[i].held;
+    }
     native_draw_candidates_.clear();
     native_draw_order_.clear(); native_draw_order_captured_ = false;
     if (!main_loop || !native_transfer_task_started_) {
@@ -145,6 +148,7 @@ void GameSimulation::begin_native_update(const input::TickInput& input, bool mai
     native_transfer_result_ = {};
     if (!main_loop) native_transfer_task_started_ = false;
     native_transfer_phase_ = main_loop ? NativeTransferPhase::main : NativeTransferPhase::black;
+    sample_native_controller_held(native_controller_held_);
 }
 
 std::optional<GameTickResult> GameSimulation::advance_native_transfer(std::uint64_t master_clocks) {
@@ -173,7 +177,14 @@ std::optional<GameTickResult> GameSimulation::advance_native_transfer(std::uint6
             if (task.stopped) throw std::runtime_error{"Native transfer entered STP"};
             if (main_loop && task.returned) throw std::runtime_error{"Native MAIN unexpectedly returned"};
             if (main_loop && !task.waiting) {
-                if (task.stop_address==native_main_pause_entry_) paused_=true;
+                if (task.stop_address==native_main_pause_entry_) {
+                    paused_=true;
+                    // MAIN has accepted Start. DOPAUSE needs physical held
+                    // states; gameplay taps must not latch Start or become
+                    // unintended input to EX's interactive pause menu.
+                    native_input_pulses_.fill(0U);
+                    sample_native_controller_held(native_controller_held_);
+                }
                 if (task.stop_address==native_main_pause_return_) paused_=false;
                 if (paused_ && std::find(native_pause_present_stops_.begin(),native_pause_present_stops_.end(),
                         task.stop_address)!=native_pause_present_stops_.end()) {

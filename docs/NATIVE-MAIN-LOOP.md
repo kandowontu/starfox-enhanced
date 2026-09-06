@@ -18,9 +18,14 @@ retains the previous published presentation.
 `sample_native_controller_held` accepts the primary and four secondary physical
 held states between execution chunks. It refreshes controller ports without
 consuming input edges or modifying strategy trigger/previous-input bytes.
-The caller must retain those edges for the next update's begin call. Shoulder
+The caller must retain those edges for the next update's begin call. Button
 press pulses already accepted for the current update remain present through
 its IRQ polling even if a later physical sample reports the button released.
+This applies to all joypad buttons, not only shoulders. The last physical
+held states are retained separately. Once MAIN accepts Start and enters
+DOPAUSE, gameplay pulses are cleared and physical states are restored, so a
+completed Start tap can release and other gameplay taps do not operate EX's
+pause menu. New paused-menu events still follow live physical polling.
 EX's one-controller multitap mirror is retained; Scope keeps ownership of its
 JOY2 packet when selected.
 
@@ -82,10 +87,22 @@ tick. An attached MSU callback rejects the handoff without changing the
 pending exit, timeline identity or elapsed clock; detaching it permits retry.
 
 Input replays reach controllable gameplay through MAIN, enter the cartridge
-pause, deliver release/press/release physical Start samples during that same
+pause with an already-released Start tap, and deliver physical resume samples during that same
 update, and resume. Both left and right complete shoulder double taps survive
 physical sampling between chunks, while the first tap alone does not roll
 and released pulses do not remain held afterward.
+
+The replay also delivers a completed fire tap, checks that physical
+resampling retains accepted button presses on JOY1, and verifies that Start
+and a queued fire pulse are absent from the physical port at pause entry.
+This protects accepted source-update input; it does not recover analog motion
+between polls or yet guarantee complete taps made inside the paused menu.
+
+After the all-button pulse and pause-entry cleanup change, all 15 targeted
+native input, transfer, MAIN, audio and desktop matrix tests pass against
+rebuilt binaries in 62.53 seconds. See
+`validation/native-button-pulse-regressions.txt`. Existing legacy input code
+and pace selections are unchanged by this change.
 
 The complete desktop build succeeds and all 85 regression tests pass in
 234.34 seconds. `validation/native-main-regressions.txt` records the clean run

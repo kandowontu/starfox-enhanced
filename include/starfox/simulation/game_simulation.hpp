@@ -952,7 +952,8 @@ private:
     std::vector<std::uint32_t> native_main_stop_addresses_;
     std::vector<std::uint32_t> native_pause_present_stops_;
     std::uint64_t native_presentation_revision_{};
-    std::array<input::ButtonMask,5> native_roll_pulses_{};
+    std::array<input::ButtonMask,5> native_input_pulses_{};
+    std::array<input::ButtonMask,5> native_controller_held_{};
     std::array<std::int32_t, 6> planet_spin_remainders_{};
     std::uint8_t planet_route_blink_frames_{};
     std::uint32_t pending_map_{};
