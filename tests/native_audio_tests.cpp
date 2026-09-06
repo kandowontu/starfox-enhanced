@@ -90,6 +90,81 @@ struct Result {
     audio::Spc700Audio::State state;
     friend bool operator==(const Result&,const Result&)=default;
 };
+
+void handoff_audio_test(const assets::RomImage& rom,const assets::SymbolMap& symbols,const char* map,
+    std::span<const std::uint8_t> msu_fixture) {
+    auto game=std::make_unique<simulation::GameSimulation>(rom,symbols,map,
+        std::span<const std::uint8_t>{},true);
+    const auto boot=game->map().take_apu_port_writes();
+    audio::Spc700Audio continuous,switched;
+    for (auto* sound : {&continuous,&switched}) {
+        static_cast<void>(sound->prime_upload_sequence(boot));
+        for (unsigned i=0;i<30U;++i) static_cast<void>(sound->render_logic_tick({}));
+    }
+    std::vector<std::int16_t> reference_pcm,switched_pcm;
+    const auto recording=[&](std::uint16_t) {
+        return std::vector<std::uint8_t>(msu_fixture.begin(),msu_fixture.end());
+    };
+    audio::Msu1Audio reference_msu(recording),switched_msu(recording);
+    for (auto* msu : {&reference_msu,&switched_msu}) msu->set_enabled(!msu_fixture.empty());
+    audio::MsuAudioTimeline reference_music(reference_msu,32040U),switched_music(switched_msu,32040U);
+    audio::NativeAudioClock reference(continuous,1U,1U,[&](auto,auto music,auto effects) {
+        music=reference_music.finish_packet(reference.spc_clock(),music);
+        reference_pcm.insert(reference_pcm.end(),music.begin(),music.end());
+        reference_pcm.insert(reference_pcm.end(),effects.begin(),effects.end());
+    });
+    bool callback_guard_tested{};
+    audio::NativeAudioClock* active{};
+    audio::NativeAudioClock clock(switched,3U,7U,[&](auto,auto music,auto effects) {
+        music=switched_music.finish_packet(active->spc_clock(),music);
+        switched_pcm.insert(switched_pcm.end(),music.begin(),music.end());
+        switched_pcm.insert(switched_pcm.end(),effects.begin(),effects.end());
+        bool rejected{};
+        try { active->rebase_master_clock(0U); } catch (const std::logic_error&) { rejected=true; }
+        require(rejected,"Packet callback rebased an advancing audio clock");
+        rejected=false;
+        try { active->advance_spc_to(active->spc_clock()); } catch (const std::logic_error&) { rejected=true; }
+        require(rejected,"Packet callback reentered direct SPC advancement");
+        callback_guard_tested=true;
+    });
+    active=&clock;
+    std::uint64_t elapsed{},fraction{};
+    for (unsigned scene=0;scene<100U;++scene) {
+        // Each native scene has a fresh raster origin. The intervening host
+        // frontend lasts one legacy sound tick, starting inside a PCM packet.
+        clock.rebase_master_clock(0U);
+        const auto native_clocks=100003U+scene*37U;
+        fraction+=native_clocks*3U;
+        elapsed+=fraction/7U;
+        fraction%=7U;
+        clock.advance_to(native_clocks);
+        reference.advance_spc_to(elapsed);
+        switched_music.advance_to(elapsed);
+        reference_music.advance_to(elapsed);
+        require(clock.spc_clock()==elapsed,"Scene rebase lost fractional oscillator clocks");
+        const auto event=elapsed+123U;
+        static_cast<void>(clock.access_spc(event,3U,scene%2U ? 1U : 0U));
+        static_cast<void>(reference.access_spc(event,3U,scene%2U ? 1U : 0U));
+        for (auto* music : {&reference_music,&switched_music}) {
+            static_cast<void>(music->access(event,0x2004U,1U));
+            static_cast<void>(music->access(event,0x2005U,0U));
+            static_cast<void>(music->access(event,0x2006U,255U));
+            static_cast<void>(music->access(event,0x2007U,scene%3U ? 3U : 0U));
+        }
+        elapsed+=audio::Spc700Audio::clocks_per_frame;
+        clock.advance_spc_to(elapsed);
+        reference.advance_spc_to(elapsed);
+        switched_music.advance_to(elapsed);
+        reference_music.advance_to(elapsed);
+        require(clock.master_clock()==native_clocks,"Host frontend advanced the detached CPU anchor");
+        require(switched.state()==continuous.state() && switched_pcm==reference_pcm,
+            "Scene handoff changed sound state or dropped/repeated PCM samples");
+    }
+    bool rejected{};
+    try { clock.advance_spc_to(elapsed-1U); } catch (const std::invalid_argument&) { rejected=true; }
+    require(rejected && clock.spc_clock()==elapsed,"Backward host timestamp changed sound time");
+    require(callback_guard_tested && !reference_pcm.empty(),"Audio handoff replay produced no complete packets");
+}
 Result run(const assets::RomImage& rom,const assets::SymbolMap& symbols,const char* map,std::uint64_t quantum,
     std::span<const std::uint8_t> msu_fixture) {
     auto game=std::make_unique<simulation::GameSimulation>(rom,symbols,map,
@@ -162,6 +237,7 @@ int main(int argc,char** argv) try {
     }
     const auto rom=assets::RomImage::load(argv[1]);
     const auto symbols=assets::SymbolMap::load(argv[2]);
+    handoff_audio_test(rom,symbols,argv[3],msu_fixture);
     const auto small=run(rom,symbols,argv[3],4096U,msu_fixture);
     const auto large=run(rom,symbols,argv[3],100'000'000U,msu_fixture);
     require(small==large,"Native CPU/audio clocks, traffic, PCM or state depend on execution quantum");

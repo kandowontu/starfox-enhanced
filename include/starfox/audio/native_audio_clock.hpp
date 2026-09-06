@@ -19,11 +19,22 @@ public:
     NativeAudioClock(const NativeAudioClock&)=delete;
     NativeAudioClock& operator=(const NativeAudioClock&)=delete;
     void advance_to(std::uint64_t master_clock);
+    // A new CPU scene can start its raster at zero while sound continues.
+    // Rebase only after servicing the outgoing raster's final timestamp.
+    // This preserves the partial PCM packet and oscillator remainder.
+    void rebase_master_clock(std::uint64_t master_origin);
+    // Host frontends supply timestamps in the continuing SPC domain. These
+    // insert sound time without advancing the detached CPU's master anchor.
+    void advance_spc_to(std::uint64_t spc_clock);
+    [[nodiscard]] std::uint8_t access_spc(std::uint64_t spc_clock,std::uint8_t port,
+        std::optional<std::uint8_t> value);
     [[nodiscard]] std::uint8_t access(std::uint64_t master_clock,std::uint8_t port,
         std::optional<std::uint8_t> value);
     [[nodiscard]] std::uint64_t spc_clock() const noexcept { return spc_clock_; }
     [[nodiscard]] std::uint64_t master_clock() const noexcept { return master_clock_; }
 private:
+    void advance_clocks(std::uint64_t clocks);
+    [[nodiscard]] std::uint8_t access_port(std::uint8_t port,std::optional<std::uint8_t> value);
     Spc700Audio& audio_;
     PacketCallback packet_;
     std::uint32_t numerator_{},denominator_{};

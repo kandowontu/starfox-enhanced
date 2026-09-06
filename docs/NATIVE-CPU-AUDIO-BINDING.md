@@ -46,6 +46,33 @@ profile. MSU rendering must use the same selected output timeline.
 
 ## Validation
 
+### Continuous sound across scene ownership changes
+
+Keep one `NativeAudioClock` alive across CPU scene lifetimes. After advancing
+the outgoing CPU to its final timestamp, `rebase_master_clock(new_origin)`
+changes the CPU anchor without resetting SPC time, the oscillator remainder,
+or the partially filled PCM packet. It does not itself advance either device.
+
+While a host frontend owns execution, `advance_spc_to` and `access_spc` accept
+absolute timestamps in that same continuing sound timeline. They do not move
+the detached CPU anchor. A frontend tick starting at SPC time S can deliver
+its writes at S plus their offsets, then advance to S + 51200. Packet callbacks
+still fire at the original packet boundaries, including inside the frontend
+tick. MSU events must use those same SPC timestamps. Rebase the CPU anchor
+again when entering a new native scene; do not reconstruct the sound clock or
+call the legacy whole-frame renderer on the partial packet.
+
+Both cartridges now replay 100 native/frontend switches against a continuous
+SPC-domain reference. They compare every emitted music/effects sample and
+exposed sound-driver state after each switch. The MSU fixture variant also
+restarts, loops and stops a recording across the switches. The replay checks
+fractional-clock retention, callback reentry guards and backward timestamp
+rejection. The rebuilt desktop and native-audio target compile successfully;
+all three native audio/MSU tests pass in 2.92 seconds. This change is a sound
+lifetime API and is not yet wired to desktop scene scheduling.
+
+### Earlier CPU bus validation
+
 - A small native CPU program observes an APU write at master clock 46 and a
   read at clock 72, and stores the callback's returned value in WRAM. It also
   checks IPL acknowledgement/echo/driver handoff and binding lifetime guards.

@@ -27,13 +27,28 @@ void NativeAudioClock::advance_to(std::uint64_t master_clock) {
     // absolute timestamp by the oscillator ratio. Both factors in the
     // fractional product fit in uint32_t, and numerator <= denominator.
     const auto fraction=(delta%denominator_)*numerator_+remainder_;
-    auto clocks=(delta/denominator_)*numerator_+fraction/denominator_;
+    const auto clocks=(delta/denominator_)*numerator_+fraction/denominator_;
     if (clocks>std::numeric_limits<std::uint64_t>::max()-spc_clock_)
         throw std::overflow_error{"Native audio elapsed clock overflow"};
-    struct Guard { bool& value; ~Guard() { value=false; } } guard{advancing_};
-    advancing_=true;
     remainder_=fraction%denominator_;
     master_clock_=master_clock;
+    advance_clocks(clocks);
+}
+
+void NativeAudioClock::rebase_master_clock(std::uint64_t master_origin) {
+    if (advancing_) throw std::logic_error{"Native audio callbacks cannot rebase the clock"};
+    master_clock_=master_origin;
+}
+
+void NativeAudioClock::advance_spc_to(std::uint64_t spc_clock) {
+    if (advancing_) throw std::logic_error{"Native audio callbacks cannot reenter clock advancement"};
+    if (spc_clock<spc_clock_) throw std::invalid_argument{"SPC timeline moved backward"};
+    advance_clocks(spc_clock-spc_clock_);
+}
+
+void NativeAudioClock::advance_clocks(std::uint64_t clocks) {
+    struct Guard { bool& value; ~Guard() { value=false; } } guard{advancing_};
+    advancing_=true;
     while (clocks) {
         const auto count=static_cast<std::uint32_t>(std::min<std::uint64_t>(clocks,
             Spc700Audio::clocks_per_frame-frame_clock_));
@@ -51,6 +66,17 @@ std::uint8_t NativeAudioClock::access(std::uint64_t master_clock,std::uint8_t po
     std::optional<std::uint8_t> value) {
     if (port>3U) throw std::invalid_argument{"Invalid native APU port"};
     advance_to(master_clock);
+    return access_port(port,value);
+}
+
+std::uint8_t NativeAudioClock::access_spc(std::uint64_t spc_clock,std::uint8_t port,
+    std::optional<std::uint8_t> value) {
+    if (port>3U) throw std::invalid_argument{"Invalid native APU port"};
+    advance_spc_to(spc_clock);
+    return access_port(port,value);
+}
+
+std::uint8_t NativeAudioClock::access_port(std::uint8_t port,std::optional<std::uint8_t> value) {
     if (value) {
         const std::array write{simulation::ApuPortWrite{port,*value,frame_clock_}};
         static_cast<void>(audio_.advance_frame(frame_clock_,write));
