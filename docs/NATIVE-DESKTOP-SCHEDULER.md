@@ -87,3 +87,28 @@ desktop smoke tests. `validation/native-desktop-exit-regressions.txt` retains
 the log. These injected exits verify the handoff itself; naturally reaching
 every exit in full campaigns and returning from every frontend remain separate
 coverage requirements. ACCURATE is still test-gated.
+
+## Resume checkpoint after b50612b
+
+Accepted gameplay button taps are retained through source controller polling;
+entering pause clears those pulses and restores the physical held state.
+Short taps during an already active pause menu still need coverage and handling.
+The recorded targeted run passed 15/15 tests; this is not a new full-suite run.
+
+The requested shipping state remains incomplete. Before enabling ACCURATE:
+
+- Audit enhanced controls, God Mode, rumble, effects and EX pause options on
+  the native path, including responsiveness during slow source updates.
+- Verify pace and interpolation under real-time stalls and long boss encounters
+  in both ports, with MSU enabled and disabled. Preserve enhanced input and
+  presentation responsiveness rather than reproducing original input latency.
+- Complete frontend return and training integration checks.
+- Add persisted timing ID 2 for ACCURATE, retaining IDs 0 and 1 and their saved
+  meanings. Wire the menu and fresh/reset default to ACCURATE only after the
+  production selector is exercised by integration tests without the test gate.
+- Retain the older pace choices and verify their boss speed independently.
+
+The delayed native credits jingle and one-ship Star Wolf reports have not been
+reproduced; passing related replays does not establish that those reports are
+fixed. Full campaign parity and physical controller/older-PC behavior remain
+unverified. No new release has been published from this checkpoint.
