@@ -237,6 +237,8 @@ if(STARFOX_BUILD_TOOLS)
             "Optional pinned Ares checkout for isolated GSU cycle measurements")
         if(EXISTS "${STARFOX_REFERENCE_ARES_DIR}/ares/component/processor/gsu/gsu.hpp")
             add_library(starfox_reference_ares STATIC tools/reference/ares_gsu.cpp)
+            add_executable(starfox_live_game_timing tools/reference/live_game_timing.cpp)
+            target_link_libraries(starfox_live_game_timing PRIVATE starfox_core)
             target_include_directories(starfox_reference_ares SYSTEM PRIVATE
                 "${STARFOX_REFERENCE_ARES_DIR}" "${STARFOX_REFERENCE_ARES_DIR}/nall")
             target_compile_features(starfox_reference_ares PRIVATE cxx_std_20)
