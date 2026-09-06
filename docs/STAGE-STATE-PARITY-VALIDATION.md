@@ -194,6 +194,40 @@ zero or a fixed nonzero value in production is not justified by this experiment.
 python tools/reference/diagnose-transfer-chase.py --updates 1000
 ```
 
+## Gameplay bitmap DMA phases and OAM length
+
+The ordinary bitmap service previously copied both bitmap halves, 300 OAM bytes
+and swapped pages in one operation. IRQBIT3 in both assembled ports uploads
+**328** OAM bytes; the 300-byte upload belongs to FOXIRQ3's separate front-end
+path. A new regression through the existing bounded-call service failed at byte
+300 before the correction. Ordinary gameplay completion now copies all 328 bytes;
+the front-end transfer length remains 300.
+
+Wdc65816 now exposes `advance_gameplay_bitmap_dma_phase()` for the NTSC bitmap
+DMA data path. It advances 2 -> 4 after the first 10,752 bytes, 4 -> 6 after the
+second half, and 6 -> 0 after OAM/page completion. The final phase respects
+NOIRQBIT3. Six synthetic sequences cover source RAM and destination VRAM wrapping,
+unchanged OAM/pages before completion, the held completion gate and idle behavior.
+
+The asset-bound transition checks execute the unmodified IRQBIT1 and IRQBIT2
+routines up to STARTMUS, comparing each full VRAM image and transfer/acknowledgement
+bytes. They also execute IRQBIT3's unmodified OAM DMA block and compare the complete
+OAM image. Both ports pass. The first version of this test incorrectly searched
+ROM using IRQBIT3's WRAM address; the fixture now performs COPY_TO_0101_L before
+locating and executing the copied instructions.
+
+This API covers bitmap/OAM/page data only. It does not replace the existing
+palette, controller, scroll or audio owners, model PAL/EX IRQ chaining, or supply
+a raster deadline. Existing bounded CPU calls still drain these phases
+synchronously, retaining their previous completion behavior while fixing OAM.
+The LEVEL7_2 live transfer timing difference is therefore still unresolved.
+
+The final rebuilt suite passes 67/67 checks in 355.20 seconds, including both
+source-DMA comparisons, the six phase sequences, ending audio and pacing/input
+replays. The baseline OAM-length rejection and full log are archived in
+`validation/bitmap-phase-regression-validation.txt`. The desktop executable was
+rebuilt; the packaged candidate remains unchanged.
+
 ## Regression and candidate status
 
 The rebuilt full suite passed 60/61 checks in 238.33 seconds; its sole failure

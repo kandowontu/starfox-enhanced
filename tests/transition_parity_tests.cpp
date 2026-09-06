@@ -26,6 +26,71 @@ void source_tick(starfox::simulation::GameSimulation& game,
     static_cast<void>(game.tick(input));
 }
 
+void check_gameplay_bitmap_dma(const starfox::assets::RomImage& rom,
+    const starfox::assets::SymbolMap& symbols) {
+    using namespace starfox::simulation;
+    // Run the unmodified first IRQBIT3 DMA block, after its beam wait and
+    // before the next BG2 DMA. This keeps the source's OAM length authoritative.
+    Wdc65816 reference{rom, &symbols}, host{rom, &symbols};
+    Wdc65816Registers copy_registers;
+    copy_registers.status = 0x24;
+    reference.call_long(symbols.find("COPY_TO_0101_L").at(0), copy_registers, 5'000'000);
+    const auto irq = symbols.find("IRQBIT3").at(0);
+    const auto sprite = symbols.find("SPRITEBLK").at(0);
+    std::uint32_t begin{};
+    for (unsigned offset = 0; offset < 256; ++offset) {
+        const auto pc = irq + offset;
+        if (reference.read8(pc) == 0xa9 && reference.read8(pc + 1) == 4
+            && reference.read8(pc + 2) == 0x8d && reference.read16(pc + 3) == 0x4301
+            && reference.read8(pc + 5) == 0xa2 && reference.read16(pc + 6) == 0
+            && reference.read8(pc + 8) == 0x8e && reference.read16(pc + 9) == 0x2102) {
+            require(begin == 0, "ambiguous source gameplay OAM DMA");
+            begin = pc;
+        }
+    }
+    require(begin != 0 && reference.read8(begin + 22) == 0xa2
+        && reference.read16(begin + 23) == 328 && reference.read8(begin + 35) == 0x8d
+        && reference.read16(begin + 36) == 0x420b, "unexpected source gameplay OAM DMA block");
+    for (auto* cpu : {&reference, &host}) {
+        for (unsigned i = 0; i < 544; ++i) cpu->write8(0x7f8000 + i, 0xa7);
+        cpu->upload_oam(0x7f8000, 544);
+        for (unsigned i = 0; i < 328; ++i) cpu->write8(sprite + i, 1 + i % 251);
+    }
+    for (auto* cpu : {&reference, &host}) {
+        cpu->write16(symbols.find("VMAP1").at(0), 0x4000);
+        cpu->write16(symbols.find("VMAP2").at(0), 0x1000);
+        cpu->write8(0, 2);
+        const auto bitmap = symbols.find("BITMAP1").at(0);
+        for (unsigned i = 0; i < 21504; ++i)
+            cpu->write8(0x700000U | ((bitmap + i) & 65535U), 1 + (i * 17 + 19) % 251);
+    }
+    const std::array music_stop{symbols.find("STARTMUS").at(0)};
+    for (const auto* phase : {"IRQBIT1", "IRQBIT2"}) {
+        Wdc65816Registers phase_registers;
+        phase_registers.status = 0x24;
+        const auto result = reference.begin_long_task(symbols.find(phase).at(0),
+            phase_registers, music_stop, 1000);
+        require(!result.returned && result.stop_address == music_stop[0],
+            "source bitmap IRQ did not reach its post-DMA audio boundary");
+        require(host.advance_gameplay_bitmap_dma_phase(), "host bitmap DMA did not advance");
+        require(host.ppu_state().vram == reference.ppu_state().vram
+            && host.read8(0) == reference.read8(0)
+            && host.read8(symbols.find("TRANSBMP1").at(0))
+                == reference.read8(symbols.find("TRANSBMP1").at(0)),
+            "partial bitmap transfer differs from the source DMA");
+    }
+    Wdc65816Registers registers;
+    registers.status = 0x24;
+    const std::array stops{begin + 38};
+    const auto task = reference.begin_long_task(begin, registers, stops, 100);
+    require(!task.returned && task.stop_address == stops[0], "source OAM DMA did not reach its boundary");
+    host.write8(0, 6);
+    host.write8(symbols.find("NOIRQBIT3").at(0), 1);
+    require(host.advance_gameplay_bitmap_dma_phase(), "host OAM phase did not complete");
+    require(host.ppu_state().oam == reference.ppu_state().oam,
+        "gameplay bitmap completion differs from the source OAM DMA");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -36,6 +101,7 @@ int main(int argc, char** argv) {
 
     const auto rom = starfox::assets::RomImage::load(argv[1]);
     const auto symbols = starfox::assets::SymbolMap::load(argv[2]);
+    check_gameplay_bitmap_dma(rom, symbols);
     const auto starfox_ex = !symbols.find("PLANETSEQ2_L").empty();
     starfox::simulation::ObjectPool objects{
         starfox_ex ? starfox::simulation::kMaximumObjects

@@ -150,6 +150,11 @@ public:
     // VRAM transfers and buffer swap. Native front-end text is CPU-drawn
     // into this bitmap even when model geometry is host-rendered.
     void submit_superfx_bitmap();
+    // Advance one NTSC gameplay bitmap DMA phase (2 -> 4 -> 6 -> 0).
+    // The final phase honors NOIRQBIT3 and uploads 328 OAM bytes. This handles
+    // bitmap/OAM/page state only; palette, controller and scroll work retain
+    // their existing owners. Returns false when gated or outside these phases.
+    [[nodiscard]] bool advance_gameplay_bitmap_dma_phase();
     void set_bg1_scroll(std::int16_t x, std::int16_t y) noexcept;
     void set_bg2_scroll(std::int16_t x, std::int16_t y) noexcept;
     // ENDSEQ's SEQSCROLL runs once per raster, independently of CPU tasks.

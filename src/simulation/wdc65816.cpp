@@ -2356,48 +2356,64 @@ struct Wdc65816::Impl {
         }
     }
 
+    bool advance_gameplay_bitmap_dma_phase(bool respect_completion_gate = true) {
+        const auto flag = wram[0];
+        if (flag == 2U || flag == 4U) {
+            constexpr std::uint16_t half_bytes = 10'752U;
+            const auto offset = flag == 2U ? 0U : half_bytes;
+            if (bitmap1 != 0U && vmap1 != 0U) {
+                copy_superfx_to_vram(static_cast<std::uint16_t>(bitmap1 + offset),
+                    static_cast<std::uint16_t>(read_wram16(vmap1) + offset / 2U), half_bytes);
+            }
+            if (transbmp1 != 0U)
+                wram[static_cast<std::uint16_t>(transbmp1)] = flag == 2U ? 1U : 2U;
+            wram[0] = static_cast<std::uint8_t>(flag + 2U);
+            return true;
+        }
+        if (flag != 6U) return false;
+        if (respect_completion_gate && noirqbit3 != 0U
+            && wram[static_cast<std::uint16_t>(noirqbit3)] == 0U) return false;
+        if (spriteblk != 0U) {
+            for (std::size_t index = 0; index < 328U; ++index) {
+                ppu.oam[index] = wram[static_cast<std::uint16_t>(
+                    spriteblk + static_cast<std::uint32_t>(index))];
+            }
+        }
+        if (vmap1 != 0U && vmap2 != 0U) {
+            const auto first = read_wram16(static_cast<std::uint16_t>(vmap1));
+            const auto second = read_wram16(static_cast<std::uint16_t>(vmap2));
+            const auto bg12nba = static_cast<std::uint8_t>(
+                ((first >> 12U) & 0x0fU)
+                | (((ppu.bg2_character_base >> 12U) & 0x0fU) << 4U));
+            write_ppu(0x210bU, bg12nba);
+            const auto write_word = [this](std::uint32_t address,
+                                             std::uint16_t value) {
+                const auto offset = static_cast<std::uint16_t>(address);
+                wram[offset] = static_cast<std::uint8_t>(value);
+                wram[static_cast<std::uint16_t>(offset + 1U)] =
+                    static_cast<std::uint8_t>(value >> 8U);
+            };
+            write_word(vmap1, second);
+            write_word(vmap2, first);
+        }
+        if (transbmp1 != 0U) {
+            wram[static_cast<std::uint16_t>(transbmp1)] = 2U;
+        }
+        wram[0] = 0U;
+        return true;
+    }
+
     void service_transfer() {
         const auto flag = wram[0];
         switch (flag) {
-        case 2U: {
-            // TRANSFER_L requests the ordinary three-IRQ FOX bitmap path with
-            // TRANS_FLAG=2, then waits for TRANSBMP1 to progress through both
-            // halves. A bounded native task has no asynchronous NMI between
-            // instructions, so complete those same DMA stages atomically and
-            // publish the final value expected by .twait/.twait2.
-            if (bitmap1 != 0U && vmap1 != 0U) {
-                copy_superfx_to_vram(static_cast<std::uint16_t>(bitmap1),
-                    read_wram16(static_cast<std::uint16_t>(vmap1)), 21'504U);
-            }
-            if (spriteblk != 0U) {
-                for (std::size_t index = 0; index < 300U; ++index) {
-                    ppu.oam[index] = wram[static_cast<std::uint16_t>(
-                        spriteblk + static_cast<std::uint32_t>(index))];
-                }
-            }
-            if (vmap1 != 0U && vmap2 != 0U) {
-                const auto first = read_wram16(static_cast<std::uint16_t>(vmap1));
-                const auto second = read_wram16(static_cast<std::uint16_t>(vmap2));
-                const auto bg12nba = static_cast<std::uint8_t>(
-                    ((first >> 12U) & 0x0fU)
-                    | (((ppu.bg2_character_base >> 12U) & 0x0fU) << 4U));
-                write_ppu(0x210bU, bg12nba);
-                const auto write_word = [this](std::uint32_t address,
-                                                 std::uint16_t value) {
-                    const auto offset = static_cast<std::uint16_t>(address);
-                    wram[offset] = static_cast<std::uint8_t>(value);
-                    wram[static_cast<std::uint16_t>(offset + 1U)] =
-                        static_cast<std::uint8_t>(value >> 8U);
-                };
-                write_word(vmap1, second);
-                write_word(vmap2, first);
-            }
-            if (transbmp1 != 0U) {
-                wram[static_cast<std::uint16_t>(transbmp1)] = 2U;
-            }
-            wram[0] = 0U;
+        case 2U:
+        case 4U:
+        case 6U:
+            // Bounded native calls retain their synchronous completion path.
+            // A raster scheduler can instead advance individual DMA phases,
+            // with the final phase held until source display work is ready.
+            while (advance_gameplay_bitmap_dma_phase(false)) {}
             break;
-        }
         case 10U:
             // FOXYTRANS's first IRQ copies the upper half of the Super FX
             // bitmap and publishes TRANSBMP1=1 before advancing to TM_FOX2.
@@ -2746,6 +2762,10 @@ void Wdc65816::begin_superfx_bitmap_frame() {
     const auto length = std::min(
         bitmap_bytes, impl_->superfx_ram.size() - begin);
     std::fill_n(impl_->superfx_ram.begin() + begin, length, std::uint8_t{});
+}
+
+bool Wdc65816::advance_gameplay_bitmap_dma_phase() {
+    return impl_->advance_gameplay_bitmap_dma_phase();
 }
 
 void Wdc65816::submit_superfx_bitmap() {
