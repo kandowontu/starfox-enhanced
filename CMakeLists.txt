@@ -1189,6 +1189,13 @@ if(STARFOX_BUILD_TESTS)
                     500
         )
         if(STARFOX_BUILD_RUNTIME)
+            add_test(NAME starfox_native_desktop_timing COMMAND "${CMAKE_COMMAND}"
+                "-DRUNTIME=$<TARGET_FILE:starfox_pc>"
+                "-DROM=${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
+                "-DSYMBOLS=${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT"
+                -DMAP=LEVEL2_1 -DEXPERIENCE=ORIGINAL
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/native_desktop_timing.cmake")
+            set_tests_properties(starfox_native_desktop_timing PROPERTIES TIMEOUT 150)
             add_test(
                 NAME starfox_runtime_smoke
                 COMMAND starfox_pc
@@ -1346,6 +1353,13 @@ if(STARFOX_BUILD_TESTS)
             # a deterministic margin instead of shortening stage coverage.
             TIMEOUT 420)
         if(STARFOX_BUILD_RUNTIME AND STARFOX_RUNTIME_ASSETS_EMBEDDED)
+            add_test(NAME starfox_ex_native_desktop_timing COMMAND "${CMAKE_COMMAND}"
+                "-DRUNTIME=$<TARGET_FILE:starfox_pc>"
+                "-DROM=${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
+                "-DSYMBOLS=${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT"
+                -DMAP=LEVEL7_2 -DEXPERIENCE=EX
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/native_desktop_timing.cmake")
+            set_tests_properties(starfox_ex_native_desktop_timing PROPERTIES TIMEOUT 150)
             file(MAKE_DIRECTORY
                 "${CMAKE_CURRENT_BINARY_DIR}/embedded-ex-runtime-smoke")
             add_test(

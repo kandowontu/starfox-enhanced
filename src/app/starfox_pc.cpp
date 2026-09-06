@@ -4371,6 +4371,10 @@ int main(int argc, char** argv) {
         std::optional<bool> volume_slider_drag_music;
         bool suppress_fullscreen_start{};
         double last_phase_fraction{};
+        const bool test_native_gameplay=std::getenv("STARFOX_TEST_NATIVE_GAMEPLAY")!=nullptr;
+        std::uint64_t native_phase_target{},native_phase_remainder{};
+        std::uint64_t native_completed_updates{};
+        std::uint64_t native_last_publication{},native_publication_duration{1'073'864U};
 #if defined(STARFOX_UWP)
         log_uwp_startup("starting first-frame preroll");
 #endif
@@ -5112,6 +5116,86 @@ int main(int argc, char** argv) {
                     // the host confirmation card.
                     continue;
                 }
+                if (test_native_gameplay
+                    && game.flow_state()==starfox::simulation::GameFlowState::gameplay
+                    && (game.native_transfer_timeline() || audio_video_phases==0U)) {
+                    const bool attaching=!game.native_transfer_timeline();
+                    if (attaching) {
+                        native_phase_target=0U; native_phase_remainder=0U;
+                        native_last_publication=0U;
+                        native_publication_duration=1'073'864U;
+                    }
+                    native_phase_remainder+=236'250'000U;
+                    native_phase_target+=native_phase_remainder/660U;
+                    native_phase_remainder%=660U;
+                    audio.set_native_playback(speed_multiplier,!advance_frozen_frame);
+                    audio.set_volumes(game.music_volume(),game.sfx_volume());
+                    audio.set_game_paused(false); // Native PAUSESND/MSU commands own source pause.
+                    while (game.native_transfer_clock()<native_phase_target) {
+                        if (!game.native_transfer_active()) {
+                            std::array<starfox::input::TickInput,4> secondary_controls{};
+                            for (std::size_t player=0;player<secondary_controls.size();++player)
+                                secondary_controls[player]=secondary_inputs[player].consume();
+                            game.set_secondary_inputs(secondary_controls);
+                            game.set_mouse_input(ex_mouse_input.consume());
+                            game.set_ntt_input(sample_ntt_data_pad(keyboard_state));
+                            game.begin_native_gameplay_update(input.consume());
+                            if (attaching && game.native_transfer_clock()==0U) audio.bind_native_audio(game);
+                        }
+                        std::array<ButtonMask,5> held{};
+                        held[0]=sampled_buttons;
+                        for (std::size_t player=0;player<previous_secondary_sources.size();++player) {
+                            const auto& sources=previous_secondary_sources[player];
+                            held[player+1U]=sources[0] | sources[1] | sources[2];
+                        }
+                        game.sample_native_controller_held(held);
+                        const auto previous_scene=game.scene_revision();
+                        const auto result=game.advance_native_transfer(native_phase_target-game.native_transfer_clock());
+                        audio.advance_native_audio(game.native_transfer_clock());
+                        if (!result) continue;
+                        // Live callbacks already consumed these writes. Clear diagnostics
+                        // before the host exit dispatcher can produce new frontend commands.
+                        static_cast<void>(game.map().take_msu_register_writes());
+                        const auto completed_clock=game.native_transfer_clock();
+                        native_publication_duration=std::max<std::uint64_t>(1U,completed_clock-native_last_publication);
+                        native_last_publication=completed_clock;
+                        const bool leaving=game.native_gameplay_exit_pending();
+                        if (leaving) {
+                            audio.unbind_native_audio(game);
+                            game.finish_native_gameplay_exit();
+                            pending_audio_writes=game.map().take_apu_port_writes();
+                            pending_msu_writes=game.map().take_msu_register_writes();
+                        }
+                        previous=current; previous_camera=current_camera;
+                        previous_raster_motion=current_raster_motion; previous_oam=current_oam;
+                        previous_cockpit_roll=current_cockpit_roll; previous_circle=current_circle;
+                        previous_window_wipe=current_window_wipe;
+                        current=capture(); current_camera=capture_camera();
+                        current_raster_motion=capture_raster_motion(); current_oam=game.map().ppu_state().oam;
+                        current_cockpit_roll=game.map().read_native_word(hud_rotation_address);
+                        current_circle=game.circle_effect_state(); current_window_wipe=game.window_wipe_state();
+                        const bool scene_cut=game.scene_revision()!=previous_scene;
+                        const bool camera_cut=starfox::timing::camera_transform_is_discontinuous(previous_camera,current_camera);
+                        const bool raster_cut=raster_source_changed(previous_raster_motion,current_raster_motion,!leaving);
+                        profile_scene_cuts+=scene_cut; profile_camera_cuts+=camera_cut; profile_raster_cuts+=raster_cut;
+                        if (scene_cut || camera_cut || leaving) {
+                            previous=current; previous_camera=current_camera;
+                            previous_raster_motion=current_raster_motion; previous_oam=current_oam;
+                            previous_cockpit_roll=current_cockpit_roll; previous_circle=current_circle;
+                            previous_window_wipe=current_window_wipe;
+                        } else if (raster_cut) previous_raster_motion=current_raster_motion;
+                        ++source_logic_frames;
+                        ++native_completed_updates;
+                        synchronize_ex_save();
+                        if (leaving) {
+                            input.reset(sampled_buttons);
+                            for (std::size_t player=0;player<secondary_inputs.size();++player)
+                                secondary_inputs[player].reset(held[player+1U]);
+                            break;
+                        }
+                    }
+                    continue;
+                }
                 game.present_frame();
                 rumble.advance(game.map(), gamepad,
                     game.rumble()
@@ -5411,6 +5495,10 @@ int main(int argc, char** argv) {
             // source state is frozen; that made star/dust pixels alternate
             // between adjacent integer projections on high-refresh displays.
             const auto interpolation_alpha = game.paused() ? 1.0
+                : game.native_transfer_timeline()
+                    ? std::clamp((static_cast<double>(native_phase_target)-static_cast<double>(native_last_publication)
+                        + raster_batch.phase_fraction*(236'250'000.0/660.0))
+                        /static_cast<double>(native_publication_duration),0.0,1.0)
                 : game.logic_interpolation_alpha(raster_batch.phase_fraction);
             const auto exact_source_positions = render_scale == 1U
                 && (interpolation_alpha == 0.0 || interpolation_alpha == 1.0);
@@ -7533,6 +7621,11 @@ int main(int argc, char** argv) {
                               << profile_camera_cuts << '/'
                               << profile_raster_cuts
                               << '\n';
+                }
+                if (test_native_gameplay) {
+                    std::cerr << "native-desktop updates=" << native_completed_updates
+                        << " master=" << game.native_transfer_clock()
+                        << " flow=" << static_cast<unsigned>(game.flow_state()) << '\n';
                 }
                 if (std::getenv("STARFOX_TRACE_MSU1") != nullptr) {
                     std::cerr << "msu1 enabled=" << game.msu1_music()
