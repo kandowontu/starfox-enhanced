@@ -896,6 +896,10 @@ int main(int argc, char** argv) {
     put8(0x018380U, 20U); // SETBGM
     put8(0x018381U, 0x42U);
     put8(0x018382U, 2U); // END
+    put8(0x018390U, 16U); put16(0x018391U, 0x1234U); // SETBG
+    put8(0x018393U, 100U); // WAITSETBG
+    put8(0x018394U, 18U); put16(0x018395U, 2000U); // MAPWAIT
+    put8(0x018397U, 2U); // END
 
     const starfox::assets::RomImage map_rom{rom_bytes};
     starfox::simulation::ObjectPool map_objects;
@@ -913,6 +917,30 @@ int main(int argc, char** argv) {
     map_vm.advance_distance(11);
     require(map_objects.active_count() == 3, "timed map object did not spawn");
     require(map_vm.countdown() == 5, "spawn distance was not loaded exactly");
+
+    starfox::simulation::ObjectPool background_objects;
+    const auto background_player = background_objects.allocate_after();
+    starfox::simulation::MapVm background_map{
+        map_rom, starfox::simulation::MapDatabase{map_rom, 0x018000, 0x018100}, background_objects};
+    background_map.start(0x018390U, background_player);
+    background_map.advance_distance(1);
+    require(background_map.background_request_pending() && background_map.cursor() == 0x018393U,
+        "background fixture did not stop at WAITSETBG");
+    // A native owner may have newer map registers than the host cache.
+    background_map.write_native_word(0x001782U, 0x4567U);
+    background_map.write_native_word(0x001780U, 0x89abU);
+    background_map.complete_background_request();
+    require(!background_map.background_request_pending()
+        && background_map.cursor() == 0x018393U && background_map.countdown() == 1
+        && background_map.read_native_word(0x001782U) == 0x4567U
+        && background_map.read_native_word(0x001780U) == 0x89abU,
+        "background completion advanced the map or overwrote native registers");
+    background_map.advance_distance(1);
+    require(background_map.countdown() == 0 && background_map.cursor() == 0x018393U,
+        "WAITSETBG resumed before its distance counter became negative");
+    background_map.advance_distance(1);
+    require(background_map.countdown() == 2000 && background_map.cursor() == 0x018397U,
+        "the next host map update did not resume after background completion");
 
     starfox::simulation::ObjectPool inline_objects;
     const auto inline_player = inline_objects.allocate_after();
@@ -2203,7 +2231,8 @@ int main(int argc, char** argv) {
                         0U,
                     }));
                     if (first_person_game.objects().at(
-                            first_person_game.player()).world_x >= 600) break;
+                            first_person_game.player()).world_x >= static_cast<std::int16_t>(
+                                upstream_symbols.find("SPACE_MAXX").front())) break;
                 }
             } else {
                 for (std::size_t tick = 0; tick < 240U; ++tick) {
@@ -2237,17 +2266,20 @@ int main(int argc, char** argv) {
                             hud_rotation.front()) & 0x8000U) != 0U,
                     "first-person aim did not move the native crosshair");
             if (starfox_ex) {
-                // EX's Ktunnel_pmovelimitAND deliberately omits the right
-                // body-limit bit, so this segment must not synthesize the
-                // retail right-edge arrow.
-                require((first_person_game.map().read_native_byte(arrows.front())
-                            & 8U) == 0U,
-                        "Star Fox EX showed a retail-only K-tunnel right arrow");
-            } else {
-                require((first_person_game.map().read_native_byte(arrows.front())
-                            & 8U) != 0U,
-                        "cockpit right-bound indicator was not raised at its limit");
+                // Select enters the cockpit during the outdoor SPACE section.
+                // Background completion must not skip its remaining map and
+                // move this fixture into a later tunnel's movement regime.
+                require(first_person_game.objects().at(first_person_game.player()).strategy_address
+                            == upstream_symbols.find("PLAYERINSPACE_STRAT").front()
+                        && first_person_game.objects().at(first_person_game.player()).world_x
+                            == static_cast<std::int16_t>(upstream_symbols.find("SPACE_MAXX").front())
+                        && first_person_game.map().read_native_byte(
+                            upstream_symbols.find("PMOVELIMITAND").front())
+                            == upstream_symbols.find("SPACE_PMOVELIMITAND").front(),
+                    "EX cockpit left its source SPACE movement regime");
             }
+            require((first_person_game.map().read_native_byte(arrows.front()) & 8U) != 0U,
+                "cockpit right-bound indicator was not raised at its limit");
 
             // Meters gate the original OAM reticle. Direct sub-map entry does
             // not execute the parent route's METERS_ON, so reproduce that

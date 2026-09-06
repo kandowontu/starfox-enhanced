@@ -130,16 +130,19 @@ struct SystemGuard {
 }
 
 int main(int argc, char** argv) { try {
-    if (argc < 6 || argc > 8) throw std::runtime_error(
-        "Usage: full_reference ROM SYMBOLS MAP VIDEO_FRAMES OUTPUT_PREFIX [source|divided-standard|divided-fast [GAMEPLAY_UPDATES]]");
+    if (argc < 6 || argc > 9) throw std::runtime_error(
+        "Usage: full_reference ROM SYMBOLS MAP VIDEO_FRAMES OUTPUT_PREFIX [source|divided-standard|divided-fast [GAMEPLAY_UPDATES [zero-frame|first-transfer]]]");
     const std::string policy = argc >= 7 ? argv[6] : "source";
     if (policy != "source" && policy != "divided-standard" && policy != "divided-fast")
         throw std::runtime_error("Unknown GSU register policy: " + policy);
     const auto frames = std::stoul(argv[4]);
     if (frames < 120 || frames > 100000) throw std::runtime_error("VIDEO_FRAMES must be 120..100000");
-    const auto gameplay_updates = argc == 8 ? std::stoul(argv[7]) : 0U;
-    if (argc == 8 && (gameplay_updates < 1U || gameplay_updates > 10000U))
+    const auto gameplay_updates = argc >= 8 ? std::stoul(argv[7]) : 0U;
+    if (argc >= 8 && (gameplay_updates < 1U || gameplay_updates > 10000U))
         throw std::runtime_error("GAMEPLAY_UPDATES must be 1..10000");
+    const std::string seed_mode = argc == 9 ? argv[8] : "zero-frame";
+    if (seed_mode != "zero-frame" && seed_mode != "first-transfer")
+        throw std::runtime_error("Unknown gameplay seed mode: " + seed_mode);
     const auto rom = starfox::assets::RomImage::load(argv[1]);
     const auto symbols = starfox::assets::SymbolMap::load(argv[2]);
     const auto address = [&](const char* name) { return symbols.find(name).at(0); };
@@ -154,7 +157,8 @@ int main(int argc, char** argv) { try {
     starfox::simulation::Wdc65816 host_cpu(rom, &symbols);
     const std::string prefix = argv[5], map = argv[3];
     std::unique_ptr<GameplayAudit> gameplay;
-    if (gameplay_updates) gameplay = std::make_unique<GameplayAudit>(rom,symbols,map,prefix,gameplay_updates);
+    if (gameplay_updates) gameplay = std::make_unique<GameplayAudit>(rom,symbols,map,prefix,
+        gameplay_updates,seed_mode == "first-transfer");
     std::ofstream registers(prefix + "-registers.csv");
     std::ofstream entry(prefix + "-entry.csv");
     if (!registers || !entry) throw std::runtime_error("Cannot create register/entry traces");
@@ -225,15 +229,44 @@ int main(int argc, char** argv) { try {
     const auto player_pointer = address("PLAYPT"), world_x = address("AL_WORLDX"), world_y = address("AL_WORLDY"), world_z = address("AL_WORLDZ");
     const auto view_z = address("VIEWPOSZ"), frame_c = address("FRAMEC"), frame_r = address("FRAMER"), draw = address("M_NUMSHAPES") & 65535;
     const auto player_flags = address("PSHIPFLAGS3");
+    // EX SCORPION4's assembled LDA $00 reads the in-flight transfer word,
+    // rather than an immediate zero. Keep that observation separate from
+    // the gameplay comparisons when investigating timing-dependent motion.
+    unsigned scorpion_transfer_read = 0;
+    if (!symbols.find("SCORPION4_STRAT").empty() && !symbols.find("AIRCAR4_ISTRAT").empty()) {
+        const auto first = address("SCORPION4_STRAT"), last = address("AIRCAR4_ISTRAT");
+        if (last > first && last - first < 1024U) {
+            for (auto pc = first; pc < last; ++pc) {
+                if (rom.read8(pc) == 0xa5 && rom.read8(pc + 1) == 0) {
+                    if (scorpion_transfer_read) throw std::runtime_error("Ambiguous SCORPION4 transfer read");
+                    scorpion_transfer_read = pc;
+                }
+            }
+        }
+    }
+    std::ofstream transfer_reads(prefix + "-transfer-reads.csv");
+    if (!transfer_reads) throw std::runtime_error("Cannot create transfer-read trace");
+    transfer_reads << "video_frame,game_frame,object,pc,direct,status,target,world_y,master_clocks,transfer_clocks,vcounter,hcounter\n";
     unsigned settled_transfer = 0;
-    for (unsigned offset = 0; gameplay && offset < 32; ++offset) {
+    for (unsigned offset = 0; offset < 32; ++offset) {
         if (rom.read8(transfer + offset) == 0x9cU
             && rom.read16(transfer + offset + 1) == address("NOIRQBIT3")) {
             if (settled_transfer) throw std::runtime_error("Ambiguous transfer boundary");
             settled_transfer = transfer + offset;
         }
     }
-    if (gameplay && !settled_transfer) throw std::runtime_error("Missing settled transfer boundary");
+    if (!settled_transfer) throw std::runtime_error("Missing settled transfer boundary");
+    std::map<unsigned, std::string> transfer_phases{{settled_transfer, "settled"}};
+    for (auto name : {"IRQBIT1", "IRQBIT2", "IRQBIT3", "INIT_STRATS_L", "UPDATE_OBJECTS_L",
+            "GETVIEW_L", "DOSOUNDS_L", "GENERATE_COLLIST_L", "RESOLVE_COLLISIONS_L", "DO_3D_DISPLAY_L"}) {
+        const auto locations = symbols.find(name);
+        if (!locations.empty()) transfer_phases.emplace(locations.front(), name);
+    }
+    std::ofstream phases(prefix + "-transfer-phases.csv");
+    if (!phases) throw std::runtime_error("Cannot create transfer-phase trace");
+    phases << "video_frame,game_frame,phase,master_clocks,transfer_clocks,vcounter,hcounter,transfer_flag,noirqbit3,gsu_running\n";
+    unsigned transfer_started_clocks = 0;
+    bool observed_transfer = false;
     unsigned draw_flags_clear = 0;
     for (unsigned offset = 0; gameplay && offset < 512; ++offset) {
         const auto pc = address("MARIOSHOWVIEW") + offset;
@@ -252,6 +285,26 @@ int main(int argc, char** argv) { try {
         camera_fields.emplace_back(name, address(name));
     cpu_hook = [&](unsigned pc, unsigned clocks) {
         if (platform.pending_jump) return;
+        if (pc == settled_transfer) {
+            transfer_started_clocks = clocks;
+            observed_transfer = true;
+        }
+        if (observed_transfer) {
+            if (const auto phase = transfer_phases.find(pc); phase != transfer_phases.end()) {
+                phases << video_index << ',' << read(game_frame) << ',' << phase->second << ','
+                    << clocks << ',' << clocks - transfer_started_clocks << ',' << sfc::cpu.vcounter() << ','
+                    << sfc::cpu.hcounter() << ',' << read(0, 1) << ',' << read(address("NOIRQBIT3"), 1)
+                    << ',' << unsigned(sfc::superfx.regs.sfr.g) << '\n';
+            }
+        }
+        if (pc == scorpion_transfer_read) {
+            const auto& r = sfc::cpu.r;
+            transfer_reads << video_index << ',' << read(game_frame) << ',' << unsigned(r.x.w)
+                << ',' << pc << ',' << unsigned(r.d.w) << ',' << unsigned(r.p) << ','
+                << read(r.d.w) << ',' << static_cast<std::int16_t>(read(r.x.w + world_y)) << ','
+                << clocks << ',' << (observed_transfer ? clocks - transfer_started_clocks : 0U) << ','
+                << sfc::cpu.vcounter() << ',' << sfc::cpu.hcounter() << '\n';
+        }
         if (gameplay && pc == draw_flags_clear) gameplay->capture_submitted_flags();
         if (pc == get_view && camera_calls < 200 && camera_error.empty()) {
             for (unsigned i = 0; i < 0x20000; ++i) host_cpu.write8(0x7e0000 + i, sfc::cpu.wram[i]);

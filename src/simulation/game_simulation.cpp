@@ -5400,6 +5400,11 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
         map_.tick_display_transfer();
     }
     service_transfer_request();
+    // TRANSWAP installs pending background flags before IRQBIT3 overlays
+    // its flash palettes. Advance that RNG once for the completed transfer,
+    // including the first frame of a newly loaded storm/tunnel background.
+    if (map_.read_native_byte(0U) <= 14U)
+        result.prelude_instructions += map_.apply_irq_palette_flashes();
     if (flow_state_ == GameFlowState::title) {
         // TITLE.ASM prints the current EX version through PRINTT_L into the
         // Super FX bitmap. The host replaces geometry rendering, but the

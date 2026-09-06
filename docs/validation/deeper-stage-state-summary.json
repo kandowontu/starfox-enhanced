@@ -1,0 +1,55 @@
+{
+  "zero_frame_compatibility_updates": 300,
+  "zero_frame_compatibility_unchanged": true,
+  "cases": [
+    {
+      "variant": "original",
+      "map": "LEVEL2_1",
+      "updates": 3000,
+      "seed_gameframe": 0,
+      "reference_executable_sha256": "7D65CF5EA50B72A521A0ADD5F1B78F80A07CD9D9A79DE82C11E8D9D5A74DB25A",
+      "comparisons": 5495915,
+      "submitted_flags": 47745,
+      "hitflashes": 57,
+      "differences": 0,
+      "camera_calls": 200,
+      "trace_sha256": {
+        "entry": "DFEBCE4B4E8C0B18F80AC6CEA69CCFAE2C82691D24E30381D857C951CB1F51EB",
+        "gameplay": "1B3F30A1927ABF8689F6FBEE58BA50EE862927BD34A718EBAF097B0A470D5041",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "F3F76303DA83BC6B2DBBB833FCE4820ED457EF68C618629F1C8FF798E84143F8"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL6_6",
+      "updates": 1500,
+      "seed_gameframe": 106,
+      "reference_executable_sha256": "B496895D2890333A23DE67EB6C3BEEF95A60AB18BF33146F233C9DD0ABD1E6E9",
+      "comparisons": 11036414,
+      "submitted_flags": 95205,
+      "hitflashes": 121,
+      "differences": 0,
+      "camera_calls": 200,
+      "trace_sha256": {
+        "entry": "774A9F809920FBCDA6F8EED798B8D5BA7AB9BBEC7DB3FA0518EB8C0A42DE8066",
+        "gameplay": "7F6BEC7A6D821F44C157A4951FE1032B9FCAA332383D0964285899C9F4608E54",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "355CFD46D9E2370535A604B88A380B6E6CA2C230447D3E52EC588FF00F8DAF28",
+        "gameplay-seed": "065E84C7ED725B49639D3A216C2A20A5527A70C94B48743D4E4106E6E8110F26"
+      }
+    }
+  ],
+  "scope": "Separate, overlapping neutral-input observations with one RAM seed and supplied raster counts; not campaign completion or exact host timing.",
+  "ares_revision": "0aafd85789215e84e1e43415c07d4c88461b7899",
+  "inputs": {
+    "original": {
+      "rom_sha256": "E79D7F08C9191701C43F427D8BB85D6804A4B7C05EB6E585698FD2E1B2932E32",
+      "symbols_sha256": "66F0124B38FBFE63913BA99E07A91D944A0479664A23DD2528CDE3D68DA62A84"
+    },
+    "ex": {
+      "rom_sha256": "ECA6CE47B19D14BEFE7170E613A127E4D174F24B7F9625CDF688D814DE6BD7CB",
+      "symbols_sha256": "36BA8A5CD028297FDB49C31830673433BB997167B7E489EBC983B0C416FA9FF6"
+    }
+  }
+}

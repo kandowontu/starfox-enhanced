@@ -302,6 +302,32 @@ and `--video-frames` arguments change the requested coverage and execution budge
 See `docs/OBJECT-STATE-PARITY-VALIDATION.md` for the current results and scope;
 `docs/FADE-PARITY-VALIDATION.md` records the earlier 300-update audit.
 
+`--all-stages` discovers every numbered LEVEL symbol in both symbol maps and
+defaults to seeding at the first settled transfer after stage entry. Later
+stages can inherit a nonzero GAMEFRAME; waiting for zero would leave them
+uncompared. The default four-case audit retains its zero-frame seed. The full
+system CLI accepts `zero-frame` or `first-transfer` after `GAMEPLAY_UPDATES`,
+and records the actual counter, map cursor and player in `-gameplay-seed.csv`.
+Neither mode changes native RAM to manufacture a seed boundary.
+
+```powershell
+python tools/reference/verify-gameplay.py --all-stages --updates 300 --output tmp/all-stage-state-audit
+```
+
+The script collects failures as well as passes and exits unsuccessfully if any
+case fails. The summary states requested/passing case counts; failed or
+incomplete cases are never counted as complete updates. Numbered-stage opening
+coverage remains separate from complete campaign and alternate-exit coverage.
+
+Use repeatable `--case original:LEVEL1_6` / `--case ex:LEVEL1_3` arguments for
+selected numbered stages. Unknown stages and mixing `--case` with `--all-stages`
+are rejected. These selections default to the first-transfer seed too.
+`-transfer-phases.csv` records CPU/video positions and transfer flags at source
+routine boundaries; `-transfer-reads.csv` separately records SCORPION4's live
+transfer-word read. They are observations, not supplied inputs to the host.
+See `docs/STAGE-STATE-PARITY-VALIDATION.md` for the 58/59 result and the open
+EX LEVEL7_2 difference. A failing stage is not filtered from that result.
+
 ## Desktop audio output trace
 
 `pwsh -NoProfile -File tools/reference/run-runtime-ending-audio.ps1 -Experience ORIGINAL -Msu 0 -OutputDirectory tmp/runtime-audio-original`

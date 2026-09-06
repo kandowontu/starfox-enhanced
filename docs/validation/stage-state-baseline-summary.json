@@ -1,0 +1,1424 @@
+{
+  "ares_revision": "0aafd85789215e84e1e43415c07d4c88461b7899",
+  "reference_executable_sha256": "B496895D2890333A23DE67EB6C3BEEF95A60AB18BF33146F233C9DD0ABD1E6E9",
+  "inputs": {
+    "original": {
+      "rom_sha256": "E79D7F08C9191701C43F427D8BB85D6804A4B7C05EB6E585698FD2E1B2932E32",
+      "symbols_sha256": "66F0124B38FBFE63913BA99E07A91D944A0479664A23DD2528CDE3D68DA62A84"
+    },
+    "ex": {
+      "rom_sha256": "ECA6CE47B19D14BEFE7170E613A127E4D174F24B7F9625CDF688D814DE6BD7CB",
+      "symbols_sha256": "36BA8A5CD028297FDB49C31830673433BB997167B7E489EBC983B0C416FA9FF6"
+    }
+  },
+  "passed": false,
+  "requested_cases": 59,
+  "requested_updates_per_case": 300,
+  "passed_cases": 55,
+  "updates": 16500,
+  "comparisons": 27271826,
+  "differences": null,
+  "incomplete_run_rejected": true,
+  "cases": [
+    {
+      "variant": "original",
+      "map": "LEVEL1_1",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 128,
+      "comparisons": 564648,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 4618,
+      "hitflashes": 0,
+      "raster_phase_range": [
+        2,
+        8
+      ],
+      "host_minimum_phase_updates": 1,
+      "trace_sha256": {
+        "entry": "D945481746F7E9D770A258A2B661E419628ECF5AE09F1B23D615873E4BBA5FD2",
+        "gameplay": "5A14DD1CA3F7466B6D6DC06CB6B39B229A37F1A512D719AD6E9E44A42DA7BC25",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "F3F76303DA83BC6B2DBBB833FCE4820ED457EF68C618629F1C8FF798E84143F8",
+        "gameplay-seed": "F156C54849CBB65A9A3054E227B1A98DC05EEC4B6294DE74FF18421361E67C96"
+      }
+    },
+    {
+      "variant": "original",
+      "map": "LEVEL1_2",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 128,
+      "comparisons": 370764,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 3014,
+      "hitflashes": 2,
+      "raster_phase_range": [
+        2,
+        8
+      ],
+      "host_minimum_phase_updates": 8,
+      "trace_sha256": {
+        "entry": "7E39482C4DB5B29599387FBF6474074B80D4BBA4FB49B3DEBCE06D53A3A5D1FB",
+        "gameplay": "30CE3E942E494203435B52C8F75A9BFC3E4A1F541AD8017A7BFF50C4FC8D94C3",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "A359FADE5D46FC588440088B5DCFDAD661FD009C4E0A703E7DC7B5B263D3F2E4",
+        "gameplay-seed": "90F931867B6089239180A1E49DA8973C5D43419E4453DB172F5FE3F3D07F0C38"
+      }
+    },
+    {
+      "variant": "original",
+      "map": "LEVEL1_3",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 128,
+      "comparisons": 520311,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 4391,
+      "hitflashes": 1,
+      "raster_phase_range": [
+        2,
+        8
+      ],
+      "host_minimum_phase_updates": 6,
+      "trace_sha256": {
+        "entry": "09BC40BE51B4BAEF1356EF9436E0EFA6339EB65F0E9DE898102DB853ABACC085",
+        "gameplay": "77F467D4E361F0B295D0C3D4213E82391B95BF1E1504BA3F48C05D1A445C999D",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "25CCE102DF947071392E386D4A2CA1997523F890A63AEC7215CB1B588ED35B13",
+        "gameplay-seed": "1B0322775F4BE598AF70042E7A997A7ACA8A566C60D9F196BE5A23D81546C2BE"
+      }
+    },
+    {
+      "variant": "original",
+      "map": "LEVEL1_4",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 128,
+      "comparisons": 327402,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 2882,
+      "hitflashes": 3,
+      "raster_phase_range": [
+        3,
+        6
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "7BE93D77F4C07C46944E3ECB2943182A661325D167BECC520264DA7EABC53B7A",
+        "gameplay": "61F1BBFEBC755A0778054228112D55165EAE8BA413193695C49D96D722E51495",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "E6839AB2923CC55BBAE05109F3199BDE3CDDC52756EF8D10855F037E8225386E",
+        "gameplay-seed": "441E7AB72F057B57DDFB63A24478289824BFA8B5D30E27BE6B2C7418ADB0047E"
+      }
+    },
+    {
+      "variant": "original",
+      "map": "LEVEL1_5",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 128,
+      "comparisons": 427597,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 3527,
+      "hitflashes": 0,
+      "raster_phase_range": [
+        2,
+        8
+      ],
+      "host_minimum_phase_updates": 6,
+      "trace_sha256": {
+        "entry": "93F3476E6B0D3342B388ABA5C4B0F5AB9FA7651A30B0DE22DAE867BDE2F01CD4",
+        "gameplay": "7D6EDD538E65116E010F5434FFBC789F8868B747BD7C3CB32B2F94B752B63806",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "CF0C953D1BA18C728580E1FEC97178CB557AD19F41BCFBD2B22187BD278B4CCB",
+        "gameplay-seed": "52D564507396760EA682275D8C5FAE7CB3C39727461FACFD5EF236F2C7075299"
+      }
+    },
+    {
+      "variant": "original",
+      "map": "LEVEL1_6",
+      "passed": false,
+      "error": "('original', 'LEVEL1_6'): exit 1; see C:\\Users\\kando\\Documents\\ChatGPT\\Starfox Enhanced\\tmp\\all-stage-state-audit\\original-LEVEL1_6.log"
+    },
+    {
+      "variant": "original",
+      "map": "LEVEL2_1",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 128,
+      "comparisons": 562428,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 4598,
+      "hitflashes": 0,
+      "raster_phase_range": [
+        2,
+        8
+      ],
+      "host_minimum_phase_updates": 1,
+      "trace_sha256": {
+        "entry": "DFEBCE4B4E8C0B18F80AC6CEA69CCFAE2C82691D24E30381D857C951CB1F51EB",
+        "gameplay": "ACF6C419576BAA32E60286BB0C967A7FA4AFCB103BE7DE05E1CAA27A4CBA4812",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "F3F76303DA83BC6B2DBBB833FCE4820ED457EF68C618629F1C8FF798E84143F8",
+        "gameplay-seed": "E84D581A6C4DA90388A15B543C7A542FB0B401E9885A302E54AB0E4C467CC554"
+      }
+    },
+    {
+      "variant": "original",
+      "map": "LEVEL2_2",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 128,
+      "comparisons": 413721,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 3401,
+      "hitflashes": 5,
+      "raster_phase_range": [
+        2,
+        8
+      ],
+      "host_minimum_phase_updates": 6,
+      "trace_sha256": {
+        "entry": "183ED0258B1A64CBBC1C57372ECD4EC73A5E0BDBFB8E905AAB2982CCFA61683C",
+        "gameplay": "F5AEEA0246B2360BA8D21E3C48A908FBC269F65F305DF16331377687AAF1EE6F",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "72BF90073E0DDA63A05A5C9FF818AC9DE41256C84068FFA4DCA07B696AE741DE",
+        "gameplay-seed": "4AA6C6A39D593DD462C9804011113A2CCD9AE16FE63273594DCF903927A89BCC"
+      }
+    },
+    {
+      "variant": "original",
+      "map": "LEVEL2_3",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 128,
+      "comparisons": 390339,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 3449,
+      "hitflashes": 2,
+      "raster_phase_range": [
+        2,
+        8
+      ],
+      "host_minimum_phase_updates": 1,
+      "trace_sha256": {
+        "entry": "EA036CF2D6B253978054998E1A95617C3D007D5F4CFA061146E01785A6D1E9B6",
+        "gameplay": "4AC34159396E81BB0CE19E2CA79DD255BB6AD7BFB51F4A137A996B40C21F951E",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "EE02471FE394782F20A7BA75846C120DB24CDFD0CA40B0B86F49AB35017471E5",
+        "gameplay-seed": "FA12187AE342C85352EA8AE9AB61D3E7DF1ED354A7560094B81B0F7315A40D58"
+      }
+    },
+    {
+      "variant": "original",
+      "map": "LEVEL2_4",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 128,
+      "comparisons": 657456,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 5576,
+      "hitflashes": 18,
+      "raster_phase_range": [
+        2,
+        8
+      ],
+      "host_minimum_phase_updates": 1,
+      "trace_sha256": {
+        "entry": "C65F65E080DCB37BBAD5D97F9B428963ADC115D057E0012BC4C545701231FDC6",
+        "gameplay": "9278D7AA9139A662F3F6EADDAE67BB4652C5DB07599FD5FEC7F638610FB8EB83",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "BE9B886295B9245D5E223B50049EE36F07C1145FABEA81BCBA5C70FB3901713B",
+        "gameplay-seed": "6CD3D03EE9646F77FCF5B1A9D8269A5C8C34987679614DD6A4042ECB5111F193"
+      }
+    },
+    {
+      "variant": "original",
+      "map": "LEVEL2_5",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 128,
+      "comparisons": 472108,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 3928,
+      "hitflashes": 9,
+      "raster_phase_range": [
+        2,
+        8
+      ],
+      "host_minimum_phase_updates": 7,
+      "trace_sha256": {
+        "entry": "5E1DD0A66E6F8DCE1C0329938ADF5093E55CE85EA444F1B36E564C1BBCA42CB4",
+        "gameplay": "26025A3477FFA9E560E9CC798DF762C100EB9DA9194A587C52101BE3C0B9B0B8",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "2DF6ABA6B551C3147F22A1307CAB643B4DE5C30C5702285EC6AE3E20D6E2DE9E",
+        "gameplay-seed": "104DAB1FC00E38A1A8F084F8B3A43FB77B26DE506C154E600BEAC25DEBA8AF3A"
+      }
+    },
+    {
+      "variant": "original",
+      "map": "LEVEL2_6",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 128,
+      "comparisons": 417519,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 3459,
+      "hitflashes": 19,
+      "raster_phase_range": [
+        3,
+        8
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "1A8F070745805493D39D3EABF1A5E35003AFD6EAD945F7B8E6A2D21F60E16203",
+        "gameplay": "7A337432AF88565EDDBF54D31505C85AD8F4CA457AB946C9576336B1339A460D",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "D00D3C5274387A27771D6F31206BB85BBCB4ABE1584AF659A3FFDEF1E1F90C48",
+        "gameplay-seed": "BEBC528E84AFC7A740185B43FBAD542107BF5A9057652E999B7D89F944203DF5"
+      }
+    },
+    {
+      "variant": "original",
+      "map": "LEVEL3_1",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 128,
+      "comparisons": 562872,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 4602,
+      "hitflashes": 0,
+      "raster_phase_range": [
+        2,
+        8
+      ],
+      "host_minimum_phase_updates": 1,
+      "trace_sha256": {
+        "entry": "B4D1F0E879E446C43F7471F93AE70A864AD2A2B62F1843CE7D167FF56EAECD54",
+        "gameplay": "55626A6E0086B1F6BC0843E2FB32A0F62F101F90F06ACD89DB5F3294C3335010",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "F3F76303DA83BC6B2DBBB833FCE4820ED457EF68C618629F1C8FF798E84143F8",
+        "gameplay-seed": "3AAC81C33C32FA30071325548117EE86F5D3924981B0AD56980BD0466388485C"
+      }
+    },
+    {
+      "variant": "original",
+      "map": "LEVEL3_2",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 128,
+      "comparisons": 417939,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 3439,
+      "hitflashes": 1,
+      "raster_phase_range": [
+        2,
+        8
+      ],
+      "host_minimum_phase_updates": 5,
+      "trace_sha256": {
+        "entry": "E742FE7A460791117D01C1529DF0632E1D7A20FB0098E7AFFB28E3006F2FF3B8",
+        "gameplay": "67C9B83335CE1A531F2AB2950D3B7BE18D8C31DE02E637755958EC03E8B6E2B7",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "05B2D589F8B63780646F4FC71B88485FDDF50A866A272EC89E9775B5F951F061",
+        "gameplay-seed": "2EAA452CC43F339D3754F91EA770DCB6AE380BA3A8DCC96BC61362D195381C50"
+      }
+    },
+    {
+      "variant": "original",
+      "map": "LEVEL3_3",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 128,
+      "comparisons": 340011,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 2951,
+      "hitflashes": 8,
+      "raster_phase_range": [
+        2,
+        8
+      ],
+      "host_minimum_phase_updates": 1,
+      "trace_sha256": {
+        "entry": "FBD5B5985FDE6CC722A61D3365FBF4A71D454ABD2407AC00D46E3C7504628D62",
+        "gameplay": "D721E3D5E71045F4A4DA2939D1C7A8113E74FA613BAF352B5F2FC043EC7C2CEB",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "CC1FE54FAA1A3171CE8CF1A1388581A49E99D850B73F0C886FE322B561EAF45E",
+        "gameplay-seed": "40ECF19FB6C5D8E5A9C035703332FA7E8CC071A4D1F76495D00E9F4A793F75BD"
+      }
+    },
+    {
+      "variant": "original",
+      "map": "LEVEL3_4",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 128,
+      "comparisons": 393406,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 3216,
+      "hitflashes": 5,
+      "raster_phase_range": [
+        2,
+        8
+      ],
+      "host_minimum_phase_updates": 9,
+      "trace_sha256": {
+        "entry": "45EE58CFDB71A054F3F79EBA329C338475B2E1685C133872C0A3F1B86BEF9282",
+        "gameplay": "B9F19DB680B6F39CAB3B0CFE4A0AB6ABAE1B0C144685081ECD983E3DBF80A4BC",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "1FC8DE3F8C5C06ADD4FEE171E591D09EFE3B848251A81219F242590B03498404",
+        "gameplay-seed": "EC3F1F98321DF3D39FCB6B5FF124292A742290DE333E532C2A5A488BE5533930"
+      }
+    },
+    {
+      "variant": "original",
+      "map": "LEVEL3_5",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 128,
+      "comparisons": 571539,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 5019,
+      "hitflashes": 0,
+      "raster_phase_range": [
+        3,
+        7
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "C4782C82CF7654ACB6C497079319B845C5263D856D25DF76703634146018E680",
+        "gameplay": "2D18F345A48C78904E0247EC5C69F6B2840196F53666BA818ABB7AB53B1E6787",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "73712D43D3203FF48ACD17C2DA678C8ED66ADB8B69BD7BC62F68A2B2AB8D3D4E",
+        "gameplay-seed": "F7EAAFF5D4524C2FEE9D6E2C1B2CD74C1EEBAF1D0D075D392BF3737C0D0DC54E"
+      }
+    },
+    {
+      "variant": "original",
+      "map": "LEVEL3_6",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 128,
+      "comparisons": 409479,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 3339,
+      "hitflashes": 2,
+      "raster_phase_range": [
+        2,
+        8
+      ],
+      "host_minimum_phase_updates": 7,
+      "trace_sha256": {
+        "entry": "3053254AFDF7FEE4B4FDF623B6F4E8C50C2112F21CE06405E6543B4DD47F1E10",
+        "gameplay": "C075F89E98D0FB265A4A1F5974AD24F3EA9052738AD27AD3E50B0F8853FA4403",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "F167221867FD0AC0CD032E1887EBA734C74C2BE829F0B1E66459AB4C0B96AC72",
+        "gameplay-seed": "A82311FE83E5843EC6CB3B82A199AA25F1F64A903E50792CBB4359D10A643E6B"
+      }
+    },
+    {
+      "variant": "original",
+      "map": "LEVEL3_7",
+      "passed": false,
+      "error": "('original', 'LEVEL3_7'): exit 1; see C:\\Users\\kando\\Documents\\ChatGPT\\Starfox Enhanced\\tmp\\all-stage-state-audit\\original-LEVEL3_7.log"
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL1_1",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 502837,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 4013,
+      "hitflashes": 0,
+      "raster_phase_range": [
+        2,
+        15
+      ],
+      "host_minimum_phase_updates": 1,
+      "trace_sha256": {
+        "entry": "ADBD8CE741F654F1E4F0F66BAB6BB1A0B3D0D8E4BBB0BE9EEAC7BBA921ED2645",
+        "gameplay": "468BE81E4E63723B2AF7969A979D1C9C59FECE5DA2E7859841F5F82139ED1B62",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "DF76D1A5F2243A7CF61A48E39ED90BCB8D45C062A4D06B8C4C3574F9E7CB0180",
+        "gameplay-seed": "B4D19AA0F472FA051D34735B0BB6411AB0EFB5315E06963F85E692F471CD5A3D"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL1_2",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 417444,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 3596,
+      "hitflashes": 2,
+      "raster_phase_range": [
+        5,
+        13
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "BAC4FC520399C5A3ADCCB99E29C3C96337CEE2B8378F0C7EF9F1A78D3E5DC6D9",
+        "gameplay": "153225794AA7489AF12CDEA336E2B220CE503190BCA903CEF15AE2022C2DB898",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "31A934318B47048DF3BC360A0BE860181384CF389B3A171AF916453CC648320B",
+        "gameplay-seed": "65B07DEF308E6591141E22CE81DC058E380057680E9C0EE549A333F5B07E8C16"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL1_3",
+      "passed": false,
+      "error": "('ex', 'LEVEL1_3'): exit 1; see C:\\Users\\kando\\Documents\\ChatGPT\\Starfox Enhanced\\tmp\\all-stage-state-audit\\ex-LEVEL1_3.log"
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL1_4",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 383130,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 3295,
+      "hitflashes": 1,
+      "raster_phase_range": [
+        5,
+        11
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "FD151E427375F33A2330B8A7F8EABE1FA4D1904D533136A37EE8C8EE81D3B26C",
+        "gameplay": "5D2FE8A4443CD702B5B0C1F2EC091292715DB668341995D212A00ED520A12411",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "7EF0C09BC2743F20681115F9C8C1DC24A7CE1E71317525B0A43D5FA42E3C1FAC",
+        "gameplay-seed": "6B362111758CC82697EF29C4507E5EC034E31EFBEA1627E815AA016B37A22CEC"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL1_5",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 451074,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 3891,
+      "hitflashes": 0,
+      "raster_phase_range": [
+        5,
+        13
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "398BDA831416B2AE8B4C012530C4B34B4FB52E543F7521773C3C7C2081525A64",
+        "gameplay": "CAEE6D56263189720AEA61A67CAD29F7F161DDD79CF1184DE79090EC5DBED29B",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "7ACE373D7ED6802ABD3E6B9F1995D255CE658D268290417A8B56B4802D881BEE",
+        "gameplay-seed": "CEE14260296746913AC4E5ABBD0FA5F76F4FDC1029201B6CE09A89F585B57057"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL1_6",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 458469,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 3828,
+      "hitflashes": 2,
+      "raster_phase_range": [
+        5,
+        13
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "83FB2D11758F80AAC355C7297F84E1AC63A469C64A04601D0F1A6ACCDCA40D6F",
+        "gameplay": "327493201329D09ECBF18D86824785DDC17AC6420790900422FBF9890AEFED03",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "8963090B0AB186E719129E6C1E09D155B3EB5B7B26FB7F1975FC78EBA7049B41",
+        "gameplay-seed": "EDDD1997E7499D314D8BB5477930A627B0BD3866D7651B108430C314F2530127"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL2_1",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 503635,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 4020,
+      "hitflashes": 0,
+      "raster_phase_range": [
+        2,
+        16
+      ],
+      "host_minimum_phase_updates": 1,
+      "trace_sha256": {
+        "entry": "4F1338DC4F5E2943850DF2BAD3A3E350769877F734CC067AEEF4A271BC41106E",
+        "gameplay": "AEBB014BC0AA091621B855E1BA084801B52D0B27B646800AB2D39A684054B512",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "28166EAE417A6C0F0267666390F6DDD57217EE1444037EB13D48774CD6E7E0AC",
+        "gameplay-seed": "04D0D5C6346E6B64E89D574F163D61932F0F4B82584CB19E58C4B254717223D8"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL2_2",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 401939,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 3459,
+      "hitflashes": 0,
+      "raster_phase_range": [
+        5,
+        13
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "762FA89EA2F33A8415E802427B212E33E595F2AA7206B5524B2E0869DA1D7B4D",
+        "gameplay": "9F8719CA5884BB18788F2B1A5ADA1567F627EC11DA513CA428912E6058AA46A4",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "26ABF09268EFC4AD0B88D1CC3EA599A79DE5C81213380A9843EC29782FC69422",
+        "gameplay-seed": "4348BC947BB103BABA642D9666692F853F37196DE82D9FB821378CED4D555EE4"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL2_3",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 464526,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 4009,
+      "hitflashes": 2,
+      "raster_phase_range": [
+        5,
+        13
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "7CA6F632167EC5DB7B9731386F7EE5ADCAE17070F332CA39B96417C9A4024EA0",
+        "gameplay": "F5F2FA896DBC3B9C876CB10F3B68AE819D02286BD981AAE5F797A9400EBED6FD",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "E5FBCDB93E81DDC369E87F6F7AA145CBE2545E0DFC40A3E4F64E4F93C84846B4",
+        "gameplay-seed": "EFA3B6B9957885274296235A5E93DF1CC4DDFD7479DC6056E63BDBA1E100EAA5"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL2_4",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 736020,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 6111,
+      "hitflashes": 18,
+      "raster_phase_range": [
+        5,
+        13
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "41E0ECB6CF1B857E6EC994DD0EABA4B5517920474BBDBA42C70E845269DAA817",
+        "gameplay": "5A34DAE60B080BC799C1E19379A6FB742DA84FA64C6266ED56D73299DEDF52A1",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "57F8044EB1D22802A55DDEA61CAA65E0C6DF9EE791B27DAAF30BEFD80B035ADE",
+        "gameplay-seed": "6936E5BA1420CE37DE5F8E90CDFBD4E2D48EC09BE322213F6185F106BF3D6B79"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL2_5",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 489492,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 4228,
+      "hitflashes": 7,
+      "raster_phase_range": [
+        5,
+        13
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "A28810F098F58694F2EAB0FE41D56CF3543C405339E6B662FB39D41B406A7834",
+        "gameplay": "C500C4FF8B32EBE45DB33CF6E53BAAEF6BA7778B6742C556E2AC2CAE2F914EFB",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "A36B4DB1473DC8D8E4DCAA57F670686A75738112EA39D3B121E34E524AD20341",
+        "gameplay-seed": "655EC0F304DBBD16B458097A338D23DFA9FAE10F77E3B7B5410BEF269C206EDB"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL2_6",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 481617,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 3924,
+      "hitflashes": 19,
+      "raster_phase_range": [
+        5,
+        12
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "5B538F846B2C8F835F84E470799BB24BADC0F81F6B0BF58AC01BEE7BE0508365",
+        "gameplay": "088AC93D13E9C32823990D5E6263DD8DCD5BE55AADBBEFCF57FF25CE386BBF94",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "AF6A2B00C8324675FFF64FF005F0AFAD5D2F69DAA34C50690B7A4C90F84F17C9",
+        "gameplay-seed": "CC25B197CAD667C34184CFFFEB0404CCE374C7144647F9BB4451E77CA185A681"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL3_1",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 503635,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 4020,
+      "hitflashes": 0,
+      "raster_phase_range": [
+        2,
+        15
+      ],
+      "host_minimum_phase_updates": 1,
+      "trace_sha256": {
+        "entry": "B8D3409BBF5AF4FF595AFE4AF5F9F1ACC865BA6666F678DE7196D8219E08B69A",
+        "gameplay": "BA7D03688450004453E3F252A6294A95111E5B243E4E01F1F5AEB919049618B8",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "2660EDE149E44637A470C253AE2ED7C32052BB7DC7A31359E1A61D85C0665EA7",
+        "gameplay-seed": "77BF4168C15E5B99BE41B47487A146EC741E83A2345E235F1A50C2B334B8415F"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL3_2",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 421320,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 3630,
+      "hitflashes": 1,
+      "raster_phase_range": [
+        5,
+        13
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "4049B52E1E6066CC764D9C85D779BA4CFD6838D7458526BC6576F4687DFFE87F",
+        "gameplay": "D07F9694CEF5E5CCD107515988DF9E80813CC16E42B3A37772D27AFBB85AA6C2",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "B202AB4F696F6560B6C48B1C9CCAA6D11027C153BD6E7BFAE19DBEA4B910BBCA",
+        "gameplay-seed": "0A8E7BBA962DCC87CC9A85839D488727B5047FD0C0A86FD65C2A215E5E43E27E"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL3_3",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 428913,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 3652,
+      "hitflashes": 4,
+      "raster_phase_range": [
+        5,
+        15
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "3869BE37B2AB53C5EB6ABDBAE695A02E775CB9B131ABF75DBBF4C999F6FF9AFE",
+        "gameplay": "8C89F15E39D15424BB4EA2D48F0CBC7B4BB522F8AADB0D035EBEEE3010608FF2",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "24605E0BF01F0898983675A89FF479167B93029E460E8C04A918D252372F2C5D",
+        "gameplay-seed": "059D8AC3122295B18D0F3AB5FDB7A2B74373C6E6FB63D6BE2788B6D4964AA04A"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL3_4",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 506476,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 4375,
+      "hitflashes": 2,
+      "raster_phase_range": [
+        5,
+        14
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "349642FAF0A9DAD90B7FA062991E1F3A70F89B040B3AC2A63662B3A0E8B0F078",
+        "gameplay": "BE3201F0C9A47F94F9243436D908B24FE5743EF7E01D3F43E8D73686B71066CB",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "1392AECF19EDBC0E1908D61784CB77A4E4586F4411B4C950AF9A6A7D265E1C40",
+        "gameplay-seed": "9F0AA26358633CC987814A3C26FBDA75DAFC0D6EEEE91E1C376FFF536A4FE3D2"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL3_5",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 642303,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 5506,
+      "hitflashes": 0,
+      "raster_phase_range": [
+        5,
+        15
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "8DCA40447CF0334108E1C71290AFA67BC76D32DC3AF6DEEDC8B753E3F5AB0D9C",
+        "gameplay": "69E1272280A610773D87B4D169E88639B2C765FA2D326B28F79C377A046EAA77",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "173927B9878E9B2791A1BBB5F763521B64922A4945C2FCE426E6A4334507EEC5",
+        "gameplay-seed": "6945B713DF69883E1B1A256B942E133989A701F766028609CDEA940FBD07BAFE"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL3_6",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 483450,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 4175,
+      "hitflashes": 12,
+      "raster_phase_range": [
+        5,
+        13
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "8FE7F4B9A98F01F423654D6418213AEC96FAB5FB386663462A4FF3131592BF65",
+        "gameplay": "8F5286D328C1A2F779AE3BFB54D6348140BD27A4E06B8686BD769B09C25302E9",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "05933BEA95EB957976E2E5A4C0BC93672995FC8BA71CB67A4880CB894AE337DC",
+        "gameplay-seed": "4A535290EF28EBB191AA4C58249B083F2961B6E50F1F6D05F829153AE3ABF5DD"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL3_7",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 748257,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 6370,
+      "hitflashes": 0,
+      "raster_phase_range": [
+        5,
+        14
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "1235978DD834E7AB0C4B6EA9E9AD58F615801F234EC8238EE6CFBAEB619B8E2D",
+        "gameplay": "B051D870D5055B2FB3781485D759A54EED6A9C809ABBD44F7664DA76AEA3AFD3",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "9DD3DC6253B3D06055AAA6B5A5D454052769D6A82C710B16B8BEE1BAE81B6F1A",
+        "gameplay-seed": "C36700C7CF45613ED274DBC6D9AC4B39C32C58CEAFA258EEB4B04507A4FD4EC8"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL4_1",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 467608,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 3927,
+      "hitflashes": 0,
+      "raster_phase_range": [
+        5,
+        11
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "1CE4DA490C401A31C5FD3D1B2A9928F38C94110A376A273D75C7FD4A0D6C4FB9",
+        "gameplay": "EB983F7360F1E3CF1A66BBDC19AEC3E4F63DB0CF2B8DC963556ABFC0D6D9689B",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "9467ECC0D7DD3B9CBEE5804D0FC1572D10A67D24A85B6BD215F44D98C72B2AD4",
+        "gameplay-seed": "18E9A88639F1B66F107443C9822BBB2973C91C5DA3401A6716D5EC5345AA1729"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL4_2",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 698340,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 6060,
+      "hitflashes": 1,
+      "raster_phase_range": [
+        5,
+        13
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "BD4DD58A2023223D129C5FF2D64A6A7CB1EA73A9E15275E6C6872C15EAA88A93",
+        "gameplay": "1111BD6403C6C1D737528FCB51F5AB832CCB845FF23E0BF6067F1E7E76180E49",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "0EEA8090460E85790A99CF62F386F458EF2C127FE28EC9824CFAA99AEAADFA94",
+        "gameplay-seed": "BC0AFB0B9A34987BEA00E15F322F0F556413F5903892BAB3EEFE84D245050874"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL4_3",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 489150,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 4225,
+      "hitflashes": 0,
+      "raster_phase_range": [
+        5,
+        14
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "71B0C91C52E99EEBE45FDB89453CDC628F92AA648341C7F540EA69F348A361CE",
+        "gameplay": "4D924DFD53B1B8BA9EDC6AC92D443496ACB410E28A8B97CD9C538B9323AFDAC0",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "C1B83C743BD55EFED18E38C85F0D798C313219E9709AB77553D0696EDB9A9E1A",
+        "gameplay-seed": "688A9E2350BC15DBD393DD93C6E8CA6240AB7F7D08E9937BD1E7EF2EBB9C3909"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL4_4",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 296605,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 2424,
+      "hitflashes": 0,
+      "raster_phase_range": [
+        5,
+        15
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "60C2BA1211FA637A933D0A74FCE379329141690AA1FC546F64CE73DBB4A2D479",
+        "gameplay": "EDA9C9FC54BB8E76F1179ABD5B3A0E0A16A6AF46D876C4076E0E480850F104D9",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "ABD367CD85F5C87C440297B4E9D0676E34B9A44F31E80F0680A58BDE51DAD5A4",
+        "gameplay-seed": "1A578E0C68BDD20B782470C23F64B176D2B789C25513CF29A06E4094EDF9E9CB"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL4_5",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 305704,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 2144,
+      "hitflashes": 0,
+      "raster_phase_range": [
+        5,
+        13
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "193FBA62303B2A806CACC235DC2AB1783C2BE606201ADD5E90BA81796346A24E",
+        "gameplay": "7EEED790F9FE95CF20552766741EEBE0A3246861D8FDB9BAB0CBFB25D7857501",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "29BD86E9D6D58E11E7A6D41C9B566B0113B5719BBC0F0CB3C474E424C24DE371",
+        "gameplay-seed": "3D9C82A1133971929D7DDDC579327A8FEAA724FD97842A520BB4AE67A75CDA9E"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL5_1",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 343616,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 2653,
+      "hitflashes": 0,
+      "raster_phase_range": [
+        2,
+        11
+      ],
+      "host_minimum_phase_updates": 1,
+      "trace_sha256": {
+        "entry": "0E2F87E41EA75DCADE9327933E26BDEBB797001444E0258BA7D4F15F6F637E69",
+        "gameplay": "C174974971238C90E3F314F5919EE55A996B557FB5FD4C0E5821DB136BBE954E",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "34E1076DA9C94A0A123591F1FBFC5285F5542B63D0E021ED1038CFE1708AF037",
+        "gameplay-seed": "ECED2FD7EB29E8D3288FF232CC4902862B84103D825F9A85B903D8DD8B518D84"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL5_2",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 352122,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 3023,
+      "hitflashes": 6,
+      "raster_phase_range": [
+        5,
+        11
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "7137C131B6CA59A62C400E7BE48939270D7783FBDD8E07BB246063BC6BBA257D",
+        "gameplay": "D0870ED69EF2F96B7D6790BC723E739422963835F07FF3ECA371F44A78018654",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "59E2D419D65FAA4783BFC50FEC7F0193B504A91E1B0C0384B9F81DA6E1D10ECB",
+        "gameplay-seed": "B357792182F9A8D9A5E6A75C920E8FE0E1B89EDD5559B2E5CF8E54FB33FB4E01"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL5_3",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 401598,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 3457,
+      "hitflashes": 6,
+      "raster_phase_range": [
+        5,
+        13
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "FC92262B4B5309A9F817550351CC92D65675183EFB34E741E9096BB68539167E",
+        "gameplay": "1700CACD345C04859BFDB5B8EECD614A83EF71D686C1552FDF7AC4ECFF3ABAF9",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "ECD7D3C8BDA578B8DE994191D4D0803D5963264744191991B17F827740DEA900",
+        "gameplay-seed": "95A45D5FAFDB8E379602E8B95B5BF2D04CDF74E1AEE12435390590DD165C847A"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL5_4",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 393653,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 3309,
+      "hitflashes": 0,
+      "raster_phase_range": [
+        5,
+        11
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "7D713F57969D094BC1A2FC3C948ABD915FF05098FBC33675A95B3A1764F453B7",
+        "gameplay": "C83BDEFDA23D91FBDCECB1AEA2BA67853E5E25C96C8975CFA44F51FAA6F06E14",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "E7A93821E7A3720A7B28FF6DC5786171CDD906A48C892935F816BDCD67C72F6F",
+        "gameplay-seed": "8473CBF46134F9A231482A2D0821DF65C6100A4E0A6728A94E1C5152AEBE6569"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL5_5",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 557351,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 4626,
+      "hitflashes": 144,
+      "raster_phase_range": [
+        5,
+        14
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "BC702D363F8A02A173E5DEBB2CBE5947ECDC31F05FD4A49E039672F94007F6E0",
+        "gameplay": "72E8D5FEE207B044EDD315F1AEB6F306650ADF554BABE42ED0C917FDDCD6D0E4",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "82D8FEE1FF9AF6CFA2DD5B8F0CBC67156303632092E21782485B5CD64984DA85",
+        "gameplay-seed": "769E8C67437D637F7F69F214BC15161CA454250214EAF57C916AA40707889253"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL6_1",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 311126,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 2368,
+      "hitflashes": 0,
+      "raster_phase_range": [
+        2,
+        11
+      ],
+      "host_minimum_phase_updates": 1,
+      "trace_sha256": {
+        "entry": "B133AB42164DC2313F36061833FFF11F3FD784EBDFF4D4A71ABE2DBDA0681ECB",
+        "gameplay": "C96D01E51754C290E86928CA17C126D93DE9B86E5184293973BFFDA0048F2183",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "34E1076DA9C94A0A123591F1FBFC5285F5542B63D0E021ED1038CFE1708AF037",
+        "gameplay-seed": "DEC9AA9A2CDF71FF14E51DCE8533605E77F49E9712ECD09F9ADE3162A2E7817E"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL6_2",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 571800,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 4950,
+      "hitflashes": 5,
+      "raster_phase_range": [
+        5,
+        15
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "67CFD69CD1F20F13874BB5B7EA0055CED111F7E1B3014AD0BE61EA51AB6004DF",
+        "gameplay": "37AADDCE254F31C5799762AF4D6D28C45328E3F9C6022DC1A9C5F6EC3D6B002B",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "26D588F622205E9FB9C0A6EA7EC05CE783A18E3EA47DD82060B9E4431C1C7665",
+        "gameplay-seed": "97F35848197C4DAA0A09D512B0F28F884FF830F0CA8DE338769B6F70D6EF417B"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL6_3",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 448110,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 3865,
+      "hitflashes": 0,
+      "raster_phase_range": [
+        5,
+        15
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "DEAB414D4B490D1481E6B5619C582C316FFD3DD5ABFD3C4528FE36FEBC20D51A",
+        "gameplay": "9B129DEF45D856B2074E64BBE5F6AC54C2E1A6AE6680E76D9942127DA0BF9AA6",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "2B55837334555805F3A0F554FB5BB422528981AE52CFFCB8210827F7FBCE59A5",
+        "gameplay-seed": "F5A8C6A38F11530325672180D2B343AC4E83B576BEDC7A9359AAD1E544EE0C6D"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL6_4",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 718737,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 6004,
+      "hitflashes": 1,
+      "raster_phase_range": [
+        5,
+        20
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "C379F1EB9B8AE83AB7AF20E77EFF7C0CC80CD2FA86C30608F3535F0D6893720D",
+        "gameplay": "B78B204BA353BF213F05CD88D1C4AD3D01B97A60963F858FD8C3F675FE5DE912",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "ACF392E8D2907DE475338EC2720AA68BECBC4EB37CDA258C9A82C4DCCD98A787",
+        "gameplay-seed": "8B87EBC6EEBD1A5371ACA79B95A24CFE027DDDBC3EBFD8EAA364966AC2600AE9"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL6_5",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 391110,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 3365,
+      "hitflashes": 1,
+      "raster_phase_range": [
+        5,
+        11
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "17A605F20A19196AED8A6FFE6F9E1603293E171B85A1D2F95CA1AF7824134587",
+        "gameplay": "B718402C4D4DDF857DF7E2DF2DDF2B635360BEF86D834465FEE58B396585A3DD",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "39744B38920D34374E294E6A3CDF3E11FD012EAB2DAFC50F1AC54C4906FDBD06",
+        "gameplay-seed": "326FA96C9BB4FF241784FCF1F60B81FBC9C456B5B98957141105346A8BD4A5BB"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL6_6",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 2019964,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 17336,
+      "hitflashes": 2,
+      "raster_phase_range": [
+        5,
+        14
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "774A9F809920FBCDA6F8EED798B8D5BA7AB9BBEC7DB3FA0518EB8C0A42DE8066",
+        "gameplay": "A3E103803BA5250C60091364D0A9F257E98C4A93ED4308C39605968B62A18949",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "355CFD46D9E2370535A604B88A380B6E6CA2C230447D3E52EC588FF00F8DAF28",
+        "gameplay-seed": "065E84C7ED725B49639D3A216C2A20A5527A70C94B48743D4E4106E6E8110F26"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL7_1",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 270428,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 2011,
+      "hitflashes": 0,
+      "raster_phase_range": [
+        2,
+        11
+      ],
+      "host_minimum_phase_updates": 1,
+      "trace_sha256": {
+        "entry": "3BDD14F3873356289882088B0D012AE9F8B29CC09CE438C07299C3C4CDFB0D7D",
+        "gameplay": "13FDBD683F19F7384ADFF22915995AA2AAA4FE564C3633C75D393DE0C43C38A2",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "33A713596015983F19EE62359A15297267E58D4F4B0B4F7380A270DEB7851177",
+        "gameplay-seed": "0FE127F081AF4C84745616260C8FF8419E7022E675B72C6397946031DB288A54"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL7_2",
+      "passed": false,
+      "error": "('ex', 'LEVEL7_2'): exit 1; see C:\\Users\\kando\\Documents\\ChatGPT\\Starfox Enhanced\\tmp\\all-stage-state-audit\\ex-LEVEL7_2.log"
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL7_3",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 416076,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 3584,
+      "hitflashes": 0,
+      "raster_phase_range": [
+        5,
+        13
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "6D87BB112DB98E2D28DA8460E4C741BD96BCCF83CF566B89D52482996586E628",
+        "gameplay": "E7ABDDC87ECDF5EA927E243E9A6845729B6A372EF3794FAE186B76A67F59DAD7",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "C054E3E107FCE951A6140166EC79DED9064F971CD03F10FAAF487D6F3A17F36A",
+        "gameplay-seed": "E2DD46B2B61B3542B35B6DB17B3ACC02220B74D3C10B2FB18E459F2BB0640F35"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL7_4",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 471024,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 4066,
+      "hitflashes": 4,
+      "raster_phase_range": [
+        5,
+        12
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "31C5A98358EAA777759E4F97A88304B95E71CA36FA502D9FFC60DA36F1394EE6",
+        "gameplay": "5C195EB3E411624555A714C8BB564AE62E5159745362D8566C73B2E66BA4FF98",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "17A53337230456BEE84AB30AA0A685609885975ECAAFEEB4E462F338C05120C3",
+        "gameplay-seed": "D41DED2E217EC1D58C23D73DA82666AF76D471D578A4EBB37921E46A6B71EC08"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL7_5",
+      "passed": true,
+      "updates": 300,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 503628,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 4352,
+      "hitflashes": 12,
+      "raster_phase_range": [
+        5,
+        12
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "EBD31CFA4CF6DFAE57B725028CD34B4720D5850A2CED984289AB32720A563DB4",
+        "gameplay": "8B97677F3CB65D8F47DC639DF5DA011DE826E9822053112100DD44CAD0F0F97D",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "E66678DE35CEBBBB261DF8AE4DD40CE3D3198C68FBF802F9C057AA52F5FAACD7",
+        "gameplay-seed": "65A6AD68CA77F5B12FF5CA00458102AC2A5573DBFE4F499B2351E891CD03D4B5"
+      }
+    }
+  ],
+  "scope": "One WRAM seed; observed native raster counts with the host's three-raster minimum still applied; neutral input; selected RAM fields and active object bytes only. No whole-game, rendering, input or physical timing certification."
+}

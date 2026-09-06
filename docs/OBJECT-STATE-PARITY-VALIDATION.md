@@ -96,10 +96,12 @@ ending suites, Original and EX delayed-jingle audio, MSU ending audio and the
 alternate EX orchestra. The complete log is
 `validation/object-state-regression-validation.txt`.
 
-The updated local candidate is `dist/StarFoxEnhanced-parity-test/starfox_pc.exe`,
+The local candidate at this validation was `dist/StarFoxEnhanced-parity-test/starfox_pc.exe`,
 SHA-256 `7A3F6BF01707685CD338B5E866B86EC80B8A4F9195DA997509CDD6080BDC2D1A`.
 It includes the prior fixes and MIT license/third-party notices. It is a local
 test build, not a published release.
+The later candidate and numbered-stage follow-up are recorded in
+`STAGE-STATE-PARITY-VALIDATION.md`.
 Both copied-candidate smoke launches passed using the local asset cache:
 Original LEVEL2_1 and EX LEVEL3_1, 12 presentations each with dummy devices.
 The saved pregame configuration remains unchanged, SHA-256

@@ -12,10 +12,12 @@
 class GameplayAudit {
     const starfox::assets::SymbolMap& symbols;
     std::unique_ptr<starfox::simulation::GameSimulation> game;
-    std::ofstream output, frames;
+    std::string output_prefix;
+    std::ofstream output, frames, seed;
     bool started = false;
     unsigned count = 0;
     unsigned required;
+    bool seed_at_first_transfer;
     std::uint64_t comparisons = 0;
     std::uint64_t submitted_comparisons = 0;
     std::map<unsigned, std::uint8_t> submitted_flags;
@@ -29,12 +31,16 @@ public:
     std::string error;
     unsigned differences = 0;
     GameplayAudit(const starfox::assets::RomImage& rom, const starfox::assets::SymbolMap& s,
-        const std::string& map, const std::string& prefix, unsigned updates) : symbols(s),
+        const std::string& map, const std::string& prefix, unsigned updates,
+        bool first_transfer = false) : symbols(s),
         game(std::make_unique<starfox::simulation::GameSimulation>(rom,s,map,std::span<const std::uint8_t>{},true)),
-        output(prefix+"-gameplay-differences.csv"), frames(prefix+"-gameplay.csv"), required(updates) {
-        if (!output || !frames) throw std::runtime_error("Cannot create gameplay traces");
+        output_prefix(prefix),
+        output(prefix+"-gameplay-differences.csv"), frames(prefix+"-gameplay.csv"),
+        seed(prefix+"-gameplay-seed.csv"), required(updates), seed_at_first_transfer(first_transfer) {
+        if (!output || !frames || !seed) throw std::runtime_error("Cannot create gameplay traces");
         output << "transfer,field,host,native\n";
         frames << "transfer,gameframe,raster_phases,host_raster_phases,objects,comparisons,submitted_flags,hitflashes,differences\n";
+        seed << "mode,gameframe,map,player\n";
     }
     bool complete() const { return count == required; }
     void capture_submitted_flags() { try {
@@ -55,7 +61,7 @@ public:
     void transfer() { try {
         if (!error.empty() || differences || complete()) return;
         if (!started) {
-            if(native(address("GAMEFRAME")) != 0) return;
+            if(!seed_at_first_transfer && native(address("GAMEFRAME")) != 0) return;
             if(native(address("PLAYPT")) != game->map().read_native_word(address("PLAYPT")))
                 throw std::runtime_error("Player allocation differs at clone boundary");
             for(unsigned i=0;i<0x20000;++i) game->map().write_native_byte(0x7e0000+i,sfc::cpu.wram[i]);
@@ -66,7 +72,11 @@ public:
             game->map().restore_map_state_from_native();
             game->map().restore_display_from_native();
             started = true;
-            std::cout << "Gameplay clone at GAMEFRAME=0 after the preceding display interrupt\n";
+            const auto frame = native(address("GAMEFRAME"));
+            seed << (seed_at_first_transfer ? "first-transfer" : "zero-frame") << ','
+                << frame << ',' << native(address("MAPPTR")) << ',' << native(address("PLAYPT")) << '\n';
+            if (!seed) throw std::runtime_error("Cannot write gameplay seed trace");
+            std::cout << "Gameplay clone at GAMEFRAME=" << frame << " after the preceding display interrupt\n";
             return;
         }
         // TRANSFER_L copies FRAMEC into FRAMER before waiting for IRQBIT3.
@@ -131,6 +141,18 @@ public:
             << ',' << comparisons-before << ',' << submitted_comparisons-submitted_before
             << ',' << hitflashes << ',' << differences << '\n';
         if (!output || !frames) throw std::runtime_error("Cannot write gameplay traces");
-        if(differences) std::cout<<"Gameplay differences at transfer "<<count<<": "<<differences<<'\n';
+        if(differences) {
+            // Preserve local diagnostic state at the first failing boundary.
+            // These snapshots are evidence for investigation, not extra
+            // compared fields or redistributed game assets.
+            std::ofstream host(output_prefix + "-host-wram.bin", std::ios::binary);
+            std::ofstream source(output_prefix + "-native-wram.bin", std::ios::binary);
+            for (unsigned i = 0; i < 0x20000; ++i) {
+                host.put(game->map().read_native_byte(0x7e0000U + i));
+                source.put(sfc::cpu.wram[i]);
+            }
+            if (!host || !source) throw std::runtime_error("Cannot save failure-state snapshots");
+            std::cout<<"Gameplay differences at transfer "<<count<<": "<<differences<<'\n';
+        }
     } catch(const std::exception& e) {error=e.what();} }
 };

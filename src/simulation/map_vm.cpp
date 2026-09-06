@@ -112,6 +112,12 @@ MapVm::MapVm(
       display_second_address_(symbol_or(symbols, "XINIDISP2", kOriginalDisplay + 2U)),
       display_alternate_address_(symbol_or(symbols, "XINIDISP1A", kOriginalDisplay + 4U)),
       game_frame_address_(symbol_or(symbols, "GAMEFRAME", kOriginalGameFrame)),
+      flash_tunnel_address_(symbol_or(symbols, "FLASHTUNNELON", 0U)),
+      flash_background_address_(symbol_or(symbols, "FLASHBG", 0U)),
+      red_tunnel_palette_(symbol_or(symbols, "REDTUNNEL", 0U)),
+      thunder_palette_(symbol_or(symbols, "THUNDERCOL", 0U)),
+      random_address_(symbol_or(symbols, "RAND", 0U)),
+      irq_random_(symbol_or(symbols, "IRQRAND", 0U)),
       background_flags_address_(symbol_or(symbols, "BGFLAGS", kOriginalBackgroundFlags)),
       background_dma_list_address_(symbol_or(
           symbols, "BG_DMALIST", kOriginalBackgroundDmaList)),
@@ -310,19 +316,38 @@ void MapVm::tick_display_transfer() {
     sync_display_from_cpu();
 }
 
+std::size_t MapVm::apply_irq_palette_flashes() {
+    if (!random_address_) return 0;
+    std::size_t instructions = 0;
+    const auto apply = [&](std::uint32_t flag, unsigned threshold,
+                           std::uint32_t palette, unsigned first, unsigned colours) {
+        if (!flag || !palette || !cpu_.read8(flag)) return;
+        auto random = cpu_.read8(random_address_);
+        if (irq_random_) {
+            // The original RNG mode advances all four bytes for each enabled
+            // effect, even when it does not flash. EX's IRQ reads RAND only.
+            Wdc65816Registers registers;
+            registers.status = 0x24U;
+            instructions += cpu_.call_near(irq_random_, registers);
+            random = static_cast<std::uint8_t>(registers.a);
+        }
+        if (random >= threshold) return;
+        std::array<std::uint16_t, 32> values{};
+        for (unsigned i = 0; i < colours; ++i) values[i] = cpu_.read16(palette + i * 2U);
+        cpu_.write_cgram(first, std::span{values}.first(colours));
+    };
+    apply(flash_tunnel_address_, 51U, red_tunnel_palette_, 0U, 32U);
+    apply(flash_background_address_, 5U, thunder_palette_, 80U, 16U);
+    return instructions;
+}
+
 void MapVm::complete_background_request() {
     background_request_pending_ = false;
-    // The original NMI-side mode-change code walks BG_DMALIST until its
-    // terminator before WORLD.ASM's waitsetbg can advance. The PC renderer
-    // does not DMA SNES character/tile data, so completion is represented by
-    // the transfer-side background routine returning.
+    // Finishing the transfer releases WAITSETBG. WORLD.ASM (or the host
+    // interpreter's next advance_distance) owns resuming the map. Running
+    // bytecode here skipped ahead during native gameplay and overwrote its
+    // map registers with the host interpreter's stale cached values.
     write_native_word(background_dma_list_address_, 0);
-    if (!ended_ && rom_->read8(cursor_) == 100U) {
-        ++cursor_;
-        countdown_ = 0;
-        execute_ready_records();
-    }
-    sync_map_state_to_cpu();
 }
 
 void MapVm::sync_map_state_to_cpu() {

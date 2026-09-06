@@ -1,0 +1,36 @@
+{
+  "variant": "ex",
+  "map": "LEVEL7_2",
+  "observed_video_frames": 5000,
+  "neutral_input": true,
+  "host_continuous_comparison": false,
+  "reference_executable_sha256": "FB7CA411D38A036C2C4418EB0FC8EDC1F435D8A9406E3A7163358E64782A8031",
+  "native_transfer_word_counts": {
+    "2": 38,
+    "4": 8
+  },
+  "reads": 46,
+  "strategy_objects": 1,
+  "phase_flags": {
+    "UPDATE_OBJECTS_L": {
+      "2": 526,
+      "4": 156
+    },
+    "GETVIEW_L": {
+      "2": 352,
+      "4": 317,
+      "6": 13
+    },
+    "DOSOUNDS_L": {
+      "4": 340,
+      "2": 286,
+      "0": 7,
+      "6": 49
+    }
+  },
+  "trace_sha256": {
+    "reads": "3FC118B8FC0F28E52DF5189D95343071A7F9A3EAD40BD099D93B9FC382CD5482",
+    "phases": "2CDAEBD965529A5E2926B4A41B2FA21C773C313970F79915F1D6E9A8EC4C1544"
+  },
+  "scope": "Native execution continued beyond the first host difference. These are observations of changing IRQ phase, not passed host updates or a fix. No gameplay reseeding or forced transfer values."
+}

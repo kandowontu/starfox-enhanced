@@ -79,6 +79,7 @@ public:
     void tick_video_phase(bool advance_display = true);
     // IRQ.ASM SETINIDISP: one call per completed normal bitmap transfer.
     void tick_display_transfer();
+    std::size_t apply_irq_palette_flashes();
     void complete_background_request();
     // Import WORLD.ASM interpreter registers after an original routine such
     // as RESTART_L has advanced the native map directly.
@@ -281,6 +282,12 @@ private:
     std::uint32_t display_second_address_{};
     std::uint32_t display_alternate_address_{};
     std::uint32_t game_frame_address_{0x001640U};
+    std::uint32_t flash_tunnel_address_{};
+    std::uint32_t flash_background_address_{};
+    std::uint32_t red_tunnel_palette_{};
+    std::uint32_t thunder_palette_{};
+    std::uint32_t random_address_{};
+    std::uint32_t irq_random_{};
     std::uint32_t background_flags_address_{0x001a16U};
     std::uint32_t background_dma_list_address_{0x001764U};
     std::uint32_t current_background_address_{0x0017c6U};

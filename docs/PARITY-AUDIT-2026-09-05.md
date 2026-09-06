@@ -19,6 +19,7 @@ changes inside upstream-ultrastarfox were preserved.
 
 | Report / audit finding | Evidence and result |
 | --- | --- |
+| Numbered-stage opening audit | Expanded the continuous reference to all 19 Original and 40 EX stages. Fixed missing IRQ lightning/tunnel palettes and Original RNG consumption, plus background completion that resumed cached map bytecode early. All 19 Original and 39 EX openings now pass 300 updates (29,296,709 comparisons across passing cases); the three corrected cases also pass 1,000 updates each. EX LEVEL7_2 still differs because its SCORPION4 strategy reads an in-flight transfer word. The audit remains failing, with that difference preserved. See STAGE-STATE-PARITY-VALIDATION.md. |
 | Object words and submitted hit-flash | A longer continuous comparison exposed AL_SFLAGS being cleared one update late and scalar AL_PTR=4 being reinterpreted as host handle 4. Preserve submitted flags separately, retain literal native object words and resolve links explicitly in host PATH operations. A related regression corrected valid upper-WRAM code being rejected as unmapped ROM. All 61 CTest checks pass; 4,000 consecutive route-2/3 updates compare 7,436,666 state values, including 62,225 submitted flags and 47 flashes, with zero differences. See OBJECT-STATE-PARITY-VALIDATION.md. |
 | Gameplay fade cadence and stores | Normal IRQBIT3 advances fades once per completed bitmap transfer. The host advanced on every raster and also omitted QFADEDOWN's second decrement. Corrected gameplay/training cadence, fade-up completion edges and all three display aliases; preserved Continue's manual fade completion. Native SETINIDISP matches 768 cases per game. A new continuous, seeded reference compares 1,200 route-2/3 opening updates and 2,125,112 state values with zero differences. It fails incomplete runs and does not certify host pace or campaigns. See FADE-PARITY-VALIDATION.md. |
 | Camera word layout and crosshair | WMAT11 names a matrix word's high byte; the host wrote full words there instead of WMAT11W. The earlier view fixture shared that mistake. Correcting the reference first exposed 2,772 differences among 3,028 Original route-2 object views. The host now uses WMAT11W and executes GETVIEW_L directly, preserving the source's camera offsets, target angles, byte-angle aiming and integer crosshair projection. All 12,204 sampled object views match with the corrected layout. The new full-system Ares reference independently compares complete camera calls; see CAMERA-PARITY-VALIDATION.md. |
@@ -257,12 +258,17 @@ addresses; do not interpret those particular diagnostic fields as EX state.
   hit-flash state and executable-WRAM guard corrections. All 61 checks pass in
   one rebuilt-suite run; the longer continuous reference evidence is in
   OBJECT-STATE-PARITY-VALIDATION.md.
+- The candidate also includes IRQ palette-flash/RNG and background-completion
+  corrections. The new full runtime suite passes 60/61, followed by a passing
+  rerun of the corrected EX cockpit fixture; runtime code is unchanged between
+  those runs. The wider continuous stage audit remains 58/59. Its unfiltered
+  evidence and open transfer-timing defect are in STAGE-STATE-PARITY-VALIDATION.md.
 
 SHA-256:
 
 ```text
 starfox_pc.exe
-7A3F6BF01707685CD338B5E866B86EC80B8A4F9195DA997509CDD6080BDC2D1A
+BB39CDBE210CC3975ED7A507071E0D01D8577CE950A83B95E3D29A6B06D9CD11
 Starfox-Assets.BIN
 2F9A261C87F032F553952588E2EEB5DB747CBAF5FF0E5FCE7AF1862C9FC6541E
 Starfox-MSU1.PAK

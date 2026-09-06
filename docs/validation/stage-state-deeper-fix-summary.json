@@ -1,0 +1,100 @@
+{
+  "ares_revision": "0aafd85789215e84e1e43415c07d4c88461b7899",
+  "reference_executable_sha256": "CB8449A5962AE43CF7422AB6EB3DA8DAD04170E29E35F44CA05A82FB4B1CEBE0",
+  "inputs": {
+    "original": {
+      "rom_sha256": "E79D7F08C9191701C43F427D8BB85D6804A4B7C05EB6E585698FD2E1B2932E32",
+      "symbols_sha256": "66F0124B38FBFE63913BA99E07A91D944A0479664A23DD2528CDE3D68DA62A84"
+    },
+    "ex": {
+      "rom_sha256": "ECA6CE47B19D14BEFE7170E613A127E4D174F24B7F9625CDF688D814DE6BD7CB",
+      "symbols_sha256": "36BA8A5CD028297FDB49C31830673433BB997167B7E489EBC983B0C416FA9FF6"
+    }
+  },
+  "passed": true,
+  "requested_cases": 3,
+  "requested_updates_per_case": 1000,
+  "passed_cases": 3,
+  "updates": 3000,
+  "comparisons": 5398313,
+  "differences": 0,
+  "incomplete_run_rejected": true,
+  "cases": [
+    {
+      "variant": "original",
+      "map": "LEVEL1_6",
+      "passed": true,
+      "updates": 1000,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 128,
+      "comparisons": 1471312,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 12902,
+      "hitflashes": 2,
+      "raster_phase_range": [
+        2,
+        7
+      ],
+      "host_minimum_phase_updates": 1,
+      "trace_sha256": {
+        "entry": "98DE0C5906D35E958B2B497292040078B39CF70A031AE1CE999128C605CEF42E",
+        "gameplay": "35DA107C5FB8EB1A54C5EA6072CE02017C8155E56D38F144C95A4BAE39907AB6",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "CB6923B83C0EE25E6CC904F0FA588439DC61FE112161DD47BB6C3C2F0636A994",
+        "gameplay-seed": "6C405D21665979E044564046A6CF90D4B479787499468908DF2DD8C5149D0158"
+      }
+    },
+    {
+      "variant": "original",
+      "map": "LEVEL3_7",
+      "passed": true,
+      "updates": 1000,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 128,
+      "comparisons": 1940176,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 17126,
+      "hitflashes": 21,
+      "raster_phase_range": [
+        2,
+        9
+      ],
+      "host_minimum_phase_updates": 2,
+      "trace_sha256": {
+        "entry": "1A12E2E9D6215EF378442E4C77E8DE2B52CA497D6B3EB3093C926103E0312F61",
+        "gameplay": "7684BC6C7BA028DDE0A1EF53791C6C012DD41CDB48DC46EE53B701FA9E5E87C7",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "C708A429169C19DA407395C0E634DC59EDBFD4C875F56F3CEB05D194A7F1C032",
+        "gameplay-seed": "35A414DCE60C64E866FD566E4E68670C52CBA2DE775B56B89E0828351199077B"
+      }
+    },
+    {
+      "variant": "ex",
+      "map": "LEVEL1_3",
+      "passed": true,
+      "updates": 1000,
+      "seed_mode": "first-transfer",
+      "seed_gameframe": 106,
+      "comparisons": 1986825,
+      "differences": 0,
+      "camera_calls": 200,
+      "submitted_flags": 17208,
+      "hitflashes": 28,
+      "raster_phase_range": [
+        5,
+        17
+      ],
+      "host_minimum_phase_updates": 0,
+      "trace_sha256": {
+        "entry": "B8410AD8D08A2B81DCD75E1DD0F345D7C5406D11F74E5D80A9D4AF77C888FB29",
+        "gameplay": "C7C052AA417572C6458F78A7033269138B0A73DF61332239533579FED233F100",
+        "gameplay-differences": "A82C21ED56BA5DF633BB133E5A0462DD906378EBD5BFD4EBD85C8D5B896EF3C0",
+        "camera": "A35892EC9201FC2D4D0A86E10AAD27D34F24C884D54C82B4698417F669A31DCD",
+        "gameplay-seed": "9AA03B087929648B803594700F1845839E0A4D3922DBF1B184A55FA592FD5005"
+      }
+    }
+  ],
+  "scope": "One WRAM seed; observed native raster counts with the host's three-raster minimum still applied; neutral input; selected RAM fields and active object bytes only. No whole-game, rendering, input or physical timing certification."
+}

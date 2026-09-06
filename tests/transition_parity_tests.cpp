@@ -52,6 +52,83 @@ int main(int argc, char** argv) {
     starfox::simulation::Wdc65816Registers registers;
     registers.status = 0x24U;
     reference.call_long(symbols.find("COPY_TO_0101_L").front(), registers, 5'000'000U);
+    registers = {};
+    registers.status = 0x24U;
+    map.call_native_routine(symbols.find("COPY_TO_0101_L").front(), registers, 5'000'000U);
+    // Run the unmodified IRQ flash block through its own branches and DMA
+    // writes. Compare the complete CGRAM image and all four RNG bytes.
+    const auto find_flag_load = [&](const char* name) {
+        const auto flag = symbols.find(name).front();
+        const auto irq = symbols.find("IRQBIT3").front();
+        std::uint32_t found = 0;
+        for (unsigned i = 0; i < 2048; ++i) {
+            const auto pc = irq + i;
+            if (reference.read8(pc) == 0xad && reference.read16(pc + 1) == flag
+                && reference.read8(pc + 3) == 0xf0) {
+                require(found == 0, "ambiguous native IRQ flash block");
+                found = pc;
+            }
+        }
+        require(found != 0, "missing native IRQ flash block");
+        return found;
+    };
+    const auto flash_begin = find_flag_load("FLASHTUNNELON");
+    const auto background_begin = find_flag_load("FLASHBG");
+    const auto flash_end = background_begin + 5U
+        + static_cast<std::int8_t>(reference.read8(background_begin + 4));
+    const std::array flash_stops{flash_end};
+    unsigned flash_cases = 0, tunnel_flashes = 0, background_flashes = 0;
+    for (unsigned enabled = 0; enabled < 4; ++enabled) {
+        for (unsigned low = 0; low < 256; ++low) {
+            const auto write = [&](std::uint32_t address, std::uint8_t value) {
+                reference.write8(address, value);
+                map.write_native_byte(address, value);
+            };
+            const auto seed = (0x9e3779b9U * (low + 1U)) ^ 0x12345678U;
+            for (unsigned i = 0; i < 4; ++i)
+                write(symbols.find("RAND").front() + i, static_cast<std::uint8_t>(seed >> (i * 8U)));
+            write(symbols.find("FLASHTUNNELON").front(), enabled & 1U);
+            write(symbols.find("FLASHBG").front(), enabled & 2U);
+            // Distinct fixtures establish both DMA range and source table;
+            // they do not depend on incidental copied palette contents.
+            for (const auto [name, bytes] : {std::pair{"REDTUNNEL", 64U},
+                     std::pair{"THUNDERCOL", 32U}}) {
+                const auto palette = symbols.find(name).front();
+                for (unsigned i = 0; i < bytes; ++i) write(palette + i, static_cast<std::uint8_t>(i * 37U));
+            }
+            std::array<std::uint16_t, 256> palette{};
+            palette.fill(0x1234U);
+            reference.write_cgram(0, palette);
+            map.write_cgram(0, palette);
+            registers = {};
+            registers.status = 0x24U;
+            const auto task = reference.begin_long_task(flash_begin, registers, flash_stops);
+            require(!task.returned && task.stop_address == flash_end,
+                "native IRQ flash block did not reach its exit");
+            static_cast<void>(map.apply_irq_palette_flashes());
+            for (unsigned i = 0; i < 4; ++i) {
+                const auto address = symbols.find("RAND").front() + i;
+                require(map.read_native_byte(address) == reference.read8(address),
+                    "IRQ flash RNG consumption differs from the source");
+            }
+            if (map.ppu_state().cgram != reference.ppu_state().cgram) {
+                for (unsigned i = 0; i < palette.size(); ++i) {
+                    if (map.ppu_state().cgram[i] != reference.ppu_state().cgram[i])
+                        std::cerr << "flash flags=" << enabled << " seed=" << seed
+                            << " colour=" << i << " host=" << map.ppu_state().cgram[i]
+                            << " native=" << reference.ppu_state().cgram[i] << '\n';
+                }
+                require(false, "IRQ flash palettes differ from native DMA output");
+            }
+            tunnel_flashes += reference.ppu_state().cgram[0] != palette[0];
+            background_flashes += reference.ppu_state().cgram[80] != palette[80];
+            ++flash_cases;
+        }
+    }
+    require(tunnel_flashes != 0 && background_flashes != 0,
+        "IRQ cases did not exercise both visible flash palettes");
+    std::cout << "IRQ flashes: " << flash_cases << " native RNG/palette cases, "
+        << tunnel_flashes << " tunnel and " << background_flashes << " background flashes\n";
     const auto fade = symbols.find("FADE").front();
     const auto fade_direction = symbols.find("FADEDIR").front();
     for (const auto frame : {2U, 3U}) {
