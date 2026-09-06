@@ -2,11 +2,13 @@
 // dependency; this executable and reference game data are never packaged.
 #include <sfc/sfc.hpp>
 #include "starfox/simulation/wdc65816.hpp"
+#include <array>
 #include <fstream>
 #include <iostream>
 #include <map>
 #include <mutex>
 #include <regex>
+#include <utility>
 
 namespace sfc = ares::SuperFamicom;
 #include "gameplay_audit.hpp"
@@ -229,24 +231,28 @@ int main(int argc, char** argv) { try {
     const auto player_pointer = address("PLAYPT"), world_x = address("AL_WORLDX"), world_y = address("AL_WORLDY"), world_z = address("AL_WORLDZ");
     const auto view_z = address("VIEWPOSZ"), frame_c = address("FRAMEC"), frame_r = address("FRAMER"), draw = address("M_NUMSHAPES") & 65535;
     const auto player_flags = address("PSHIPFLAGS3");
-    // EX SCORPION4's assembled LDA $00 reads the in-flight transfer word,
-    // rather than an immediate zero. Keep that observation separate from
-    // the gameplay comparisons when investigating timing-dependent motion.
-    unsigned scorpion_transfer_read = 0;
-    if (!symbols.find("SCORPION4_STRAT").empty() && !symbols.find("AIRCAR4_ISTRAT").empty()) {
-        const auto first = address("SCORPION4_STRAT"), last = address("AIRCAR4_ISTRAT");
-        if (last > first && last - first < 1024U) {
-            for (auto pc = first; pc < last; ++pc) {
-                if (rom.read8(pc) == 0xa5 && rom.read8(pc + 1) == 0) {
-                    if (scorpion_transfer_read) throw std::runtime_error("Ambiguous SCORPION4 transfer read");
-                    scorpion_transfer_read = pc;
-                }
-            }
+    // These EX chase operands are direct-page reads, not immediate zero.
+    // Observe both live readers without modifying source execution or RAM.
+    std::map<unsigned, std::string> scorpion_transfer_reads;
+    for (const auto& [strategy, next] : std::array{
+            std::pair{"SCORPION1_STRAT", "AIRCAR1_ISTRAT"},
+            std::pair{"SCORPION4_STRAT", "AIRCAR4_ISTRAT"}}) {
+        if (symbols.find(strategy).empty() || symbols.find(next).empty()) continue;
+        const auto first = address(strategy), last = address(next);
+        if (last <= first || last - first >= 1024U)
+            throw std::runtime_error(std::string{"Invalid transfer-read range: "} + strategy);
+        unsigned found{};
+        for (auto pc = first; pc + 1 < last; ++pc) {
+            if (rom.read8(pc) != 0xa5 || rom.read8(pc + 1) != 0) continue;
+            if (found) throw std::runtime_error(std::string{"Ambiguous transfer read: "} + strategy);
+            found = pc;
         }
+        if (!found) throw std::runtime_error(std::string{"Missing transfer read: "} + strategy);
+        scorpion_transfer_reads.emplace(found, strategy);
     }
     std::ofstream transfer_reads(prefix + "-transfer-reads.csv");
     if (!transfer_reads) throw std::runtime_error("Cannot create transfer-read trace");
-    transfer_reads << "video_frame,game_frame,object,pc,direct,status,target,world_y,master_clocks,transfer_clocks,vcounter,hcounter\n";
+    transfer_reads << "video_frame,game_frame,object,pc,direct,status,target,world_y,master_clocks,transfer_clocks,vcounter,hcounter,strategy\n";
     unsigned settled_transfer = 0;
     for (unsigned offset = 0; offset < 32; ++offset) {
         if (rom.read8(transfer + offset) == 0x9cU
@@ -297,13 +303,13 @@ int main(int argc, char** argv) { try {
                     << ',' << unsigned(sfc::superfx.regs.sfr.g) << '\n';
             }
         }
-        if (pc == scorpion_transfer_read) {
+        if (const auto reader = scorpion_transfer_reads.find(pc); reader != scorpion_transfer_reads.end()) {
             const auto& r = sfc::cpu.r;
             transfer_reads << video_index << ',' << read(game_frame) << ',' << unsigned(r.x.w)
                 << ',' << pc << ',' << unsigned(r.d.w) << ',' << unsigned(r.p) << ','
                 << read(r.d.w) << ',' << static_cast<std::int16_t>(read(r.x.w + world_y)) << ','
                 << clocks << ',' << (observed_transfer ? clocks - transfer_started_clocks : 0U) << ','
-                << sfc::cpu.vcounter() << ',' << sfc::cpu.hcounter() << '\n';
+                << sfc::cpu.vcounter() << ',' << sfc::cpu.hcounter() << ',' << reader->second << '\n';
         }
         if (gameplay && pc == draw_flags_clear) gameplay->capture_submitted_flags();
         if (pc == get_view && camera_calls < 200 && camera_error.empty()) {

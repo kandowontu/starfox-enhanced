@@ -139,6 +139,33 @@ SCORPION1 therefore needs coverage alongside SCORPION4 when correcting the
 transfer-state exposure. Hardcoding one enemy's coordinate or one flag value
 would not cover the observed dependency.
 
+## Both live chase readers observed
+
+The expanded native observer records the two assembled `LDA $00` instructions
+separately. Over 5,000 native LEVEL7_2 video frames, SCORPION1 executes 25 reads
+(21 with transfer word 2, four with word 4) and SCORPION4 executes 46 reads
+(38 with word 2, eight with word 4). The direct-page register is zero and the
+accumulator is in word mode at every recorded read. SCORPION1's instruction is
+$15ca3b and its observed object is $0573; SCORPION4 remains $15cdc8 / $0501.
+This confirms that the second source expression is exercised in the assembled
+cartridge, rather than merely being present in unused source.
+
+The pre-existing native entry, frame, camera, GSU and transfer-phase CSVs are
+byte-for-byte unchanged. Filtering the new read trace to SCORPION4 and removing
+the appended strategy column reproduces all 46 previous rows exactly.
+The observer changes neither runtime code nor the reference's execution state.
+
+`tools/reference/verify-transfer-reads.py` validates reader presence, direct-page
+word access and both observed phase values. It also rejects a missing-SCORPION1
+trace and a trace flattened to constant value 2. The 71 raw reads and checked
+summary are in `validation/stage-state-both-readers-*`. This remains native-only
+evidence; the host mismatch is still open.
+
+```powershell
+./tmp/full-reference-build/full_reference.exe tmp/runtime-inputs/starfox-ex/SFES.SFC assets/symbols/starfox-ex.txt LEVEL7_2 5000 tmp/scorpion-both-native source
+python tools/reference/verify-transfer-reads.py tmp/scorpion-both-native --output tmp/scorpion-both-native-summary.json
+```
+
 ## Regression and candidate status
 
 The rebuilt full suite passed 60/61 checks in 238.33 seconds; its sole failure
