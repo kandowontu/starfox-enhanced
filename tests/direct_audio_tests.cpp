@@ -274,4 +274,26 @@ int main(int argc, char** argv) {
     }
     require(pause_changed_music,
         "global PAUSE ON command did not reach the isolated music driver");
+
+    // A boss BGM must be replaced by the cartridge's short Player Down cue.
+    constexpr std::array resume{
+        starfox::simulation::ApuPortWrite{3U, 0x01U, 0U}};
+    (void)effect_audio.render_logic_tick(resume);
+    constexpr std::array boss{
+        starfox::simulation::ApuPortWrite{0U, 5U, 0U}};
+    (void)effect_audio.render_logic_tick(boss);
+    for (int tick = 0; tick < 20; ++tick) (void)effect_audio.render_logic_tick({});
+    constexpr std::array death{
+        starfox::simulation::ApuPortWrite{0U, 0x11U, 0U}};
+    (void)effect_audio.render_logic_tick(death);
+    auto heard_death = false;
+    for (int tick = 0; tick < 160; ++tick) {
+        (void)effect_audio.render_logic_tick({});
+        const auto samples = effect_audio.last_music_samples();
+        const auto audible = std::any_of(samples.begin(), samples.end(),
+            [](auto sample) { return std::abs(static_cast<int>(sample)) > 8; });
+        if (tick < 20) heard_death = heard_death || audible;
+        if (tick >= 140) require(!audible, "Boss music continued after the death cue");
+    }
+    require(heard_death, "Player Down music was silent");
 }

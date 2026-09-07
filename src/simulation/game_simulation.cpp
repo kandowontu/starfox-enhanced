@@ -2084,12 +2084,14 @@ std::uint8_t GameSimulation::required_video_phases() const noexcept {
     // A boss can be one composite draw-list object while still submitting a
     // much larger Super FX model than dozens of ordinary enemies. Object
     // count alone therefore let Corneria's Attack Carrier and several EX
-    // bosses run at, or too close to, the unlocked 20 Hz ceiling. Captured
-    // NTSC boss play spends at least five raster phases per source update;
-    // retain additional crowd pressure on top of that for heavier encounters.
+    // bosses run at, or too close to, the unlocked 20 Hz ceiling.
+    // Use the existing heavier-scene approximation (six video phases, about
+    // 10 updates/second) throughout a boss encounter. The five-phase floor
+    // let sparse fights such as Attack Carrier run 20% faster than busy ones.
+    // Keeping this fixed also avoids speeding up as boss parts disappear.
     if (flow_state_ == GameFlowState::gameplay
         && map_.read_native_byte(boss_max_health_) != 0U) {
-        pressure = std::max<std::size_t>(pressure, 2U);
+        pressure = std::max<std::size_t>(pressure, 3U);
     }
     return static_cast<std::uint8_t>(3U + pressure);
 }

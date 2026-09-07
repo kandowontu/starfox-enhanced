@@ -149,6 +149,10 @@ std::span<const std::int16_t> Msu1Audio::render(
         }
         source_cursor_ += step;
     }
+    // Report completion even when the last sample exactly fills this buffer.
+    // Waiting for the next render call kept a finished one-shot marked active.
+    if (!repeat_ && source_cursor_ >= static_cast<double>(source_frames_))
+        playing_ = false;
     return output_;
 }
 

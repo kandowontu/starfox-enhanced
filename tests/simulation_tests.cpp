@@ -6327,14 +6327,14 @@ int main(int argc, char** argv) {
         const auto background_music = upstream_symbols.find("BGM_MUSIC").front();
         const auto background_music_count = upstream_symbols.find("BGMCNT").front();
         // A boss model is substantially more expensive than its single
-        // draw-list record suggests. ORIGINAL pace must retain the observed
-        // five-raster minimum instead of letting a sparse boss scene fall
+        // draw-list record suggests. ORIGINAL pace must retain the approximate
+        // six-raster cadence instead of letting a sparse boss scene fall
         // back to the unlocked three-raster (20 Hz) cadence.
         restart_game.set_timing_mode(
             starfox::simulation::TimingMode::original_speed);
         restart_game.map().write_native_byte(boss_max_health, 70U);
-        require(restart_game.logic_interpolation_alpha(1.0) <= 0.2,
-                "Original pace let an active boss run above its source cadence");
+        require(restart_game.logic_interpolation_alpha(1.0) <= 1.0 / 6.0,
+                "Original pace let a sparse boss exceed the heavier-scene approximation");
         restart_game.set_timing_mode(
             starfox::simulation::TimingMode::unlocked_20_fps);
         // Capture the active encounter track immediately before the synthetic
@@ -6477,6 +6477,9 @@ int main(int argc, char** argv) {
             upstream_symbols.find("PLAYERDEAD_ISTRAT").front();
         const auto lives = upstream_symbols.find("LIVES").front();
         death_game.map().write_native_byte(lives, 2U);
+        death_game.map().write_native_byte(background_music, 5U);
+        death_game.map().write_native_byte(background_music_count, 0U);
+        (void)death_game.map().take_msu_register_writes();
         death_game.objects().at(
             death_game.player()).strategy_address = player_death_initializer;
         auto saw_player_dying = false;
@@ -6484,8 +6487,17 @@ int main(int argc, char** argv) {
         auto saw_death_circle = false;
         auto saw_circle_during_fade = false;
         auto restarted_after_death = false;
+        auto death_music_submitted = false;
+        auto death_msu_started = false;
         for (std::size_t tick = 0; tick < 400U; ++tick) {
-            static_cast<void>(death_game.tick({}));
+            const auto death_tick = death_game.tick({});
+            death_music_submitted = death_music_submitted || std::any_of(
+                death_tick.audio_port_writes.begin(), death_tick.audio_port_writes.end(),
+                [](const auto& write) { return write.port == 0U && write.value == 0x11U; });
+            const auto death_msu = death_game.map().take_msu_register_writes();
+            death_msu_started = death_msu_started
+                || started_msu_track(death_msu, 38U, false)
+                || started_msu_track(death_msu, 39U, false);
             const auto flags = death_game.map().read_native_byte(game_flags);
             const auto circle = death_game.circle_effect_state();
             saw_player_dying = saw_player_dying || (flags & 0x02U) != 0U;
@@ -6527,6 +6539,8 @@ int main(int argc, char** argv) {
         require(saw_player_dying && saw_player_dead && saw_death_circle
                     && saw_circle_during_fade && restarted_after_death,
                 "native death tumble/circle/fade did not restart its checkpoint");
+        require(death_music_submitted && death_msu_started,
+                "player death did not replace boss music with the SPC/MSU death cue");
 
         // The next death consumes the final active ship and must traverse the
         // same visual sequence before MAIN.ASM enters GAME OVER. In particular

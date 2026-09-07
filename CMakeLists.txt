@@ -734,6 +734,11 @@ if(STARFOX_BUILD_TESTS)
     target_link_libraries(starfox_msu1_pack_tests PRIVATE starfox_core)
     add_test(NAME starfox_msu1_pack_tests COMMAND starfox_msu1_pack_tests)
 
+    add_executable(starfox_msu1_audio_tests tests/msu1_audio_tests.cpp)
+    target_link_libraries(starfox_msu1_audio_tests PRIVATE starfox_core)
+    add_test(NAME starfox_msu1_audio_tests COMMAND starfox_msu1_audio_tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/msu-tone-320.flac")
+
     add_executable(starfox_shape_decoder_tests tests/shape_decoder_tests.cpp)
     target_link_libraries(starfox_shape_decoder_tests PRIVATE starfox_core)
     add_test(NAME starfox_shape_decoder_tests COMMAND starfox_shape_decoder_tests)
