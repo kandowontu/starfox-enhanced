@@ -2026,13 +2026,14 @@ std::uint8_t GameSimulation::required_video_phases() const noexcept {
     if (timing_mode_ != TimingMode::original_speed) {
         return 3U;
     }
-    // INTRO.ASM is a real Super FX scene, not a 65C816-only menu. Its text
-    // trails, Arwings and boss vignette overrun the unlocked 20 Hz ceiling in
-    // the same way as gameplay on the 10.7 MHz cartridge.
+    // The intro is choreographed to a roughly 38-second music cue. A handful
+    // of large models makes draw-count pressure underestimate its work:
+    // that completed Original in ~25 seconds and EX in ~30. Keep a stable
+    // approximate cadence for each cartridge's different cinematic script.
     if (flow_state_ == GameFlowState::intro) {
-        const auto pressure = std::min<std::size_t>(
-            3U, draw_order_.size() / 12U);
-        return static_cast<std::uint8_t>(3U + pressure);
+        return starfox_ex_cartridge_
+            ? (flow_ticks_ % 10U < 7U ? 4U : 5U)
+            : (flow_ticks_ % 2U == 0U ? 5U : 6U);
     }
     if (flow_state_ != GameFlowState::gameplay
         && flow_state_ != GameFlowState::training
