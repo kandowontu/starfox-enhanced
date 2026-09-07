@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cmath>
 
 #ifdef STARFOX_ENABLE_XBRZ
 #include "xbrz.h"
@@ -37,6 +38,8 @@ std::string_view two_d_filter_name(TwoDFilter filter) noexcept {
     switch (filter) {
     case TwoDFilter::edge: return "EDGE";
     case TwoDFilter::xbrz: return "XBRZ";
+    case TwoDFilter::sharp_bilinear: return "SHARP BILINEAR";
+    case TwoDFilter::crt: return "CRT";
     case TwoDFilter::off: break;
     }
     return "OFF";
@@ -46,6 +49,8 @@ bool two_d_filter_compiled_in(TwoDFilter filter) noexcept {
     switch (filter) {
     case TwoDFilter::off:
     case TwoDFilter::edge:
+    case TwoDFilter::sharp_bilinear:
+    case TwoDFilter::crt:
         return true;
     case TwoDFilter::xbrz:
 #ifdef STARFOX_ENABLE_XBRZ
@@ -149,6 +154,82 @@ void scale_edge(
     }
 }
 
+// A narrow bilinear transition preserves pixel centres. Alpha-weighted colour
+// prevents transparent geometry holes from introducing dark fringes.
+void scale_soft(TwoDFilter filter, std::size_t factor,
+    const std::uint32_t* source, std::uint32_t* target,
+    std::uint32_t width, std::uint32_t height,
+    std::uint32_t first, std::uint32_t last) {
+    const auto fetch = [&](int x, int y) {
+        return source[static_cast<std::size_t>(std::clamp(y, 0, int(height) - 1))
+            * width + std::clamp(x, 0, int(width) - 1)];
+    };
+    for (auto y = first * factor; y < last * factor; ++y) {
+        const auto sy = (double(y) + 0.5) / double(factor) - 0.5;
+        const auto iy = static_cast<int>(std::floor(sy));
+        const auto fy = std::clamp((sy - iy - 0.5) * 1.5 + 0.5, 0.0, 1.0);
+        for (std::size_t x = 0; x < width * factor; ++x) {
+            const auto sx = (double(x) + 0.5) / double(factor) - 0.5;
+            const auto ix = static_cast<int>(std::floor(sx));
+            const auto fx = std::clamp((sx - ix - 0.5) * 1.5 + 0.5, 0.0, 1.0);
+            const std::array samples{fetch(ix, iy), fetch(ix + 1, iy),
+                fetch(ix, iy + 1), fetch(ix + 1, iy + 1)};
+            const std::array weights{(1-fx)*(1-fy), fx*(1-fy), (1-fx)*fy, fx*fy};
+            double alpha = 0;
+            std::array<double, 3> colour{};
+            for (std::size_t n = 0; n < samples.size(); ++n) {
+                const auto weight = weights[n] * double(samples[n] >> 24U);
+                alpha += weight;
+                for (unsigned c = 0; c < 3; ++c)
+                    colour[c] += weight * ((samples[n] >> (16U - c*8U)) & 255U);
+            }
+            std::uint32_t packed = 0;
+            if (alpha > 0.5) {
+                packed = static_cast<std::uint32_t>(alpha + 0.5) << 24U;
+                const auto scan = filter == TwoDFilter::crt
+                    ? (y % factor < (factor + 1U) / 2U ? 1.0 : 0.76) : 1.0;
+                for (unsigned c = 0; c < 3; ++c) {
+                    auto value = colour[c] / alpha;
+                    if (filter == TwoDFilter::crt) {
+                        // Subtle bright phosphor glow, before the scanline mask.
+                        value += std::max(0.0, value - 128.0) * 0.08;
+                    }
+                    packed |= static_cast<std::uint32_t>(
+                        std::clamp(value * scan + 0.5, 0.0, 255.0)) << (16U-c*8U);
+                }
+            }
+            target[y * width * factor + x] = packed;
+        }
+    }
+}
+
+// At native render scale, reconstruct at 2x and area-resolve to the native
+// presentation grid. This changes only 2D art, never the 3D raster or timing.
+std::uint32_t resolved_sample(const std::uint32_t* pixels, std::size_t width,
+    std::size_t x, std::size_t y, std::size_t factor, std::size_t scale,
+    TwoDFilter filter) {
+    if (scale != 1U) return pixels[(y * factor / scale) * width + x * factor / scale];
+    std::array<std::uint32_t, 3> colour{};
+    std::uint32_t alpha = 0U;
+    for (std::size_t dy = 0; dy < factor; ++dy) {
+        for (std::size_t dx = 0; dx < factor; ++dx) {
+            const auto sample = pixels[(y * factor + dy) * width + x * factor + dx];
+            const auto a = sample >> 24U;
+            alpha += a;
+            for (unsigned c = 0; c < 3; ++c)
+                colour[c] += a * ((sample >> (16U-c*8U)) & 255U);
+        }
+    }
+    if (alpha == 0U) return 0U;
+    auto result = (alpha / static_cast<std::uint32_t>(factor * factor)) << 24U;
+    for (unsigned c = 0; c < 3; ++c) {
+        auto value = (colour[c] + alpha / 2U) / alpha;
+        if (filter == TwoDFilter::crt && y % 2U != 0U) value = value * 88U / 100U;
+        result |= value << (16U-c*8U);
+    }
+    return result;
+}
+
 bool filter_overlay_layer(
     TwoDFilter filter,
     const Framebuffer& overlay,
@@ -157,7 +238,7 @@ bool filter_overlay_layer(
     std::vector<std::uint32_t>& out_argb,
     PixelFilterScratch& scratch,
     RowWorkers& workers) {
-    if (filter == TwoDFilter::off || render_scale < 2U || render_scale > 10U) return false;
+    if (filter == TwoDFilter::off || render_scale < 1U || render_scale > 10U) return false;
     const auto width = overlay.width();
     const auto height = overlay.height();
     if (width == 0U || height == 0U || palette.empty()) return false;
@@ -165,8 +246,8 @@ bool filter_overlay_layer(
     auto backend = filter;
     if (!two_d_filter_compiled_in(backend)) backend = TwoDFilter::edge;
     const std::size_t factor = backend == TwoDFilter::xbrz
-        ? std::min<std::size_t>(render_scale, 6U)
-        : render_scale;
+        ? std::clamp<std::size_t>(render_scale, 2U, 6U)
+        : std::max<std::size_t>(render_scale, 2U);
 
     const auto cells = static_cast<std::size_t>(width) * height;
     scratch.source.assign(cells, 0U);
@@ -201,7 +282,11 @@ bool filter_overlay_layer(
                 return;
             }
 #endif
-            scale_edge(factor, source, filtered, width, height, first, last);
+            if (backend == TwoDFilter::sharp_bilinear || backend == TwoDFilter::crt) {
+                scale_soft(backend, factor, source, filtered, width, height, first, last);
+            } else {
+                scale_edge(factor, source, filtered, width, height, first, last);
+            }
         });
 
     const auto stored_width = static_cast<std::size_t>(width) * render_scale;
@@ -212,13 +297,10 @@ bool filter_overlay_layer(
     workers.parallel_rows(stored_height,
         [&](std::uint32_t first, std::uint32_t last) {
             for (auto y = first; y < last; ++y) {
-                const auto filtered_y =
-                    static_cast<std::size_t>(y) * factor / render_scale;
-                const auto* filtered_row = filtered
-                    + filtered_y * filtered_width;
                 auto* row = output + static_cast<std::size_t>(y) * stored_width;
                 for (std::size_t x = 0; x < stored_width; ++x) {
-                    row[x] = filtered_row[x * factor / render_scale];
+                    row[x] = resolved_sample(filtered, filtered_width, x, y,
+                        factor, render_scale, backend);
                 }
             }
         });
@@ -237,7 +319,7 @@ void apply_two_d_filter(
     if (!framebuffer.layer_tags_enabled()) return;
 
     const auto scale = framebuffer.draw_scale();
-    if (scale < 2U || scale > 10U) return;
+    if (scale < 1U || scale > 10U) return;
     const auto width = framebuffer.width();
     const auto height = framebuffer.height();
     const auto stored_width = framebuffer.stored_width();
@@ -254,8 +336,8 @@ void apply_two_d_filter(
     // the way to 10x. xBRZ tops out at 6x and is point-sampled the rest of the
     // way, which still resolves far more detail than block expansion.
     const std::size_t factor = backend == TwoDFilter::xbrz
-        ? std::min<std::size_t>(scale, 6U)
-        : scale;
+        ? std::clamp<std::size_t>(scale, 2U, 6U)
+        : std::max<std::size_t>(scale, 2U);
 
     const auto& tags = framebuffer.layer_tags();
     if (tags.size()
@@ -319,8 +401,11 @@ void apply_two_d_filter(
                 return;
             }
 #endif
-            scale_edge(factor, source, filtered, width, height,
-                y_first, y_last);
+            if (backend == TwoDFilter::sharp_bilinear || backend == TwoDFilter::crt) {
+                scale_soft(backend, factor, source, filtered, width, height, y_first, y_last);
+            } else {
+                scale_edge(factor, source, filtered, width, height, y_first, y_last);
+            }
         });
 
     const auto filtered_width = static_cast<std::size_t>(width) * factor;
@@ -329,18 +414,14 @@ void apply_two_d_filter(
             for (auto y = slice_first; y < slice_last; ++y) {
                 const auto source_y = y / scale;
                 if (source_y < first_row || source_y >= last_row) continue;
-                const auto filtered_y = static_cast<std::size_t>(y) * factor
-                    / scale;
                 const auto* row_tags = tags.data()
                     + static_cast<std::size_t>(y) * stored_width;
-                const auto* filtered_row = filtered
-                    + filtered_y * filtered_width;
                 auto* output = rgba.data()
                     + static_cast<std::size_t>(y) * stored_width * 4U;
                 for (std::uint32_t x = 0; x < stored_width; ++x) {
                     if (row_tags[x] != two_d_tag) continue;
-                    const auto colour = filtered_row[
-                        static_cast<std::size_t>(x) * factor / scale];
+                    const auto colour = resolved_sample(filtered, filtered_width, x, y,
+                        factor, scale, backend);
                     const auto alpha = (colour >> 24U) & 0xffU;
                     if (alpha == 0U) continue;
                     auto* pixel = output + static_cast<std::size_t>(x) * 4U;

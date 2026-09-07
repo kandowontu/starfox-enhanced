@@ -3,14 +3,14 @@ param(
     [string]$BuildDirectory = "build/xbox-uwp-x64",
     [string]$InstallDirectory = "dist/StarFoxEnhanced-xbox-uwp-x64",
     [ValidateRange(0, 65535)]
-    [int]$BuildRevision = 0
+    [int]$BuildRevision = 2
 )
 
 $ErrorActionPreference = 'Stop'
 $source = [System.IO.Path]::GetFullPath($SourceRoot)
 $build = [System.IO.Path]::GetFullPath((Join-Path $source $BuildDirectory))
 $install = [System.IO.Path]::GetFullPath((Join-Path $source $InstallDirectory))
-$packageName = 'StarFoxEnhanced-0.0.4-xbox-uwp-x64.appx'
+$packageName = 'StarFoxEnhanced-0.0.4.2-xbox-uwp-x64.appx'
 $sourcePrefix = $source.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
 if (-not $build.StartsWith($sourcePrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "BuildDirectory must remain inside SourceRoot"

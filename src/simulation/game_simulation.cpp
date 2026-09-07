@@ -1282,17 +1282,14 @@ GameTickResult GameSimulation::tick_pregame_menu(
             break;
         }
         case 8U: {
-            const auto mode_count = starfox::render::two_d_filter_compiled_in(
-                starfox::render::TwoDFilter::xbrz) ? 3U : 2U;
             auto mode = static_cast<std::uint8_t>(two_d_filter_);
-            if ((menu_input.pressed & starfox::input::left) != 0U) {
-                mode = static_cast<std::uint8_t>(
-                    (mode + mode_count - 1U)
-                    % mode_count);
-            } else {
-                mode = static_cast<std::uint8_t>(
-                    (mode + 1U) % mode_count);
-            }
+            const auto backwards = (menu_input.pressed & starfox::input::left) != 0U;
+            do {
+                mode = static_cast<std::uint8_t>((mode
+                    + (backwards ? two_d_filter_mode_count - 1U : 1U))
+                    % two_d_filter_mode_count);
+            } while (!starfox::render::two_d_filter_compiled_in(
+                static_cast<starfox::render::TwoDFilter>(mode)));
             two_d_filter_ = static_cast<TwoDFilterMode>(mode);
             break;
         }

@@ -130,7 +130,7 @@ public:
             if (layer_tags_enabled_) {
                 tags_[static_cast<std::size_t>(y) * stored_width_
                     + static_cast<std::size_t>(x)] = write_tag(
-                        PixelLayer::three_d);
+                        PixelLayer::two_d);
             }
             return;
         }

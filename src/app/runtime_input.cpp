@@ -607,7 +607,7 @@ bool load_pregame_settings(
             found[10] = value >= 0 && value <= (revision < 11 ? 1 : 3);
         } else if (name == "TWO_D_FILTER") {
             loaded.two_d_filter = static_cast<std::uint8_t>(value);
-            found[20] = value >= 0 && value <= 2;
+            found[20] = value >= 0 && value <= 4;
         } else if (name == "VSYNC") {
             loaded.vsync = value != 0;
             found[11] = value == 0 || value == 1;
@@ -669,7 +669,7 @@ bool save_pregame_settings(
     if (path.empty() || settings.timing_mode > 1U
         || settings.display_mode > 4U || settings.crosshair_colour > 7U
         || settings.anti_aliasing > 3U || settings.rtx_lighting > 3U
-        || settings.two_d_filter > 2U || settings.renderer_mode > 1U
+        || settings.two_d_filter > 4U || settings.renderer_mode > 1U
         || settings.experience > 1U || settings.music_volume > 100U
         || settings.sfx_volume > 100U || settings.render_scale > 3U) {
         return false;

@@ -155,15 +155,6 @@ void composite_transparent_layer(const Framebuffer& source,
             // higher-resolution 3D layer keeps its detail through the pass.
             const auto source_scale = source.draw_scale();
             const auto destination_scale = destination.draw_scale();
-            if (source_scale == 1U && destination_scale == 1U) {
-                const auto colour = source.get(
-                    static_cast<std::uint32_t>(source_x),
-                    static_cast<std::uint32_t>(source_y));
-                if (colour != 0U) {
-                    destination.set(destination_x, destination_y, colour);
-                }
-                continue;
-            }
             if (destination_x < 0 || destination_y < 0) continue;
             const auto source_origin_x =
                 static_cast<std::uint32_t>(source_x) * source_scale;

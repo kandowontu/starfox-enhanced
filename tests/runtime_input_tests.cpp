@@ -193,6 +193,13 @@ int main() {
                     && loaded_pregame == expected,
                 "V11 migration changed unrelated settings or lost the filter");
     }
+    for (std::uint8_t filter = 0; filter < 5; ++filter) {
+        auto settings = saved_pregame;
+        settings.two_d_filter = filter;
+        require(starfox::app::save_pregame_settings(pregame_test_path, settings)
+            && starfox::app::load_pregame_settings(pregame_test_path, loaded_pregame)
+            && loaded_pregame == settings, "filter setting did not round-trip");
+    }
     for (std::uint8_t level = 0; level <= 3; ++level) {
         auto lighting_settings = saved_pregame;
         lighting_settings.rtx_lighting = level;

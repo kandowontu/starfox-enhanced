@@ -111,9 +111,11 @@ enum class TwoDFilterMode : std::uint8_t {
     off,
     edge,
     xbrz,
+    sharp_bilinear,
+    crt,
 };
 
-inline constexpr std::size_t two_d_filter_mode_count = 3U;
+inline constexpr std::size_t two_d_filter_mode_count = 5U;
 
 struct MeterState {
     std::uint8_t damage{};

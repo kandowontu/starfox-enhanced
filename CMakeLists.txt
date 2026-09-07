@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(starfox_enhanced VERSION 0.0.4.1 LANGUAGES CXX)
+project(starfox_enhanced VERSION 0.0.4.2 LANGUAGES CXX)
 
 if(WINDOWS_STORE)
     # Apply the UWP ABI to the entire dependency graph, not only the SDL entry
@@ -42,10 +42,10 @@ option(STARFOX_EMBED_RUNTIME_ASSETS
     "Embed source-built BPS deltas and symbol tables into the Windows runtime" ON)
 option(STARFOX_PACKAGE_MSU1_MUSIC
     "Build and install the optional Starfox-MSU1.PAK companion" ON)
-# Optional backend; the default build uses the built-in EDGE filter.
+# xBRZ is enabled by default; minimal builds may disable the backend.
 option(STARFOX_ENABLE_XBRZ
     "Fetch and compile the GPLv3 xBRZ backend for the 2D presentation filter"
-    OFF)
+    ON)
 set(STARFOX_UWP_PACKAGE_CERTIFICATE "" CACHE FILEPATH
     "Development PFX used to sign the Xbox UWP package")
 set(STARFOX_ROM_FILE
@@ -404,7 +404,7 @@ if(STARFOX_BUILD_RUNTIME)
             VERBATIM)
         set(STARFOX_UWP_MANIFEST
             "${CMAKE_CURRENT_BINARY_DIR}/Package.appxmanifest")
-        set(STARFOX_UWP_BUILD_REVISION "0" CACHE STRING
+        set(STARFOX_UWP_BUILD_REVISION "${PROJECT_VERSION_TWEAK}" CACHE STRING
             "Fourth component of the Xbox UWP package version")
         if(NOT STARFOX_UWP_BUILD_REVISION MATCHES "^[0-9]+$")
             message(FATAL_ERROR
@@ -702,7 +702,7 @@ if(STARFOX_BUILD_RUNTIME)
     if(TARGET starfox_asset_builder)
         install(TARGETS starfox_asset_builder RUNTIME DESTINATION .)
     endif()
-    install(FILES README.md CREDITS.md THIRD_PARTY_NOTICES.md DESTINATION .)
+    install(FILES README.md CREDITS.md THIRD_PARTY_NOTICES.md LICENSE-XBRZ.txt DESTINATION .)
 
 endif()
 

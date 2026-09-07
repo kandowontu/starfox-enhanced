@@ -27,12 +27,14 @@ enum class TwoDFilter : std::uint8_t {
     edge = 1,
     // xBRZ by Zenju. Noticeably better on curves and small features, and the
     // reference filter for this class of art. GPLv3, so it is compiled in only
-    // when STARFOX_ENABLE_XBRZ is set; otherwise selecting it falls back to
+    // when STARFOX_ENABLE_XBRZ is enabled (the default); otherwise selecting it falls back to
     // EDGE.
     xbrz = 2,
+    sharp_bilinear = 3,
+    crt = 4,
 };
 
-inline constexpr std::size_t two_d_filter_count = 3U;
+inline constexpr std::size_t two_d_filter_count = 5U;
 
 [[nodiscard]] std::string_view two_d_filter_name(TwoDFilter filter) noexcept;
 // False when the backend was not compiled in; the caller may still select it,
@@ -50,7 +52,7 @@ struct PixelFilterScratch {
 // Replaces the 2D-owned pixels of `rgba` (stored resolution, RGBA8, as
 // produced by expand_rgba) with a filtered reconstruction of the same art.
 //
-// Requires framebuffer.layer_tags_enabled() and a draw scale of 2 or more;
+// Requires framebuffer.layer_tags_enabled() and a draw scale of 1 or more;
 // otherwise it returns without touching `rgba`. Scales above the backend's
 // maximum factor are filtered at that maximum and point-sampled up, which
 // still beats block expansion.

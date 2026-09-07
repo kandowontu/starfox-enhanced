@@ -74,15 +74,16 @@ remain red.
 Face visibility and BSP order stay tied to the original grid while projection
 retains fractional endpoints for smooth interpolation.
 
-`2D FILTER` replaces `ENHANCED TEXTURES`. `EDGE` smooths the enlarged edges of
-backgrounds, sprites, HUD, portraits and text using the supplied EPX-style
-filter. Polygon pixels retain their original rendering. Choose Render Upscale
-2x or higher to see the effect; native 1x is unchanged. Previously enabled
-Enhanced Textures settings migrate to EDGE. OFF preserves unfiltered art.
+`2D FILTER` replaces `ENHANCED TEXTURES` and offers OFF, EDGE, XBRZ,
+SHARP BILINEAR and CRT. EDGE and xBRZ smooth enlarged artwork; Sharp Bilinear
+softens pixel boundaries; CRT adds scanlines and a subtle bright phosphor glow.
+All modes work at native Render Upscale: the filter reconstructs 2D art in a
+separate 2x buffer and resolves it back to the native raster. Higher render
+scales retain more filter detail. Geometry and game timing are unchanged.
+Previously enabled Enhanced Textures settings migrate to EDGE.
 
-An optional xBRZ backend is available when built with
-`-DSTARFOX_ENABLE_XBRZ=ON`; see `THIRD_PARTY_NOTICES.md`. Builds without it
-only offer OFF and EDGE, and saved xBRZ selections fall back to EDGE.
+xBRZ is enabled by default. Minimal builds may set `-DSTARFOX_ENABLE_XBRZ=OFF`;
+the menu then skips xBRZ. See `THIRD_PARTY_NOTICES.md` for attribution.
 
 Filtering, palette expansion, anti-aliasing and lighting share persistent CPU
 workers. Higher render scales require more processing time and memory.

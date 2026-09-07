@@ -68,6 +68,7 @@ void paint(Framebuffer& framebuffer, std::uint32_t scale) {
     // Scan conversion drops the draw scale to 1 and writes stored pixels.
     const auto previous = framebuffer.draw_scale();
     framebuffer.set_draw_scale(1U);
+    const starfox::render::ScopedLayer geometry{framebuffer, PixelLayer::three_d};
     for (std::uint32_t y = 0; y < framebuffer.stored_height(); ++y) {
         for (std::uint32_t x = 0; x < framebuffer.stored_width(); ++x) {
             const auto in_band = x >= 10U * scale && x < 22U * scale
@@ -227,13 +228,6 @@ void check_disabled_paths() {
     const auto palette = make_palette();
     PixelFilterScratch scratch;
     starfox::render::RowWorkers workers;
-
-    // Draw scale 1 cannot distinguish the layers, so the filter declines.
-    auto flat = render(1U, palette);
-    const auto flat_copy = flat.rgba;
-    starfox::render::apply_two_d_filter(
-        TwoDFilter::edge, flat.framebuffer, palette, flat.rgba, scratch, workers);
-    require(flat.rgba == flat_copy, "draw scale 1 must be left alone");
 
     // Tags off means no filtering, whatever the scale.
     Framebuffer untagged{source_width, source_height, 4U};
@@ -402,16 +396,14 @@ void check_overlay_layer_is_filtered(std::uint32_t scale) {
         }
     }
     require(opaque_pixels > 0U, "the overlay filter dropped all of the art");
-    require(differs_from_nearest > 0U,
+    require(scale == 1U || differs_from_nearest > 0U,
         "the overlay filter changed nothing against block expansion");
 
-    // Off and scale 1 must decline so the caller keeps its own path.
+    // Off must decline so the caller keeps its own path.
     require(!starfox::render::filter_overlay_layer(
                 TwoDFilter::off, overlay, palette, scale, argb, scratch, workers),
         "OFF must decline");
-    require(!starfox::render::filter_overlay_layer(
-                TwoDFilter::edge, overlay, palette, 1U, argb, scratch, workers),
-        "scale 1 must decline");
+
 }
 
 // composite_transparent_layer has two implementations: a bulk transfer for
@@ -443,6 +435,7 @@ void check_composite_carries_layers(std::uint32_t scale, bool force_generic) {
     {
         const auto previous = source.draw_scale();
         source.set_draw_scale(1U);
+        const starfox::render::ScopedLayer geometry{source, PixelLayer::three_d};
         for (std::uint32_t y = source.stored_height() / 4U;
              y < source.stored_height() * 3U / 4U; ++y) {
             for (std::uint32_t x = source.stored_width() / 4U;
@@ -541,7 +534,7 @@ int main(int argc, char** argv) {
     const auto dump_directory = argc > 1
         ? std::filesystem::path{argv[1]} : std::filesystem::path{};
 
-    for (const auto scale : {2U, 3U, 4U, 6U, 10U}) {
+    for (const auto scale : {1U, 2U, 3U, 4U, 6U, 10U}) {
         check_tags(scale);
         check_polygons_stay_geometry(scale);
         check_cockpit_hud_is_filtered(scale);
@@ -551,8 +544,10 @@ int main(int argc, char** argv) {
         check_sprites_are_cartridge_art(scale);
     }
     check_disabled_paths();
-    for (const auto scale : {2U, 3U, 4U, 6U, 10U}) {
+    for (const auto scale : {1U, 2U, 3U, 4U, 6U, 10U}) {
         check_filter(TwoDFilter::edge, scale, dump_directory);
+        check_filter(TwoDFilter::sharp_bilinear, scale, dump_directory);
+        check_filter(TwoDFilter::crt, scale, dump_directory);
         if (starfox::render::two_d_filter_compiled_in(TwoDFilter::xbrz)) {
             check_filter(TwoDFilter::xbrz, scale, dump_directory);
         }

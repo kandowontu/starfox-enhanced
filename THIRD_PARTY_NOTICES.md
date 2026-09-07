@@ -136,7 +136,6 @@ Copyright (C) Zenju (zenju AT gmx DOT de)
 
 Licensed under the GNU General Public License, version 3. Used as the optional
 `XBRZ` backend of the `2D FILTER` presentation option. It is fetched and
-compiled only when the build sets `-DSTARFOX_ENABLE_XBRZ=ON`; the default build
-contains none of its code and offers only the project's own `EDGE` filter.
+compiled by default; `-DSTARFOX_ENABLE_XBRZ=OFF` omits it in minimal builds.
 Distributing a binary built with this option enabled carries the GPLv3
 obligations for the combined work.

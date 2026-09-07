@@ -269,6 +269,10 @@ starfox::render::TwoDFilter two_d_filter_backend(
         return starfox::render::TwoDFilter::edge;
     case starfox::simulation::TwoDFilterMode::xbrz:
         return starfox::render::TwoDFilter::xbrz;
+    case starfox::simulation::TwoDFilterMode::sharp_bilinear:
+        return starfox::render::TwoDFilter::sharp_bilinear;
+    case starfox::simulation::TwoDFilterMode::crt:
+        return starfox::render::TwoDFilter::crt;
     case starfox::simulation::TwoDFilterMode::off:
     default:
         return starfox::render::TwoDFilter::off;
@@ -3718,6 +3722,10 @@ int main(int argc, char** argv) {
                 game.set_two_d_filter(
                     value == "EDGE" || value == "1"
                         ? starfox::simulation::TwoDFilterMode::edge
+                    : value == "SHARP" || value == "3"
+                        ? starfox::simulation::TwoDFilterMode::sharp_bilinear
+                    : value == "CRT" || value == "4"
+                        ? starfox::simulation::TwoDFilterMode::crt
                     : value == "XBRZ" || value == "2"
                         ? starfox::simulation::TwoDFilterMode::xbrz
                         : starfox::simulation::TwoDFilterMode::off);
@@ -5393,7 +5401,7 @@ int main(int argc, char** argv) {
             // distinction; they cost nothing while the filter is off.
             const auto two_d_filter = two_d_filter_backend(game.two_d_filter());
             const auto tag_layers = two_d_filter
-                != starfox::render::TwoDFilter::off && render_scale > 1U;
+                != starfox::render::TwoDFilter::off;
             if (framebuffer.layer_tags_enabled() != tag_layers) {
                 // Cached pixels made with filtering off have no ownership tags.
                 cartridge_layer_valid = false;
