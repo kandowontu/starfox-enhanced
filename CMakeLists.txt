@@ -42,6 +42,10 @@ option(STARFOX_EMBED_RUNTIME_ASSETS
     "Embed source-built BPS deltas and symbol tables into the Windows runtime" ON)
 option(STARFOX_PACKAGE_MSU1_MUSIC
     "Build and install the optional Starfox-MSU1.PAK companion" ON)
+# Optional backend; the default build uses the built-in EDGE filter.
+option(STARFOX_ENABLE_XBRZ
+    "Fetch and compile the GPLv3 xBRZ backend for the 2D presentation filter"
+    OFF)
 set(STARFOX_UWP_PACKAGE_CERTIFICATE "" CACHE FILEPATH
     "Development PFX used to sign the Xbox UWP package")
 set(STARFOX_ROM_FILE
@@ -126,6 +130,29 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(dr_libs)
 
+if(STARFOX_ENABLE_XBRZ)
+    FetchContent_Declare(
+        xbrz
+        GIT_REPOSITORY https://github.com/janisozaur/xbrz.git
+        GIT_TAG 93c54433fa0df37c689c919e8152fb0b9136584a
+        SOURCE_SUBDIR _starfox_no_upstream_project
+    )
+    FetchContent_MakeAvailable(xbrz)
+    add_library(xbrz_filter STATIC "${xbrz_SOURCE_DIR}/xbrz.cpp")
+    target_include_directories(xbrz_filter SYSTEM PUBLIC "${xbrz_SOURCE_DIR}")
+    target_compile_features(xbrz_filter PUBLIC cxx_std_20)
+    set_target_properties(xbrz_filter PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    # The pinned xBRZ revision calls std::sqrt without including <cmath>; it
+    # only ever compiled because older standard libraries leaked the
+    # declaration through another header. Force the include rather than
+    # patching a third-party source tree.
+    if(MSVC)
+        target_compile_options(xbrz_filter PRIVATE /FI cmath)
+    else()
+        target_compile_options(xbrz_filter PRIVATE -include cmath)
+    endif()
+endif()
+
 add_library(snes_spc_core STATIC
     "${snes_spc_SOURCE_DIR}/snes_spc/spc.cpp"
     "${snes_spc_SOURCE_DIR}/snes_spc/SNES_SPC.cpp"
@@ -170,7 +197,9 @@ add_library(starfox_core
     src/render/framebuffer.cpp
     src/render/palette.cpp
     src/render/particle_renderer.cpp
+    src/render/pixel_filter.cpp
     src/render/presentation_history.cpp
+    src/render/row_workers.cpp
     src/render/scaled_text_renderer.cpp
     src/render/software_renderer.cpp
     src/render/sprite_renderer.cpp
@@ -193,6 +222,10 @@ target_compile_features(starfox_core PUBLIC cxx_std_20)
 find_package(Threads REQUIRED)
 target_link_libraries(starfox_core PRIVATE
     retro_cpu_65816 snes_spc_core Threads::Threads)
+if(STARFOX_ENABLE_XBRZ)
+    target_link_libraries(starfox_core PRIVATE xbrz_filter)
+    target_compile_definitions(starfox_core PRIVATE STARFOX_ENABLE_XBRZ)
+endif()
 
 if(MSVC)
     target_compile_options(starfox_core PRIVATE /W4 /permissive-)
@@ -678,6 +711,14 @@ if(STARFOX_BUILD_TESTS)
     add_executable(starfox_bps_tests tests/bps_tests.cpp)
     target_link_libraries(starfox_bps_tests PRIVATE starfox_core)
     add_test(NAME starfox_bps_tests COMMAND starfox_bps_tests)
+    add_executable(starfox_pixel_filter_tests tests/pixel_filter_tests.cpp)
+    target_link_libraries(starfox_pixel_filter_tests PRIVATE starfox_core)
+    if(STARFOX_ENABLE_XBRZ)
+        target_compile_definitions(
+            starfox_pixel_filter_tests PRIVATE STARFOX_ENABLE_XBRZ)
+    endif()
+    add_test(
+        NAME starfox_pixel_filter_tests COMMAND starfox_pixel_filter_tests)
     if(EXISTS "${STARFOX_RETAIL_V12_FILE}"
        AND EXISTS "${STARFOX_ORIGINAL_PATCH_FILE}"
        AND EXISTS "${STARFOX_ROM_FILE}"

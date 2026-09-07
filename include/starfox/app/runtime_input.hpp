@@ -89,6 +89,8 @@ struct PregameSettings {
     bool smooth_polys{};
     // 0=off, 1=low, 2=medium, 3=high.
     std::uint8_t rtx_lighting{};
+    // 0=off, 1=EDGE, 2=XBRZ. See starfox/render/pixel_filter.hpp.
+    std::uint8_t two_d_filter{};
     bool vsync{};
     // 0=GPU (default), 1=SDL's portable software rasterizer.
     std::uint8_t renderer_mode{};

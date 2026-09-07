@@ -5976,7 +5976,7 @@ int main(int argc, char** argv) {
                     && !boot_game.god_mode()
                     && !boot_game.show_fps()
                      && !boot_game.anti_aliasing()
-                     && !boot_game.enhanced_graphics()
+                     && !(boot_game.two_d_filter() != starfox::simulation::TwoDFilterMode::off)
                      && !boot_game.smooth_polys()
                     && !boot_game.rtx_lighting()
                     && !boot_game.vsync()
@@ -6122,9 +6122,9 @@ int main(int argc, char** argv) {
                 "pre-game Anti-Aliasing choices did not step backward");
         drive_boot({0, starfox::input::down, 0});
         require(boot_game.pregame_selection() == 8U,
-                "pre-game cursor did not reach ENHANCED TEXTURES");
+                "pre-game cursor did not reach 2D FILTER");
         drive_boot({0, starfox::input::a, 0});
-        require(boot_game.enhanced_graphics(),
+        require((boot_game.two_d_filter() != starfox::simulation::TwoDFilterMode::off),
                 "pre-game enhanced texture filtering did not enable");
         drive_boot({0, starfox::input::down, 0});
         require(boot_game.pregame_selection() == 9U,
@@ -6262,7 +6262,7 @@ int main(int argc, char** argv) {
                     && boot_game.god_mode()
                     && boot_game.show_fps()
                      && boot_game.anti_aliasing()
-                     && boot_game.enhanced_graphics()
+                     && (boot_game.two_d_filter() != starfox::simulation::TwoDFilterMode::off)
                      && !boot_game.smooth_polys()
                      && boot_game.rtx_lighting()
                     && boot_game.vsync()

@@ -103,6 +103,18 @@ enum class AntiAliasingMode : std::uint8_t {
     heavy,
 };
 
+// Presentation filter for cartridge-authored 2D art. RENDER UPSCALE only
+// resolves the Super FX world layer; sprites, backgrounds, HUD and text stay
+// at their authored resolution and arrive as nearest-neighbour blocks. See
+// starfox/render/pixel_filter.hpp for what each backend does.
+enum class TwoDFilterMode : std::uint8_t {
+    off,
+    edge,
+    xbrz,
+};
+
+inline constexpr std::size_t two_d_filter_mode_count = 3U;
+
 struct MeterState {
     std::uint8_t damage{};
     std::uint8_t boost{};
@@ -320,6 +332,12 @@ public:
     }
     void set_rtx_lighting_intensity(std::uint8_t level) noexcept {
         rtx_lighting_ = level <= 3U ? level : 3U;
+    }
+    [[nodiscard]] TwoDFilterMode two_d_filter() const noexcept {
+        return two_d_filter_;
+    }
+    void set_two_d_filter(TwoDFilterMode mode) noexcept {
+        two_d_filter_ = mode;
     }
     [[nodiscard]] bool vsync() const noexcept { return vsync_; }
     void set_vsync(bool enabled) noexcept { vsync_ = enabled; }
@@ -972,6 +990,7 @@ private:
     bool enhanced_graphics_{};
     bool smooth_polys_{};
     std::uint8_t rtx_lighting_{};
+    TwoDFilterMode two_d_filter_{TwoDFilterMode::off};
     bool vsync_{};
     RendererMode renderer_mode_{RendererMode::gpu};
     bool msu1_music_{};

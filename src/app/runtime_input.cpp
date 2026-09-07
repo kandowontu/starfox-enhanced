@@ -115,7 +115,13 @@ int gamepad_preference(SDL_JoystickID identifier) {
 // Pre-game settings file format. Bump kPregameRevision when a field is added;
 // the reader accepts every revision up to it.
 constexpr std::string_view kPregameTag{"SFE_PREGAME_V"};
-constexpr int kPregameRevision = 11;
+// 12, not 11: upstream 0.0.4.1 also used 11, for the RTX LIGHTING toggle ->
+// 0-3 intensity migration. Reusing that number would make this build reject a
+// settings file written by upstream 0.0.4.1 -- it says V11 and legitimately has
+// no TWO_D_FILTER key, so the missing-key check would fail the whole load and
+// silently reset every setting. Take the next number and default TWO_D_FILTER
+// for anything older.
+constexpr int kPregameRevision = 12;
 
 std::filesystem::path settings_path() {
     char* preference_path = SDL_GetPrefPath("StarFoxEnhanced", "StarFoxEnhanced");
@@ -542,7 +548,8 @@ bool load_pregame_settings(
     if (revision < 1 || revision > kPregameRevision) return false;
 
     auto loaded = PregameSettings{};
-    std::array<bool, 20> found{};
+    std::array<bool, 21> found{};
+    if (revision < 12) found[20] = true;
     if (revision < 10) {
         found[18] = true;
         found[19] = true;
@@ -598,6 +605,9 @@ bool load_pregame_settings(
             loaded.rtx_lighting = static_cast<std::uint8_t>(
                 revision < 11 ? (value != 0 ? 3 : 0) : value);
             found[10] = value >= 0 && value <= (revision < 11 ? 1 : 3);
+        } else if (name == "TWO_D_FILTER") {
+            loaded.two_d_filter = static_cast<std::uint8_t>(value);
+            found[20] = value >= 0 && value <= 2;
         } else if (name == "VSYNC") {
             loaded.vsync = value != 0;
             found[11] = value == 0 || value == 1;
@@ -646,6 +656,9 @@ bool load_pregame_settings(
     // users' intent at the new supported maximum instead of rejecting their
     // otherwise valid settings file.
     loaded.render_scale = std::min<std::uint8_t>(loaded.render_scale, 3U);
+    if (revision < 12) {
+        loaded.two_d_filter = loaded.enhanced_graphics ? 1U : 0U;
+    }
     settings = loaded;
     return true;
 }
@@ -656,7 +669,7 @@ bool save_pregame_settings(
     if (path.empty() || settings.timing_mode > 1U
         || settings.display_mode > 4U || settings.crosshair_colour > 7U
         || settings.anti_aliasing > 3U || settings.rtx_lighting > 3U
-        || settings.renderer_mode > 1U
+        || settings.two_d_filter > 2U || settings.renderer_mode > 1U
         || settings.experience > 1U || settings.music_volume > 100U
         || settings.sfx_volume > 100U || settings.render_scale > 3U) {
         return false;
@@ -685,6 +698,8 @@ bool save_pregame_settings(
            << static_cast<unsigned>(settings.smooth_polys) << '\n'
            << "RTX_LIGHTING "
            << static_cast<unsigned>(settings.rtx_lighting) << '\n'
+           << "TWO_D_FILTER "
+           << static_cast<unsigned>(settings.two_d_filter) << '\n'
            << "VSYNC " << static_cast<unsigned>(settings.vsync) << '\n'
            << "RENDERER_MODE "
            << static_cast<unsigned>(settings.renderer_mode) << '\n'

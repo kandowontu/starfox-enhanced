@@ -83,6 +83,19 @@ void composite_transparent_layer(const Framebuffer& source,
             settings.offset_y) * scale;
         const auto& source_pixels = source.pixels();
         auto& destination_pixels = destination.pixels();
+        // This path writes the pixel storage directly, so it owns the tag
+        // transfer too. Without it the destination keeps whatever layer last
+        // wrote those cells -- in gameplay, the cartridge background under the
+        // Super FX world -- and a 2D filter would then treat projected
+        // geometry as cartridge art.
+        auto& destination_tags = destination.layer_tags();
+        const auto& source_tags = source.layer_tags();
+        const auto transfer_tags = destination.layer_tags_enabled()
+            && destination_tags.size() == destination_pixels.size();
+        const auto source_tagged = source.layer_tags_enabled()
+            && source_tags.size() == source_pixels.size();
+        constexpr auto geometry_tag =
+            static_cast<std::uint8_t>(PixelLayer::three_d);
         for (auto y = stored_source_top; y < stored_source_bottom; ++y) {
             auto source_index = y * source.stored_width()
                 + stored_source_left;
@@ -93,8 +106,15 @@ void composite_transparent_layer(const Framebuffer& source,
                     static_cast<std::int64_t>(stored_source_left)
                         + stored_offset_x);
             for (auto x = stored_source_left; x < stored_source_right; ++x) {
-                const auto colour = source_pixels[source_index++];
-                if (colour != 0U) destination_pixels[destination_index] = colour;
+                const auto colour = source_pixels[source_index];
+                if (colour != 0U) {
+                    destination_pixels[destination_index] = colour;
+                    if (transfer_tags) {
+                        destination_tags[destination_index] = source_tagged
+                            ? source_tags[source_index] : geometry_tag;
+                    }
+                }
+                ++source_index;
                 ++destination_index;
             }
         }
@@ -164,12 +184,20 @@ void composite_transparent_layer(const Framebuffer& source,
                     const auto source_column = std::min(source_scale - 1U,
                         ((column * 2U + 1U) * source_scale)
                             / (destination_scale * 2U));
+                    const auto source_stored_x = source_origin_x + source_column;
+                    const auto source_stored_y = source_origin_y + source_row;
                     const auto colour = source.get_stored(
-                        source_origin_x + source_column,
-                        source_origin_y + source_row);
+                        source_stored_x, source_stored_y);
                     if (colour == 0U) continue;
+                    // Carry the source layer across the composite. Super FX
+                    // layers hold both projected geometry and cartridge HUD
+                    // art, so the tag has to follow the pixel rather than the
+                    // call site.
+                    const auto layer = source.layer_tags_enabled()
+                        ? source.layer_stored(source_stored_x, source_stored_y)
+                        : PixelLayer::three_d;
                     destination.set_stored(destination_origin_x + column,
-                        destination_origin_y + row, colour);
+                        destination_origin_y + row, colour, layer);
                 }
             }
         }

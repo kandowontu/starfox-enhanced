@@ -11,6 +11,17 @@ namespace starfox::render {
 
 struct Rgba8;
 
+// Identifies which pass produced a stored pixel. The distinction costs
+// nothing to record: cartridge-authored 2D art always writes through the
+// source raster at the current draw scale, while Super FX scan conversion
+// drops that scale to 1 and writes stored pixels directly. A presentation
+// filter that may only touch 2D art therefore reads these tags instead of
+// guessing 2D ownership back out of the finished frame.
+enum class PixelLayer : std::uint8_t {
+    three_d = 0,
+    two_d = 1,
+};
+
 // Pixels are stored at the render scale while every cartridge-authored pass
 // keeps addressing the source raster: a draw scale of S expands one logical
 // write into an SxS block, so 2D art stays pixel-exact. Scan conversion drops
@@ -46,6 +57,46 @@ public:
     [[nodiscard]] const std::vector<std::uint8_t>& pixels() const noexcept { return pixels_; }
     [[nodiscard]] std::vector<std::uint8_t>& pixels() noexcept { return pixels_; }
 
+    // Layer tags are opt-in so a frame presented without a 2D filter pays
+    // neither the allocation nor the per-write store.
+    void enable_layer_tags(bool enabled) {
+        if (enabled == layer_tags_enabled_) return;
+        layer_tags_enabled_ = enabled;
+        if (enabled) {
+            tags_.assign(pixels_.size(),
+                static_cast<std::uint8_t>(PixelLayer::three_d));
+        } else {
+            tags_.clear();
+            tags_.shrink_to_fit();
+        }
+    }
+    [[nodiscard]] bool layer_tags_enabled() const noexcept {
+        return layer_tags_enabled_;
+    }
+    [[nodiscard]] const std::vector<std::uint8_t>& layer_tags() const noexcept {
+        return tags_;
+    }
+    // Mirrors the mutable pixels() accessor: a bulk transfer that writes the
+    // pixel storage directly must move the tags in the same loop, or the
+    // destination keeps whichever layer happened to own those cells before.
+    [[nodiscard]] std::vector<std::uint8_t>& layer_tags() noexcept {
+        return tags_;
+    }
+    [[nodiscard]] PixelLayer layer_stored(
+        std::uint32_t x, std::uint32_t y) const noexcept {
+        return static_cast<PixelLayer>(
+            tags_[static_cast<std::size_t>(y) * stored_width_ + x]);
+    }
+    // Overrides the draw-scale-derived tag for world-space passes that still
+    // address the source raster (dust, particles). See ScopedLayer.
+    void set_layer_override(PixelLayer layer) noexcept {
+        layer_override_ = static_cast<std::int8_t>(layer);
+    }
+    void clear_layer_override() noexcept { layer_override_ = -1; }
+    [[nodiscard]] std::int8_t layer_override() const noexcept {
+        return layer_override_;
+    }
+
     void resize(std::uint32_t width, std::uint32_t height) {
         const auto stored_width = width * draw_scale_;
         const auto stored_height = height * draw_scale_;
@@ -54,10 +105,18 @@ public:
         stored_height_ = stored_height;
         pixels_.assign(
             static_cast<std::size_t>(stored_width_) * stored_height_, 0U);
+        if (layer_tags_enabled_) {
+            tags_.assign(pixels_.size(),
+                static_cast<std::uint8_t>(PixelLayer::three_d));
+        }
     }
 
     void clear(std::uint8_t colour = 0) noexcept {
         std::fill(pixels_.begin(), pixels_.end(), colour);
+        if (layer_tags_enabled_) {
+            std::fill(tags_.begin(), tags_.end(),
+                static_cast<std::uint8_t>(PixelLayer::three_d));
+        }
     }
 
     void set(std::int32_t x, std::int32_t y, std::uint8_t colour) noexcept {
@@ -68,16 +127,26 @@ public:
         if (draw_scale_ == 1U) {
             pixels_[static_cast<std::size_t>(y) * stored_width_
                 + static_cast<std::size_t>(x)] = colour;
+            if (layer_tags_enabled_) {
+                tags_[static_cast<std::size_t>(y) * stored_width_
+                    + static_cast<std::size_t>(x)] = write_tag(
+                        PixelLayer::three_d);
+            }
             return;
         }
         const auto origin_x = static_cast<std::uint32_t>(x) * draw_scale_;
         const auto origin_y = static_cast<std::uint32_t>(y) * draw_scale_;
+        const auto tag = write_tag(PixelLayer::two_d);
         for (std::uint32_t row = 0; row < draw_scale_; ++row) {
-            const auto begin = pixels_.begin()
-                + static_cast<std::ptrdiff_t>(
-                    static_cast<std::size_t>(origin_y + row) * stored_width_
-                    + origin_x);
+            const auto offset = static_cast<std::ptrdiff_t>(
+                static_cast<std::size_t>(origin_y + row) * stored_width_
+                + origin_x);
+            const auto begin = pixels_.begin() + offset;
             std::fill(begin, begin + draw_scale_, colour);
+            if (layer_tags_enabled_) {
+                const auto tag_begin = tags_.begin() + offset;
+                std::fill(tag_begin, tag_begin + draw_scale_, tag);
+            }
         }
     }
 
@@ -87,9 +156,32 @@ public:
             + x * draw_scale_];
     }
 
-    void set_stored(std::uint32_t x, std::uint32_t y, std::uint8_t colour) noexcept {
+    // Stored writes come from layer compositing, where the tag belongs to the
+    // source layer rather than to this call: the Super FX world, the cartridge
+    // HUD and the EX overlay all arrive through here. Callers that know the
+    // source layer pass it; the default suits geometry.
+    void set_stored(std::uint32_t x, std::uint32_t y, std::uint8_t colour,
+        PixelLayer layer = PixelLayer::three_d) noexcept {
         if (x >= stored_width_ || y >= stored_height_) return;
         pixels_[static_cast<std::size_t>(y) * stored_width_ + x] = colour;
+        if (layer_tags_enabled_) {
+            tags_[static_cast<std::size_t>(y) * stored_width_ + x] =
+                write_tag(layer);
+        }
+    }
+
+    // Wholesale copy used by the cartridge and Mode 2 background caches, which
+    // save and restore a finished raster. Layer tags travel with the pixels so
+    // a restored frame filters exactly like the frame it was captured from.
+    void copy_pixels_from(const Framebuffer& source) {
+        pixels_ = source.pixels_;
+        if (!layer_tags_enabled_) return;
+        if (source.layer_tags_enabled_ && source.tags_.size() == pixels_.size()) {
+            tags_ = source.tags_;
+        } else {
+            tags_.assign(pixels_.size(),
+                static_cast<std::uint8_t>(PixelLayer::three_d));
+        }
     }
 
     [[nodiscard]] std::uint8_t get_stored(
@@ -98,10 +190,44 @@ public:
     }
 
 private:
+    [[nodiscard]] std::uint8_t write_tag(PixelLayer derived) const noexcept {
+        return layer_override_ < 0
+            ? static_cast<std::uint8_t>(derived)
+            : static_cast<std::uint8_t>(layer_override_);
+    }
+
     std::uint32_t stored_width_{};
     std::uint32_t stored_height_{};
     std::uint32_t draw_scale_{1U};
     std::vector<std::uint8_t> pixels_;
+    std::vector<std::uint8_t> tags_;
+    bool layer_tags_enabled_{false};
+    std::int8_t layer_override_{-1};
+};
+
+// Reclassifies every write made during its lifetime. World-space effects that
+// still address the source raster (dust points, particles) are geometry rather
+// than cartridge art, so they opt out of 2D filtering and keep the crisp
+// block-replicated look they have today.
+class ScopedLayer {
+public:
+    ScopedLayer(Framebuffer& target, PixelLayer layer) noexcept
+        : target_(target), previous_(target.layer_override()) {
+        target_.set_layer_override(layer);
+    }
+    ~ScopedLayer() {
+        if (previous_ < 0) {
+            target_.clear_layer_override();
+        } else {
+            target_.set_layer_override(static_cast<PixelLayer>(previous_));
+        }
+    }
+    ScopedLayer(const ScopedLayer&) = delete;
+    ScopedLayer& operator=(const ScopedLayer&) = delete;
+
+private:
+    Framebuffer& target_;
+    std::int8_t previous_{-1};
 };
 
 struct LayerCompositeSettings {

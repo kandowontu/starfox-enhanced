@@ -70,20 +70,24 @@ orange crosshair art. The selected hue applies to both the original four-piece
 OBJ reticle and its Super FX cockpit triangles while damaged-wing indicators
 remain red.
 
-`RENDER UPSCALE` replaces the old Upscaled Polys option and rasterizes the
-Super FX world layer from 1x up to 10x the source raster. Face visibility and
-BSP order remain tied to the original grid while high-resolution projection
-retains fractional endpoints across interpolated and completed source frames.
-This resolves polygon edges and lines with finer, temporally stable steps.
-Cartridge HUD, sprites, backgrounds, and text keep their authored resolution.
-Scan conversion and presentation run on the CPU, so higher scales cost frame
-time and memory and the usable ceiling depends on the machine.
+`RENDER UPSCALE` rasterizes the Super FX world layer at 1x, 2x, 3x or 4x.
+Face visibility and BSP order stay tied to the original grid while projection
+retains fractional endpoints for smooth interpolation.
 
-`ANTI-ALIASING` and the surface-driven effects (`ENHANCED TEXTURES` and
-`RTX LIGHTING`) run on the scaled raster as well, so they
-resolve polygon edges at the selected scale instead of the source grid. Their
-cost grows with it, and surface samples are allocated only while one of those
-effects is on.
+`2D FILTER` replaces `ENHANCED TEXTURES`. `EDGE` smooths the enlarged edges of
+backgrounds, sprites, HUD, portraits and text using the supplied EPX-style
+filter. Polygon pixels retain their original rendering. Choose Render Upscale
+2x or higher to see the effect; native 1x is unchanged. Previously enabled
+Enhanced Textures settings migrate to EDGE. OFF preserves unfiltered art.
+
+An optional xBRZ backend is available when built with
+`-DSTARFOX_ENABLE_XBRZ=ON`; see `THIRD_PARTY_NOTICES.md`. Builds without it
+only offer OFF and EDGE, and saved xBRZ selections fall back to EDGE.
+
+Filtering, palette expansion, anti-aliasing and lighting share persistent CPU
+workers. Higher render scales require more processing time and memory.
+RTX Lighting and Anti-Aliasing remain independent options. For diagnostics,
+`STARFOX_2D_FILTER_DEBUG=1` highlights filtered framebuffer pixels in magenta.
 
 `CUSTOMIZE SCREEN` opens a mouse-driven captured native-gameplay HUD preview
 using the game's actual HUD artwork. Lives, Shield, Bombs/Boost, Comms, and the

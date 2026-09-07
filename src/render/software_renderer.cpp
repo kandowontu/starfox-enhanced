@@ -1355,6 +1355,11 @@ void SoftwareRenderer::draw_cockpit_hud(
     std::int32_t horizontal_origin,
     Framebuffer& target,
     std::uint8_t normal_colour_override) const {
+    // Cockpit lines are plotted on the source raster rather than scan
+    // converted, so they carry the same authored resolution as cartridge art
+    // and read as blocky next to the filtered HUD around them. Put them in the
+    // 2D layer so the filter resolves their diagonals too.
+    const ScopedLayer layer{target, PixelLayer::two_d};
     struct HudPoint {
         std::int32_t x{};
         std::int32_t y{};
@@ -1493,6 +1498,15 @@ void SoftwareRenderer::draw(
     Framebuffer& target,
     bool clear_target,
     SurfaceBuffer* surfaces) const {
+    // Everything this renderer emits is the Super FX layer, whatever draw
+    // scale each path happens to use. Scan conversion drops the scale to 1 and
+    // would derive that correctly on its own, but the sprite paths below
+    // (simple_scaled_sprite shapes, and sprite faces inside the face loop)
+    // deliberately stay on the source raster, so the derivation would read
+    // them as cartridge art and hand them to the 2D filter. Declaring the
+    // layer once at the entry point makes the classification independent of
+    // which path a shape takes.
+    const ScopedLayer layer{target, PixelLayer::three_d};
     if (clear_target) {
         target.clear(settings_.background_colour);
         if (surfaces != nullptr) surfaces->clear();
@@ -1519,6 +1533,12 @@ void SoftwareRenderer::draw(
         const auto* texture = texture_for_colour(
             shape, pose.simple_sprite_colour, pose.colour_frame);
         if (texture != nullptr) {
+            // Whole-object sprites (asteroids, explosion billboards) are
+            // authored texels point-sampled onto the source raster, not
+            // rasterized geometry. They are cartridge art wearing a shape's
+            // clothes, so hand them to the 2D layer where a presentation
+            // filter can resolve them.
+            const ScopedLayer sprite_layer{target, PixelLayer::two_d};
             draw_simple_scaled_sprite(target, *texture, pose,
                 settings_.focal_length, settings_.colour_index_base);
         }
@@ -1776,6 +1796,9 @@ void SoftwareRenderer::draw(
                 centre.x += face_offset.x;
                 centre.y += face_offset.y;
                 centre.z += face_offset.z;
+                // Sprite faces are texel art too; see the simple_scaled_sprite
+                // branch. The polygon faces around them stay geometry.
+                const ScopedLayer sprite_layer{target, PixelLayer::two_d};
                 draw_textured_sprite(target, project_point(centre,
                     settings_.focal_length, raster_word_exact,
                     raster_pose.vanish_x, raster_pose.vanish_y,

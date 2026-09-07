@@ -12,6 +12,8 @@
 #include "starfox/input/input_latch.hpp"
 #include "starfox/render/framebuffer.hpp"
 #include "starfox/render/background_renderer.hpp"
+#include "starfox/render/pixel_filter.hpp"
+#include "starfox/render/row_workers.hpp"
 #include "starfox/render/dust_renderer.hpp"
 #include "starfox/render/palette.hpp"
 #include "starfox/render/particle_renderer.hpp"
@@ -258,6 +260,29 @@ std::uint32_t render_scale_factor(
 std::string_view render_scale_name(
     starfox::simulation::RenderScale scale) noexcept {
     return render_scale_names[render_scale_index(scale)];
+}
+
+starfox::render::TwoDFilter two_d_filter_backend(
+    starfox::simulation::TwoDFilterMode mode) noexcept {
+    switch (mode) {
+    case starfox::simulation::TwoDFilterMode::edge:
+        return starfox::render::TwoDFilter::edge;
+    case starfox::simulation::TwoDFilterMode::xbrz:
+        return starfox::render::TwoDFilter::xbrz;
+    case starfox::simulation::TwoDFilterMode::off:
+    default:
+        return starfox::render::TwoDFilter::off;
+    }
+}
+
+std::string_view two_d_filter_name(
+    starfox::simulation::TwoDFilterMode mode) noexcept {
+    const auto backend = two_d_filter_backend(mode);
+    // Saved optional backends fall back to the built-in filter.
+    if (!starfox::render::two_d_filter_compiled_in(backend)) {
+        return "EDGE";
+    }
+    return starfox::render::two_d_filter_name(backend);
 }
 
 std::string_view crosshair_colour_name(
@@ -1167,7 +1192,24 @@ public:
         window_scale_ = framebuffer.draw_scale();
         ensure_dimensions(
             framebuffer.stored_width(), framebuffer.stored_height());
-        starfox::render::expand_rgba(framebuffer, rgba_, palette);
+        starfox::render::expand_rgba(
+            framebuffer, rgba_, palette, presentation_workers_);
+        // Reconstruct the cartridge-authored 2D art before any screen-space
+        // effect reads the frame, so anti-aliasing and the surface passes see
+        // resolved edges rather than the nearest-neighbour blocks the render
+        // scale produced. Declines by itself unless the framebuffer carries
+        // layer tags and the scale is above 1.
+        // STARFOX_2D_FILTER_DEBUG=1 paints every pixel the filter claims in
+        // magenta, so a real frame shows directly which layer the runtime
+        // thinks each part of it belongs to. Read once; it is a diagnostic,
+        // not a setting.
+        static const auto highlight_filtered = [] {
+            const auto* value = std::getenv("STARFOX_2D_FILTER_DEBUG");
+            return value != nullptr && std::string_view{value} != "0";
+        }();
+        starfox::render::apply_two_d_filter(
+            two_d_filter_, framebuffer, palette, rgba_, pixel_filter_scratch_,
+            presentation_workers_, highlight_filtered);
         // Presentation effects address the source raster. Apply each one to
         // every stored pixel the render scale expanded that raster cell into.
         const auto render_scale = framebuffer.draw_scale();
@@ -1188,6 +1230,59 @@ public:
             const auto& overlay = *overlay_pointer;
             const auto brightness = std::min<std::uint32_t>(
                 requested_brightness, 30U);
+            const auto fixed_subtraction =
+                static_cast<std::int32_t>(30U - brightness);
+            const auto fade = [fixed_subtraction](std::uint32_t component) {
+                const auto source_five = static_cast<std::int32_t>(
+                    (component * 31U + 127U) / 255U);
+                const auto result_five = std::max(
+                    0, source_five - fixed_subtraction);
+                return static_cast<std::uint8_t>(
+                    (result_five << 3U) | (result_five >> 2U));
+            };
+            // These overlays composite in RGBA after the frame is expanded, so
+            // they never reach the tagged framebuffer and the 2D filter cannot
+            // see them. Filter the layer on its own and composite the result,
+            // or the planet sequence's portraits stay blocky while the planet
+            // behind them resolves.
+            if (starfox::render::filter_overlay_layer(two_d_filter_, overlay,
+                    palette, render_scale, overlay_argb_,
+                    pixel_filter_scratch_, presentation_workers_)) {
+                const auto stored_width =
+                    static_cast<std::size_t>(framebuffer.stored_width());
+                for (std::uint32_t y = 0; y < framebuffer.stored_height(); ++y) {
+                    const auto* row = overlay_argb_.data()
+                        + static_cast<std::size_t>(y) * stored_width;
+                    for (std::uint32_t x = 0; x < stored_width; ++x) {
+                        const auto colour = row[x];
+                        const auto alpha = (colour >> 24U) & 0xffU;
+                        if (alpha == 0U) continue;
+                        const auto pixel =
+                            (static_cast<std::size_t>(y) * stored_width + x)
+                            * 4U;
+                        const std::array<std::uint8_t, 3> faded{
+                            fade((colour >> 16U) & 0xffU),
+                            fade((colour >> 8U) & 0xffU),
+                            fade(colour & 0xffU)};
+                        if (alpha == 0xffU) {
+                            rgba_[pixel] = faded[0];
+                            rgba_[pixel + 1U] = faded[1];
+                            rgba_[pixel + 2U] = faded[2];
+                            continue;
+                        }
+                        // Partial coverage is the filter resolving an edge
+                        // against the overlay's transparency; lay it over the
+                        // frame underneath.
+                        for (std::size_t channel = 0; channel < 3U; ++channel) {
+                            rgba_[pixel + channel] = static_cast<std::uint8_t>(
+                                (faded[channel] * alpha
+                                    + rgba_[pixel + channel] * (255U - alpha)
+                                    + 127U) / 255U);
+                        }
+                    }
+                }
+                return;
+            }
             for (std::uint32_t y = 0; y < framebuffer.height(); ++y) {
                 for (std::uint32_t x = 0; x < framebuffer.width(); ++x) {
                     const auto colour = overlay.get(x, y);
@@ -1292,54 +1387,80 @@ public:
                 expand_five(circle.green) * brightness / 15,
                 expand_five(circle.blue) * brightness / 15,
             };
-            const auto radius_squared = static_cast<std::int64_t>(circle.radius)
-                * static_cast<std::int64_t>(circle.radius);
             const auto subtract = (circle.affected_layers & 0x80U) != 0U;
             const auto half = (circle.affected_layers & 0x40U) != 0U;
-            for (std::int32_t y = 0;
-                 y < static_cast<std::int32_t>(framebuffer.height()); ++y) {
-                for (std::int32_t x = 0;
-                     x < static_cast<std::int32_t>(framebuffer.width()); ++x) {
+            // The bomb disk is geometry, not authored art: its edge comes from
+            // a radius test, not from cartridge pixels. Testing once per source
+            // cell and expanding the result is what makes it blocky, and no 2D
+            // filter can recover a circle from that staircase. Evaluate the
+            // same test per stored pixel instead, in stored units so the
+            // comparison is identical at 1x and simply finer above it.
+            const auto scale = static_cast<std::int64_t>(render_scale);
+            const auto centre_x =
+                static_cast<std::int64_t>(circle.centre_x) * scale;
+            const auto centre_y =
+                static_cast<std::int64_t>(circle.centre_y) * scale;
+            const auto scaled_radius =
+                static_cast<std::int64_t>(circle.radius) * scale;
+            const auto radius_squared = scaled_radius * scaled_radius;
+            const auto stored_width =
+                static_cast<std::int64_t>(framebuffer.stored_width());
+            const auto stored_height =
+                static_cast<std::int64_t>(framebuffer.stored_height());
+            // Walking the disk's bounding box rather than the whole frame also
+            // makes this cheaper than the version it replaces.
+            const auto first_y = std::max<std::int64_t>(
+                0, centre_y - scaled_radius);
+            const auto last_y = std::min<std::int64_t>(
+                stored_height, centre_y + scaled_radius + 1);
+            const auto first_x = std::max<std::int64_t>(
+                0, centre_x - scaled_radius);
+            const auto last_x = std::min<std::int64_t>(
+                stored_width, centre_x + scaled_radius + 1);
+            for (auto y = first_y; y < last_y; ++y) {
+                const auto dy = y - centre_y;
+                const auto dy_squared = dy * dy;
+                if (dy_squared > radius_squared) continue;
+                const auto source_y = static_cast<std::int32_t>(y / scale);
+                for (auto x = first_x; x < last_x; ++x) {
+                    const auto dx = x - centre_x;
+                    if (dx * dx + dy_squared > radius_squared) continue;
+                    const auto source_x = static_cast<std::int32_t>(x / scale);
+                    // Clipping stays on the source raster, matching the PPU
+                    // window it comes from.
                     if (effects.clip_circle
-                        && (x < effects.circle_left || x >= effects.circle_right
-                            || y < effects.circle_top
-                            || y >= effects.circle_bottom)) continue;
-                    const auto dx = static_cast<std::int64_t>(x - circle.centre_x);
-                    const auto dy = static_cast<std::int64_t>(y - circle.centre_y);
-                    if (dx * dx + dy * dy > radius_squared) continue;
-                    const auto source_index = framebuffer.get(
-                        static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y));
+                        && (source_x < effects.circle_left
+                            || source_x >= effects.circle_right
+                            || source_y < effects.circle_top
+                            || source_y >= effects.circle_bottom)) continue;
                     // CGADSUB bit 4 controls OBJ independently of BG1-4 and
                     // the backdrop. Star Fox's bomb program deliberately
                     // excludes sprites, so its HUD and communication OAM are
-                    // not washed into the expanding disk.
+                    // not washed into the expanding disk. Reading the stored
+                    // pixel rather than its cell's top-left corner also keeps
+                    // the exclusion exact where the Super FX layer wrote at
+                    // full resolution.
+                    const auto source_index = framebuffer.get_stored(
+                        static_cast<std::uint32_t>(x),
+                        static_cast<std::uint32_t>(y));
                     if (source_index >= 128U
                         && (circle.affected_layers & 0x10U) == 0U) continue;
-                    for (std::uint32_t block_row = 0;
-                         block_row < render_scale;
-                         ++block_row) {
-                        for (std::uint32_t block_column = 0;
-                             block_column < render_scale; ++block_column) {
-                            const auto pixel = stored_pixel(
-                                static_cast<std::size_t>(x),
-                                static_cast<std::size_t>(y),
-                                block_column, block_row);
-                            for (std::size_t component = 0;
-                                 component < 3U; ++component) {
-                                const auto main = static_cast<std::int32_t>(
-                                    (static_cast<std::uint32_t>(
-                                         rgba_[pixel + component])
-                                        * 31U + 127U) / 255U);
-                                auto value = subtract
-                                    ? main - (fixed[component] >> 3U)
-                                    : main + (fixed[component] >> 3U);
-                                if (half) value /= 2;
-                                value = std::clamp(value, 0, 31);
-                                rgba_[pixel + component] =
-                                    static_cast<std::uint8_t>(
-                                        (value << 3U) | (value >> 2U));
-                            }
-                        }
+                    const auto pixel = (static_cast<std::size_t>(y)
+                        * static_cast<std::size_t>(stored_width)
+                        + static_cast<std::size_t>(x)) * 4U;
+                    for (std::size_t component = 0;
+                         component < 3U; ++component) {
+                        const auto main = static_cast<std::int32_t>(
+                            (static_cast<std::uint32_t>(
+                                 rgba_[pixel + component])
+                                * 31U + 127U) / 255U);
+                        auto value = subtract
+                            ? main - (fixed[component] >> 3U)
+                            : main + (fixed[component] >> 3U);
+                        if (half) value /= 2;
+                        value = std::clamp(value, 0, 31);
+                        rgba_[pixel + component] = static_cast<std::uint8_t>(
+                            (value << 3U) | (value >> 2U));
                     }
                 }
             }
@@ -1531,7 +1652,6 @@ public:
             }
         }
         smooth_layer_ready_ = false;
-        if (enhanced_graphics_) apply_enhanced_surfaces(framebuffer, effects);
         if (rtx_lighting_) apply_rtx_lighting(framebuffer, effects);
         if (effects.host_overlay != nullptr) {
             const auto& overlay = *effects.host_overlay;
@@ -1660,13 +1780,15 @@ public:
         starfox::simulation::RendererMode renderer_mode,
         starfox::simulation::AntiAliasingMode anti_aliasing,
         bool enhanced_graphics,
-        bool smooth_polys, std::uint8_t rtx_lighting, bool vsync) {
+        bool smooth_polys, std::uint8_t rtx_lighting, bool vsync,
+        starfox::render::TwoDFilter two_d_filter) {
         if (renderer_mode_ != renderer_mode) {
             recreate_renderer(renderer_mode);
         }
         anti_aliasing_ = anti_aliasing;
         smooth_polys_ = smooth_polys;
         rtx_lighting_ = rtx_lighting;
+        two_d_filter_ = two_d_filter;
         if (enhanced_graphics_ != enhanced_graphics) {
             enhanced_graphics_ = enhanced_graphics;
             if (texture_ != nullptr) {
@@ -2108,87 +2230,6 @@ private:
             + static_cast<std::size_t>(x - effect_source_x_)) * 4U;
     }
 
-    void apply_enhanced_surfaces(
-        const starfox::render::Framebuffer& framebuffer,
-        const PresentationEffects& effects) {
-        if (effects.model_surfaces == nullptr
-            || effects.model_surfaces->empty()
-            || framebuffer.stored_width() < 3U
-            || framebuffer.stored_height() < 3U) {
-            return;
-        }
-        const auto width = static_cast<std::size_t>(framebuffer.stored_width());
-        const auto first_x = std::max(1, effects.model_surface_x
-            + static_cast<std::int32_t>(effects.model_surfaces->minimum_x()) - 1);
-        const auto first_y = std::max(1, effects.model_surface_y
-            + static_cast<std::int32_t>(effects.model_surfaces->minimum_y()) - 1);
-        const auto last_x = std::min(
-            static_cast<std::int32_t>(framebuffer.stored_width()) - 1,
-            effects.model_surface_x
-                + static_cast<std::int32_t>(effects.model_surfaces->maximum_x()) + 1);
-        const auto last_y = std::min(
-            static_cast<std::int32_t>(framebuffer.stored_height()) - 1,
-            effects.model_surface_y
-                + static_cast<std::int32_t>(effects.model_surfaces->maximum_y()) + 1);
-        capture_effect_source_region(
-            first_x - 1, first_y - 1, last_x + 1, last_y + 1);
-        constexpr std::array<std::array<std::int32_t, 2>, 8> neighbours{{
-            {{-1, 0}}, {{1, 0}}, {{0, -1}}, {{0, 1}},
-            {{-1, -1}}, {{1, -1}}, {{-1, 1}}, {{1, 1}},
-        }};
-        for (auto y = first_y; y < last_y; ++y) {
-            for (auto x = first_x; x < last_x; ++x) {
-                const auto pixel = (static_cast<std::size_t>(y) * width
-                    + static_cast<std::size_t>(x)) * 4U;
-                const auto* centre = model_surface_at(framebuffer, effects, x, y);
-                if (centre != nullptr) {
-                    // Bilateral filtering smooths the source's coarse texture
-                    // samples and checkerboard material dithering, but refuses
-                    // to smear across a real polygon crease or depth break.
-                    std::array<std::uint32_t, 3> total{
-                        static_cast<std::uint32_t>(effect_source_[
-                            effect_source_pixel(x, y)]) * 6U,
-                        static_cast<std::uint32_t>(effect_source_[
-                            effect_source_pixel(x, y) + 1U]) * 6U,
-                        static_cast<std::uint32_t>(effect_source_[
-                            effect_source_pixel(x, y) + 2U]) * 6U,
-                    };
-                    auto weight = 6U;
-                    for (std::size_t index = 0; index < neighbours.size(); ++index) {
-                        const auto nx = x + neighbours[index][0];
-                        const auto ny = y + neighbours[index][1];
-                        const auto neighbour_pixel = effect_source_pixel(nx, ny);
-                        const auto* neighbour = model_surface_at(
-                            framebuffer, effects, nx, ny);
-                        if (neighbour == nullptr) continue;
-                        const auto normal_dot = centre->normal_x * neighbour->normal_x
-                            + centre->normal_y * neighbour->normal_y
-                            + centre->normal_z * neighbour->normal_z;
-                        const auto depth_limit = std::max(
-                            24.0F, std::abs(centre->depth) * 0.025F);
-                        if (normal_dot < 0.94F
-                            || std::abs(centre->depth - neighbour->depth)
-                                > depth_limit) {
-                            continue;
-                        }
-                        const auto sample_weight = index < 4U ? 2U : 1U;
-                        for (std::size_t component = 0U;
-                             component < 3U; ++component) {
-                            total[component] += effect_source_[
-                                neighbour_pixel + component]
-                                * sample_weight;
-                        }
-                        weight += sample_weight;
-                    }
-                    for (std::size_t component = 0U; component < 3U; ++component) {
-                        rgba_[pixel + component] = static_cast<std::uint8_t>(
-                            (total[component] + weight / 2U) / weight);
-                    }
-                }
-            }
-        }
-    }
-
     void apply_smooth_polygons(
         const starfox::render::Framebuffer& framebuffer,
         const PresentationEffects& effects) {
@@ -2341,7 +2382,13 @@ private:
         constexpr std::array<float, 3> key{-0.474F, -0.632F, -0.613F};
         constexpr std::array<float, 3> fill{0.422F, 0.211F, -0.881F};
         constexpr std::array<float, 3> half_vector{-0.267F, -0.356F, -0.895F};
-        for (auto y = first_y; y < last_y; ++y) {
+        // Row independent: neighbours come from the surface buffer and each pixel writes only itself.
+        presentation_workers_.parallel_rows(
+            static_cast<std::uint32_t>(
+                std::max<std::int64_t>(0, last_y - first_y)),
+            [&](std::uint32_t slice_first, std::uint32_t slice_last) {
+        for (auto y = first_y + static_cast<std::int32_t>(slice_first);
+             y < first_y + static_cast<std::int32_t>(slice_last); ++y) {
             for (auto x = first_x; x < last_x; ++x) {
                 const auto* sample = model_surface_at(framebuffer, effects, x, y);
                 if (sample == nullptr) continue;
@@ -2413,6 +2460,7 @@ private:
                 }
             }
         }
+            });
     }
 
     void apply_fxaa(starfox::simulation::AntiAliasingMode mode) {
@@ -2445,9 +2493,15 @@ private:
         const auto width = static_cast<std::size_t>(texture_width_);
         const auto pixel_count = width * texture_height_;
         luma_scratch_.resize(pixel_count);
-        for (std::size_t index = 0U; index < pixel_count; ++index) {
-            luma_scratch_[index] = luma(source, index * 4U);
-        }
+        presentation_workers_.parallel_rows(texture_height_,
+            [&](std::uint32_t first_row, std::uint32_t last_row) {
+                for (auto y = first_row; y < last_row; ++y) {
+                    const auto row = static_cast<std::size_t>(y) * width;
+                    for (std::size_t x = 0; x < width; ++x) {
+                        luma_scratch_[row + x] = luma(source, (row + x) * 4U);
+                    }
+                }
+            });
         for (std::size_t y = 1U; y + 1U < texture_height_; ++y) {
             for (std::size_t x = 1U; x + 1U < texture_width_; ++x) {
                 const auto pixel = (y * width + x) * 4U;
@@ -2582,6 +2636,13 @@ private:
     bool enhanced_graphics_{};
     bool smooth_polys_{};
     std::uint8_t rtx_lighting_{};
+    starfox::render::TwoDFilter two_d_filter_{
+        starfox::render::TwoDFilter::off};
+    starfox::render::PixelFilterScratch pixel_filter_scratch_;
+    // Shared by every presentation pass, not just the filter: they are all row
+    // independent and all scale with the square of the render scale.
+    starfox::render::RowWorkers presentation_workers_;
+    std::vector<std::uint32_t> overlay_argb_;
     bool vsync_{};
     starfox::simulation::RendererMode renderer_mode_{
         starfox::simulation::RendererMode::gpu};
@@ -3552,6 +3613,7 @@ int main(int argc, char** argv) {
                 game.enhanced_graphics(),
                 false,
                 game.rtx_lighting_intensity(),
+                static_cast<std::uint8_t>(game.two_d_filter()),
                 game.vsync(),
                 static_cast<std::uint8_t>(game.renderer_mode()),
                 game.msu1_music(),
@@ -3605,11 +3667,17 @@ int main(int argc, char** argv) {
                         ? starfox::simulation::AntiAliasingMode::heavy
                         : starfox::simulation::AntiAliasingMode::off);
             }
-            game.set_enhanced_graphics(saved_pregame.enhanced_graphics);
+            game.set_enhanced_graphics(false);
             // SMOOTH_POLYS is retained in the settings file only so older
             // revisions still load. Render Upscale replaces that effect.
             game.set_smooth_polys(false);
             game.set_rtx_lighting_intensity(saved_pregame.rtx_lighting);
+            game.set_two_d_filter(
+                saved_pregame.two_d_filter
+                        < starfox::simulation::two_d_filter_mode_count
+                    ? static_cast<starfox::simulation::TwoDFilterMode>(
+                        saved_pregame.two_d_filter)
+                    : starfox::simulation::TwoDFilterMode::off);
             game.set_vsync(saved_pregame.vsync);
             game.set_renderer_mode(
                 static_cast<starfox::simulation::RendererMode>(
@@ -3636,12 +3704,23 @@ int main(int argc, char** argv) {
             }
             if (const auto* forced_enhanced = std::getenv(
                     "STARFOX_TEST_ENHANCED")) {
-                game.set_enhanced_graphics(std::string_view{forced_enhanced}
-                    != "0");
+                game.set_two_d_filter(std::string_view{forced_enhanced} != "0"
+                    ? starfox::simulation::TwoDFilterMode::edge
+                    : starfox::simulation::TwoDFilterMode::off);
             }
             if (const auto* forced_lighting = std::getenv(
                     "STARFOX_TEST_RTX_LIGHTING")) {
                 game.set_rtx_lighting(std::string_view{forced_lighting} != "0");
+            }
+            if (const auto* forced_filter = std::getenv(
+                    "STARFOX_TEST_2D_FILTER")) {
+                const auto value = std::string_view{forced_filter};
+                game.set_two_d_filter(
+                    value == "EDGE" || value == "1"
+                        ? starfox::simulation::TwoDFilterMode::edge
+                    : value == "XBRZ" || value == "2"
+                        ? starfox::simulation::TwoDFilterMode::xbrz
+                        : starfox::simulation::TwoDFilterMode::off);
             }
             game.set_crosshair_colour(
                 static_cast<starfox::simulation::CrosshairColour>(
@@ -4084,6 +4163,10 @@ int main(int argc, char** argv) {
             snes_width, superfx_height, render_scale};
         starfox::render::Framebuffer native_ex_overlay{
             snes_width, snes_height};
+        // EX's BG1 diagnostics are cartridge art staged at the source raster,
+        // but this layer keeps a draw scale of 1 so the usual derivation would
+        // read it as geometry. Pin the tag instead.
+        native_ex_overlay.set_layer_override(starfox::render::PixelLayer::two_d);
         starfox::render::Framebuffer planet_overlay{snes_width, snes_height};
         starfox::render::Framebuffer planet_text_overlay{
             snes_width, snes_height};
@@ -4797,7 +4880,8 @@ int main(int argc, char** argv) {
             window.set_render_options(game.renderer_mode(),
                 game.anti_aliasing_mode(),
                 game.enhanced_graphics(), false,
-                game.rtx_lighting_intensity(), game.vsync());
+                game.rtx_lighting_intensity(), game.vsync(),
+                two_d_filter_backend(game.two_d_filter()));
             if (toggle_frame_freeze) {
                 frame_frozen = !frame_frozen;
                 input.reset();
@@ -5303,6 +5387,24 @@ int main(int argc, char** argv) {
                      &controls_player_layer, &superfx_ui, &comms_hud}) {
                 layer->set_draw_scale(render_scale);
             }
+            // Layer tags are what let the 2D filter tell cartridge art from
+            // projected geometry. Every framebuffer that feeds the presented
+            // one has to carry them, or a composite would erase the
+            // distinction; they cost nothing while the filter is off.
+            const auto two_d_filter = two_d_filter_backend(game.two_d_filter());
+            const auto tag_layers = two_d_filter
+                != starfox::render::TwoDFilter::off && render_scale > 1U;
+            if (framebuffer.layer_tags_enabled() != tag_layers) {
+                // Cached pixels made with filtering off have no ownership tags.
+                cartridge_layer_valid = false;
+                mode2_background_valid = false;
+            }
+            for (auto* layer : {&framebuffer, &superfx_frame, &superfx_hud,
+                     &controls_player_layer, &superfx_ui, &comms_hud,
+                     &native_ex_overlay, &cartridge_layer_cache,
+                     &mode2_background_cache}) {
+                layer->enable_layer_tags(tag_layers);
+            }
             framebuffer.resize(display_width, snes_height);
             superfx_frame.resize(display_width, scene_height);
             // Surface samples parallel the stored 3D raster, so at a high
@@ -5527,7 +5629,7 @@ int main(int argc, char** argv) {
                 && cartridge_layer_flow_state == static_cast<std::uint8_t>(
                     game.flow_state());
             if (reuse_complete_cartridge_layer) {
-                framebuffer.pixels() = cartridge_layer_cache.pixels();
+                framebuffer.copy_pixels_from(cartridge_layer_cache);
                 ++cartridge_layer_temporal_hits;
             } else if (ppu.background_mode == 1U) {
                 ++profiled_background_modes[1U];
@@ -5663,8 +5765,7 @@ int main(int argc, char** argv) {
                         } else {
                             ++mode2_background_exact_hits;
                         }
-                        framebuffer.pixels() =
-                            mode2_background_cache.pixels();
+                        framebuffer.copy_pixels_from(mode2_background_cache);
                     } else {
                         ++mode2_background_misses;
                         background_renderer.draw_bg2(ppu, background_x,
@@ -5679,7 +5780,7 @@ int main(int argc, char** argv) {
                             framebuffer.draw_scale());
                         mode2_background_cache.resize(
                             framebuffer.width(), framebuffer.height());
-                        mode2_background_cache.pixels() = framebuffer.pixels();
+                        mode2_background_cache.copy_pixels_from(framebuffer);
                         mode2_background_ppu = ppu;
                         mode2_background_vertical = vertical_key;
                         mode2_background_x = background_x;
@@ -5823,7 +5924,7 @@ int main(int argc, char** argv) {
                     framebuffer.draw_scale());
                 cartridge_layer_cache.resize(
                     framebuffer.width(), framebuffer.height());
-                cartridge_layer_cache.pixels() = framebuffer.pixels();
+                cartridge_layer_cache.copy_pixels_from(framebuffer);
                 cartridge_layer_scene_revision = game.scene_revision();
                 cartridge_layer_background_id = game.map().background();
                 cartridge_layer_background_mode = ppu.background_mode;
@@ -7128,14 +7229,15 @@ int main(int argc, char** argv) {
                         draw_compact_row("ANTI-ALIASING",
                             anti_aliasing_name(game.anti_aliasing_mode()), row_y[7],
                             game.pregame_selection() == 7U);
-                        draw_compact_row("ENHANCED TEXTURES",
-                            on_off(game.enhanced_graphics()), row_y[8],
+                        draw_compact_row("2D FILTER",
+                            two_d_filter_name(game.two_d_filter()), row_y[8],
                             game.pregame_selection() == 8U);
                         draw_compact_row("RENDER UPSCALE",
                             render_scale_name(game.render_scale()), row_y[9],
                             game.pregame_selection() == 9U);
                         draw_compact_row("RTX LIGHTING",
-                            std::array<std::string_view, 4>{"OFF", "LOW", "MEDIUM", "HIGH"}
+                            std::array<std::string_view, 4>{
+                                "OFF", "LOW", "MEDIUM", "HIGH"}
                                 [game.rtx_lighting_intensity()], row_y[10],
                             game.pregame_selection() == 10U);
                         draw_compact_row("VSYNC", on_off(game.vsync()), row_y[11],

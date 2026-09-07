@@ -1,3 +1,4 @@
+#include "starfox/render/pixel_filter.hpp"
 #include "starfox/simulation/game_simulation.hpp"
 
 #include "starfox/assets/decrunch.hpp"
@@ -1039,6 +1040,7 @@ void GameSimulation::enter_pregame_menu() {
     enhanced_graphics_ = false;
     smooth_polys_ = false;
     rtx_lighting_ = false;
+    two_d_filter_ = TwoDFilterMode::off;
     vsync_ = false;
     msu1_music_ = false;
     rumble_ = true;
@@ -1263,7 +1265,6 @@ GameTickResult GameSimulation::tick_pregame_menu(
             anti_aliasing_mode_ = static_cast<AntiAliasingMode>(mode);
             break;
         }
-        case 8U: enhanced_graphics_ = !enhanced_graphics_; break;
         case 9U: {
             const auto found = std::find(
                 kRenderScales.begin(), kRenderScales.end(), render_scale_);
@@ -1278,6 +1279,21 @@ GameTickResult GameSimulation::tick_pregame_menu(
                 index = (index + 1U) % kRenderScales.size();
             }
             render_scale_ = kRenderScales[index];
+            break;
+        }
+        case 8U: {
+            const auto mode_count = starfox::render::two_d_filter_compiled_in(
+                starfox::render::TwoDFilter::xbrz) ? 3U : 2U;
+            auto mode = static_cast<std::uint8_t>(two_d_filter_);
+            if ((menu_input.pressed & starfox::input::left) != 0U) {
+                mode = static_cast<std::uint8_t>(
+                    (mode + mode_count - 1U)
+                    % mode_count);
+            } else {
+                mode = static_cast<std::uint8_t>(
+                    (mode + 1U) % mode_count);
+            }
+            two_d_filter_ = static_cast<TwoDFilterMode>(mode);
             break;
         }
         case 10U:

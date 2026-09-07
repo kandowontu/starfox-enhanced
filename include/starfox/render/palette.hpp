@@ -1,6 +1,7 @@
 #pragma once
 
 #include "starfox/render/framebuffer.hpp"
+#include "starfox/render/row_workers.hpp"
 
 #include <array>
 #include <cstdint>
@@ -35,5 +36,13 @@ void expand_rgba(
     const Framebuffer& source,
     std::vector<std::uint8_t>& destination,
     std::span<const Rgba8> palette);
+// Render Upscale makes this one of the largest passes in the frame -- at 10x
+// widescreen it converts nine million pixels -- and it is purely per pixel, so
+// it splits across the presentation pool by row.
+void expand_rgba(
+    const Framebuffer& source,
+    std::vector<std::uint8_t>& destination,
+    std::span<const Rgba8> palette,
+    RowWorkers& workers);
 
 } // namespace starfox::render

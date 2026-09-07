@@ -119,4 +119,42 @@ void expand_rgba(
     }
 }
 
+void expand_rgba(
+    const Framebuffer& source,
+    std::vector<std::uint8_t>& destination,
+    std::span<const Rgba8> palette,
+    RowWorkers& workers) {
+    if (palette.empty()) {
+        throw std::invalid_argument{"framebuffer palette is empty"};
+    }
+    const auto stored_width = source.stored_width();
+    const auto stored_height = source.stored_height();
+    destination.resize(source.pixels().size() * 4U);
+    if (stored_width == 0U || stored_height == 0U) return;
+
+    static_assert(sizeof(Rgba8) == sizeof(std::uint32_t));
+    std::array<std::uint32_t, 256U> packed_palette{};
+    for (std::size_t index = 0; index < packed_palette.size(); ++index) {
+        const auto& colour = palette[std::min<std::size_t>(
+            index, palette.size() - 1U)];
+        std::memcpy(&packed_palette[index], &colour,
+            sizeof(packed_palette[index]));
+    }
+
+    const auto* pixels = source.pixels().data();
+    auto* output = destination.data();
+    workers.parallel_rows(stored_height,
+        [&](std::uint32_t first_row, std::uint32_t last_row) {
+            for (auto y = first_row; y < last_row; ++y) {
+                const auto row = static_cast<std::size_t>(y) * stored_width;
+                const auto* input = pixels + row;
+                auto* target = output + row * 4U;
+                for (std::uint32_t x = 0; x < stored_width; ++x) {
+                    std::memcpy(target + x * 4U, &packed_palette[input[x]],
+                        sizeof(std::uint32_t));
+                }
+            }
+        });
+}
+
 } // namespace starfox::render

@@ -125,3 +125,18 @@ MSUPCM++. Original Star Fox compositions remain credited to Hajime Hirasawa.
 No standalone licence file is included by the pinned music-pack repository;
 this notice records provenance and attribution and does not alter any rights
 in the music or the underlying game.
+
+## xBRZ (optional)
+
+Source: <https://github.com/janisozaur/xbrz>
+
+Pinned revision: `93c54433fa0df37c689c919e8152fb0b9136584a`
+
+Copyright (C) Zenju (zenju AT gmx DOT de)
+
+Licensed under the GNU General Public License, version 3. Used as the optional
+`XBRZ` backend of the `2D FILTER` presentation option. It is fetched and
+compiled only when the build sets `-DSTARFOX_ENABLE_XBRZ=ON`; the default build
+contains none of its code and offers only the project's own `EDGE` filter.
+Distributing a binary built with this option enabled carries the GPLv3
+obligations for the combined work.

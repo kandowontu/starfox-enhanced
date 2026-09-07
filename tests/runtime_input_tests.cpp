@@ -166,8 +166,8 @@ int main() {
             "new pre-game settings did not default to Original pace");
     const starfox::app::PregameSettings saved_pregame{
         1U, 90U, 3U, true, true,
-        3U, true, false, true, true, 1U, true, false, 5U, 1U, 70U, 30U, 3U,
-        false, true};
+        3U, true, false, true, 2U, true, 1U, true, false, 5U, 1U, 70U, 30U,
+        3U, false, true};
     require(starfox::app::save_pregame_settings(
                 pregame_test_path, saved_pregame),
             "pre-game settings could not be saved");
@@ -176,6 +176,23 @@ int main() {
                 pregame_test_path, loaded_pregame)
                 && loaded_pregame == saved_pregame,
             "pre-game settings did not round-trip");
+    {
+        std::ifstream current{pregame_test_path};
+        std::string legacy, line;
+        while (std::getline(current, line)) {
+            if (line.starts_with("TWO_D_FILTER ")) continue;
+            legacy += (line == "SFE_PREGAME_V12" ? "SFE_PREGAME_V11" : line) + "\n";
+        }
+        current.close();
+        std::ofstream previous{pregame_test_path, std::ios::trunc};
+        previous << legacy;
+        previous.close();
+        auto expected = saved_pregame;
+        expected.two_d_filter = expected.enhanced_graphics ? 1U : 0U;
+        require(starfox::app::load_pregame_settings(pregame_test_path, loaded_pregame)
+                    && loaded_pregame == expected,
+                "V11 migration changed unrelated settings or lost the filter");
+    }
     for (std::uint8_t level = 0; level <= 3; ++level) {
         auto lighting_settings = saved_pregame;
         lighting_settings.rtx_lighting = level;
@@ -190,7 +207,7 @@ int main() {
             << "SFE_PREGAME_V4\n"
             << "EXPERIENCE 0\nTIMING_MODE 0\nPRESENTATION_FPS 60\n"
             << "DISPLAY_MODE 0\nGOD_MODE 0\nSHOW_FPS 0\n"
-            << "ANTI_ALIASING 1\nENHANCED_GRAPHICS 0\nSMOOTH_POLYS 0\n"
+            << "ANTI_ALIASING 1\nENHANCED_GRAPHICS 1\nSMOOTH_POLYS 0\n"
             << "RTX_LIGHTING 1\nVSYNC 0\nCROSSHAIR_COLOUR 0\n";
     }
     loaded_pregame = {};
@@ -198,6 +215,8 @@ int main() {
                 pregame_test_path, loaded_pregame)
         && loaded_pregame.anti_aliasing == 2U,
             "legacy enabled FXAA was not migrated to medium strength");
+    require(loaded_pregame.two_d_filter == 1U,
+            "legacy enhanced textures did not migrate to EDGE");
     require(loaded_pregame.rtx_lighting == 3U,
             "legacy lighting On did not retain its original High strength");
     require(loaded_pregame.music_volume == 100U

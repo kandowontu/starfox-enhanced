@@ -83,6 +83,8 @@ void ParticleRenderer::draw_owner(
     double interpolation_alpha,
     Framebuffer& target,
     std::uint8_t colour_index_base) const {
+    // Particles are world-space geometry; see DustRenderer::draw.
+    const ScopedLayer layer{target, PixelLayer::three_d};
     const auto alpha = std::clamp(interpolation_alpha, 0.0, 1.0);
     for (const auto& particle : particles.particles()) {
         if (particle.life == 0U || particle.owner != owner) continue;
