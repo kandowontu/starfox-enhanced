@@ -417,14 +417,11 @@ GameSimulation::GameSimulation(
             || name.starts_with("PLAYERUNDER2") || name.starts_with("PLAYERWARP_")
             || name.starts_with("PLAYERWARP1_") || name.starts_with("PLAYERWARP2_")
             || name.starts_with("PLAYERESCAPENUCLEUS");
-        const auto launch_name = name.starts_with("PLAYEROPENING")
-            || name.starts_with("PLAYEREXITBASE");
-        if ((!clear_name && !launch_name) || (!name.ends_with("_STRAT")
+        if (!clear_name || (!name.ends_with("_STRAT")
             && !name.ends_with("_ISTRAT") && !name.ends_with("_INIT"))) continue;
         for (const auto address : addresses)
             if ((address & 0xffffU) >= 0x8000U && (address >> 16U) < 0x7eU)
-                (launch_name ? launch_player_strategies_
-                             : level_clear_player_strategies_).push_back(address);
+                level_clear_player_strategies_.push_back(address);
     }
     end_game_sequence_ = find_optional_rom("END_GAME_SEQ");
     ending_transfer_ = find_optional_rom("TRANSFER_L");
@@ -2073,11 +2070,11 @@ std::uint8_t GameSimulation::required_video_phases() const noexcept {
     // four Arwings are submitted. The earlier constant seven came from PAL
     // Starwing footage and made this mode visibly too slow. A deterministic
     // 6,6,7,7,7 cadence averages 6.6 without disturbing the 60 Hz raster.
+    // Use 0.0.3's persistent source control gate: the scripted launch can
+    // suspend between named strategy entries, so entry-address matching
+    // incorrectly falls back to the faster gameplay cadence mid-scramble.
     if (flow_state_ == GameFlowState::gameplay
-        && objects_.is_active(player_)
-        && std::find(launch_player_strategies_.begin(),
-            launch_player_strategies_.end(), objects_.at(player_).strategy_address)
-            != launch_player_strategies_.end()) {
+        && (map_.read_native_byte(player_ship_flags_) & 0x20U) != 0U) {
         return source_update_sequence_ % 5U < 2U ? 6U : 7U;
     }
     // Once control is active, approximate the cartridge's transfer pressure

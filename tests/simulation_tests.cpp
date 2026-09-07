@@ -1174,6 +1174,25 @@ int main(int argc, char** argv) {
     if (argc == 3) {
         const auto upstream_rom = starfox::assets::RomImage::load(argv[1]);
         const auto upstream_symbols = starfox::assets::SymbolMap::load(argv[2]);
+        {
+            starfox::simulation::GameSimulation scramble{
+                upstream_rom, upstream_symbols, "LEVEL1_1", {}, true};
+            scramble.set_timing_mode(starfox::simulation::TimingMode::original_speed);
+            const auto ship_flags = upstream_symbols.find("PSHIPFLAGS").front();
+            std::size_t launch_updates{};
+            for (std::size_t tick = 0; tick < 1000; ++tick) {
+                if (scramble.flow_state() == starfox::simulation::GameFlowState::gameplay
+                    && (scramble.map().read_native_byte(ship_flags) & 0x20U) != 0U) {
+                    ++launch_updates;
+                    require(scramble.logic_interpolation_alpha(1.0) <= 1.0 / 6.0,
+                        "scramble lost 0.0.3 Original pace during its scripted launch");
+                } else if (launch_updates != 0U) {
+                    break;
+                }
+                (void)scramble.tick({});
+            }
+            require(launch_updates > 30U, "scramble pacing test did not cover the launch");
+        }
         const auto starfox_ex_cartridge =
             !upstream_symbols.find("PLANETSEQ2_L").empty();
 

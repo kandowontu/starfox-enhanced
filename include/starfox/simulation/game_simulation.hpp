@@ -996,7 +996,6 @@ private:
     std::optional<std::uint8_t> boss_music_before_death_{};
     bool post_boss_dialogue_active_{};
     std::vector<std::uint32_t> level_clear_player_strategies_;
-    std::vector<std::uint32_t> launch_player_strategies_;
     std::uint64_t observed_apu_upload_generation_{};
     bool ex_results_task_active_{};
     bool ex_results_recorded_{};
