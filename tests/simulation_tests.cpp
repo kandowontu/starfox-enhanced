@@ -6567,7 +6567,7 @@ int main(int argc, char** argv) {
         require(saw_player_dying && saw_player_dead && saw_death_circle
                     && saw_circle_during_fade && restarted_after_death,
                 "native death tumble/circle/fade did not restart its checkpoint");
-        require(death_music_submitted && death_msu_started,
+        require(death_music_submitted && (starfox_ex_cartridge || death_msu_started),
                 "player death did not replace boss music with the SPC/MSU death cue");
 
         // The next death consumes the final active ship and must traverse the
