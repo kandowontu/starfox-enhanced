@@ -2336,8 +2336,8 @@ private:
                 + static_cast<std::int32_t>(effects.model_surfaces->maximum_y()));
         constexpr std::array<float, 4> strengths{0.0F, 0.35F, 0.65F, 1.0F};
         const auto strength = strengths[rtx_lighting_];
-        // Camera-space key light from above-left, a cool frontal fill, and the
-        // camera-facing half vector used for a tight material highlight.
+        // Camera-space key light from above-left, neutral frontal fill, and
+        // a camera-facing half vector for a broad, restrained highlight.
         constexpr std::array<float, 3> key{-0.474F, -0.632F, -0.613F};
         constexpr std::array<float, 3> fill{0.422F, 0.211F, -0.881F};
         constexpr std::array<float, 3> half_vector{-0.267F, -0.356F, -0.895F};
@@ -2361,15 +2361,14 @@ private:
                     0.0F, nx * fill[0] + ny * fill[1] + nz * fill[2]);
                 const auto facing = std::clamp(-nz, 0.0F, 1.0F);
                 const auto rim_base = 1.0F - facing;
-                const auto rim = rim_base * rim_base * 0.32F;
+                const auto rim = rim_base * rim_base * key_light * 0.10F;
                 const auto specular_dot = std::max(0.0F,
                     nx * half_vector[0] + ny * half_vector[1]
                         + nz * half_vector[2]);
                 const auto specular_2 = specular_dot * specular_dot;
                 const auto specular_4 = specular_2 * specular_2;
                 const auto specular_8 = specular_4 * specular_4;
-                const auto specular_16 = specular_8 * specular_8;
-                const auto specular = specular_16 * specular_4 * 105.0F;
+                const auto specular = specular_8 * 0.18F;
 
                 auto nearer_neighbours = 0U;
                 constexpr std::array<std::array<std::int32_t, 2>, 4> adjacent{{
@@ -2377,27 +2376,36 @@ private:
                 }};
                 for (const auto& offset : adjacent) {
                     const auto* neighbour = model_surface_at(
-                        framebuffer, effects, x + offset[0], y + offset[1]);
+                        framebuffer, effects,
+                        x + offset[0] * static_cast<std::int32_t>(framebuffer.draw_scale()),
+                        y + offset[1] * static_cast<std::int32_t>(framebuffer.draw_scale()));
                     if (neighbour != nullptr
                         && neighbour->depth < sample->depth
                             - std::max(20.0F, std::abs(sample->depth) * 0.02F)) {
                         ++nearer_neighbours;
                     }
                 }
-                const auto occlusion = static_cast<float>(nearer_neighbours) * 0.055F;
+                const auto occlusion = static_cast<float>(nearer_neighbours) * 0.025F;
                 const auto illumination = std::clamp(
-                    0.34F + key_light * 1.02F + fill_light * 0.24F
+                    0.62F + key_light * 0.58F + fill_light * 0.16F
                         + rim - occlusion,
-                    0.28F, 1.58F);
+                    0.56F, 1.30F);
                 const auto pixel = (static_cast<std::size_t>(y) * width
                     + static_cast<std::size_t>(x)) * 4U;
-                constexpr std::array<float, 3> warmth{1.08F, 1.0F, 0.91F};
-                constexpr std::array<float, 3> highlight{1.0F, 0.94F, 0.78F};
+                // Palette faces already contain shading. Keep diffuse light neutral
+                // and roll highlights into the available headroom instead of clipping
+                // channels or adding a glow to black pixels during source fades.
+                const auto peak = static_cast<float>(std::max({
+                    rgba_[pixel], rgba_[pixel + 1U], rgba_[pixel + 2U]}));
+                if (peak == 0.0F) continue;
+                const auto diffuse = illumination <= 1.0F ? illumination
+                    : 1.0F + (illumination - 1.0F) * (1.0F - peak / 255.0F);
+                const auto shine = (255.0F - peak * diffuse) * specular
+                    * (peak / 255.0F);
                 for (std::size_t component = 0U; component < 3U; ++component) {
                     const auto original = static_cast<float>(rgba_[pixel + component]);
-                    const auto lit = original * illumination
-                            * warmth[component]
-                        + specular * highlight[component];
+                    const auto lit = original * diffuse
+                        + shine * (0.20F + 0.80F * original / peak);
                     const auto value = original + (lit - original) * strength;
                     rgba_[pixel + component] = static_cast<std::uint8_t>(
                         std::clamp(static_cast<std::int32_t>(value + 0.5F),
