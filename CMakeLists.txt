@@ -773,6 +773,11 @@ if(STARFOX_BUILD_TESTS)
     target_link_libraries(starfox_hitlist_tests PRIVATE starfox_core)
 
     if(STARFOX_BUILD_RUNTIME)
+        if(WIN32 AND NOT WINDOWS_STORE)
+            # Requires a visible Windows desktop; run explicitly, not in headless CTest.
+            add_executable(starfox_renderer_switch_tests tests/renderer_switch_tests.cpp)
+            target_link_libraries(starfox_renderer_switch_tests PRIVATE SDL3::SDL3)
+        endif()
         add_executable(starfox_runtime_input_tests
             tests/runtime_input_tests.cpp
             src/app/runtime_input.cpp)

@@ -18,6 +18,7 @@
 #include "starfox/render/presentation_history.hpp"
 #include "starfox/render/scaled_text_renderer.hpp"
 #include "starfox/render/software_renderer.hpp"
+#include "renderer_window.hpp"
 #include "starfox/render/sprite_renderer.hpp"
 #include "starfox/simulation/game_simulation.hpp"
 #include "starfox/simulation/math.hpp"
@@ -1762,13 +1763,22 @@ public:
 
 private:
     void recreate_renderer(starfox::simulation::RendererMode mode) {
+        const auto replace_window = renderer_ != nullptr
+            && renderer_mode_ == starfox::simulation::RendererMode::gpu
+            && mode == starfox::simulation::RendererMode::software;
         SDL_DestroyTexture(smooth_model_texture_);
         SDL_DestroyTexture(smooth_target_texture_);
         SDL_DestroyTexture(texture_);
         SDL_DestroyRenderer(renderer_);
+        renderer_ = nullptr;
         smooth_model_texture_ = nullptr;
         smooth_target_texture_ = nullptr;
         texture_ = nullptr;
+#if defined(_WIN32) && !defined(STARFOX_UWP)
+        if (replace_window) window_ = recreate_software_window(window_);
+#else
+        (void)replace_window;
+#endif
 #if defined(STARFOX_UWP)
         // Xbox UWP exposes SDL through its WinRT/D3D11 video backend. Avoid
         // automatic probing of desktop-only drivers during activation.
@@ -1807,12 +1817,7 @@ private:
         static_cast<void>(SDL_SetTextureScaleMode(texture_,
             enhanced_graphics_ ? SDL_SCALEMODE_LINEAR
                                : SDL_SCALEMODE_NEAREST));
-        // A renderer replacement invalidates the window backbuffer.  Some
-        // SDL video backends preserve the pixels last presented by the old
-        // GPU renderer until the new renderer presents at least once; that
-        // made the software option appear frozen even though its streaming
-        // texture was updating normally.  Claim and clear the new
-        // backbuffer immediately so the next normal present is unambiguous.
+        // Present black while the next game frame is being prepared.
         SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255);
         if (!SDL_RenderClear(renderer_)) {
             throw std::runtime_error{
