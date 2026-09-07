@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(starfox_enhanced VERSION 0.0.4 LANGUAGES CXX)
+project(starfox_enhanced VERSION 0.0.4.1 LANGUAGES CXX)
 
 if(WINDOWS_STORE)
     # Apply the UWP ABI to the entire dependency graph, not only the SDL entry

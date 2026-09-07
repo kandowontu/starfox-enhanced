@@ -337,7 +337,9 @@ void check_map_sprite_restore(const starfox::assets::RomImage& rom,
     using namespace starfox::simulation;
     const auto addr = [&](const char* name) { return symbols.find(name).at(0); };
     const auto map_cell = [&](const char* stage, unsigned exit) {
-        auto game = std::make_unique<GameSimulation>(rom, symbols, "LEVEL1_2");
+        auto game = std::make_unique<GameSimulation>(rom, symbols,
+            exit == 0 ? "PLANETSELECT" : "LEVEL1_2");
+        if (exit != 0) {
         game->set_god_mode(true);
         for (unsigned tick = 0; tick < 200; ++tick) static_cast<void>(game->tick({}));
         Wdc65816Registers registers;
@@ -364,6 +366,7 @@ void check_map_sprite_restore(const starfox::assets::RomImage& rom,
         }
         require(game->flow_state() == GameFlowState::planet_travel,
             "special route exit failed to restore planet map");
+        }
         for (unsigned raster = 0; raster < 8; ++raster) game->present_frame();
         starfox::render::Framebuffer frame{256, 224};
         starfox::render::BackgroundRenderer{}.draw_bg1(game->map().ppu_state(), frame);
@@ -384,6 +387,11 @@ void check_map_sprite_restore(const starfox::assets::RomImage& rom,
         return cell;
     };
     const auto normal = map_cell("LEVEL1_2", 15);
+    // EX's direct selector starts a different campaign than this route fixture.
+    if (symbols.find("PLANETSEQ2_L").empty()) {
+        require(normal == map_cell("PLANETSELECT", 0),
+            "Sector Y pixels/palette changed when black hole was activated");
+    }
     require(std::any_of(normal.begin(), normal.end(), [](auto colour) { return colour != 0; }),
         "Sector Y reference cell is empty");
     for (const auto exit : {11U, 12U, 13U})
