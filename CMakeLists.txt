@@ -767,6 +767,8 @@ if(STARFOX_BUILD_TESTS)
     add_executable(starfox_ending_tests tests/ending_tests.cpp)
     target_link_libraries(starfox_ending_tests PRIVATE starfox_core)
     add_executable(starfox_intro_pacing_tests tests/intro_pacing_tests.cpp)
+    add_executable(starfox_geometry_pacing_tests tests/geometry_pacing_tests.cpp)
+    target_link_libraries(starfox_geometry_pacing_tests PRIVATE starfox_core)
     target_link_libraries(starfox_intro_pacing_tests PRIVATE starfox_core)
     if(MINGW)
         target_link_options(starfox_intro_pacing_tests PRIVATE "-Wl,--stack,16777216")
@@ -842,6 +844,9 @@ if(STARFOX_BUILD_TESTS)
             "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
             "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT")
         add_test(NAME starfox_upstream_intro_pacing COMMAND starfox_intro_pacing_tests
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
+            "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT")
+        add_test(NAME starfox_upstream_geometry_pacing COMMAND starfox_geometry_pacing_tests
             "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
             "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT")
         add_test(NAME starfox_upstream_hitlist COMMAND starfox_hitlist_tests
@@ -979,6 +984,8 @@ if(STARFOX_BUILD_TESTS)
         add_test(NAME starfox_ex_ending COMMAND starfox_ending_tests
             "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}")
         add_test(NAME starfox_ex_intro_pacing COMMAND starfox_intro_pacing_tests
+            "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}")
+        add_test(NAME starfox_ex_geometry_pacing COMMAND starfox_geometry_pacing_tests
             "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}")
         add_test(NAME starfox_ex_hitlist COMMAND starfox_hitlist_tests
             "${STARFOX_EX_ROM_FILE}" "${STARFOX_EX_SYMBOLS_FILE}")

@@ -16,6 +16,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace starfox::simulation {
@@ -250,7 +251,10 @@ public:
         return credits_complete_ && flow_state_ == GameFlowState::finished;
     }
     [[nodiscard]] TimingMode timing_mode() const noexcept { return timing_mode_; }
-    void set_timing_mode(TimingMode mode) noexcept { timing_mode_ = mode; }
+    void set_timing_mode(TimingMode mode) noexcept {
+        if (timing_mode_ != mode) pace_debt_ = 0.0;
+        timing_mode_ = mode;
+    }
     [[nodiscard]] Experience experience() const noexcept { return experience_; }
     void set_experience(Experience experience) noexcept { experience_ = experience; }
     [[nodiscard]] DisplayMode display_mode() const noexcept { return display_mode_; }
@@ -272,6 +276,16 @@ public:
     [[nodiscard]] std::optional<std::uint16_t>
         model_colour_table_override() const noexcept;
     void set_god_mode(bool enabled) noexcept { god_mode_ = enabled; }
+    // Face count per shape id, for the ORIGINAL SPEED pace estimate. The host
+    // owns this because it is the side that decodes shapes; the simulation
+    // decides pacing before anything is rasterized, so it cannot measure real
+    // render work and this is the closest thing it can see at the right
+    // moment. May be null, and may be empty early in a level.
+    void set_shape_face_counts(
+        const std::unordered_map<std::uint32_t, std::uint32_t>* counts) noexcept {
+        if (shape_face_counts_ != counts) pace_debt_ = 0.0;
+        shape_face_counts_ = counts;
+    }
     [[nodiscard]] bool show_fps() const noexcept { return show_fps_; }
     void set_show_fps(bool enabled) noexcept { show_fps_ = enabled; }
     [[nodiscard]] bool anti_aliasing() const noexcept {
@@ -487,6 +501,15 @@ private:
     void defer_msu_music(
         std::uint16_t track, bool repeat, std::uint16_t presentation_frames);
     void set_player_control(bool enabled);
+    // The pace model's answer: the integer phase count, plus the real-valued
+    // target it was rounded from when the draw-list curve produced it. Empty
+    // target means an override answered and no fraction should be carried.
+    struct PaceDecision {
+        std::uint8_t phases{};
+        std::optional<double> target{};
+    };
+    [[nodiscard]] PaceDecision pace_decision() const noexcept;
+    [[nodiscard]] std::optional<double> draw_list_pressure() const noexcept;
     [[nodiscard]] std::uint8_t required_video_phases() const noexcept;
     void complete_video_phases_for_tick();
     void enter_controls(GameFlowState state, std::uint8_t selection = 0U);
@@ -854,6 +877,11 @@ private:
     std::uint32_t meters_enabled_{};
     std::uint32_t boss_health_{};
     std::uint32_t boss_max_health_{};
+    // Face count per shape id, supplied by the host. See draw_list_pressure().
+    const std::unordered_map<std::uint32_t, std::uint32_t>* shape_face_counts_{};
+    // Fraction of a video phase owed from previous updates. See
+    // complete_video_phases_for_tick().
+    double pace_debt_{};
     std::uint32_t circle_animation_{};
     std::uint32_t circle_object_{};
     std::uint32_t circle_radius_{};

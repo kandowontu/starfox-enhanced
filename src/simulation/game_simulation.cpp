@@ -2022,23 +2022,80 @@ void GameSimulation::set_player_control(bool enabled) {
     map_.write_native_byte(player_ship_flags_, flags);
 }
 
+namespace {
+// Approximate coefficients from the supplied timing study; not cycle costs.
+constexpr double geometry_phase_base = 3.8805;
+constexpr double geometry_faces_per_phase = 157.5;
+// Bound the fractional carry across unusually long source updates.
+constexpr double pace_debt_limit = 2.0;
+} // namespace
+
+// Video phases the current draw list costs, as a real number. The caller
+// rounds it; the fraction is carried in pace_debt_ rather than discarded.
+std::optional<double> GameSimulation::draw_list_pressure() const noexcept {
+    // Fallback for a cold or absent face table: count objects, which is what
+    // this model did before the table existed. Unchanged from 0.0.4.1, so a
+    // build whose host never supplies the table behaves exactly as before.
+    if (shape_face_counts_ == nullptr || shape_face_counts_->empty()) {
+        return {};
+    }
+    std::size_t faces = 0U;
+    std::size_t unknown = 0U;
+    std::size_t known = 0U;
+    for (const auto handle : draw_order_) {
+        // ObjectPool::at() THROWS on an inactive handle and this function is
+        // noexcept, so guard before dereferencing. draw_order_ is built before
+        // the pace decision and objects die in between, so stale handles are
+        // routine rather than rare.
+        if (!objects_.is_active(handle)) continue;
+        const auto found = shape_face_counts_->find(objects_.at(handle).shape);
+        if (found == shape_face_counts_->end()) {
+            ++unknown;
+        } else {
+            faces += found->second;
+            ++known;
+        }
+    }
+    // Charge the shapes we do not know yet at the fleet average so a partially
+    // warm table does not read as a suddenly empty scene.
+    if (known == 0U) return {};
+    if (unknown != 0U) {
+        faces += unknown * faces / known;
+    }
+    return geometry_phase_base
+        + static_cast<double>(faces) / geometry_faces_per_phase;
+}
+
 std::uint8_t GameSimulation::required_video_phases() const noexcept {
+    return pace_decision().phases;
+}
+
+// The pace model. Returns the integer phase count AND, when the draw-list
+// curve produced it, the real-valued target it was rounded from, so
+// complete_video_phases_for_tick() can carry the fraction forward.
+//
+// `target` is left empty for every scene the curve does not own -- the menus,
+// the scripted 20 Hz overrides, the intro. Those are not approximations of a
+// continuous cost and must not feed the accumulator, or a minute of menu at a
+// forced three phases would arrive in gameplay as a large stored debt.
+GameSimulation::PaceDecision
+GameSimulation::pace_decision() const noexcept {
     if (timing_mode_ != TimingMode::original_speed) {
-        return 3U;
+        return {3U, {}};
     }
     // The intro is choreographed to a roughly 38-second music cue. A handful
     // of large models makes draw-count pressure underestimate its work:
     // that completed Original in ~25 seconds and EX in ~30. Keep a stable
     // approximate cadence for each cartridge's different cinematic script.
     if (flow_state_ == GameFlowState::intro) {
-        return starfox_ex_cartridge_
+        return {static_cast<std::uint8_t>(starfox_ex_cartridge_
             ? (flow_ticks_ % 10U < 7U ? 4U : 5U)
-            : (flow_ticks_ % 2U == 0U ? 5U : 6U);
+            : (flow_ticks_ % 2U == 0U ? 5U : 6U)), {}};
     }
     if (flow_state_ != GameFlowState::gameplay
         && flow_state_ != GameFlowState::training
         && flow_state_ != GameFlowState::game_over) {
-        return 3U;
+        return {3U, {}};
     }
     if (flow_state_ == GameFlowState::gameplay && objects_.is_active(player_)
         && std::find(level_clear_player_strategies_.begin(),
@@ -2047,8 +2104,10 @@ std::uint8_t GameSimulation::required_video_phases() const noexcept {
         // CL_* map distances and PCSTRATS/GCSTRATS countdowns share one
         // source-update clock. The launch-only 6/7-raster penalty stretched
         // the silent gaps between post-boss messages and delayed the tally.
-        return 3U;
+        return {3U, {}};
     }
+    // Set by the scramble branch below and applied to the curve at the end.
+    auto scramble_floor = std::uint8_t{0};
     const auto communication_active =
         map_.read_native_byte(message_count_1_) != 0U
         || map_.read_native_byte(message_count_2_) != 0U
@@ -2064,37 +2123,33 @@ std::uint8_t GameSimulation::required_video_phases() const noexcept {
         // back at its 20 Hz ceiling. Counting the lingering debris handles as
         // live Super FX pressure stretched those 50 updates well past the
         // original 2.5 seconds in ORIGINAL SPEED mode.
-        return 3U;
+        return {3U, {}};
     }
-    // NTSC capture of the 10.7 MHz cartridge launch falls between six and
-    // seven video phases per completed source update while the tunnel and
-    // four Arwings are submitted. The earlier constant seven came from PAL
-    // Starwing footage and made this mode visibly too slow. A deterministic
-    // 6,6,7,7,7 cadence averages 6.6 without disturbing the 60 Hz raster.
-    // Use 0.0.3's persistent source control gate: the scripted launch can
-    // suspend between named strategy entries, so entry-address matching
-    // incorrectly falls back to the faster gameplay cadence mid-scramble.
+    // Keep the persistent launch gate, with a minimum while geometry can add cost.
     if (flow_state_ == GameFlowState::gameplay
         && (map_.read_native_byte(player_ship_flags_) & 0x20U) != 0U) {
-        return source_update_sequence_ % 5U < 2U ? 6U : 7U;
+        scramble_floor = 5U;
     }
-    // Once control is active, approximate the cartridge's transfer pressure
-    // from the submitted source draw list. This retains the 20 Hz ceiling and
-    // introduces additional video phases only as a scene becomes crowded.
-    auto pressure = std::min<std::size_t>(3U, draw_order_.size() / 12U);
-    // A boss can be one composite draw-list object while still submitting a
-    // much larger Super FX model than dozens of ordinary enemies. Object
-    // count alone therefore let Corneria's Attack Carrier and several EX
-    // bosses run at, or too close to, the unlocked 20 Hz ceiling.
-    // Use the existing heavier-scene approximation (six video phases, about
-    // 10 updates/second) throughout a boss encounter. The five-phase floor
-    // let sparse fights such as Attack Carrier run 20% faster than busy ones.
-    // Keeping this fixed also avoids speeding up as boss parts disappear.
-    if (flow_state_ == GameFlowState::gameplay
-        && map_.read_native_byte(boss_max_health_) != 0U) {
-        pressure = std::max<std::size_t>(pressure, 3U);
+    const auto pressure = draw_list_pressure();
+    if (!pressure) {
+        // Preserve the existing approximation for headless callers or missing
+        // geometry, including its launch cadence and boss minimum.
+        if (scramble_floor != 0U) {
+            return {static_cast<std::uint8_t>(source_update_sequence_ % 5U < 2U ? 6U : 7U), {}};
+        }
+        auto fallback = 3U + std::min<std::size_t>(3U, draw_order_.size() / 12U);
+        if (flow_state_ == GameFlowState::gameplay
+            && map_.read_native_byte(boss_max_health_) != 0U) fallback = 6U;
+        return {static_cast<std::uint8_t>(fallback), {}};
     }
-    return static_cast<std::uint8_t>(3U + pressure);
+    // Clamp the physical target before adding the rounding remainder. A
+    // forced floor/ceiling must not accumulate debt that distorts later scenes.
+    const auto minimum = std::max<std::uint8_t>(3U, scramble_floor);
+    const auto target = std::clamp(*pressure, static_cast<double>(minimum), 7.0)
+        + pace_debt_;
+    auto phases = static_cast<std::uint8_t>(
+        std::clamp(std::lround(target), static_cast<long>(minimum), 7L));
+    return {phases, target};
 }
 
 bool GameSimulation::logic_tick_ready() const noexcept {
@@ -2110,7 +2165,8 @@ double GameSimulation::logic_interpolation_alpha(
 }
 
 void GameSimulation::complete_video_phases_for_tick() {
-    const auto video_phases_per_tick = required_video_phases();
+    const auto decision = pace_decision();
+    const auto video_phases_per_tick = decision.phases;
     while (video_phases_since_tick_ < video_phases_per_tick) {
         // Tests and deterministic tools may call tick() without explicitly
         // presenting every intervening raster. Advance through the same
@@ -2120,6 +2176,18 @@ void GameSimulation::complete_video_phases_for_tick() {
     }
     current_tick_video_phases_ = video_phases_since_tick_;
     video_phases_since_tick_ = 0U;
+    // Settle the fraction ONCE per completed source update, against the phases
+    // actually spent rather than the phases asked for -- the host may present
+    // more than requested, and the debt tracks real elapsed time. Scenes the
+    // curve does not own carry no debt and clear it, so a stretch of menu or
+    // scripted 20 Hz never lands as a lump in the next level.
+    if (decision.target.has_value()) {
+        pace_debt_ = std::clamp(
+            *decision.target - static_cast<double>(current_tick_video_phases_),
+            -pace_debt_limit, pace_debt_limit);
+    } else {
+        pace_debt_ = 0.0;
+    }
 }
 
 void GameSimulation::start_map(const std::string& symbol) {
@@ -2218,6 +2286,7 @@ std::uint32_t GameSimulation::resolve_route_stage(std::uint16_t remaining_stage)
 }
 
 void GameSimulation::reset_scene_transition_state() {
+    pace_debt_ = 0.0;
     paused_ = false;
     frontend_frames_ = 0U;
     frontend_phase_ = FrontendPhase::none;

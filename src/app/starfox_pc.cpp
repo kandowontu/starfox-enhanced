@@ -4275,6 +4275,11 @@ int main(int argc, char** argv) {
         auto previous_window_wipe = game.window_wipe_state();
         auto current_window_wipe = previous_window_wipe;
         std::unordered_map<std::uint32_t, starfox::assets::Shape> shape_cache;
+        // Geometry counts are decoded before simulation pacing, independently
+        // of the presentation cache and its visibility/graphics settings.
+        std::unordered_map<std::uint32_t, std::uint32_t> shape_face_counts;
+        std::unordered_set<std::uint32_t> invalid_pace_shapes;
+        game.set_shape_face_counts(&shape_face_counts);
         std::unordered_set<std::uint32_t> invalid_shapes;
         std::uint64_t presented_frames = 0;
         std::uint64_t source_logic_frames = 0;
@@ -5021,6 +5026,22 @@ int main(int argc, char** argv) {
                     // Freeze source video, simulation and input underneath
                     // the host confirmation card.
                     continue;
+                }
+                if (game.timing_mode() == starfox::simulation::TimingMode::original_speed) {
+                    // Populate before the pace decision, independent of rendering
+                    // FPS, culling, LOD and graphical options. Decode once per shape.
+                    for (const auto handle : game.draw_order()) {
+                        if (!game.objects().is_active(handle)) continue;
+                        const auto shape = game.objects().at(handle).shape;
+                        if (shape_face_counts.contains(shape)
+                            || invalid_pace_shapes.contains(shape)) continue;
+                        try {
+                            shape_face_counts.emplace(shape, static_cast<std::uint32_t>(
+                                decoder.decode(shape).faces.size()));
+                        } catch (const std::exception&) {
+                            invalid_pace_shapes.insert(shape);
+                        }
+                    }
                 }
                 game.present_frame();
                 rumble.advance(game.map(), gamepad,
