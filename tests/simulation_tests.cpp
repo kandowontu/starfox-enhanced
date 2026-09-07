@@ -6133,6 +6133,15 @@ int main(int argc, char** argv) {
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.rtx_lighting(),
                 "pre-game RTX lighting option did not enable");
+        require(boot_game.rtx_lighting_intensity() == 1U, "lighting did not start at Low");
+        drive_boot({0, starfox::input::right, 0});
+        require(boot_game.rtx_lighting_intensity() == 2U, "lighting did not reach Medium");
+        drive_boot({0, starfox::input::right, 0});
+        require(boot_game.rtx_lighting_intensity() == 3U, "lighting did not reach High");
+        drive_boot({0, starfox::input::right, 0});
+        require(!boot_game.rtx_lighting(), "lighting did not wrap to Off");
+        drive_boot({0, starfox::input::left, 0});
+        require(boot_game.rtx_lighting_intensity() == 3U, "lighting did not cycle backwards");
         drive_boot({0, starfox::input::down, 0});
         require(boot_game.pregame_selection() == 11U,
                 "pre-game cursor did not reach VSYNC");

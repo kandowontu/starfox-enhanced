@@ -176,6 +176,14 @@ int main() {
                 pregame_test_path, loaded_pregame)
                 && loaded_pregame == saved_pregame,
             "pre-game settings did not round-trip");
+    for (std::uint8_t level = 0; level <= 3; ++level) {
+        auto lighting_settings = saved_pregame;
+        lighting_settings.rtx_lighting = level;
+        require(starfox::app::save_pregame_settings(pregame_test_path, lighting_settings)
+                    && starfox::app::load_pregame_settings(pregame_test_path, loaded_pregame)
+                    && loaded_pregame.rtx_lighting == level,
+                "lighting intensity did not round-trip");
+    }
     {
         std::ofstream legacy_pregame{pregame_test_path, std::ios::trunc};
         legacy_pregame
@@ -183,13 +191,15 @@ int main() {
             << "EXPERIENCE 0\nTIMING_MODE 0\nPRESENTATION_FPS 60\n"
             << "DISPLAY_MODE 0\nGOD_MODE 0\nSHOW_FPS 0\n"
             << "ANTI_ALIASING 1\nENHANCED_GRAPHICS 0\nSMOOTH_POLYS 0\n"
-            << "RTX_LIGHTING 0\nVSYNC 0\nCROSSHAIR_COLOUR 0\n";
+            << "RTX_LIGHTING 1\nVSYNC 0\nCROSSHAIR_COLOUR 0\n";
     }
     loaded_pregame = {};
     require(starfox::app::load_pregame_settings(
                 pregame_test_path, loaded_pregame)
         && loaded_pregame.anti_aliasing == 2U,
             "legacy enabled FXAA was not migrated to medium strength");
+    require(loaded_pregame.rtx_lighting == 3U,
+            "legacy lighting On did not retain its original High strength");
     require(loaded_pregame.music_volume == 100U
                 && loaded_pregame.sfx_volume == 100U
                 && loaded_pregame.renderer_mode == 0U

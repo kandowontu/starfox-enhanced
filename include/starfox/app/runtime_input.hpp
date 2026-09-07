@@ -87,7 +87,8 @@ struct PregameSettings {
     std::uint8_t anti_aliasing{};
     bool enhanced_graphics{};
     bool smooth_polys{};
-    bool rtx_lighting{};
+    // 0=off, 1=low, 2=medium, 3=high (original enabled strength).
+    std::uint8_t rtx_lighting{};
     bool vsync{};
     // 0=GPU (default), 1=SDL's portable software rasterizer.
     std::uint8_t renderer_mode{};

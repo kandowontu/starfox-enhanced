@@ -299,7 +299,13 @@ public:
         return rtx_lighting_;
     }
     void set_rtx_lighting(bool enabled) noexcept {
-        rtx_lighting_ = enabled;
+        rtx_lighting_ = enabled ? 3U : 0U;
+    }
+    [[nodiscard]] std::uint8_t rtx_lighting_intensity() const noexcept {
+        return rtx_lighting_;
+    }
+    void set_rtx_lighting_intensity(std::uint8_t level) noexcept {
+        rtx_lighting_ = level <= 3U ? level : 3U;
     }
     [[nodiscard]] bool vsync() const noexcept { return vsync_; }
     void set_vsync(bool enabled) noexcept { vsync_ = enabled; }
@@ -937,7 +943,7 @@ private:
     AntiAliasingMode anti_aliasing_mode_{AntiAliasingMode::off};
     bool enhanced_graphics_{};
     bool smooth_polys_{};
-    bool rtx_lighting_{};
+    std::uint8_t rtx_lighting_{};
     bool vsync_{};
     RendererMode renderer_mode_{RendererMode::gpu};
     bool msu1_music_{};

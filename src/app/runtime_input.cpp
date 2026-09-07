@@ -115,7 +115,7 @@ int gamepad_preference(SDL_JoystickID identifier) {
 // Pre-game settings file format. Bump kPregameRevision when a field is added;
 // the reader accepts every revision up to it.
 constexpr std::string_view kPregameTag{"SFE_PREGAME_V"};
-constexpr int kPregameRevision = 10;
+constexpr int kPregameRevision = 11;
 
 std::filesystem::path settings_path() {
     char* preference_path = SDL_GetPrefPath("StarFoxEnhanced", "StarFoxEnhanced");
@@ -595,8 +595,9 @@ bool load_pregame_settings(
             loaded.smooth_polys = value != 0;
             found[9] = value == 0 || value == 1;
         } else if (name == "RTX_LIGHTING") {
-            loaded.rtx_lighting = value != 0;
-            found[10] = value == 0 || value == 1;
+            loaded.rtx_lighting = static_cast<std::uint8_t>(
+                revision < 11 ? (value != 0 ? 3 : 0) : value);
+            found[10] = value >= 0 && value <= (revision < 11 ? 1 : 3);
         } else if (name == "VSYNC") {
             loaded.vsync = value != 0;
             found[11] = value == 0 || value == 1;
@@ -654,7 +655,7 @@ bool save_pregame_settings(
     const PregameSettings& settings) noexcept {
     if (path.empty() || settings.timing_mode > 1U
         || settings.display_mode > 4U || settings.crosshair_colour > 7U
-        || settings.anti_aliasing > 3U
+        || settings.anti_aliasing > 3U || settings.rtx_lighting > 3U
         || settings.renderer_mode > 1U
         || settings.experience > 1U || settings.music_volume > 100U
         || settings.sfx_volume > 100U || settings.render_scale > 3U) {

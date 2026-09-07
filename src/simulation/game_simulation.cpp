@@ -1283,7 +1283,10 @@ GameTickResult GameSimulation::tick_pregame_menu(
             render_scale_ = kRenderScales[index];
             break;
         }
-        case 10U: rtx_lighting_ = !rtx_lighting_; break;
+        case 10U:
+            rtx_lighting_ = static_cast<std::uint8_t>((rtx_lighting_
+                + ((menu_input.pressed & starfox::input::left) != 0U ? 3U : 1U)) % 4U);
+            break;
         case 11U: vsync_ = !vsync_; break;
         default: break;
         }

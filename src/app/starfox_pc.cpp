@@ -1660,7 +1660,7 @@ public:
         starfox::simulation::RendererMode renderer_mode,
         starfox::simulation::AntiAliasingMode anti_aliasing,
         bool enhanced_graphics,
-        bool smooth_polys, bool rtx_lighting, bool vsync) {
+        bool smooth_polys, std::uint8_t rtx_lighting, bool vsync) {
         if (renderer_mode_ != renderer_mode) {
             recreate_renderer(renderer_mode);
         }
@@ -2334,6 +2334,8 @@ private:
             static_cast<std::int32_t>(framebuffer.stored_height()) - 1,
             effects.model_surface_y
                 + static_cast<std::int32_t>(effects.model_surfaces->maximum_y()));
+        constexpr std::array<float, 4> strengths{0.0F, 0.35F, 0.65F, 1.0F};
+        const auto strength = strengths[rtx_lighting_];
         // Camera-space key light from above-left, a cool frontal fill, and the
         // camera-facing half vector used for a tight material highlight.
         constexpr std::array<float, 3> key{-0.474F, -0.632F, -0.613F};
@@ -2392,9 +2394,11 @@ private:
                 constexpr std::array<float, 3> warmth{1.08F, 1.0F, 0.91F};
                 constexpr std::array<float, 3> highlight{1.0F, 0.94F, 0.78F};
                 for (std::size_t component = 0U; component < 3U; ++component) {
-                    const auto value = rgba_[pixel + component] * illumination
+                    const auto original = static_cast<float>(rgba_[pixel + component]);
+                    const auto lit = original * illumination
                             * warmth[component]
                         + specular * highlight[component];
+                    const auto value = original + (lit - original) * strength;
                     rgba_[pixel + component] = static_cast<std::uint8_t>(
                         std::clamp(static_cast<std::int32_t>(value + 0.5F),
                             0, 255));
@@ -2569,7 +2573,7 @@ private:
         starfox::simulation::AntiAliasingMode::off};
     bool enhanced_graphics_{};
     bool smooth_polys_{};
-    bool rtx_lighting_{};
+    std::uint8_t rtx_lighting_{};
     bool vsync_{};
     starfox::simulation::RendererMode renderer_mode_{
         starfox::simulation::RendererMode::gpu};
@@ -3539,7 +3543,7 @@ int main(int argc, char** argv) {
                 static_cast<std::uint8_t>(game.anti_aliasing_mode()),
                 game.enhanced_graphics(),
                 false,
-                game.rtx_lighting(),
+                game.rtx_lighting_intensity(),
                 game.vsync(),
                 static_cast<std::uint8_t>(game.renderer_mode()),
                 game.msu1_music(),
@@ -3597,7 +3601,7 @@ int main(int argc, char** argv) {
             // SMOOTH_POLYS is retained in the settings file only so older
             // revisions still load. Render Upscale replaces that effect.
             game.set_smooth_polys(false);
-            game.set_rtx_lighting(saved_pregame.rtx_lighting);
+            game.set_rtx_lighting_intensity(saved_pregame.rtx_lighting);
             game.set_vsync(saved_pregame.vsync);
             game.set_renderer_mode(
                 static_cast<starfox::simulation::RendererMode>(
@@ -4780,7 +4784,7 @@ int main(int argc, char** argv) {
             window.set_render_options(game.renderer_mode(),
                 game.anti_aliasing_mode(),
                 game.enhanced_graphics(), false,
-                game.rtx_lighting(), game.vsync());
+                game.rtx_lighting_intensity(), game.vsync());
             if (toggle_frame_freeze) {
                 frame_frozen = !frame_frozen;
                 input.reset();
@@ -7102,7 +7106,8 @@ int main(int argc, char** argv) {
                             render_scale_name(game.render_scale()), row_y[9],
                             game.pregame_selection() == 9U);
                         draw_compact_row("RTX LIGHTING",
-                            on_off(game.rtx_lighting()), row_y[10],
+                            std::array<std::string_view, 4>{"OFF", "LOW", "MEDIUM", "HIGH"}
+                                [game.rtx_lighting_intensity()], row_y[10],
                             game.pregame_selection() == 10U);
                         draw_compact_row("VSYNC", on_off(game.vsync()), row_y[11],
                             game.pregame_selection() == 11U);
