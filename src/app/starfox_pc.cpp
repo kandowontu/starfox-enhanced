@@ -1185,6 +1185,7 @@ public:
     }
 
     ~Window() {
+        SDL_DestroyTexture(bloom_texture_);
         SDL_DestroyTexture(smooth_model_texture_);
         SDL_DestroyTexture(smooth_target_texture_);
         SDL_DestroyTexture(texture_);
@@ -1720,7 +1721,10 @@ public:
         starfox::render::smooth_models(model_smoothing_, framebuffer, rgba_, smoothing_scratch_, &presentation_workers_);
         starfox::render::apply_effect(effect_, framebuffer, rgba_, style_scratch_, effect_intensity_,
             world_effect_, world_effect_intensity_);
+        bloom_layer_ready_ = bloom_ != 0U || bloom_2d_ != 0U;
+        if (bloom_layer_ready_) bloom_base_rgba_ = rgba_;
         bloom_pass_.apply(bloom_, bloom_2d_, framebuffer, rgba_, &presentation_workers_);
+        if (bloom_layer_ready_) bloom_glow_rgba_ = rgba_;
         if (anti_aliasing_ != starfox::simulation::AntiAliasingMode::off) {
             apply_fxaa(anti_aliasing_);
         }
@@ -1749,8 +1753,13 @@ public:
             apply_touch_controls(framebuffer.width(), framebuffer.height(),
                 render_scale);
         }
+        if (bloom_layer_ready_) {
+            starfox::render::split_bloom_layer(bloom_base_rgba_, bloom_glow_rgba_, rgba_);
+        }
         if (smooth_polys_) {
+            if (bloom_layer_ready_) rgba_.swap(bloom_base_rgba_);
             prepare_1440p_model_layer(framebuffer, effects);
+            if (bloom_layer_ready_) rgba_.swap(bloom_base_rgba_);
         }
         present_rgba_pixels(
             framebuffer.stored_width(), framebuffer.stored_height(), rgba_);
@@ -1763,6 +1772,7 @@ public:
         }
         ensure_dimensions(width, height);
         smooth_layer_ready_ = false;
+        bloom_layer_ready_ = false;
         rgba_.assign(rgba.begin(), rgba.end());
         present_rgba_pixels(width, height, rgba_);
     }
@@ -1895,6 +1905,8 @@ private:
         SDL_DestroyTexture(smooth_model_texture_);
         SDL_DestroyTexture(smooth_target_texture_);
         SDL_DestroyTexture(texture_);
+        SDL_DestroyTexture(bloom_texture_);
+        bloom_texture_ = nullptr;
         SDL_DestroyRenderer(renderer_);
         renderer_ = nullptr;
         smooth_model_texture_ = nullptr;
@@ -2562,7 +2574,8 @@ private:
         std::span<const std::uint8_t> rgba) {
         update_temporary_status();
         const auto base = smooth_layer_ready_
-            ? std::span<const std::uint8_t>{smooth_base_rgba_} : rgba;
+            ? std::span<const std::uint8_t>{smooth_base_rgba_}
+            : bloom_layer_ready_ ? std::span<const std::uint8_t>{bloom_base_rgba_} : rgba;
         if (!SDL_UpdateTexture(texture_, nullptr, base.data(),
                 static_cast<int>(width * 4U))) {
             throw std::runtime_error{std::string{"SDL_UpdateTexture: "} + SDL_GetError()};
@@ -2594,10 +2607,28 @@ private:
         SDL_RenderClear(renderer_);
         SDL_RenderTexture(renderer_, smooth_layer_ready_
             ? smooth_target_texture_ : texture_, nullptr, nullptr);
+        if (bloom_layer_ready_) {
+            if (bloom_texture_ == nullptr) {
+                bloom_texture_ = SDL_CreateTexture(renderer_, SDL_PIXELFORMAT_RGBA32,
+                    SDL_TEXTUREACCESS_STREAMING, static_cast<int>(width), static_cast<int>(height));
+                if (bloom_texture_ == nullptr
+                    || !SDL_SetTextureScaleMode(bloom_texture_, SDL_SCALEMODE_LINEAR)
+                    || !SDL_SetTextureBlendMode(bloom_texture_, SDL_BLENDMODE_ADD)) {
+                    throw std::runtime_error{std::string{"SDL bloom texture: "} + SDL_GetError()};
+                }
+            }
+            if (!SDL_UpdateTexture(bloom_texture_, nullptr, bloom_glow_rgba_.data(),
+                    static_cast<int>(width * 4U))) {
+                throw std::runtime_error{std::string{"SDL bloom upload: "} + SDL_GetError()};
+            }
+            SDL_RenderTexture(renderer_, bloom_texture_, nullptr, nullptr);
+        }
         SDL_RenderPresent(renderer_);
     }
     void ensure_dimensions(std::uint32_t width, std::uint32_t height) {
         if (width == texture_width_ && height == texture_height_) return;
+        SDL_DestroyTexture(bloom_texture_);
+        bloom_texture_ = nullptr;
         SDL_DestroyTexture(texture_);
         SDL_DestroyTexture(smooth_model_texture_);
         SDL_DestroyTexture(smooth_target_texture_);
@@ -2630,6 +2661,9 @@ private:
     SDL_Window* window_{};
     SDL_Renderer* renderer_{};
     SDL_Texture* texture_{};
+    SDL_Texture* bloom_texture_{};
+    bool bloom_layer_ready_{};
+    std::vector<std::uint8_t> bloom_base_rgba_, bloom_glow_rgba_;
     SDL_Texture* smooth_model_texture_{};
     SDL_Texture* smooth_target_texture_{};
     std::uint32_t texture_width_{snes_width};
@@ -3763,6 +3797,12 @@ int main(int argc, char** argv) {
             game.set_crosshair_colour(
                 static_cast<starfox::simulation::CrosshairColour>(
                     saved_pregame.crosshair_colour));
+            if (std::getenv("STARFOX_TEST_FRAMES") != nullptr) {
+                if (const auto* colour = std::getenv("STARFOX_TEST_CROSSHAIR_COLOUR")) {
+                    game.set_crosshair_colour(static_cast<starfox::simulation::CrosshairColour>(
+                        std::clamp(std::atoi(colour), 0, 7)));
+                }
+            }
             game.set_render_scale(static_cast<starfox::simulation::RenderScale>(
                 saved_pregame.render_scale));
             if (const auto* forced_scale = std::getenv(
@@ -3965,6 +4005,7 @@ int main(int argc, char** argv) {
         };
         const auto camera_x_address = ram_symbol("VIEWPOSX");
         const auto camera_y_address = ram_symbol("VIEWPOSY");
+        const auto camera_float_y_address = ram_symbol("VIEWFLOATY");
         const auto camera_z_address = ram_symbol("VIEWPOSZ");
         const auto camera_pitch_address = ram_symbol("VIEWROTXW");
         const auto camera_yaw_address = ram_symbol("VIEWROTYW");
@@ -4293,6 +4334,11 @@ int main(int argc, char** argv) {
         };
         auto previous_camera = capture_camera();
         auto current_camera = previous_camera;
+        const auto capture_view_float = [&]() {
+            return static_cast<std::int16_t>(game.map().read_native_word(camera_float_y_address));
+        };
+        auto previous_view_float = capture_view_float();
+        auto current_view_float = previous_view_float;
         struct RasterMotionSnapshot {
             std::uint16_t background{};
             std::uint8_t background_mode{};
@@ -5282,6 +5328,7 @@ int main(int argc, char** argv) {
                     }
                     previous = current;
                     previous_camera = current_camera;
+                    previous_view_float = current_view_float;
                     previous_raster_motion = current_raster_motion;
                     previous_oam = current_oam;
                     previous_cockpit_roll = current_cockpit_roll;
@@ -5332,6 +5379,7 @@ int main(int argc, char** argv) {
                     }
                     current = capture();
                     current_camera = capture_camera();
+                    current_view_float = capture_view_float();
                     current_raster_motion = capture_raster_motion();
                     current_oam = game.map().ppu_state().oam;
                     current_cockpit_roll = game.map().read_native_word(hud_rotation_address);
@@ -5365,6 +5413,7 @@ int main(int argc, char** argv) {
                         // discontinuity, just as we already do for scene loads.
                         previous = current;
                         previous_camera = current_camera;
+                        previous_view_float = current_view_float;
                         previous_raster_motion = current_raster_motion;
                         previous_oam = current_oam;
                         previous_cockpit_roll = current_cockpit_roll;
@@ -6218,11 +6267,19 @@ int main(int argc, char** argv) {
                 // TRAIL_ISTRAT pieces are discrete source afterimages. Moving
                 // every clone through fractional positions made the Nintendo
                 // logo look smeared after its main text had already settled.
-                const auto transform = starfox::timing::interpolate(
+                auto transform = starfox::timing::interpolate(
                     prior_snapshot.transform,
                     current_transform->second.transform,
                     object.strategy_address == trail_strategy_address
                         ? 1.0 : interpolation_alpha);
+                if (ex_crosshair_strategy_address != 0U
+                    && object.strategy_address == ex_crosshair_strategy_address) {
+                    // Cancel decorative camera float for aiming markers only.
+                    // The source VIEWPOSY = PVIEWPOSY + VIEWFLOATY keeps bobbing
+                    // even while the player is held against a flight boundary.
+                    transform.y += std::lerp(double(previous_view_float),
+                        double(current_view_float), interpolation_alpha);
+                }
                 const auto transform_alpha =
                     object.strategy_address == trail_strategy_address
                         ? 1.0 : interpolation_alpha;
@@ -6487,8 +6544,7 @@ int main(int argc, char** argv) {
                 }
                 auto pose = make_pose(item, false);
                 if (ex_crosshair_strategy_address != 0U
-                    && object.strategy_address == ex_crosshair_strategy_address
-                    && crosshair_tint(game.crosshair_colour())) {
+                    && object.strategy_address == ex_crosshair_strategy_address) {
                     pose.palette_override = 128U + 4U * 16U + 15U;
                     pose.colour_warp = false;
                 }
@@ -6846,9 +6902,12 @@ int main(int argc, char** argv) {
                 // bars over the expanded EX world. The PC communication HUD
                 // is authoritative while a message is active, avoiding a
                 // second copy of the same EX portrait/text from this bitmap.
+                // The outer 16-pixel columns are guards, not bitmap artwork.
+                // Their palette can be tan during scramble; filtering only
+                // RGB-black entries therefore leaves colored border strips.
                 background_renderer.draw_bg1(ppu, native_ex_overlay,
                     starfox::render::TilePriorityPass::all,
-                    0, false);
+                    0, false, 16U);
                 if (gameplay_hud && dialogue.active && !game.paused()) {
                     native_ex_overlay.clear(0U);
                 } else {
@@ -7462,6 +7521,12 @@ int main(int argc, char** argv) {
             auto base_palette = starfox::render::decode_bgr555_palette(
                 game.map().ppu_state().cgram);
             apply_crosshair_tint(base_palette, game.crosshair_colour());
+            if (ex_crosshair_strategy_address != 0U) {
+                // The EX model marker has no OBJ shading to preserve. In
+                // particular GREEN must not fall back to its authored white.
+                base_palette[207U] = crosshair_tint(game.crosshair_colour())
+                    .value_or(starfox::render::Rgba8{64U, 255U, 64U, 255U});
+            }
             auto presentation_brightness = game.map().display_brightness();
             if (wipe_has_started_revealing
                 && launch_wipe_reveal_frames > 1U) {

@@ -6,6 +6,24 @@
 #include <vector>
 
 namespace starfox::render {
+// Split the already tone-mapped bloom contribution for linear-filtered display.
+// Later host overlays must remain untouched and must not receive scene glow.
+inline void split_bloom_layer(std::vector<std::uint8_t>& base,
+    std::vector<std::uint8_t>& glow, const std::vector<std::uint8_t>& final) {
+    if (base.size() != final.size() || glow.size() != final.size()
+        || final.size() % 4U != 0U) return;
+    for (std::size_t i = 0; i < final.size(); i += 4U) {
+        const auto unchanged = glow[i] == final[i] && glow[i+1] == final[i+1]
+            && glow[i+2] == final[i+2] && glow[i+3] == final[i+3];
+        for (unsigned c = 0; c < 3; ++c) {
+            glow[i+c] = unchanged ? static_cast<std::uint8_t>(
+                std::max(0, int(glow[i+c]) - int(base[i+c]))) : 0U;
+            if (!unchanged) base[i+c] = final[i+c];
+        }
+        base[i+3] = final[i+3];
+        glow[i+3] = 255U;
+    }
+}
 // Scene-wide, linear-light bright pass with separate tight and broad halos.
 // Work at half native resolution so cost stays bounded at high render scales.
 class BloomPass {

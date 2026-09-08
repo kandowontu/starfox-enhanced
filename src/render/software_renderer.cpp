@@ -1291,9 +1291,11 @@ FaceMaterial face_material(
     std::size_t depth_band,
     const std::array<std::int8_t, 3>& light,
     const RenderPose& pose,
-    std::optional<std::uint16_t> descriptor_override = std::nullopt) {
+    std::optional<std::uint16_t> descriptor_override = std::nullopt,
+    std::uint8_t colour_index_base = 0U) {
     if (pose.palette_override) {
-        return {{*pose.palette_override, *pose.palette_override, false}, nullptr};
+        const auto relative = static_cast<std::uint8_t>(*pose.palette_override - colour_index_base);
+        return {{relative, relative, false}, nullptr};
     }
     if (pose.force_colour) {
         const auto even = static_cast<std::uint8_t>(pose.forced_colour & 0x0fU);
@@ -1704,7 +1706,7 @@ void SoftwareRenderer::draw(
                         raster_word_exact)) {
                     const auto material = face_material(shape, shape.faces.front(),
                         pose.colour_frame, depth_band, light, pose,
-                        next_colour_warp_word());
+                        next_colour_warp_word(), settings_.colour_index_base);
                     const StoredRasterScope raster{
                         target, settings_.render_scale};
                     scale_to_stored(near_screen, settings_.render_scale);
@@ -1804,7 +1806,7 @@ void SoftwareRenderer::draw(
 
         const auto material = face_material(
             shape, face, pose.colour_frame, depth_band, light, pose,
-            next_colour_warp_word());
+            next_colour_warp_word(), settings_.colour_index_base);
         const auto face_offset = explosion_offset(face, pose);
         if (face.sprite) {
             if (material.texture != nullptr && face.vertex_indices.size() == 1U

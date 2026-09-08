@@ -12,7 +12,19 @@
   changing the native simulation. Regression coverage includes 60, 120, 240 and
   480 FPS interpolation phases.
 - EX's 3D sight markers use the main-menu crosshair color setting; other models
-  retain their own palette.
+  retain their own palette. GREEN is explicitly green, and overrides account
+  for the renderer's palette-row offset.
+- EX aiming markers no longer inherit decorative camera float, preventing
+  bobbing while holding inverted Down against the upper flight boundary. World
+  camera motion and native gameplay are unchanged.
+- EX's native bitmap overlay excludes the outer guard columns geometrically,
+  preventing them from becoming visible when a transition changes their palette
+  from black to tan. This covers the suspected scramble-border path; the original
+  reported scene has not yet been visually reproduced.
+- Bloom is displayed as a separate, linearly filtered glow layer, so enlarging
+  the image no longer enlarges the glow with nearest-neighbor pixel blocks.
+  Base game pixels retain their selected filtering, and late host overlays do
+  not receive scene glow. Both 2D and 3D bloom use this path.
 - Android CI packages use a permanent signing certificate. CI verifies the
   expected public certificate fingerprint before accepting an APK. Both local
   debug and release build types can use this key through environment settings.
@@ -34,4 +46,6 @@ Do not expect independently built debug APKs to update a public installation.
 The Switch pipeline defect is covered by a deterministic host regression, but
 the reported Erista crackling still requires listening tests on real hardware,
 with and without overclocking. A successful cross-build is not an on-device audio
-verification. Platform build and full-suite results are pending for this draft.
+verification. The initial candidate passed all nine platform build jobs and
+41 local tests. The final follow-up changes require a new platform build run;
+targeted reticle, guard-column, and bloom regressions pass locally.

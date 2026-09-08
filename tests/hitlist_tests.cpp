@@ -24,6 +24,22 @@ void require(bool condition, const char* message) {
 }
 
 void check_reticle_identity() {
+    // EX's BG1 guard columns are excluded by geometry, even when a palette
+    // transition makes their formerly black tile tan.
+    starfox::simulation::SnesPpuState ppu;
+    ppu.background_mode = 1U; ppu.main_screen = 1U;
+    ppu.bg1_character_base = 0x1000U;
+    ppu.cgram[1] = 0x3b1fU;
+    for (unsigned row=0;row<8;++row) ppu.vram[0x2000U+row*2U]=255U;
+    for (unsigned width : {256U,400U,800U}) {
+        starfox::render::Framebuffer frame{width,224U};
+        const auto origin = int((width-256U)/2U);
+        starfox::render::BackgroundRenderer{}.draw_bg1(ppu,frame,
+            starfox::render::TilePriorityPass::all,origin,false,16U);
+        for (int x=0;x<int(width);++x)
+            require(frame.get(x,80) == (x>=origin+16 && x<origin+240 ? 1U:0U),
+                "non-black EX bitmap guards leaked into presentation");
+    }
     using namespace starfox::simulation;
     ObjectPool objects{2};
     const auto first = objects.allocate_after();
@@ -182,7 +198,9 @@ void check_ex_reticle_stations(const starfox::assets::RomImage& rom,
                 render::RenderPose pose;
                 pose.z=500;
                 pose.palette_override=207U;
-                render::SoftwareRenderer{}.draw(shape,pose,frame,false);
+                render::RenderSettings settings;
+                settings.colour_index_base = 112U; // the live game's BG1 row
+                render::SoftwareRenderer{settings}.draw(shape,pose,frame,false);
                 require(std::any_of(frame.pixels().begin(),frame.pixels().end(),[](auto p){return p==207U;}),
                     "EX reticle did not use its dedicated crosshair palette index");
                 require(std::all_of(frame.pixels().begin(),frame.pixels().end(),[](auto p){return p==0U||p==207U;}),
@@ -192,6 +210,38 @@ void check_ex_reticle_stations(const starfox::assets::RomImage& rom,
         previous=current;
     }
     require(tested > 20 && reproduced_particle_motion, "EX reticle motion regression did not exercise recycled native particles");
+    // Hold DOWN (inverted flight controls) through the upper flight boundary.
+    for (unsigned tick=0; tick<75; ++tick) static_cast<void>(game->tick({1024U,0,0}));
+    const auto read = [&](const char* name) {
+        return static_cast<std::int16_t>(game->map().read_native_word(symbols.find(name).at(0)));
+    };
+    const auto first_float = read("VIEWFLOATY");
+    bool float_changed = false;
+    previous = render::capture_object_snapshots(game->objects(), trig);
+    auto old_float = read("VIEWFLOATY"), old_camera_y = read("VIEWPOSY");
+    for (unsigned tick=0; tick<90; ++tick) {
+        static_cast<void>(game->tick({1024U,0,0}));
+        const auto current = render::capture_object_snapshots(game->objects(), trig);
+        const auto camera_y = read("VIEWPOSY"), view_float = read("VIEWFLOATY");
+        float_changed |= view_float != first_float;
+        for (const auto& [handle,sight] : current) {
+            if (sight.strategy_address != entries.front()) continue;
+            const auto* prior = render::reticle_previous_snapshot(sight,current,previous,game->player());
+            require(prior != nullptr,"boundary reticle lost station identity");
+            const auto before = prior->transform.y + old_float - old_camera_y;
+            const auto after = sight.transform.y + view_float - camera_y;
+            require(before == after,"stabilized boundary sight moved between native ticks");
+            for (unsigned phase=0;phase<=24;++phase) {
+                const auto alpha = phase/24.0;
+                const auto marker = timing::interpolate(prior->transform,sight.transform,alpha);
+                const auto projected_y = marker.y + std::lerp(double(old_float),double(view_float),alpha)
+                    - std::lerp(double(old_camera_y),double(camera_y),alpha);
+                require(std::abs(projected_y-after)<1e-8,"boundary sight bobbed at fractional presentation phase");
+            }
+        }
+        previous=current; old_float=view_float; old_camera_y=camera_y;
+    }
+    require(float_changed,"boundary regression did not exercise decorative camera float");
     std::cout << "EX sight stations remain stable at 60-480 FPS and accept HUD tint\n";
 }
 

@@ -624,6 +624,17 @@ int main(int argc, char** argv) {
             layer==PixelLayer::three_d ? 0U : 3U,scene,right);
         require(wrong==original,"disabled bloom layer still emitted light");
         require(right!=original,"enabled bloom layer emitted no light");
+        auto base = original, glow = right, final = right;
+        // A late host overlay replaces this pixel after scene bloom.
+        final[0] = 17U; final[1] = 33U; final[2] = 91U;
+        starfox::render::split_bloom_layer(base, glow, final);
+        for (std::size_t i = 0; i < final.size(); i += 4U) {
+            for (unsigned c = 0; c < 3; ++c)
+                require(unsigned(base[i+c])+glow[i+c] == final[i+c],
+                    "separate bloom display layer changed native-resolution colors");
+        }
+        require(glow[0] == 0U && glow[1] == 0U && glow[2] == 0U,
+            "scene bloom contaminated a host overlay");
     }
     for (const unsigned scale : {1U,2U,4U}) {
         Framebuffer scene{8,8,scale};
