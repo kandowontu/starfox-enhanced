@@ -13,18 +13,27 @@
   480 FPS interpolation phases.
 - EX's 3D sight markers use the main-menu crosshair color setting; other models
   retain their own palette. GREEN is explicitly green, and overrides account
-  for the renderer's palette-row offset.
+  for the renderer's palette-row offset and the NEW reticle's textured-sprite
+  rendering path. A live Windows capture confirms green markers.
 - EX aiming markers no longer inherit decorative camera float, preventing
   bobbing while holding inverted Down against the upper flight boundary. World
   camera motion and native gameplay are unchanged.
 - EX's native bitmap overlay excludes the outer guard columns geometrically,
   preventing them from becoming visible when a transition changes their palette
-  from black to tan. This covers the suspected scramble-border path; the original
-  reported scene has not yet been visually reproduced.
+  from black to tan. Widescreen blank fills also choose the darkest palette entry
+  instead of defaulting to tan index zero when no exact black exists, and palette
+  changes invalidate that cached choice. Regression coverage includes a palette
+  without exact black at 16:9; the reported scramble frame still needs on-device
+  confirmation.
 - Bloom is displayed as a separate, linearly filtered glow layer, so enlarging
   the image no longer enlarges the glow with nearest-neighbor pixel blocks.
   Base game pixels retain their selected filtering, and late host overlays do
   not receive scene glow. Both 2D and 3D bloom use this path.
+- Original: pressing Start on THE END after the music finishes no longer enters
+  a non-returning native reboot inside the bounded object-update call (#35).
+  The host handles the restart into the intro while retaining host options.
+  The full-ending regression reproduced the reported instruction-limit error
+  before the fix and passes after it in both Original pacing modes.
 - Android CI packages use a permanent signing certificate. CI verifies the
   expected public certificate fingerprint before accepting an APK. Both local
   debug and release build types can use this key through environment settings.

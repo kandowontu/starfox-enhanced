@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <vector>
 
 namespace starfox::render {
@@ -221,10 +222,17 @@ void BackgroundRenderer::draw_bg2(
         return value < 0 ? value + modulus : value;
     };
     auto black_colour = std::uint8_t{};
+    auto darkest = std::numeric_limits<unsigned>::max();
     for (std::size_t index = 0U; index < ppu.cgram.size(); ++index) {
-        if ((ppu.cgram[index] & 0x7fffU) == 0U) {
+        const auto colour = ppu.cgram[index];
+        const auto luma = 77U * (colour & 31U)
+            + 150U * ((colour >> 5U) & 31U) + 29U * ((colour >> 10U) & 31U);
+        // EX palette transitions need not contain exact RGB black. Falling
+        // back to index zero in that case can paint the wide margin peach.
+        if (luma < darkest) {
+            darkest = luma;
             black_colour = static_cast<std::uint8_t>(index);
-            break;
+            if (luma == 0U) break;
         }
     }
     std::array<std::uint16_t, 32> vertical_offsets{};

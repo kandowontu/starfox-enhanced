@@ -4907,6 +4907,26 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
     if (ending_task_active_) {
         return tick_end_game_sequence(input);
     }
+    if (flow_state_ == GameFlowState::finished && credits_complete_
+        && !starfox_ex_cartridge_
+        && ((input.held | input.pressed) & starfox::input::start) != 0U) {
+        // EXITCREDITS' tail jumps to RESTART, resets the CPU stack and enters
+        // the outer front-end loop. It cannot return to UPDATE_OBJECTS_L's
+        // bounded host call (#35). Hand ownership to our front end instead.
+        ending_task_active_ = false;
+        ending_final_score_ = false;
+        pending_end_game_ = false;
+        credits_complete_ = false;
+        reset_scene_transition_state();
+        write_input({});
+        Wdc65816Registers registers;
+        registers.status = 0x24U;
+        map_.call_native_routine(initialize_all_, registers, 5'000'000U, true);
+        enter_intro();
+        GameTickResult result;
+        result.audio_port_writes = map_.take_apu_port_writes();
+        return result;
+    }
     if (flow_state_ == GameFlowState::credits && credits_complete_
         && starfox_ex_cartridge_
         && (input.pressed & starfox::input::start) != 0U) {

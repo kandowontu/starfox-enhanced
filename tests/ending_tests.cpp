@@ -296,6 +296,17 @@ void run_ending(const starfox::assets::RomImage& rom,
         const auto before = map.read_native_word(address("GAMEFRAME"));
         static_cast<void>(game->tick({}));
         require(map.read_native_word(address("GAMEFRAME")) != before, "final score animation froze");
+        // #35: the idle screen alone is not the reproducer. The reporter
+        // presses Start after the native music has finished.
+        for (unsigned frame=0;frame<8;++frame) {
+            const auto result = game->tick({starfox::input::start,
+                static_cast<starfox::input::ButtonMask>(frame==0 ? starfox::input::start : 0U),0U});
+            static_cast<void>(audio.render_logic_tick(result.audio_port_writes));
+            game->synchronize_apu_output_ports(audio.output_ports());
+        }
+        require(game->flow_state() == GameFlowState::intro,
+            "Start after THE END did not hand off to the front end");
+        require(!game->final_score_active(), "credits score state survived restart");
     }
     std::cout << (ex ? "EX" : "Original") << (original_pace ? " original/20Hz" : " unlocked/20Hz")
         << (special_route ? " special-route" : " route-1") << ": escape=" << ending_start

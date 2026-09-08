@@ -40,6 +40,15 @@ void check_reticle_identity() {
             require(frame.get(x,80) == (x>=origin+16 && x<origin+240 ? 1U:0U),
                 "non-black EX bitmap guards leaked into presentation");
     }
+    ppu.main_screen = 2U;
+    ppu.bg2_screen_size = 0U;
+    ppu.cgram.fill(0x3b1fU); // palette transition: no exact black, index 0 is tan
+    ppu.cgram[3] = 1U;
+    starfox::render::Framebuffer wide{400U,224U};
+    starfox::render::BackgroundRenderer{}.draw_bg2(ppu,0,0,wide,
+        starfox::render::TilePriorityPass::all,72,true,true,false,224U);
+    require(wide.get(0,80) == 3U && wide.get(399,80) == 3U,
+        "widescreen blank region fell back to tan palette zero instead of darkest entry");
     using namespace starfox::simulation;
     ObjectPool objects{2};
     const auto first = objects.allocate_after();
@@ -205,6 +214,18 @@ void check_ex_reticle_stations(const starfox::assets::RomImage& rom,
                     "EX reticle did not use its dedicated crosshair palette index");
                 require(std::all_of(frame.pixels().begin(),frame.pixels().end(),[](auto p){return p==0U||p==207U;}),
                     "EX reticle retained an untinted material");
+                // In-game TEST_ISTRAT sets the whole-object sprite flag. It
+                // must tint its nontransparent texels too, not just faces.
+                const auto& object = game->objects().at(handle);
+                require((object.strategy_flags[0]&0x20U)!=0U,"native EX sight is not a scaled sprite");
+                pose.simple_scaled_sprite = true;
+                pose.simple_sprite_colour = object.extended[21];
+                pose.simple_sprite_world_size = 60;
+                frame.clear(0U);
+                render::SoftwareRenderer{settings}.draw(shape,pose,frame,false);
+                require(std::any_of(frame.pixels().begin(),frame.pixels().end(),[](auto p){return p==207U;})
+                    && std::all_of(frame.pixels().begin(),frame.pixels().end(),[](auto p){return p==0U||p==207U;}),
+                    "EX sprite reticle ignored selected crosshair palette");
             }
         }
         previous=current;

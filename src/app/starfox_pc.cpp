@@ -3928,9 +3928,10 @@ int main(int argc, char** argv) {
                 game.objects().at(game.player()).strategy_address =
                     symbols.find("PLAYERDEAD_ISTRAT").at(0);
             }
-            if (std::getenv("STARFOX_TEST_EX_CROSSHAIR") != nullptr) {
+            if (const auto* style = std::getenv("STARFOX_TEST_EX_CROSSHAIR")) {
                 const auto addresses = symbols.find("NOCROSSHAIRPLS");
-                if (!addresses.empty()) game.map().write_native_byte(addresses.front(), 2U);
+                if (!addresses.empty()) game.map().write_native_byte(addresses.front(),
+                    static_cast<std::uint8_t>(std::clamp(std::atoi(style),0,2)));
             }
             if (const auto* clear = std::getenv("STARFOX_TEST_CLEAR")) {
                 const auto entry = symbols.find(initial_map).at(0);
@@ -5850,6 +5851,9 @@ int main(int argc, char** argv) {
                             == ppu.bg2_screen_base
                         && mode2_background_ppu.bg2_screen_size
                             == ppu.bg2_screen_size
+                        // Widescreen blank fills choose a dark CGRAM entry;
+                        // that cached choice is invalid after a palette load.
+                        && mode2_background_ppu.cgram == ppu.cgram
                         && mode2_background_ppu.main_screen == ppu.main_screen
                         && mode2_background_ppu.bg2_vertical_offsets_enabled
                             == ppu.bg2_vertical_offsets_enabled
@@ -7748,6 +7752,16 @@ int main(int argc, char** argv) {
                 }
                 if (!capture_path.empty()) window.save_bmp(capture_path);
                 if (std::getenv("STARFOX_TRACE_RENDER_STATE") != nullptr) {
+                    std::cerr << "reticle experience=" << unsigned(active_experience)
+                        << " colour=" << unsigned(game.crosshair_colour())
+                        << " strategy=" << ex_crosshair_strategy_address
+                        << " pixels=" << std::count(framebuffer.pixels().begin(),framebuffer.pixels().end(),207U)
+                        << " rgb=" << unsigned(palette[207].r) << ',' << unsigned(palette[207].g) << ',' << unsigned(palette[207].b) << '\n';
+                    for (auto h : game.objects().active_handles()) {
+                        const auto& o=game.objects().at(h);
+                        if(o.strategy_address == ex_crosshair_strategy_address)
+                            std::cerr << "sight " << h << " shape=" << o.shape << " flags=" << unsigned(o.strategy_flags[0]) << ',' << unsigned(o.strategy_flags[3]) << "\n";
+                    }
                     const auto& trace_ppu = game.map().ppu_state();
                     std::cerr << "render-state flow="
                               << static_cast<unsigned>(game.flow_state())

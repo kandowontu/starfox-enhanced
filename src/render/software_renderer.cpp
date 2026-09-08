@@ -1278,7 +1278,8 @@ void draw_simple_scaled_sprite(
                 + static_cast<std::size_t>(source_x)];
             if (texel != 0U) {
                 target.set(left + x, top + y,
-                    static_cast<std::uint8_t>(colour_index_base + texel));
+                    pose.palette_override.value_or(
+                        static_cast<std::uint8_t>(colour_index_base + texel)));
             }
         }
     }
