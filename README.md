@@ -19,7 +19,8 @@ first launch it validates the user's own unmodified Star Fox USA v1.2 (Rev 2)
 ROM, reconstructs the Original and Star Fox EX runtime data locally, and writes
 one version-bound `Starfox-Assets.BIN` companion beside the executable. Later
 launches use that validated companion without requiring the retail ROM to stay
-present. `v0.0.5` is the current public alpha release. See
+present. `v0.0.5.1` is the current public alpha release. See
+[the 0.0.5.1 changelog](docs/RELEASE-0.0.5.1.md) and
 [the full 0.0.5 changelog](docs/RELEASE-0.0.5.md).
 
 This project utilizes Codex GPT 5.6 Sol at Ex-High thought.
@@ -64,16 +65,22 @@ option reads `NOT FOUND` and cannot be enabled. Rumble is on by default for
 Original and plays the authored
 UltraStarFox sequences on compatible SDL, XInput, and Steam Input controllers.
 The Options page also provides independent MUSIC and SFX volume controls.
-Main-page `MODEL EFFECTS` and `WORLD EFFECTS` independently offer OFF,
+The main page opens dedicated **2D Options** and **3D Options** submenus,
+keeping full-height text and all main-page entries visible without scrolling.
+2D Options contains 2D Filter, 2D Bloom, World Effects and World Effect Intensity.
+3D Options contains Anti-Aliasing, VSync, Render Upscale, 3D Bloom, 3D Smoothing,
+RTX Lighting, Model Effects and Model Effect Intensity. B or BACK returns to
+the corresponding main-page entry; live Preview stays active in either submenu.
+`MODEL EFFECTS` and `WORLD EFFECTS` independently offer OFF,
 INK, NEON, MONOCHROME, DITHERED, SEPIA,
 THERMAL, NIGHT VISION, PASTEL, COMIC, and VAPORWAVE. The newer styles add warm
 vintage tones, a false-color heat palette, green scanlines, soft colors,
 halftone shading, and a purple/cyan palette respectively. CEL-DRAWN is model-only;
 BLUEPRINT is world-only. World effects
-cover the ground, sky, scenery and stars. Options provides separate model/world
-intensities from 0–100% in 10% steps, plus Controller Remap. All effect choices
+cover the ground, sky, scenery and stars. Each graphics submenu provides its
+effect intensity from 0–100% in 10% steps. Controller Remap remains in Options. All effect choices
 are saved; older settings retain their model style with world effects OFF.
-The main-page `2D BLOOM` and `3D BLOOM` options independently offer OFF (default),
+The `2D BLOOM` and `3D BLOOM` options independently offer OFF (default),
 LOW, MEDIUM, and HEAVY for scenery and model light sources. They extract bright
 pixels in linear light and spread tight and broad halos; HUD is excluded.
 Older combined Bloom settings migrate to the same strength for both options.

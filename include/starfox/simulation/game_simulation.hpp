@@ -84,7 +84,23 @@ inline constexpr std::size_t render_scale_count = 4U;
 enum class PregamePage {
     main,
     options,
+    two_d,
+    three_d,
 };
+
+inline constexpr std::array<std::uint8_t, 12> main_menu_order{
+    0,1,2,3,4,5,6,20,21,14,15,16};
+inline constexpr std::array<std::uint8_t, 5> two_d_menu_order{8,18,13,24,23};
+inline constexpr std::array<std::uint8_t, 9> three_d_menu_order{7,11,9,17,19,10,12,22,23};
+inline constexpr std::array<std::uint8_t, 10> options_menu_order{0,1,2,3,4,5,6,7,8,11};
+inline std::span<const std::uint8_t> pregame_menu_order(PregamePage page) {
+    switch (page) {
+    case PregamePage::two_d: return two_d_menu_order;
+    case PregamePage::three_d: return three_d_menu_order;
+    case PregamePage::options: return options_menu_order;
+    default: return main_menu_order;
+    }
+}
 
 enum class CrosshairColour {
     green,

@@ -2706,15 +2706,11 @@ public:
         // previous 100 ms prime was consumed during that 1.5-second pause in
         // game activity, so source audio began with an empty SDL queue and
         // underruns on the first scheduling wobble. A small, non-emulated
-        // lead-in starts the real stream with one raster phase of headroom
+        // lead-in starts the real stream with more than one logic tick of headroom
         // without advancing the SPC ahead of cartridge state.
-#if defined(__SWITCH__)
         constexpr std::size_t startup_frames =
-            starfox::audio::Spc700Audio::sample_rate * 8U / 1'000U;
-#else
-        constexpr std::size_t startup_frames =
-            starfox::audio::Spc700Audio::sample_rate * 64U / 1'000U;
-#endif
+            starfox::audio::Spc700Audio::sample_rate
+                * starfox::app::realtime_audio_startup_ms / 1'000U;
         const std::array<std::int16_t, startup_frames * 2U> silence{};
         if (!SDL_PutAudioStreamData(stream_, silence.data(),
                 static_cast<int>(silence.size() * sizeof(silence.front())))) {
@@ -2819,13 +2815,9 @@ public:
                 (fast_sample_phase_ + source_frames) % speed_multiplier);
             queued_samples = fast_samples_;
         }
-#if defined(__SWITCH__)
         constexpr auto max_queued_frames =
-            starfox::audio::Spc700Audio::sample_rate / 10U;
-#else
-        constexpr auto max_queued_frames =
-            starfox::audio::Spc700Audio::sample_rate * 150U / 1'000U;
-#endif
+            starfox::audio::Spc700Audio::sample_rate
+                * starfox::app::realtime_audio_limit_ms / 1'000U;
         if (queue_output && !starfox::app::queue_realtime_audio(
                 stream_, queued_samples, max_queued_frames)) {
             throw std::runtime_error{
@@ -7214,11 +7206,7 @@ int main(int argc, char** argv) {
                             game.pregame_selection() == 7U);
                         draw_row("CONTROLLER", "A  REMAP", 170,
                             game.pregame_selection() == 8U);
-                        draw_row("MODEL INTENSITY", std::to_string(game.effect_intensity()) + "%", 182,
-                            game.pregame_selection() == 9U);
-                        draw_row("WORLD INTENSITY", std::to_string(game.world_effect_intensity()) + "%", 194,
-                            game.pregame_selection() == 10U);
-                        draw_row("BACK", "", 206,
+                        draw_row("BACK", "", 194,
                             game.pregame_selection() == 11U);
                         const auto draw_volume_bar = [&framebuffer,
                                                          viewport_origin](
@@ -7258,7 +7246,7 @@ int main(int argc, char** argv) {
                         draw_volume_bar(163, game.sfx_volume(),
                             game.pregame_selection() == 7U);
                         constexpr std::array<std::int32_t, 12> cursor_y{
-                            43, 58, 73, 88, 103, 118, 133, 157, 173, 185, 197, 209};
+                            43, 58, 73, 88, 103, 118, 133, 157, 173, 185, 197, 197};
                         draw_cursor(cursor_y[game.pregame_selection()]);
                     } else {
                         const auto timing = game.timing_mode()
@@ -7287,39 +7275,47 @@ int main(int argc, char** argv) {
                             == starfox::simulation::Experience::original
                             ? std::string_view{"ORIGINAL"}
                             : std::string_view{"STARFOX EX"};
-                        constexpr std::array<std::int32_t, 20> row_y{
-                            23,33,43,53,63,73,83,93,113,123,163,103,173,183,193,203,213,143,133,153};
+                        const auto visual_order = starfox::simulation::pregame_menu_order(game.pregame_page());
+                        const bool main_page = game.pregame_page() == starfox::simulation::PregamePage::main;
+                        if (!main_page) draw_centred(game.pregame_page() == starfox::simulation::PregamePage::two_d
+                            ? "2D OPTIONS" : "3D OPTIONS", 27, 10U);
+                        std::array<std::int32_t, 25> row_y;
+                        row_y.fill(-1);
+                        for (unsigned row = 0; row < visual_order.size(); ++row) {
+                            row_y[visual_order[row]] = main_page ? 28 + row * 14 : 48 + row * 18;
+                        }
                         const auto on_off = [](bool enabled) {
                             return enabled ? std::string_view{"ON"}
                                            : std::string_view{"OFF"};
                         };
-                        const auto draw_compact_row =
+                        const auto draw_graphics_row =
                             [&text_renderer, &framebuffer, viewport_origin,
                                 menu_label_x, menu_value_right](
                                 std::string_view label, std::string_view value,
                                 std::int32_t y, bool selected) {
+                                if (y < 0) return;
                                 const auto colour = static_cast<std::uint8_t>(
                                     selected ? 14U : 7U);
-                                text_renderer.draw_ascii_compact(label,
+                                text_renderer.draw_ascii(label,
                                     menu_label_x + viewport_origin,
                                     y, framebuffer, colour);
                                 if (!value.empty()) {
-                                    text_renderer.draw_ascii_compact(value,
+                                    text_renderer.draw_ascii(value,
                                         menu_value_right
                                             - text_renderer.measure_ascii(value)
                                             + viewport_origin,
                                         y, framebuffer, colour);
                                 }
                             };
-                        draw_compact_row("EXPERIENCE", experience, row_y[0],
+                        draw_graphics_row("EXPERIENCE", experience, row_y[0],
                             game.pregame_selection() == 0U);
-                        draw_compact_row("PACE/SPEED", timing, row_y[1],
+                        draw_graphics_row("PACE/SPEED", timing, row_y[1],
                             game.pregame_selection() == 1U);
-                        draw_compact_row("RENDER FPS", presentation, row_y[2],
+                        draw_graphics_row("RENDER FPS", presentation, row_y[2],
                             game.pregame_selection() == 2U);
-                        draw_compact_row("DISPLAY", display, row_y[3],
+                        draw_graphics_row("DISPLAY", display, row_y[3],
                             game.pregame_selection() == 3U);
-                        draw_compact_row("RENDERER",
+                        draw_graphics_row("RENDERER",
                             game.renderer_mode()
                                     == starfox::simulation::RendererMode::gpu
                                 ? std::string_view{"GPU"}
@@ -7328,43 +7324,48 @@ int main(int argc, char** argv) {
                         const auto msu1_value = game.msu1_available()
                             ? on_off(game.msu1_music())
                             : std::string_view{"NOT FOUND"};
-                        draw_compact_row("MSU-1 MUSIC", msu1_value,
+                        draw_graphics_row("MSU-1 MUSIC", msu1_value,
                             row_y[5], game.pregame_selection() == 5U);
-                        draw_compact_row("RUMBLE", on_off(game.rumble()), row_y[6],
+                        draw_graphics_row("RUMBLE", on_off(game.rumble()), row_y[6],
                             game.pregame_selection() == 6U);
-                        draw_compact_row("ANTI-ALIASING",
+                        draw_graphics_row("ANTI-ALIASING",
                             anti_aliasing_name(game.anti_aliasing_mode()), row_y[7],
                             game.pregame_selection() == 7U);
-                        draw_compact_row("2D FILTER",
+                        draw_graphics_row("2D FILTER",
                             two_d_filter_name(game.two_d_filter()), row_y[8],
                             game.pregame_selection() == 8U);
-                        draw_compact_row("RENDER UPSCALE",
+                        draw_graphics_row("RENDER UPSCALE",
                             render_scale_name(game.render_scale()), row_y[9],
                             game.pregame_selection() == 9U);
-                        draw_compact_row("RTX LIGHTING",
+                        draw_graphics_row("RTX LIGHTING",
                             std::array<std::string_view, 4>{
                                 "OFF", "LOW", "MEDIUM", "HIGH"}
                                 [game.rtx_lighting_intensity()], row_y[10],
                             game.pregame_selection() == 10U);
-                        draw_compact_row("VSYNC", on_off(game.vsync()), row_y[11],
+                        draw_graphics_row("VSYNC", on_off(game.vsync()), row_y[11],
                             game.pregame_selection() == 11U);
-                        draw_compact_row("MODEL EFFECTS", starfox::render::effect_names[game.effect()], row_y[12],
+                        draw_graphics_row("MODEL EFFECTS", starfox::render::effect_names[game.effect()], row_y[12],
                             game.pregame_selection() == 12U);
-                        draw_compact_row("WORLD EFFECTS", starfox::render::effect_names[game.world_effect()], row_y[13],
+                        draw_graphics_row("WORLD EFFECTS", starfox::render::effect_names[game.world_effect()], row_y[13],
                             game.pregame_selection() == 13U);
-                        draw_compact_row("OPTIONS", "A  OPEN", row_y[14],
+                        draw_graphics_row("OPTIONS", "A  OPEN", row_y[14],
                             game.pregame_selection() == 14U);
-                        draw_compact_row("START GAME", "", row_y[15],
+                        draw_graphics_row("START GAME", "", row_y[15],
                             game.pregame_selection() == 15U);
-                        draw_compact_row("PREVIEW", on_off(game.preview_requested()), row_y[16],
+                        draw_graphics_row("PREVIEW", on_off(game.preview_requested()), row_y[16],
                             game.pregame_selection() == 16U);
-                        draw_compact_row("3D BLOOM", starfox::render::bloom_names[game.bloom()], row_y[17],
+                        draw_graphics_row("3D BLOOM", starfox::render::bloom_names[game.bloom()], row_y[17],
                             game.pregame_selection() == 17U);
-                        draw_compact_row("2D BLOOM", starfox::render::bloom_names[game.bloom_2d()], row_y[18],
+                        draw_graphics_row("2D BLOOM", starfox::render::bloom_names[game.bloom_2d()], row_y[18],
                             game.pregame_selection() == 18U);
-                        draw_compact_row("3D SMOOTHING", starfox::render::bloom_names[game.model_smoothing()], row_y[19],
+                        draw_graphics_row("3D SMOOTHING", starfox::render::bloom_names[game.model_smoothing()], row_y[19],
                             game.pregame_selection() == 19U);
-                        draw_cursor(row_y[game.pregame_selection()] + 4);
+                        draw_graphics_row("2D OPTIONS", "A  OPEN", row_y[20], game.pregame_selection() == 20U);
+                        draw_graphics_row("3D OPTIONS", "A  OPEN", row_y[21], game.pregame_selection() == 21U);
+                        draw_graphics_row("MODEL EFFECT INTENSITY", std::to_string(game.effect_intensity()) + "%", row_y[22], game.pregame_selection() == 22U);
+                        draw_graphics_row("WORLD EFFECT INTENSITY", std::to_string(game.world_effect_intensity()) + "%", row_y[24], game.pregame_selection() == 24U);
+                        draw_graphics_row("BACK", "", row_y[23], game.pregame_selection() == 23U);
+                        draw_cursor(row_y[game.pregame_selection()] + 5);
                     }
                 }
             }

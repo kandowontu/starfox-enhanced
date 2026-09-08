@@ -9,6 +9,12 @@
 
 namespace starfox::app {
 
+// Producer packets cover 50 ms. Keep more than one packet of startup headroom
+// so a delayed render tick does not expose silence on the audio device. The
+// bounded FIFO still prevents the multi-second lag previously seen on Switch.
+inline constexpr std::uint32_t realtime_audio_startup_ms = 64U;
+inline constexpr std::uint32_t realtime_audio_limit_ms = 150U;
+
 // SDL reports queued bytes in the stream's INPUT format. This stream always
 // accepts interleaved S16 stereo, even when the device resamples to 48 kHz.
 // Limit only the playback FIFO: callers must still run every SPC/MSU update

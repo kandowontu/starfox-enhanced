@@ -6158,27 +6158,69 @@ int main(int argc, char** argv) {
                             upstream_symbols.find("TITLEMAP").front() >> 16U),
                 "attract-mode input did not return to the title map");
 
+        const auto select_menu_action = [](starfox::simulation::GameSimulation& menu,
+            starfox::simulation::PregamePage page, unsigned action,
+            starfox::audio::Spc700Audio* audio = nullptr) {
+            using starfox::simulation::PregamePage;
+            const auto press = [&](starfox::input::ButtonMask button) {
+                const auto tick = menu.tick({0, button, 0});
+                if (audio) {
+                    static_cast<void>(audio->render_logic_tick(tick.audio_port_writes));
+                    menu.synchronize_apu_output_ports(audio->output_ports());
+                }
+            };
+            const auto select = [&](unsigned target) {
+                for (unsigned i = 0; i < 25 && menu.pregame_selection() != target; ++i)
+                    press(starfox::input::down);
+                require(menu.pregame_selection() == target, "menu action is unreachable");
+            };
+            if (menu.pregame_page() != page) {
+                if (menu.pregame_page() != PregamePage::main)
+                    press(starfox::input::b);
+                if (page != PregamePage::main) {
+                    select(page == PregamePage::two_d ? 20U : page == PregamePage::three_d ? 21U : 14U);
+                    press(starfox::input::a);
+                }
+            }
+            require(menu.pregame_page() == page, "graphics submenu did not open");
+            select(action);
+        };
         {
             starfox::simulation::GameSimulation preview{
                 upstream_rom, upstream_symbols, "LEVEL1_1"};
             require(!preview.preview_requested(), "preview must default off");
             preview.enable_menu_preview();
+            for (auto page : {starfox::simulation::PregamePage::two_d,
+                    starfox::simulation::PregamePage::three_d}) {
+                const auto order = starfox::simulation::pregame_menu_order(page);
+                select_menu_action(preview, page, order.front());
+                for (unsigned i = 0; i < order.size(); ++i) {
+                    require(preview.pregame_selection() == order[i], "submenu visual order differs from navigation");
+                    static_cast<void>(preview.tick({0, starfox::input::down, 0}));
+                }
+                require(preview.pregame_selection() == order.front(), "submenu forward wrap failed");
+                static_cast<void>(preview.tick({0, starfox::input::up, 0}));
+                require(preview.pregame_selection() == 23U, "submenu reverse wrap must reach BACK");
+                static_cast<void>(preview.tick({0, starfox::input::a, 0}));
+                require(preview.pregame_page() == starfox::simulation::PregamePage::main
+                    && preview.pregame_selection() == (page == starfox::simulation::PregamePage::two_d ? 20U : 21U)
+                    && preview.preview_requested(), "BACK must restore submenu entry and preserve preview");
+            }
             require(preview.bloom() == 0U, "Bloom must default Off");
-            for (unsigned row=0; row<7; ++row) static_cast<void>(preview.tick({0, starfox::input::up, 0}));
+            select_menu_action(preview, starfox::simulation::PregamePage::three_d, 17U);
             for (unsigned level = 1; level <= 4; ++level) {
                 static_cast<void>(preview.tick({0, starfox::input::a, 0}));
                 require(preview.bloom() == level % 4, "Bloom option did not cycle all levels");
             }
             static_cast<void>(preview.tick({0, starfox::input::left, 0}));
             require(preview.bloom() == 3U, "Bloom backwards wrap failed");
-            static_cast<void>(preview.tick({0, starfox::input::up, 0}));
+            select_menu_action(preview, starfox::simulation::PregamePage::two_d, 18U);
             require(preview.pregame_selection() == 18U && preview.bloom_2d() == 0U,
                 "2D Bloom did not default off independently");
             static_cast<void>(preview.tick({0, starfox::input::a, 0}));
             require(preview.bloom_2d() == 1U && preview.bloom() == 3U,
                 "2D Bloom changed 3D Bloom");
-            static_cast<void>(preview.tick({0, starfox::input::down, 0}));
-            for (unsigned row=0; row<7; ++row) static_cast<void>(preview.tick({0, starfox::input::down, 0}));
+            select_menu_action(preview, starfox::simulation::PregamePage::main, 16U);
             const auto object_count = preview.objects().active_handles().size();
             const auto brightness = preview.map().display_brightness();
             for (unsigned frame = 0; frame < 20; ++frame) {
@@ -6334,6 +6376,7 @@ int main(int argc, char** argv) {
         require(boot_game.rumble(),
                 "pre-game rumble option did not re-enable");
         drive_boot({0, starfox::input::down, 0});
+        select_menu_action(boot_game, starfox::simulation::PregamePage::three_d, 7U, &boot_audio);
         require(boot_game.pregame_selection() == 7U,
                 "pre-game cursor did not reach ANTI-ALIASING");
         drive_boot({0, starfox::input::a, 0});
@@ -6361,16 +6404,19 @@ int main(int argc, char** argv) {
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.vsync(), "pre-game VSync option did not enable");
         drive_boot({0, starfox::input::up, 0});
+        select_menu_action(boot_game, starfox::simulation::PregamePage::three_d, 7U, &boot_audio);
         require(boot_game.pregame_selection() == 7U,
                 "VSYNC reverse navigation did not reach ANTI-ALIASING");
         drive_boot({0, starfox::input::down, 0});
         drive_boot({0, starfox::input::down, 0});
+        select_menu_action(boot_game, starfox::simulation::PregamePage::two_d, 8U, &boot_audio);
         require(boot_game.pregame_selection() == 8U,
                 "pre-game cursor did not reach 2D FILTER");
         drive_boot({0, starfox::input::a, 0});
         require((boot_game.two_d_filter() != starfox::simulation::TwoDFilterMode::off),
                 "pre-game enhanced texture filtering did not enable");
         drive_boot({0, starfox::input::down, 0});
+        select_menu_action(boot_game, starfox::simulation::PregamePage::three_d, 9U, &boot_audio);
         require(boot_game.pregame_selection() == 9U,
                 "pre-game cursor did not reach RENDER UPSCALE");
         drive_boot({0, starfox::input::a, 0});
@@ -6391,12 +6437,15 @@ int main(int argc, char** argv) {
                     && !boot_game.smooth_polys(),
                 "Render Upscale enabled the replaced legacy effect");
         drive_boot({0, starfox::input::down, 0});
+        select_menu_action(boot_game, starfox::simulation::PregamePage::two_d, 18U, &boot_audio);
         require(boot_game.pregame_selection() == 18U,
                 "2D BLOOM did not follow Render Upscale");
         drive_boot({0, starfox::input::down, 0});
+        select_menu_action(boot_game, starfox::simulation::PregamePage::three_d, 17U, &boot_audio);
         require(boot_game.pregame_selection() == 17U,
                 "3D BLOOM did not follow 2D BLOOM");
         drive_boot({0, starfox::input::down, 0});
+        select_menu_action(boot_game, starfox::simulation::PregamePage::three_d, 19U, &boot_audio);
         require(boot_game.pregame_selection() == 19U && boot_game.model_smoothing()==0U,
                 "3D SMOOTHING missing or not default Off");
         for(unsigned level=1;level<=4;++level) {
@@ -6404,6 +6453,7 @@ int main(int argc, char** argv) {
             require(boot_game.model_smoothing()==level%4U,"3D SMOOTHING did not cycle all levels");
         }
         drive_boot({0, starfox::input::down, 0});
+        select_menu_action(boot_game, starfox::simulation::PregamePage::three_d, 10U, &boot_audio);
         require(boot_game.pregame_selection() == 10U,
                 "pre-game cursor did not reach RTX LIGHTING");
         drive_boot({0, starfox::input::a, 0});
@@ -6419,6 +6469,7 @@ int main(int argc, char** argv) {
         drive_boot({0, starfox::input::left, 0});
         require(boot_game.rtx_lighting_intensity() == 3U, "lighting did not cycle backwards");
         drive_boot({0, starfox::input::down, 0});
+        select_menu_action(boot_game, starfox::simulation::PregamePage::three_d, 12U, &boot_audio);
         require(boot_game.pregame_selection() == 12U,
                 "pre-game cursor did not reach MODEL EFFECTS");
         drive_boot({0, starfox::input::a, 0});
@@ -6435,6 +6486,7 @@ int main(int argc, char** argv) {
                     == starfox::simulation::GameFlowState::pregame_menu,
                 "MODEL EFFECTS selection incorrectly started the game");
         drive_boot({0, starfox::input::down, 0});
+        select_menu_action(boot_game, starfox::simulation::PregamePage::two_d, 13U, &boot_audio);
         require(boot_game.pregame_selection() == 13U,
                 "pre-game cursor did not reach WORLD EFFECTS");
         drive_boot({0, starfox::input::a, 0});
@@ -6448,6 +6500,7 @@ int main(int argc, char** argv) {
             "world selector did not wrap to the newest style");
         boot_game.set_world_effect(2U);
         drive_boot({0, starfox::input::down, 0});
+        select_menu_action(boot_game, starfox::simulation::PregamePage::main, 14U, &boot_audio);
         require(boot_game.pregame_selection() == 14U,
                 "pre-game cursor did not reach OPTIONS");
         drive_boot({0, starfox::input::a, 0});
@@ -6529,20 +6582,17 @@ int main(int argc, char** argv) {
         require(boot_game.pregame_selection() == 8U,
                 "pre-game cursor did not reach CONTROLLER");
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 9U,
-                "pre-game cursor did not reach INTENSITY");
+        select_menu_action(boot_game, starfox::simulation::PregamePage::three_d, 22U, &boot_audio);
         require(boot_game.effect_intensity() == 100U, "intensity default changed");
         drive_boot({0, starfox::input::left, 0});
         require(boot_game.effect_intensity() == 90U, "intensity did not step down");
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 10U,
-                "pre-game cursor did not reach WORLD INTENSITY");
+        select_menu_action(boot_game, starfox::simulation::PregamePage::two_d, 24U, &boot_audio);
         drive_boot({0, starfox::input::left, 0});
         require(boot_game.world_effect_intensity() == 90U && boot_game.effect_intensity() == 90U,
             "world intensity did not change independently");
         drive_boot({0, starfox::input::down, 0});
-        require(boot_game.pregame_selection() == 11U,
-                "pre-game cursor did not reach OPTIONS BACK");
+        select_menu_action(boot_game, starfox::simulation::PregamePage::options, 11U, &boot_audio);
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.pregame_page()
                      == starfox::simulation::PregamePage::main

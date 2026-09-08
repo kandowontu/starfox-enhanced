@@ -1091,25 +1091,42 @@ GameTickResult GameSimulation::tick_pregame_menu(
     pregame_horizontal_blocked_ = (input.held & horizontal) != 0U;
 
     const auto previous_selection = pregame_selection_;
-    const auto selection_count = pregame_page_ == PregamePage::main
-        ? std::uint8_t{20U} : std::uint8_t{12U};
-    // Keep existing action IDs stable while placing Bloom immediately after
-    // Render Upscale. Selection follows this same visual order in both directions.
-    constexpr std::array<std::uint8_t, 20> main_order{
-        0,1,2,3,4,5,6,7,11,8,9,18,17,19,10,12,13,14,15,16};
-    if (pregame_page_ == PregamePage::main
-        && (menu_input.pressed & (starfox::input::up | starfox::input::down))) {
-        const auto current = std::find(main_order.begin(), main_order.end(), pregame_selection_) - main_order.begin();
-        const auto delta = (menu_input.pressed & starfox::input::up) ? 19U : 1U;
-        pregame_selection_ = main_order[(current + delta) % main_order.size()];
-    } else if ((menu_input.pressed & starfox::input::up) != 0U) {
-        pregame_selection_ = static_cast<std::uint8_t>(
-            (pregame_selection_ + selection_count - 1U) % selection_count);
-    } else if ((menu_input.pressed & starfox::input::down) != 0U) {
-        pregame_selection_ = static_cast<std::uint8_t>(
-            (pregame_selection_ + 1U) % selection_count);
+    const auto order = pregame_menu_order(pregame_page_);
+    if (menu_input.pressed & (starfox::input::up | starfox::input::down)) {
+        const auto current = std::find(order.begin(), order.end(), pregame_selection_) - order.begin();
+        const auto delta = (menu_input.pressed & starfox::input::up) ? order.size() - 1U : 1U;
+        pregame_selection_ = order[(current + delta) % order.size()];
     }
     if (pregame_selection_ != previous_selection) queue_sound_effect(0x11U);
+
+    const bool graphics_page = pregame_page_ == PregamePage::two_d
+        || pregame_page_ == PregamePage::three_d;
+    if (graphics_page && ((menu_input.pressed & starfox::input::b)
+        || (pregame_selection_ == 23U && (menu_input.pressed
+            & (starfox::input::a | starfox::input::select))))) {
+        pregame_selection_ = pregame_page_ == PregamePage::two_d ? 20U : 21U;
+        pregame_page_ = PregamePage::main;
+        queue_sound_effect(0x11U);
+        result.audio_port_writes = map_.take_apu_port_writes();
+        return result;
+    }
+    if (pregame_page_ == PregamePage::main
+        && (pregame_selection_ == 20U || pregame_selection_ == 21U)
+        && (menu_input.pressed & (starfox::input::a | starfox::input::select))) {
+        pregame_page_ = pregame_selection_ == 20U ? PregamePage::two_d : PregamePage::three_d;
+        pregame_selection_ = pregame_menu_order(pregame_page_).front();
+        queue_sound_effect(0x11U);
+        result.audio_port_writes = map_.take_apu_port_writes();
+        return result;
+    }
+    if (graphics_page && (pregame_selection_ == 22U || pregame_selection_ == 24U)
+        && (menu_input.pressed & (starfox::input::a | starfox::input::select
+            | starfox::input::left | starfox::input::right))) {
+        auto& intensity = pregame_selection_ == 22U ? effect_intensity_ : world_effect_intensity_;
+        const auto delta = (menu_input.pressed & starfox::input::left) ? -10 : 10;
+        intensity = static_cast<std::uint8_t>(std::clamp(int(intensity) + delta, 0, 100));
+        queue_sound_effect(0x11U);
+    }
 
     if (pregame_page_ == PregamePage::options) {
         const auto go_back = (menu_input.pressed & starfox::input::b) != 0U
@@ -1119,14 +1136,6 @@ GameTickResult GameSimulation::tick_pregame_menu(
         if (go_back) {
             pregame_page_ = PregamePage::main;
             pregame_selection_ = 14U;
-            queue_sound_effect(0x11U);
-        } else if ((pregame_selection_ == 9U || pregame_selection_ == 10U)
-                   && (menu_input.pressed & (starfox::input::left
-                       | starfox::input::right | starfox::input::select
-                       | starfox::input::a)) != 0U) {
-            const auto delta = (menu_input.pressed & starfox::input::left) ? -10 : 10;
-            auto& intensity = pregame_selection_ == 9U ? effect_intensity_ : world_effect_intensity_;
-            intensity = static_cast<std::uint8_t>(std::clamp(int(intensity) + delta, 0, 100));
             queue_sound_effect(0x11U);
         } else if (pregame_selection_ == 0U
                    && (menu_input.pressed & (starfox::input::left

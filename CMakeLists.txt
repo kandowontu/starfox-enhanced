@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(starfox_enhanced VERSION 0.0.5 LANGUAGES CXX)
+project(starfox_enhanced VERSION 0.0.5.1 LANGUAGES CXX)
 
 if(WINDOWS_STORE)
     # Apply the UWP ABI to the entire dependency graph, not only the SDL entry
@@ -407,7 +407,7 @@ if(STARFOX_BUILD_RUNTIME)
             VERBATIM)
         set(STARFOX_UWP_MANIFEST
             "${CMAKE_CURRENT_BINARY_DIR}/Package.appxmanifest")
-        set(STARFOX_UWP_BUILD_REVISION "0" CACHE STRING
+        set(STARFOX_UWP_BUILD_REVISION "${PROJECT_VERSION_TWEAK}" CACHE STRING
             "Fourth component of the Xbox UWP package version")
         if(NOT STARFOX_UWP_BUILD_REVISION MATCHES "^[0-9]+$")
             message(FATAL_ERROR
@@ -711,6 +711,7 @@ if(STARFOX_BUILD_RUNTIME)
     endif()
     install(FILES README.md CREDITS.md THIRD_PARTY_NOTICES.md LICENSE-XBRZ.txt DESTINATION .)
     install(FILES docs/RELEASE-0.0.5.md DESTINATION docs)
+    install(FILES docs/RELEASE-0.0.5.1.md DESTINATION docs)
 
 endif()
 

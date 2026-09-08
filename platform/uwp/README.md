@@ -5,7 +5,7 @@ Developer Mode. Upload the `.appx`, the included x64 package in `Dependencies`,
 and the `.cer` through Xbox Device Portal. It is not a retail Xbox package and
 cannot run outside Developer Mode.
 
-Current alpha package: **0.0.5.0** (check all four version numbers in Device
+Current alpha package: **0.0.5.1** (check all four version numbers in Device
 Portal). It includes the fixes tested in the 0.0.3 revisions below. Revision
 2 fixed accidental desktop C++ runtime imports and the audio startup deadlock;
 the Series S tester now confirms that it boots. Revision 3 enables the WinRT
