@@ -167,7 +167,7 @@ jobs:
           }
           $dependencies = @(Get-ChildItem -LiteralPath "$root/Dependencies/x64" `
             -File -Filter '*.appx' -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -match '^Microsoft\.VCLibs\.140\.00' })
+            Where-Object { $_.Name -match '^Microsoft\.VCLibs(?:\.140\.00.*|\.x64\.14\.00)\.appx$' })
           if ($dependencies.Count -ne 1) {
             throw 'Xbox UWP VCLibs x64 dependency is missing or ambiguous'
           }

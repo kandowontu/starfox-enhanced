@@ -141,6 +141,9 @@ if(STARFOX_ENABLE_XBRZ)
     add_library(xbrz_filter STATIC "${xbrz_SOURCE_DIR}/xbrz.cpp")
     target_include_directories(xbrz_filter SYSTEM PUBLIC "${xbrz_SOURCE_DIR}")
     target_compile_features(xbrz_filter PUBLIC cxx_std_20)
+    # Upstream's debug-only pixel breakpoint uses MSVC intrinsics even on
+    # other compilers. Keep this optimized third-party filter in release mode.
+    target_compile_definitions(xbrz_filter PRIVATE NDEBUG)
     set_target_properties(xbrz_filter PROPERTIES POSITION_INDEPENDENT_CODE ON)
     # The pinned xBRZ revision calls std::sqrt without including <cmath>; it
     # only ever compiled because older standard libraries leaked the
@@ -688,6 +691,9 @@ if(STARFOX_BUILD_RUNTIME)
             "Nine-character PS Vita title id")
         set(STARFOX_VITA_APP_VERSION "00.04" CACHE STRING
             "Two-component PS Vita application version")
+        # SCE metadata is appended to the executable segment by vita-elf-create.
+        # A separate adjacent read-only segment leaves no room for that data.
+        target_link_options(starfox_pc PRIVATE "-Wl,-z,noseparate-code")
         vita_create_self(eboot.bin starfox_pc)
         vita_create_vpk(StarFoxEnhanced.vpk
             "${STARFOX_VITA_TITLE_ID}" eboot.bin
