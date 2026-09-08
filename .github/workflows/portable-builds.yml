@@ -430,7 +430,8 @@ jobs:
         run: |
           vpk="dist/StarFoxEnhanced-vita/StarFoxEnhanced.vpk"
           test -s "${vpk}"
-          unzip -l "${vpk}" | grep -q 'eboot.bin'
+          cmake -E tar tf "${vpk}" > vita-contents.txt
+          grep -Fxq 'eboot.bin' vita-contents.txt
           cmake -E tar cf \
             StarFoxEnhanced-0.0.4.2-vita.zip \
             --format=zip dist/StarFoxEnhanced-vita
