@@ -6190,14 +6190,16 @@ int main(int argc, char** argv) {
                     // as Linktron jump between unrelated component poses.
                     prior = previous.end();
                 }
-                // EX emits several identical TEST_ISTRAT sight-line pieces.
-                // They are not interchangeable: matching an arbitrary old
-                // piece (or a recycled slot) made a newborn reticle fly back
-                // from the far end of the sight line. Preserve native entity
-                // identity even when shape/strategy/type are all identical.
+                // EX recycles particles through fixed sight-line stations.
+                // Match station depth rather than interpolating a particle
+                // as it advances from the near station to the far station.
                 auto birth = current_transform->second;
-                if (prior == previous.end() && ex_crosshair_strategy_address != 0U
+                const starfox::render::ObjectPresentationSnapshot* sight_prior = nullptr;
+                if (ex_crosshair_strategy_address != 0U
                     && object.strategy_address == ex_crosshair_strategy_address) {
+                    sight_prior = starfox::render::reticle_previous_snapshot(
+                        current_transform->second, current, previous, game.player());
+                    prior = previous.end();
                     const auto owner = current.find(game.player());
                     const auto old_owner = previous.find(game.player());
                     if (owner != current.end() && old_owner != previous.end()) {
@@ -6211,8 +6213,8 @@ int main(int argc, char** argv) {
                         birth.rotation_matrix = old_owner->second.rotation_matrix;
                     }
                 }
-                const auto& prior_snapshot = prior == previous.end()
-                    ? birth : prior->second;
+                const auto& prior_snapshot = sight_prior ? *sight_prior
+                    : prior == previous.end() ? birth : prior->second;
                 // TRAIL_ISTRAT pieces are discrete source afterimages. Moving
                 // every clone through fractional positions made the Nintendo
                 // logo look smeared after its main text had already settled.
@@ -6484,6 +6486,12 @@ int main(int argc, char** argv) {
                     }
                 }
                 auto pose = make_pose(item, false);
+                if (ex_crosshair_strategy_address != 0U
+                    && object.strategy_address == ex_crosshair_strategy_address
+                    && crosshair_tint(game.crosshair_colour())) {
+                    pose.palette_override = 128U + 4U * 16U + 15U;
+                    pose.colour_warp = false;
+                }
                 if ((object.strategy_flags[0] & 0x20U) != 0U) {
                     auto size_adjustment = static_cast<std::int16_t>(
                         std::bit_cast<std::int8_t>(object.texture_scroll_x));

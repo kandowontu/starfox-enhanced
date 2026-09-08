@@ -5,6 +5,8 @@
 #include "starfox/timing/fixed_step.hpp"
 
 #include <unordered_map>
+#include <limits>
+#include <cstdlib>
 
 namespace starfox::render {
 
@@ -19,6 +21,34 @@ struct ObjectPresentationSnapshot {
 
 using ObjectSnapshotMap = std::unordered_map<simulation::ObjectHandle,
     ObjectPresentationSnapshot>;
+
+// EX implements the sight line as recycled, advancing particles. Presentation
+// must match the sight's depth stations, not the particle that moves from one
+// station to the next during a native tick.
+inline const ObjectPresentationSnapshot* reticle_previous_snapshot(
+    const ObjectPresentationSnapshot& sight, const ObjectSnapshotMap& current,
+    const ObjectSnapshotMap& previous, simulation::ObjectHandle player) {
+    const auto owner = current.find(player), old_owner = previous.find(player);
+    if (owner == current.end() || old_owner == previous.end()) return nullptr;
+    const auto radius = [](const timing::TransformSnapshot& a,
+                           const timing::TransformSnapshot& b) {
+        const auto dx = static_cast<std::int64_t>(simulation::wrap16(a.x-b.x));
+        const auto dy = static_cast<std::int64_t>(simulation::wrap16(a.y-b.y));
+        const auto dz = static_cast<std::int64_t>(simulation::wrap16(a.z-b.z));
+        return dx*dx + dy*dy + dz*dz;
+    };
+    const auto target = radius(sight.transform, owner->second.transform);
+    const ObjectPresentationSnapshot* best = nullptr;
+    auto distance = std::numeric_limits<std::int64_t>::max();
+    for (const auto& [handle, candidate] : previous) {
+        if (candidate.strategy_address != sight.strategy_address
+            || candidate.shape != sight.shape || candidate.type != sight.type) continue;
+        const auto difference = std::abs(radius(candidate.transform,
+            old_owner->second.transform) - target);
+        if (difference < distance) { best = &candidate; distance = difference; }
+    }
+    return best;
+}
 
 inline ObjectSnapshotMap capture_object_snapshots(
     const simulation::ObjectPool& objects, const simulation::TrigTables& trig) {

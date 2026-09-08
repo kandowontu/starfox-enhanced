@@ -10,6 +10,7 @@
 #include <array>
 #include <algorithm>
 #include <vector>
+#include <optional>
 
 namespace starfox::render {
 
@@ -70,6 +71,9 @@ struct RenderPose {
     // ordinary projected shadow. The byte stores its alternating 4-bpp colours.
     bool force_colour{};
     std::uint8_t forced_colour{};
+    // Host HUD geometry may use a dedicated full CGRAM index, unlike native
+    // shadow materials which use two packed four-bit colors above.
+    std::optional<std::uint8_t> palette_override;
     bool simple_scaled_sprite{};
     std::uint8_t simple_sprite_colour{};
     std::int16_t simple_sprite_world_size{};

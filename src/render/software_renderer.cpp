@@ -1292,6 +1292,9 @@ FaceMaterial face_material(
     const std::array<std::int8_t, 3>& light,
     const RenderPose& pose,
     std::optional<std::uint16_t> descriptor_override = std::nullopt) {
+    if (pose.palette_override) {
+        return {{*pose.palette_override, *pose.palette_override, false}, nullptr};
+    }
     if (pose.force_colour) {
         const auto even = static_cast<std::uint8_t>(pose.forced_colour & 0x0fU);
         const auto odd = static_cast<std::uint8_t>(pose.forced_colour >> 4U);

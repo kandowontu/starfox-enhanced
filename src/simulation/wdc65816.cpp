@@ -1633,8 +1633,17 @@ struct Wdc65816::Impl {
         auto x = static_cast<std::int32_t>(signed16(read_superfx16(m_x1)));
         const auto y = static_cast<std::int32_t>(
             signed16(read_superfx16(m_y1)));
-        draw_game_font_character(
-            static_cast<std::uint8_t>('0' + (digit % 10U)), x, y, 14U);
+        // MPRTNUM bypasses ASCII translation: FONT0FON starts with the ten
+        // numeric glyphs. The text translation table's digit entries are not
+        // those glyphs (notably zero becomes a solid block).
+        const auto glyph = font0fon + (digit % 10U) * 24U;
+        for (unsigned row = 0; row < 12U; ++row) {
+            const auto bits = rom->read16(glyph + row * 2U);
+            for (unsigned column = 0; column < 15U; ++column) {
+                if (bits & (0x8000U >> column))
+                    write_game_bitmap_pixel(x + column, y + row + 1, 14U);
+            }
+        }
         write_superfx16(m_x1, static_cast<std::uint16_t>(x + 8));
     }
 

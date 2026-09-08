@@ -1,0 +1,42 @@
+diff --git a/src/audio/switch/SDL_switchaudio.c b/src/audio/switch/SDL_switchaudio.c
+--- a/src/audio/switch/SDL_switchaudio.c
++++ b/src/audio/switch/SDL_switchaudio.c
+@@ -137,9 +137,26 @@ static bool SWITCHAUDIO_WaitDevice(SDL_AudioDevice *device)
+ {
+     AudioOutBuffer *released = NULL;
+     u32 released_count = 0;
+-    (void)device;
+-    if (R_FAILED(audoutWaitPlayFinish(&released, &released_count, UINT64_MAX))) {
+-        return SDL_SetError("audoutWaitPlayFinish() failed");
++    // Star Fox Enhanced: keep both hardware buffers in circulation. SDL calls
++    // PlayDevice before WaitDevice; waiting after the very first submission
++    // drains AUDOUT completely on every iteration and creates audible gaps.
++    if (!device->hidden->pipeline_started) {
++        device->hidden->pipeline_started = true;
++        return true;
++    }
++    do {
++        if (R_FAILED(audoutWaitPlayFinish(&released, &released_count, UINT64_MAX))) {
++            return SDL_SetError("audoutWaitPlayFinish() failed");
++        }
++    } while (released_count == 0);
++
++    // Reuse the buffer actually released by AUDOUT, not an assumed FIFO slot.
++    // The other buffer remains owned by the device while SDL mixes this one.
++    for (int i = 0; i < NUM_AUDIO_BUFFERS; ++i) {
++        if (released == &device->hidden->buffers[i]) {
++            device->hidden->next = i;
++            return true;
++        }
+     }
+-    return true;
++    return SDL_SetError("AUDOUT released an unknown buffer");
+ }
+diff --git a/src/audio/switch/SDL_switchaudio.h b/src/audio/switch/SDL_switchaudio.h
+--- a/src/audio/switch/SDL_switchaudio.h
++++ b/src/audio/switch/SDL_switchaudio.h
+@@ -33,3 +33,4 @@ struct SDL_PrivateAudioData
+     AudioOutBuffer buffers[NUM_AUDIO_BUFFERS]; // libnx AUDOUT buffer pool
+     int next;                                  // next pool slot to submit
++    bool pipeline_started;                     // two submissions before waiting
+ };

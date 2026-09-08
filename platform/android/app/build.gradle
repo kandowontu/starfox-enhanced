@@ -11,8 +11,8 @@ android {
         applicationId 'com.starfox.enhanced'
         minSdk 26
         targetSdk 35
-        versionCode 8
-        versionName '0.0.5.1'
+        versionCode 9
+        versionName '0.0.5.2'
 
         externalNativeBuild {
             cmake {
@@ -28,12 +28,30 @@ android {
         }
     }
 
+    signingConfigs {
+        permanent {
+            if (System.getenv('ANDROID_RELEASE_KEYSTORE_PATH')) {
+                storeFile file(System.getenv('ANDROID_RELEASE_KEYSTORE_PATH'))
+                storePassword System.getenv('ANDROID_RELEASE_PASSWORD')
+                keyAlias 'starfox-enhanced'
+                keyPassword System.getenv('ANDROID_RELEASE_PASSWORD')
+                storeType 'PKCS12'
+            }
+        }
+    }
+
     buildTypes {
         debug {
             debuggable true
+            if (System.getenv('ANDROID_RELEASE_KEYSTORE_PATH')) {
+                signingConfig signingConfigs.permanent
+            }
         }
         release {
             minifyEnabled false
+            if (System.getenv('ANDROID_RELEASE_KEYSTORE_PATH')) {
+                signingConfig signingConfigs.permanent
+            }
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
                 'proguard-rules.pro'
         }

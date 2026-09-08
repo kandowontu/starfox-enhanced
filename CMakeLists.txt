@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(starfox_enhanced VERSION 0.0.5.1 LANGUAGES CXX)
+project(starfox_enhanced VERSION 0.0.5.2 LANGUAGES CXX)
 
 if(WINDOWS_STORE)
     # Apply the UWP ABI to the entire dependency graph, not only the SDL entry
@@ -303,7 +303,12 @@ if(STARFOX_BUILD_RUNTIME)
             set(STARFOX_SDL3_PATCH_COMMAND
                 PATCH_COMMAND "${GIT_EXECUTABLE}" apply
                     --whitespace=nowarn -p3
-                    "${STARFOX_SDL3_SWITCH_PATCH}")
+                    "${STARFOX_SDL3_SWITCH_PATCH}"
+                COMMAND "${CMAKE_COMMAND}"
+                    "-DGIT_EXECUTABLE=${GIT_EXECUTABLE}"
+                    "-DSOURCE_DIR=<SOURCE_DIR>"
+                    "-DPATCH_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/sdl3-switch-audio-pipeline.patch"
+                    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/apply_git_patch_once.cmake")
         else()
             set(STARFOX_SDL3_PATCH_COMMAND "")
         endif()
@@ -712,6 +717,7 @@ if(STARFOX_BUILD_RUNTIME)
     install(FILES README.md CREDITS.md THIRD_PARTY_NOTICES.md LICENSE-XBRZ.txt DESTINATION .)
     install(FILES docs/RELEASE-0.0.5.md DESTINATION docs)
     install(FILES docs/RELEASE-0.0.5.1.md DESTINATION docs)
+    install(FILES docs/RELEASE-0.0.5.2.md DESTINATION docs)
 
 endif()
 

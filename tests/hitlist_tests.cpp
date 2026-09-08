@@ -4,6 +4,8 @@
 #include "starfox/render/background_renderer.hpp"
 #include "starfox/render/palette.hpp"
 #include "starfox/render/software_renderer.hpp"
+#include "starfox/render/object_snapshot.hpp"
+#include "starfox/assets/shape_decoder.hpp"
 #include "starfox/simulation/game_simulation.hpp"
 #include "starfox/simulation/strategy_scheduler.hpp"
 #include "starfox/timing/fixed_step.hpp"
@@ -96,6 +98,101 @@ void check_escape_explosions(const starfox::assets::RomImage& rom,
     }
     require(rejected && pool.active_handles() == before && pool.free_handles().empty(),
         "missing native objects were silently reclaimed");
+}
+
+void check_score_digits(const starfox::assets::RomImage& rom,
+    const starfox::assets::SymbolMap& symbols) {
+    const auto addr = [&](const char* name) { return symbols.find(name).at(0); };
+    starfox::simulation::Wdc65816 cpu{rom, &symbols};
+    const auto bitmap = addr("BITMAP1");
+    const auto pixel = [&](unsigned x, unsigned y) {
+        const auto base = 0x700000U | ((bitmap + ((x / 8U) * 24U + y / 8U) * 32U + (y & 7U)*2U) & 0xffffU);
+        unsigned value = 0;
+        for (unsigned p = 0; p < 4; ++p)
+            value |= ((cpu.read8(base + (p / 2U)*16U + (p & 1U)) >> (7U-(x&7U))) & 1U) << p;
+        return value;
+    };
+    for (unsigned percent = 0; percent <= 100; ++percent) {
+        for (unsigned b = 0; b < 28U*24U*32U; ++b)
+            cpu.write8(0x700000U | ((bitmap+b)&0xffffU), 0);
+        cpu.write16(addr("M_X1"), 100);
+        cpu.write16(addr("M_Y1"), 80);
+        cpu.write16(addr("M_Z1"), percent);
+        const auto entry = addr("MPRTPERC");
+        cpu.write8(0x3034, entry >> 16U);
+        cpu.write8(0x301e, entry);
+        cpu.write8(0x301f, entry >> 8U);
+        const auto digits = std::to_string(percent);
+        const unsigned left = percent >= 100 ? 92U : percent <= 9 ? 108U : 100U;
+        for (unsigned y = 0; y < 14; ++y) for (unsigned x = 88; x < 128; ++x) {
+            bool ink = false;
+            for (unsigned d = 0; d < digits.size(); ++d) {
+                const auto dx = static_cast<int>(x) - static_cast<int>(left+d*8U);
+                // MPRTNUM indexes the first ten font glyphs directly, primes
+                // an empty scanline, then plots 15 columns of each source word.
+                if (y >= 1 && y <= 12 && dx >= 0 && dx < 15)
+                    ink |= (rom.read16(addr("FONT0FON") + (digits[d]-'0')*24U + (y-1U)*2U)
+                        & (0x8000U >> dx)) != 0;
+            }
+            require(pixel(x,80+y) == (ink ? 14U : 0U), "score percentage digit pixels differ from native numeric glyphs");
+        }
+        require(cpu.read16(addr("M_X1")) == left + digits.size()*8U,
+            "percentage cursor advance changed");
+    }
+    std::cout << "Score percentages 0-100 match native glyph pixels\n";
+}
+
+void check_ex_reticle_stations(const starfox::assets::RomImage& rom,
+    const starfox::assets::SymbolMap& symbols) {
+    const auto entries = symbols.find("TEST_ISTRAT");
+    if (entries.empty()) return;
+    using namespace starfox;
+    auto game = std::make_unique<simulation::GameSimulation>(rom, symbols, "LEVEL1_1",
+        std::span<const std::uint8_t>{}, true);
+    game->set_god_mode(true);
+    const auto trig = simulation::TrigTables::load(rom, symbols);
+    for (unsigned tick=0; tick<420; ++tick) static_cast<void>(game->tick({}));
+    auto previous = render::capture_object_snapshots(game->objects(), trig);
+    bool reproduced_particle_motion = false;
+    unsigned tested = 0;
+    for (unsigned tick=0; tick<30; ++tick) {
+        static_cast<void>(game->tick({}));
+        const auto current = render::capture_object_snapshots(game->objects(), trig);
+        for (const auto& [handle,sight] : current) {
+            if (sight.strategy_address != entries.front()) continue;
+            const auto* prior = render::reticle_previous_snapshot(sight,current,previous,game->player());
+            require(prior != nullptr, "EX sight station lost its previous pose");
+            const auto& player = current.at(game->player()).transform;
+            const auto& old_player = previous.at(game->player()).transform;
+            const auto depth = simulation::wrap16(sight.transform.z-player.z);
+            const auto old = previous.find(handle);
+            if (old != previous.end() && old->second.generation == sight.generation
+                && simulation::wrap16(old->second.transform.z-old_player.z) != depth)
+                reproduced_particle_motion = true;
+            for (unsigned fps : {60U,120U,240U,480U}) for (unsigned phase=0; phase<=fps/20U; ++phase) {
+                const auto alpha = double(phase)/(fps/20U);
+                const auto pose = timing::interpolate(prior->transform,sight.transform,alpha);
+                const auto owner = timing::interpolate(old_player,player,alpha);
+                require(static_cast<std::int16_t>(std::lround(pose.z-owner.z)) == depth,
+                    "EX reticle moves between depth stations on fractional frames");
+            }
+            if (tested++ == 0) {
+                const auto shape = assets::ShapeDecoder{rom,symbols}.decode(sight.shape);
+                render::Framebuffer frame{224,192};
+                render::RenderPose pose;
+                pose.z=500;
+                pose.palette_override=207U;
+                render::SoftwareRenderer{}.draw(shape,pose,frame,false);
+                require(std::any_of(frame.pixels().begin(),frame.pixels().end(),[](auto p){return p==207U;}),
+                    "EX reticle did not use its dedicated crosshair palette index");
+                require(std::all_of(frame.pixels().begin(),frame.pixels().end(),[](auto p){return p==0U||p==207U;}),
+                    "EX reticle retained an untinted material");
+            }
+        }
+        previous=current;
+    }
+    require(tested > 20 && reproduced_particle_motion, "EX reticle motion regression did not exercise recycled native particles");
+    std::cout << "EX sight stations remain stable at 60-480 FPS and accept HUD tint\n";
 }
 
 void check_tunnel(const starfox::assets::RomImage& rom,
@@ -510,6 +607,8 @@ int main(int argc, char** argv) {
         }
         const auto rom = starfox::assets::RomImage::load(argv[1]);
         const auto symbols = starfox::assets::SymbolMap::load(argv[2]);
+        check_score_digits(rom, symbols);
+        check_ex_reticle_stations(rom, symbols);
         check_map_icon_texels(rom, symbols);
         check_escape_explosions(rom, symbols);
         check_cockpit_markers(rom, symbols);
