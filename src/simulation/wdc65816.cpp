@@ -1841,12 +1841,16 @@ struct Wdc65816::Impl {
         const auto left = static_cast<std::int32_t>(signed16(read_superfx16(m_xc))) - 16;
         const auto top = static_cast<std::int32_t>(signed16(read_superfx16(m_yc))) - 16;
         const auto palette = static_cast<std::uint8_t>(read_superfx16(mspr_pal) & 15U);
+        // MDRAWSPRITE32's CMODE uses sprite bit 5 to select the packed
+        // nibble. SPACE4 and STARWARS3 share bytes with unrelated high-bank
+        // artwork; always reading high turned Sector Y into Black Hole.
         for (std::int32_t y = 0; y < 32; ++y) {
             for (std::int32_t x = 0; x < 32; ++x) {
                 const auto texel = static_cast<std::uint8_t>(
                     texture_byte(sprite, source,
                         static_cast<std::uint32_t>(y) * 256U
-                            + static_cast<std::uint32_t>(x)) >> 4U);
+                            + static_cast<std::uint32_t>(x))
+                        >> ((sprite & 0x20U) != 0U ? 4U : 0U)) & 0x0fU;
                 if (texel != 0U) {
                     write_planet_pixel(left + x, top + y,
                         static_cast<std::uint8_t>((palette << 4U) | texel));
@@ -1887,7 +1891,8 @@ struct Wdc65816::Impl {
                 const auto texel = static_cast<std::uint8_t>(
                     texture_byte(sprite, source,
                         static_cast<std::uint32_t>(source_y) * 256U
-                            + static_cast<std::uint32_t>(source_x)) >> 4U);
+                            + static_cast<std::uint32_t>(source_x))
+                        >> ((sprite & 0x20U) != 0U ? 4U : 0U)) & 0x0fU;
                 if (texel != 0U) {
                     write_planet_pixel(left + x, top + y,
                         static_cast<std::uint8_t>((palette << 4U) | texel));

@@ -282,6 +282,24 @@ void test_coordinate_interpolation_wraps_like_source_words() {
 }
 
 void test_rotation_matrix_interpolation_is_orthonormal() {
+    constexpr starfox::simulation::MatrixQ15 held_source{
+        32766, 0, 0, 0, 32766, 0, 0, 0, 32766};
+    for (const auto alpha : {0.0, 0.001, 0.25, 0.5, 0.75, 0.999, 1.0}) {
+        require(starfox::simulation::interpolate_rotation_matrix_q15(
+                    held_source, held_source, alpha) == held_source,
+                "held mothership rotation changed between presentation frames");
+    }
+    // Reproduced from neighboring source poses at alpha 0.5. The rounded
+    // quaternion matrix has a row just above unit length: native composition
+    // wraps its positive diagonal to -32768 and visibly flips the model.
+    constexpr starfox::simulation::MatrixQ15 rounded{
+        32744, -384, 1202, 399, 32763, -404, -1198, 419, 32743};
+    const auto inverse = starfox::simulation::transpose_q15(rounded);
+    require(starfox::simulation::multiply_matrix_q15(rounded, inverse)[0] == -32768,
+        "rotation overflow reproducer stopped exercising the native boundary");
+    const auto safe = starfox::simulation::multiply_presentation_matrix_q15(rounded, inverse);
+    require(safe[0] == 32767 && safe[4] > 32760 && safe[8] > 32760,
+        "presentation composition flipped a near-identity model orientation");
     constexpr starfox::simulation::MatrixQ15 identity{
         32'767, 0, 0, 0, 32'767, 0, 0, 0, 32'767};
     constexpr starfox::simulation::MatrixQ15 quarter_turn{

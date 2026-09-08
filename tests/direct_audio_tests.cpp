@@ -31,6 +31,45 @@ std::uint64_t pcm_difference(
         });
 }
 
+void check_good_luck_tail(const starfox::assets::RomImage& rom,
+    const starfox::assets::SymbolMap& symbols) {
+    auto game = std::make_unique<starfox::simulation::GameSimulation>(
+        rom, symbols, "PLANETSELECT", std::span<const std::uint8_t>{}, true);
+    starfox::audio::Spc700Audio live, reference;
+    const auto boot = game->map().take_apu_port_writes();
+    (void)live.prime_upload_sequence(boot);
+    (void)reference.prime_upload_sequence(boot);
+    game->synchronize_apu_output_ports(live.output_ports());
+    int cue = -1;
+    bool heard_tail = false, finished = false;
+    for (int tick = 0; tick < 2000; ++tick) {
+        const auto result = game->tick({0, starfox::input::start, 0});
+        if (cue < 0 && std::find(result.sound_effect_commands.begin(),
+                result.sound_effect_commands.end(), 0x13U) != result.sound_effect_commands.end()) cue = tick;
+        (void)live.render_logic_tick(result.audio_port_writes);
+        // Leave the reference SPC untouched after dispatch, allowing the
+        // complete recorded voice to play without the next stage's bank upload.
+        (void)reference.render_logic_tick(cue < 0 || tick == cue
+            ? std::span<const starfox::simulation::ApuPortWrite>{result.audio_port_writes}
+            : std::span<const starfox::simulation::ApuPortWrite>{});
+        game->synchronize_apu_output_ports(live.output_ports());
+        if (cue < 0) continue;
+        const auto expected = reference.last_effect_samples();
+        const bool audible = std::any_of(expected.begin(), expected.end(), [](auto v) { return v != 0; });
+        if (audible) {
+            require(pcm_difference(live.last_effect_samples(), expected) == 0,
+                "stage transition cut off Good luck voice");
+            if (tick - cue >= 12) heard_tail = true;
+        } else if (heard_tail) finished = true;
+        if (tick - cue >= 30) {
+            require(game->flow_state() == starfox::simulation::GameFlowState::gameplay,
+                "Good luck voice guard blocked stage entry");
+            break;
+        }
+    }
+    require(cue >= 0 && heard_tail && finished, "Good luck tail regression did not exercise complete cue");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -40,6 +79,7 @@ int main(int argc, char** argv) {
     }
     const auto rom = starfox::assets::RomImage::load(argv[1]);
     const auto symbols = starfox::assets::SymbolMap::load(argv[2]);
+    check_good_luck_tail(rom, symbols);
     auto effect = std::make_unique<starfox::simulation::GameSimulation>(
         rom, symbols, "LEVEL1_1", std::span<const std::uint8_t>{}, true);
     auto control = std::make_unique<starfox::simulation::GameSimulation>(

@@ -46,20 +46,20 @@ int main(int argc, char** argv) {
     starfox::simulation::MapVm map{rom, database, objects, &symbols};
     const auto game_frame = symbols.find("GAMEFRAME").front();
 
-    // IRQ.ASM's QFADEDOWN has one DEC and no fall-through second step.
+    // IRQ.ASM's QFADEDOWN branches into SETDOWN for its second decrement.
     map.set_display_brightness(11U);
     map.start_display_fade(-2);
     map.tick_video_phase();
-    require(map.display_brightness() == 10U,
-        "quick fade-down did not decrement by one raster step");
-    for (std::uint8_t brightness = 9U; brightness != 0U; --brightness) {
+    require(map.display_brightness() == 9U,
+        "quick fade-down did not decrement twice");
+    for (int brightness = 7; brightness > 0; brightness -= 2) {
         map.tick_video_phase();
         require(map.display_brightness() == brightness,
             "quick fade-down skipped a native brightness value");
     }
     map.tick_video_phase();
     require(map.display_brightness() == 0U && map.fade_direction() == 0,
-        "quick fade-down did not finish on its eleventh raster");
+        "quick fade-down did not finish on its sixth invocation");
 
     // SFADEDOWN skips odd GAMEFRAME values. SETINIDISP is still invoked on
     // every raster, so the three presentations of an even source frame each

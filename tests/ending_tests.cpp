@@ -1,4 +1,5 @@
 #include "starfox/assets/rom.hpp"
+#include "starfox/audio/spc700_audio.hpp"
 #include "starfox/input/buttons.hpp"
 #include "starfox/simulation/game_simulation.hpp"
 
@@ -77,6 +78,55 @@ void check_ending_irq(const starfox::assets::RomImage& rom,
     require((cpu.read8(addr("BGFLAGS")) & 0x10) == 0, "SEQTEXT did not stop at the terminator");
 }
 
+void check_escape_anchor_lifetime(const starfox::assets::RomImage& rom,
+    const starfox::assets::SymbolMap& symbols) {
+    using namespace starfox::simulation;
+    const auto address = [&](const char* name) { return symbols.find(name).front(); };
+    for (const bool remove_anchor : {false, true}) {
+        auto game = std::make_unique<GameSimulation>(rom, symbols, "LEVEL1_6");
+        game->set_god_mode(true);
+        game->start_map("FINALMAP_END");
+        bool exercised = false;
+        for (unsigned tick = 0; tick < 1000 && !exercised; ++tick) {
+            static_cast<void>(game->tick({}));
+            auto& map = game->map();
+            for (const auto camera : game->objects().active_handles()) {
+                const auto& object = game->objects().at(camera);
+                if (object.strategy_address != address("VIEWOUTOFLB1_STRAT")
+                    || (object.strategy_flags[1] & 0x40U) != 0U
+                    || (map.read_native_byte(address("GAMEFLAGS2")) & 1U) == 0U) continue;
+                const auto anchor_pointer = map.read_native_word(address("MAPVAR1"));
+                const auto anchor = static_cast<ObjectHandle>((anchor_pointer
+                    - (address("ALBLKS") & 0xffffU)) / address("AL_SIZE") + 1U);
+                if (remove_anchor) {
+                    map.call_native_object_routine(address("REMOVEDEADAL_L"),
+                        anchor, 0x7eU, 0x24U, 2'000'000U);
+                    require(!map.is_native_object_active(anchor_pointer),
+                        "escape anchor removal did not leave a stale reference");
+                }
+                const auto active_before = game->objects().active_handles();
+                const auto free_before = game->objects().free_handles();
+                const auto flags_before = map.read_native_byte(address("GAMEFLAGS2"));
+                NativeStrategyScheduler scheduler{symbols, game->objects(), map};
+                static_cast<void>(scheduler.tick_object(camera));
+                require(map.read_native_byte(address("GAMEFLAGS2")) == flags_before,
+                    "escape burst guard changed shared sequence flags");
+                if (remove_anchor) {
+                    require(game->objects().active_handles() == active_before
+                        && game->objects().free_handles() == free_before,
+                        "stale escape anchor changed native pool ownership");
+                } else {
+                    require(game->objects().active_count() == active_before.size() + 2U,
+                        "valid escape anchor lost its two native explosions");
+                }
+                exercised = true;
+                break;
+            }
+        }
+        require(exercised, "escape anchor lifetime regression missed the burst");
+    }
+}
+
 void run_ending(const starfox::assets::RomImage& rom,
     const starfox::assets::SymbolMap& symbols, bool original_pace,
     bool special_route) {
@@ -86,9 +136,16 @@ void run_ending(const starfox::assets::RomImage& rom,
         require(!symbols.find(name).empty(), std::string{"missing symbol "} + name);
         return symbols.find(name).front();
     };
-    auto game = std::make_unique<GameSimulation>(rom, symbols, "LEVEL1_6");
+    auto game = std::make_unique<GameSimulation>(rom, symbols, "LEVEL1_6",
+        std::span<const std::uint8_t>{}, true);
+    starfox::audio::Spc700Audio audio;
+    static_cast<void>(audio.prime_upload_sequence(game->map().take_apu_port_writes()));
+    for (unsigned tick = 0; tick < 30; ++tick) {
+        static_cast<void>(audio.render_logic_tick({}));
+    }
+    game->synchronize_apu_output_ports(audio.output_ports());
     game->set_timing_mode(original_pace ? TimingMode::original_speed : TimingMode::unlocked_20_fps);
-    game->set_presentation_fps(original_pace ? 120U : 20U);
+    game->set_presentation_fps(20U);
     game->set_god_mode(true);
     auto& map = game->map();
 
@@ -125,12 +182,14 @@ void run_ending(const starfox::assets::RomImage& rom,
     const auto credits_map = address("CREDITSMAP");
     const auto expected_average = static_cast<std::uint16_t>(address("MSG_00") + 5 * (total / stages));
     unsigned terminal_frames = 0;
-    for (unsigned tick = 1; tick < 9000; ++tick) {
+    for (unsigned tick = 1; tick < 40000; ++tick) {
         if (game->flow_state() == GameFlowState::gameplay) {
             map.write_native_byte(address("SPECIALOBJTOTAL"), 100U);
             map.write_native_byte(address("SPECIALS_DEAD"), 100U);
         }
         const auto result = game->tick({});
+        static_cast<void>(audio.render_logic_tick(result.audio_port_writes));
+        game->synchronize_apu_output_ports(audio.output_ports());
         for (const auto command : result.sound_effect_commands) voice |= command == 0x0dU;
         const auto flow = game->flow_state();
         if (flow == GameFlowState::credits && ending_start == 0) {
@@ -205,8 +264,9 @@ void run_ending(const starfox::assets::RomImage& rom,
         }
         if (flow == GameFlowState::finished) {
             if (!finished_tick) finished_tick = tick;
-            // Allow FADEINTOTAL to settle; the original keeps TRANSFER alive.
-            if (++terminal_frames == 120) break;
+            // #35 occurs after the music ends. Keep real SPC feedback and
+            // TRANSFER alive for another 1,000 seconds, not just the fade-in.
+            if (++terminal_frames == 20000) break;
         }
         if (ex && credits_tick && tick - credits_tick > 3400) {
             static_cast<void>(game->tick({0, starfox::input::start, 0}));
@@ -237,7 +297,7 @@ void run_ending(const starfox::assets::RomImage& rom,
         static_cast<void>(game->tick({}));
         require(map.read_native_word(address("GAMEFRAME")) != before, "final score animation froze");
     }
-    std::cout << (ex ? "EX" : "Original") << (original_pace ? " original/120Hz" : " unlocked/20Hz")
+    std::cout << (ex ? "EX" : "Original") << (original_pace ? " original/20Hz" : " unlocked/20Hz")
         << (special_route ? " special-route" : " route-1") << ": escape=" << ending_start
         << " total=" << total_tick << " average=" << average_tick << " credits=" << credits_tick
         << " final=" << finished_tick << " bosses=" << seen_bosses.size()
@@ -251,6 +311,7 @@ int main(int argc, char** argv) {
         const auto rom = starfox::assets::RomImage::load(argv[1]);
         const auto symbols = starfox::assets::SymbolMap::load(argv[2]);
         check_ending_irq(rom, symbols);
+        check_escape_anchor_lifetime(rom, symbols);
         run_ending(rom, symbols, false, false);
         run_ending(rom, symbols, true, true);
     } catch (const std::exception& error) {

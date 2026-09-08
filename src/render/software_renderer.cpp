@@ -921,6 +921,7 @@ void fill_source_textured_polygon(
     SurfaceBuffer* surfaces,
     const SurfaceSample& surface) {
     if (polygon.size() < 3U) return;
+    const ScopedLayer texture_layer{target, PixelLayer::textured_geometry};
     struct Point {
         std::int32_t x{};
         std::int32_t y{};
@@ -1516,15 +1517,17 @@ void SoftwareRenderer::draw(
     // Interpolated presentation frames already keep fractional transformed
     // vertices. At a completed 20 Hz source frame the source-exact path
     // quantizes them again; that single-frame snap is hidden by the native
-    // raster but becomes visible as flashing polygon edges when supersampled.
-    // Use one continuous fractional copy for high-resolution scan conversion,
+    // raster but becomes visible at higher presentation rates, even at 1x.
+    // Use one continuous fractional copy for high-FPS/upscaled scan conversion,
     // visibility and BSP ordering. Mixing its edges with the rounded source
     // copy made whole faces alternate between present and absent on each
     // completed 20 Hz frame.
-    const auto continuous_upscaled_geometry = settings_.render_scale > 1U
+    const auto continuous_geometry = settings_.render_scale > 1U
+        || pose.continuous_geometry;
+    const auto continuous_upscaled_geometry = continuous_geometry
         && !pose.subpixel_projection;
     auto raster_pose = pose;
-    if (settings_.render_scale > 1U) {
+    if (continuous_geometry) {
         raster_pose.subpixel_projection = true;
     }
     const auto raster_word_exact = raster_pose.use_rotation_matrix
@@ -1580,12 +1583,24 @@ void SoftwareRenderer::draw(
         upscaled_vertices.reserve(vertices.size());
         upscaled_projected.reserve(vertices.size());
     }
-    for (const auto& point : vertices) {
-        const auto transformed = rotate(point, pose, shape.header.shift);
+    const auto& word_coordinates = shape.frames.empty()
+        ? shape.word_coordinates
+        : shape.frames[pose.animation_frame % shape.frames.size()].word_coordinates;
+    for (std::size_t index = 0; index < vertices.size(); ++index) {
+        const auto& point = vertices[index];
+        const auto word = index < word_coordinates.size() && word_coordinates[index];
+        auto point_pose = pose;
+        auto point_raster_pose = raster_pose;
+        if (word) {
+            point_pose.scale = 1.0;
+            point_raster_pose.scale = 1.0;
+        }
+        const auto shift = word ? 0U : shape.header.shift;
+        const auto transformed = rotate(point, point_pose, shift);
         transformed_vertices.push_back(transformed);
         if (continuous_upscaled_geometry) {
             const auto upscaled = rotate(
-                point, raster_pose, shape.header.shift);
+                point, point_raster_pose, shift);
             upscaled_vertices.push_back(upscaled);
             upscaled_projected.push_back(project_point(
                 upscaled, settings_.focal_length,
@@ -1603,7 +1618,7 @@ void SoftwareRenderer::draw(
     const auto& visibility_projected = continuous_upscaled_geometry
         ? upscaled_projected : projected;
     const auto face_visible = [&](const assets::Visibility& visibility) {
-        return settings_.render_scale > 1U
+        return continuous_geometry
             ? continuous_visibility(visibility, visibility_vertices)
             : source_visibility(
                 visibility, visibility_projected, visibility_vertices);

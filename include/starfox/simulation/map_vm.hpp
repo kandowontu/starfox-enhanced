@@ -48,6 +48,9 @@ public:
 
     void start(std::uint32_t address, ObjectHandle player);
     void set_player(ObjectHandle player);
+    [[nodiscard]] bool is_native_object_active(std::uint16_t pointer) const noexcept {
+        return objects_->is_active(native_object_handle(pointer));
+    }
     void advance_to_player_z(std::int16_t player_z);
     void advance_distance(std::int16_t distance);
 
@@ -271,6 +274,7 @@ private:
     std::uint32_t background_flags_address_{0x001a16U};
     std::uint32_t background_dma_list_address_{0x001764U};
     std::uint32_t current_background_address_{0x0017c6U};
+    std::uint32_t stage_counter_address_{0x00163eU};
     std::uint32_t background_scroll_override_address_{};
     std::uint32_t background_scroll_requested_x_{};
     std::uint32_t background_scroll_requested_y_{};

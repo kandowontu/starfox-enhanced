@@ -487,6 +487,15 @@ void BackgroundRenderer::draw_bg2(
             }
             const auto tile_y = static_cast<std::uint32_t>(source_y) / tile_edge;
             const auto unwrapped_source_x = sample_x + row_scroll_x;
+            // Tunnel floor/ceiling artwork is one authored cross-section,
+            // not a repeatable landscape. Retain native wrapping inside the
+            // cartridge raster, but stop additional copies in wide margins.
+            // Anchor the single copy around the scrolled native centre.
+            if (ppu.bg2_scanline_scroll_enabled && extend_horizontal
+                && target.width() > 256U && (logical_x < 0 || logical_x >= 256)) {
+                const auto tunnel_x = wrap(128 + row_scroll_x, width_pixels) + sample_x - 128;
+                if (tunnel_x < 0 || tunnel_x >= width_pixels) continue;
+            }
             // A scrolling 256-pixel title tilemap normally wraps the portion
             // that leaves one side back onto the other. In a wide viewport we
             // instead draw that one tilemap occurrence beyond the native

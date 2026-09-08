@@ -242,6 +242,20 @@ int main() {
         }
     }
     require(coloured_pixels > 50, "decoded shape did not render a visible polygon");
+    auto word_shape = shape;
+    word_shape.header.shift = 4;
+    word_shape.word_coordinates.assign(word_shape.vertices.size(), true);
+    for (auto& frame : word_shape.frames)
+        frame.word_coordinates.assign(frame.vertices.size(), true);
+    for (const auto multiplier : {1.0, 2.0, 4.0}) {
+        starfox::render::RenderPose pose;
+        pose.scale = multiplier;
+        starfox::render::Framebuffer word_frame{224, 192};
+        renderer.draw(word_shape, pose, word_frame, true);
+        require(std::equal(framebuffer.pixels().begin(), framebuffer.pixels().end(),
+                    word_frame.pixels().begin()),
+            "Word coordinates received header shift or big-head scaling");
+    }
     require(surface_pixels == coloured_pixels,
             "rendered polygon did not retain per-pixel surface metadata");
 

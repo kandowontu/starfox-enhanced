@@ -59,6 +59,10 @@ struct RenderPose {
     // coordinates. Completed source frames leave this disabled and continue
     // through the bit-exact Super FX word path.
     bool subpixel_projection{};
+    // A high-FPS presentation must use the same geometry/visibility path at
+    // source boundaries as between them, even when rendering at native 1x.
+    // Leave false for exact native-raster audits and 20 FPS presentation.
+    bool continuous_geometry{};
     std::array<std::int16_t, 3> depth_thresholds{2'560, 3'328, 3'840};
     std::array<std::array<std::uint8_t, 32>, 4> depth_colour_tables{};
     bool has_depth_colour_tables{};

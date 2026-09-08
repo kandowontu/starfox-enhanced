@@ -19,7 +19,8 @@ first launch it validates the user's own unmodified Star Fox USA v1.2 (Rev 2)
 ROM, reconstructs the Original and Star Fox EX runtime data locally, and writes
 one version-bound `Starfox-Assets.BIN` companion beside the executable. Later
 launches use that validated companion without requiring the retail ROM to stay
-present. `v0.0.4` is the current public alpha release.
+present. `v0.0.5` is the current public alpha release. See
+[the full 0.0.5 changelog](docs/RELEASE-0.0.5.md).
 
 This project utilizes Codex GPT 5.6 Sol at Ex-High thought.
 
@@ -43,7 +44,7 @@ the default; `STARFOX EX` selects the embedded 1.11.03 source build, including
 its native title/intro, three-page configuration menu, shipped `PLANETS` and
 `PLANETS2` campaigns, custom stages, ships, models, palettes, music, and source
 mechanics. EX's real 64 KiB cartridge SRAM is persisted byte-for-byte at
-`Documents/Star Fox Enhanced/starfox-ex.srm`; its source `SFEX` validation,
+`starfox-ex.srm` beside the desktop executable; its source `SFEX` validation,
 defaults, loading, START GAME commit, and L+R+DOWN+B intro reset paths all run
 unchanged.
 
@@ -52,6 +53,10 @@ presentation renderer, MSU-1 music, rumble, controller remapping, and a
 separate Options page. `RENDERER` defaults to GPU and can be changed to
 SOFTWARE to use SDL's portable CPU presentation backend; this is an actual
 backend switch and is saved with the other setup choices.
+Under OPTIONS → CONTROLLER → KEYBOARD, the RESET action remaps the final key of
+`Ctrl+Shift+R`. Ctrl+Shift stays fixed, the default suffix is R, and keyboard
+defaults restore it. The shortcut requires both modifiers; plain Ctrl+R does
+not reset. Remapping the suffix does not change normal gameplay bindings.
 MSU-1 music is off by default and, when enabled for Original, replaces the
 SPC music stem with the companion orchestral set while leaving sound effects
 on their own channel. If `Starfox-MSU1.PAK` is not beside the executable, the
@@ -59,11 +64,35 @@ option reads `NOT FOUND` and cannot be enabled. Rumble is on by default for
 Original and plays the authored
 UltraStarFox sequences on compatible SDL, XInput, and Steam Input controllers.
 The Options page also provides independent MUSIC and SFX volume controls.
-Left/right changes them in 10% steps; the mouse can drag either bar to any
+Main-page `MODEL EFFECTS` and `WORLD EFFECTS` independently offer OFF,
+INK, NEON, MONOCHROME, DITHERED, SEPIA,
+THERMAL, NIGHT VISION, PASTEL, COMIC, and VAPORWAVE. The newer styles add warm
+vintage tones, a false-color heat palette, green scanlines, soft colors,
+halftone shading, and a purple/cyan palette respectively. CEL-DRAWN is model-only;
+BLUEPRINT is world-only. World effects
+cover the ground, sky, scenery and stars. Options provides separate model/world
+intensities from 0–100% in 10% steps, plus Controller Remap. All effect choices
+are saved; older settings retain their model style with world effects OFF.
+The main-page `2D BLOOM` and `3D BLOOM` options independently offer OFF (default),
+LOW, MEDIUM, and HEAVY for scenery and model light sources. They extract bright
+pixels in linear light and spread tight and broad halos; HUD is excluded.
+Older combined Bloom settings migrate to the same strength for both options.
+`3D SMOOTHING` separately offers OFF/LOW/MEDIUM/HEAVY for colour transitions
+within model surfaces, including untextured faces. It does not replace silhouette
+Anti-Aliasing or smooth backgrounds/HUD.
+The old Bloom style migrates to MEDIUM bloom. Disallowed old style selections
+fall back to OFF without changing other preferences.
+HUD, dialogue and menu text remain unaffected. Main-page `PREVIEW` defaults OFF each launch; ON freezes the same
+Corneria reference scene used by Customize Screen and previews graphics
+changes live without advancing gameplay.
+
+For MUSIC and SFX volume, left/right changes each in 10% steps; the mouse can drag either bar to any
 whole percentage from 0 through 100. The first option is the
 Star Fox EX-style God Mode: player collision is disabled,
 regular Nova Bombs remain infinite, and holding R while pressing A fires a
-God Nuke. The Options page can also enable a live on-screen FPS counter which
+God Nuke. Press Ctrl+Alt+F12 to toggle God Mode on or off, with an on-screen
+confirmation. Holding the shortcut does not repeatedly toggle it.
+The Options page can also enable a live on-screen FPS counter which
 reports completed presentations in 250 ms samples so lag spots remain visible,
 and select green (the default), white, blue, red, yellow, cyan, magenta, or
 orange crosshair art. The selected hue applies to both the original four-piece
@@ -80,6 +109,8 @@ softens pixel boundaries; CRT adds scanlines and a subtle bright phosphor glow.
 All modes work at native Render Upscale: the filter reconstructs 2D art in a
 separate 2x buffer and resolves it back to the native raster. Higher render
 scales retain more filter detail. Geometry and game timing are unchanged.
+Texture artwork on 3D polygons is included too; solid-coloured faces remain
+under the separate 3D Smoothing option. The polygon coverage mask is preserved.
 Previously enabled Enhanced Textures settings migrate to EDGE.
 
 xBRZ is enabled by default. Minimal builds may set `-DSTARFOX_ENABLE_XBRZ=OFF`;
@@ -96,12 +127,20 @@ Boss Health bar can each be dragged independently; `RESET` (or Y) restores the
 current display mode's defaults. Layouts are independent for 4:3,
 16:9, 16:10, 21:9, and 32:9, with separate Original and Star Fox EX layouts
 for every size. They save automatically to
-`Documents/Star Fox Enhanced/hud-layout.cfg`.
+`hud-layout.cfg` beside the desktop executable.
 Game pace, render FPS, display mode, renderer, graphics choices, MSU-1 music,
 rumble, music/SFX volumes, God Mode, the FPS counter, and crosshair colour
 also persist in
-`Documents/Star Fox Enhanced/pregame.cfg`. Keyboard and
-controller remaps are saved automatically when the remapping screen closes.
+`pregame.cfg` beside the desktop executable. Keyboard and
+controller remaps are saved as `input-bindings.cfg` in the same folder.
+
+Desktop builds are portable by default: keep these files with the executable
+when moving or upgrading the game. Use an extracted, writable folder (not a
+read-only installation directory). The first normal launch copies any missing
+files from the former Documents/preference locations; existing portable files
+always win, and originals are not deleted. The working directory does not affect
+save locations. Mobile and console packages retain their writable platform
+storage because their executable/package directories may be read-only.
 Standard display uses the complete 256x224 raster; Widescreen 16:9,
 Widescreen 16:10, Ultrawide 21:9, and Super Ultrawide 32:9 expand the intro
 and gameplay scene to 400x224, 360x224, 520x224, and 800x224 respectively

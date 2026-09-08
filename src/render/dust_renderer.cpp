@@ -68,7 +68,7 @@ void DustRenderer::draw(
     // Dust is world-space geometry that happens to address the source raster,
     // so it opts out of 2D presentation filtering and keeps its crisp
     // block-replicated specks.
-    const ScopedLayer layer{target, PixelLayer::three_d};
+    const ScopedLayer layer{target, PixelLayer::world_geometry};
     constexpr auto q15 = 32'768.0;
     active_count = std::min(active_count, dust.points().size());
     std::size_t index = 0;
@@ -117,7 +117,7 @@ void DustRenderer::draw_grid(
     const timing::RenderTransform& camera,
     const simulation::MatrixQ15& view_matrix,
     Framebuffer& target) const noexcept {
-    const ScopedLayer layer{target, PixelLayer::three_d};
+    const ScopedLayer layer{target, PixelLayer::world_geometry};
     const auto camera_x = camera_word(camera.x);
     const auto camera_y = camera_word(camera.y);
     const auto camera_z = camera_word(camera.z);
@@ -176,7 +176,7 @@ void DustRenderer::draw_grid_lines(
     const simulation::MatrixQ15& view_matrix,
     std::uint64_t source_frame,
     Framebuffer& target) const noexcept {
-    const ScopedLayer layer{target, PixelLayer::three_d};
+    const ScopedLayer layer{target, PixelLayer::world_geometry};
     const auto new_source_frame = !grid_line_state_initialized_
         || grid_line_source_frame_ != source_frame;
     if (new_source_frame) {

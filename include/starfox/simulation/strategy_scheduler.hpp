@@ -44,6 +44,9 @@ private:
     std::uint32_t path_data_begin_{};
     std::uint32_t alien_dead_{};
     std::uint32_t game_frame_{};
+    std::uint32_t escape_camera_strategy_{};
+    std::uint32_t escape_anchor_{};
+    std::uint32_t game_flags_2_{};
     std::size_t object_instruction_limit_{};
 };
 

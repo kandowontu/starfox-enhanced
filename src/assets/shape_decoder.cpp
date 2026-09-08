@@ -361,8 +361,10 @@ void ShapeDecoder::decode_points(Shape& shape) const {
                 }
                 block.source_points.push_back(point);
                 frame.vertices.push_back(point);
+                frame.word_coordinates.push_back(word);
                 if (mirrored) {
                     frame.vertices.push_back(Vec3i{-point.x, point.y, point.z});
+                    frame.word_coordinates.push_back(word);
                 }
             }
             frame.point_blocks.push_back(std::move(block));
@@ -376,6 +378,7 @@ void ShapeDecoder::decode_points(Shape& shape) const {
     }
     shape.point_blocks = shape.frames.front().point_blocks;
     shape.vertices = shape.frames.front().vertices;
+    shape.word_coordinates = shape.frames.front().word_coordinates;
 }
 
 void ShapeDecoder::decode_faces(Shape& shape) const {

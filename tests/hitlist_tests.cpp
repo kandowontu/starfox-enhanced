@@ -53,6 +53,51 @@ void check_reticle_identity() {
     }
 }
 
+void check_escape_explosions(const starfox::assets::RomImage& rom,
+    const starfox::assets::SymbolMap& symbols) {
+    using namespace starfox::simulation;
+    const auto addr = [&](const char* name) { return symbols.find(name).at(0); };
+    auto game = std::make_unique<GameSimulation>(rom, symbols, "LEVEL1_1");
+    auto& pool = game->objects();
+    auto& map = game->map();
+    // Exercise both allocations made by the escape camera: the first consumes
+    // the final free slot, the second must use the cartridge's dummy object.
+    const auto anchor = pool.allocate_after();
+    const auto camera = pool.allocate_after();
+    pool.at(camera).strategy_address = addr("VIEWOUTOFLB1_STRAT");
+    pool.at(camera).health = 1;
+    pool.at(camera).strategy_flags = {0, 0x11, 8, 0};
+    map.write_native_word(addr("MAPVAR1"), static_cast<std::uint16_t>(addr("ALBLKS") + (anchor - 1U) * addr("AL_SIZE")));
+    map.write_native_word(addr("VIEWTOOBJ"), static_cast<std::uint16_t>(addr("ALBLKS") + (game->player() - 1U) * addr("AL_SIZE")));
+    map.write_native_byte(addr("GAMEFLAGS2"), 1);
+    require(pool.remove(anchor), "escape anchor removal failed");
+    while (pool.free_handles().size() > 1U) static_cast<void>(pool.allocate_after());
+    static_cast<void>(map.call_native_object_routine(addr("VIEWOUTOFLB1_STRAT"), camera));
+    require(pool.free_handles().empty(), "escape explosion strategy did not allocate its last slot");
+    pool.restore_lists(pool.active_handles(), pool.free_handles());
+    std::cout << "escape camera explosion lists remain valid\n";
+    // A native routine that loses a list must fail without reclassifying live
+    // objects as free. Do this after the valid escape has exhausted the pool.
+    constexpr auto code_address = 0x7e6800U;
+    const auto active_list = addr("ALLST");
+    const std::array<std::uint8_t, 9> corrupt_code{
+        0xc2, 0x20, 0xa9, 0x00, 0x00, 0x8d,
+        static_cast<std::uint8_t>(active_list),
+        static_cast<std::uint8_t>(active_list >> 8U), 0x6b};
+    for (std::size_t i = 0; i < corrupt_code.size(); ++i)
+        map.write_native_byte(code_address + i, corrupt_code[i]);
+    const auto before = pool.active_handles();
+    bool rejected = false;
+    try {
+        (void)map.call_native_object_routine(code_address, camera);
+    } catch (const std::runtime_error& error) {
+        rejected = std::string_view(error.what())
+            == "native active/free lists do not cover the object pool";
+    }
+    require(rejected && pool.active_handles() == before && pool.free_handles().empty(),
+        "missing native objects were silently reclaimed");
+}
+
 void check_tunnel(const starfox::assets::RomImage& rom,
     const starfox::assets::SymbolMap& symbols) {
     using namespace starfox::simulation;
@@ -102,7 +147,7 @@ void check_tunnel(const starfox::assets::RomImage& rom,
         "gameplay tunnel scroll leaked into Mode 3 planet map");
 
     // Distinct solid tiles on each vertical page expose wrong global VOFS,
-    // missing row selection, and a widescreen extension with different phase.
+    // missing row selection, and unwanted repeats in the widescreen margins.
     auto ppu = std::make_unique<SnesPpuState>();
     ppu->bg2_screen_base = 0x1000;
     ppu->bg2_character_base = 0;
@@ -120,10 +165,14 @@ void check_tunnel(const starfox::assets::RomImage& rom,
         starfox::render::Framebuffer frame{width, 224};
         starfox::render::BackgroundRenderer{}.draw_bg2(*ppu, 0, 91, frame,
             starfox::render::TilePriorityPass::all, (width - 256) / 2, true);
+        const auto left = (width - 256U) / 2U;
         for (unsigned y = 16; y < 224; ++y)
-            for (unsigned x = 0; x < width; ++x)
-                require(frame.get(x, y) == (y % 2 ? 2 : 1),
-                    "tunnel page selection does not span the complete widescreen");
+            for (unsigned x = 0; x < width; ++x) {
+                const auto expected_pixel = x >= left && x < left + 256U
+                    ? (y % 2 ? 2U : 1U) : 0U;
+                require(frame.get(x, y) == expected_pixel,
+                    "tunnel must retain native pages with solid outer margins");
+            }
     }
     std::cout << "32 source tunnel phases, override/exit, four viewport widths passed\n";
 }
@@ -399,6 +448,51 @@ void check_map_sprite_restore(const starfox::assets::RomImage& rom,
             "Sector Y pixels/palette changed after leaving black hole");
     std::cout << "Sector Y map pixels/palette preserved across all three black-hole exits\n";
 }
+
+void check_map_icon_texels(const starfox::assets::RomImage& rom,
+    const starfox::assets::SymbolMap& symbols) {
+    const auto addr = [&](const char* name) { return symbols.find(name).at(0); };
+    starfox::simulation::Wdc65816 cpu{rom, &symbols};
+    const auto launch = [&](const char* name) {
+        const auto entry = addr(name);
+        cpu.write8(0x3034, static_cast<std::uint8_t>(entry >> 16U));
+        cpu.write8(0x301e, static_cast<std::uint8_t>(entry));
+        cpu.write8(0x301f, static_cast<std::uint8_t>(entry >> 8U));
+    };
+    // Draw each visit's small map icon and enlarged selection icon. Compare
+    // against packed ROM texels rather than another potentially wrong map.
+    for (const auto index : {9U, 10U, 14U}) {
+        const auto sprite = rom.read8(addr("PLANETSPRS") + index * 2U) & 0x7fU;
+        const auto pointer = addr("TEXTUREADDRTAB") + sprite * 3U;
+        const auto texture = rom.read8(pointer) | (rom.read8(pointer + 1U) << 8U)
+            | (rom.read8(pointer + 2U) << 16U);
+        for (const auto size : {32U, 64U}) {
+            for (unsigned byte = 0; byte < 16384U; ++byte)
+                cpu.write8(0x700000U + addr("BITMAP1") + byte, 0);
+            cpu.write16(addr("MSPRITE"), sprite);
+            cpu.write16(addr("M_XC"), 64);
+            cpu.write16(addr("M_YC"), 64);
+            cpu.write16(addr("MSPR_PAL"), 6);
+            cpu.write16(addr("M_SPRSIZE"), 32);
+            cpu.write16(addr("M_SPRXSCALE"), size);
+            launch(size == 32U ? "MDRAWSPRITE32" : "MUSPRITE");
+            for (unsigned y = 0; y < size; ++y) for (unsigned x = 0; x < size; ++x) {
+                const auto expected_texel = (rom.read8(texture + (y * 32U / size) * 256U
+                    + x * 32U / size) >> ((sprite & 32U) ? 4U : 0U)) & 15U;
+                const auto px = 64U - size / 2U + x, py = 64U - size / 2U + y;
+                const auto tile = (px / 8U) * 16U + py / 8U;
+                const auto base = 0x700000U + addr("BITMAP1") + tile * 64U + (py & 7U) * 2U;
+                unsigned pixel{};
+                for (unsigned plane = 0; plane < 8U; ++plane)
+                    pixel |= ((cpu.read8(base + (plane / 2U) * 16U + (plane & 1U))
+                        >> (7U - (px & 7U))) & 1U) << plane;
+                require(pixel == (expected_texel ? 0x60U | expected_texel : 0U),
+                    "Sector Y/Black Hole/Out of This Dimension icon used the wrong packed texels");
+            }
+        }
+    }
+    std::cout << "map and zoom icons use correct packed texture banks\n";
+}
 }
 
 int main(int argc, char** argv) {
@@ -416,6 +510,8 @@ int main(int argc, char** argv) {
         }
         const auto rom = starfox::assets::RomImage::load(argv[1]);
         const auto symbols = starfox::assets::SymbolMap::load(argv[2]);
+        check_map_icon_texels(rom, symbols);
+        check_escape_explosions(rom, symbols);
         check_cockpit_markers(rom, symbols);
         check_tunnel(rom, symbols);
         check_damage(rom, symbols);

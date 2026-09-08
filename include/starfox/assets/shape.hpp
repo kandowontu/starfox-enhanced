@@ -30,6 +30,7 @@ struct PointBlock {
 struct ShapeFrame {
     std::vector<PointBlock> point_blocks;
     std::vector<Vec3i> vertices;
+    std::vector<bool> word_coordinates;
 };
 
 struct Visibility {
@@ -120,6 +121,7 @@ struct Shape {
     std::uint8_t declared_frame_count{1};
     std::vector<PointBlock> point_blocks;
     std::vector<Vec3i> vertices;
+    std::vector<bool> word_coordinates;
     std::vector<ShapeFrame> frames;
     std::vector<Visibility> visibilities;
     std::vector<Face> faces;

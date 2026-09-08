@@ -1,6 +1,7 @@
 #pragma once
 
 #include "starfox/assets/rom.hpp"
+#include "starfox/render/effect_types.hpp"
 #include "starfox/input/input_latch.hpp"
 #include "starfox/simulation/map_vm.hpp"
 #include "starfox/simulation/math.hpp"
@@ -257,6 +258,19 @@ public:
     }
     [[nodiscard]] std::array<std::uint16_t, 16> palette_words() const noexcept;
     [[nodiscard]] GameFlowState flow_state() const noexcept { return flow_state_; }
+    [[nodiscard]] bool menu_preview() const noexcept { return menu_preview_; }
+    [[nodiscard]] bool in_setup_menu() const noexcept {
+        return menu_preview_ || flow_state_ == GameFlowState::pregame_menu;
+    }
+    [[nodiscard]] bool preview_requested() const noexcept { return preview_requested_; }
+    [[nodiscard]] bool preview_start_requested() const noexcept { return preview_start_requested_; }
+    void enable_menu_preview() noexcept {
+        // Keep the rendered cartridge scene and camera, but route host input
+        // to setup and stop native video/strategy progression.
+        menu_preview_ = preview_requested_ = true;
+        pregame_selection_ = 16U;
+        pregame_page_ = PregamePage::main;
+    }
     [[nodiscard]] bool boss_roll_active() const {
         const auto transfer = map_.read_native_byte(0U);
         return ending_task_active_ && transfer >= 26U && transfer <= 32U;
@@ -289,7 +303,7 @@ public:
     [[nodiscard]] std::uint8_t model_scale_multiplier() const noexcept;
     [[nodiscard]] std::optional<std::uint16_t>
         model_colour_table_override() const noexcept;
-    void set_god_mode(bool enabled) noexcept { god_mode_ = enabled; }
+    void set_god_mode(bool enabled) noexcept;
     // Face count per shape id, for the ORIGINAL SPEED pace estimate. The host
     // owns this because it is the side that decodes shapes; the simulation
     // decides pacing before anything is rasterized, so it cannot measure real
@@ -335,6 +349,20 @@ public:
     void set_rtx_lighting_intensity(std::uint8_t level) noexcept {
         rtx_lighting_ = level <= 3U ? level : 3U;
     }
+    [[nodiscard]] std::uint8_t effect() const noexcept { return effect_; }
+    [[nodiscard]] std::uint8_t world_effect() const noexcept { return world_effect_; }
+    void set_world_effect(std::uint8_t value) noexcept { world_effect_ = render::selectable_effect(value, true) ? value : 0U; }
+    [[nodiscard]] std::uint8_t world_effect_intensity() const noexcept { return world_effect_intensity_; }
+    void set_world_effect_intensity(std::uint8_t value) noexcept { world_effect_intensity_ = value <= 100U ? value : 100U; }
+    void set_effect(std::uint8_t effect) noexcept { effect_ = render::selectable_effect(effect, false) ? effect : 0U; }
+    [[nodiscard]] std::uint8_t bloom() const noexcept { return bloom_; }
+    void set_bloom(std::uint8_t value) noexcept { bloom_ = value < 4U ? value : 0U; }
+    [[nodiscard]] std::uint8_t bloom_2d() const noexcept { return bloom_2d_; }
+    void set_bloom_2d(std::uint8_t value) noexcept { bloom_2d_ = value < 4U ? value : 0U; }
+    [[nodiscard]] std::uint8_t model_smoothing() const noexcept { return model_smoothing_; }
+    void set_model_smoothing(std::uint8_t value) noexcept { model_smoothing_ = value < 4U ? value : 0U; }
+    [[nodiscard]] std::uint8_t effect_intensity() const noexcept { return effect_intensity_; }
+    void set_effect_intensity(std::uint8_t value) noexcept { effect_intensity_ = value <= 100U ? value : 100U; }
     [[nodiscard]] TwoDFilterMode two_d_filter() const noexcept {
         return two_d_filter_;
     }
@@ -993,6 +1021,16 @@ private:
     bool smooth_polys_{};
     std::uint8_t rtx_lighting_{};
     TwoDFilterMode two_d_filter_{TwoDFilterMode::off};
+    std::uint8_t effect_{};
+    std::uint8_t effect_intensity_{100U};
+    std::uint8_t world_effect_{};
+    std::uint8_t bloom_{};
+    std::uint8_t bloom_2d_{};
+    std::uint8_t model_smoothing_{};
+    std::uint8_t world_effect_intensity_{100U};
+    bool menu_preview_{};
+    bool preview_requested_{};
+    bool preview_start_requested_{};
     bool vsync_{};
     RendererMode renderer_mode_{RendererMode::gpu};
     bool msu1_music_{};
@@ -1021,6 +1059,7 @@ private:
     std::uint8_t briefing_lead_frames_{};
     std::uint8_t briefing_character_frames_{};
     std::uint16_t briefing_hold_frames_{};
+    std::uint16_t briefing_voice_frames_{};
     std::uint8_t planet_zoom_remaining_{};
     std::uint8_t pepper_brightness_{};
     bool planet_zoom_is_sphere_{};
@@ -1040,8 +1079,6 @@ private:
     std::optional<std::uint16_t> deferred_msu_track_{};
     std::uint16_t deferred_msu_frames_{};
     bool deferred_msu_repeat_{};
-    std::array<std::uint16_t, 8U * 16U> gameplay_palette_before_death_{};
-    bool gameplay_palette_before_death_valid_{};
     std::optional<std::uint8_t> boss_music_before_death_{};
     bool post_boss_dialogue_active_{};
     std::vector<std::uint32_t> level_clear_player_strategies_;

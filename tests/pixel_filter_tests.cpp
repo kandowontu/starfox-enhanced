@@ -1,9 +1,16 @@
 #include "starfox/render/framebuffer.hpp"
+#include "starfox/render/effects.hpp"
+#include "starfox/render/bloom.hpp"
+#include "starfox/render/colour_math.hpp"
+#include "starfox/render/model_smoothing.hpp"
+#include "starfox/render/background_renderer.hpp"
 #include "starfox/render/palette.hpp"
 #include "starfox/render/pixel_filter.hpp"
 #include "starfox/render/row_workers.hpp"
 #include "starfox/assets/shape.hpp"
 #include "starfox/render/software_renderer.hpp"
+#include "starfox/render/sprite_renderer.hpp"
+#include "starfox/simulation/game_simulation.hpp"
 #include "starfox/simulation/math.hpp"
 
 #include <array>
@@ -181,6 +188,13 @@ void check_filter(TwoDFilter filter, std::uint32_t scale,
     workers.set_worker_count(1U);
     starfox::render::apply_two_d_filter(
         filter, frame.framebuffer, palette, frame.rgba, scratch, workers);
+    auto scenery = render(scale, palette);
+    for (auto& tag : scenery.framebuffer.layer_tags()) {
+        if (tag == std::uint8_t(PixelLayer::two_d)) tag = std::uint8_t(PixelLayer::background);
+    }
+    starfox::render::apply_two_d_filter(
+        filter, scenery.framebuffer, palette, scenery.rgba, scratch, workers);
+    require(scenery.rgba == frame.rgba, "world background tags changed 2D filtering");
 
     const auto& framebuffer = frame.framebuffer;
     const auto stored_width = framebuffer.stored_width();
@@ -544,6 +558,206 @@ int main(int argc, char** argv) {
         check_sprites_are_cartridge_art(scale);
     }
     check_disabled_paths();
+    for(unsigned scale:{1U,2U,4U}) {
+        Framebuffer scene{400,224,scale};
+        scene.enable_layer_tags(true);
+        std::fill(scene.layer_tags().begin(),scene.layer_tags().end(),std::uint8_t(PixelLayer::background));
+        std::vector<std::uint8_t> original(scene.pixels().size()*4U,255U), scratch;
+        for(unsigned y=80*scale;y<140*scale;++y) for(unsigned x=100*scale;x<200*scale;++x) {
+            const auto i=std::size_t(y)*scene.stored_width()+x;
+            scene.layer_tags()[i]=std::uint8_t(x<150*scale ? PixelLayer::three_d : PixelLayer::textured_geometry);
+            for(unsigned c=0;c<3;++c) original[i*4+c]=x<150*scale?0U:240U;
+        }
+        unsigned previous=240U;
+        starfox::render::RowWorkers workers;
+        workers.set_worker_count(4);
+        for(std::uint8_t level=0;level<4;++level) {
+            auto pixels=original, threaded=original;
+            starfox::render::smooth_models(level,scene,pixels,scratch);
+            starfox::render::smooth_models(level,scene,threaded,scratch,&workers);
+            require(pixels==threaded,"model smoothing differs across worker counts");
+            if(level==0) require(pixels==original,"model smoothing Off changed pixels");
+            const auto boundary=(std::size_t(110*scale)*scene.stored_width()+150*scale)*4U;
+            if(level) require(pixels[boundary]<previous,"model smoothing strength did not increase");
+            previous=pixels[boundary];
+            for(std::size_t i=0;i<scene.pixels().size();++i) {
+                require(pixels[i*4+3]==255U,"model smoothing changed alpha");
+                if(scene.layer_tags()[i]==std::uint8_t(PixelLayer::background))
+                    require(pixels[i*4]==255U,"model smoothing bled beyond geometry coverage");
+            }
+        }
+    }
+    {
+        starfox::simulation::SnesPpuState ppu;
+        ppu.background_mode=2U;
+        ppu.bg2_screen_size=0U;
+        ppu.bg2_scanline_scroll_enabled=true;
+        for(unsigned i=0;i<1024;++i) ppu.vram[ppu.bg2_screen_base*2U+i*2U]=1U;
+        for(unsigned y=0;y<8;++y) ppu.vram[ppu.bg2_character_base*2U+32U+y*2U]=255U;
+        starfox::render::BackgroundRenderer renderer;
+        for(unsigned width:{400U,512U,768U}) for(unsigned scale:{1U,2U,4U}) {
+            Framebuffer wide{width,8,scale}, native{256,8,scale};
+            const auto origin=int((width-256U)/2U);
+            renderer.draw_bg2(ppu,0,0,wide,starfox::render::TilePriorityPass::all,origin);
+            renderer.draw_bg2(ppu,0,0,native);
+            for(unsigned y=0;y<8;++y) for(unsigned x=0;x<width;++x) {
+                const auto expected=x<unsigned(origin) || x>=unsigned(origin)+256U
+                    ? 0U : native.get(x-origin,y);
+                require(wide.get(x,y)==expected,"tunnel duplicated artwork into wide borders or changed native centre");
+            }
+            require(native.get(0,0)!=0U,"tunnel regression fixture is empty");
+        }
+    }
+    for (const auto layer : {PixelLayer::three_d, PixelLayer::background}) {
+        Framebuffer scene{32,32};
+        scene.enable_layer_tags(true);
+        std::fill(scene.layer_tags().begin(),scene.layer_tags().end(),std::uint8_t(layer));
+        std::vector<std::uint8_t> original(scene.pixels().size()*4U,0U);
+        for (std::size_t i=0;i<scene.pixels().size();++i) original[i*4+3]=255U;
+        for (unsigned y=12;y<20;++y) for(unsigned x=12;x<20;++x)
+            for(unsigned c=0;c<3;++c) original[(y*32+x)*4+c]=255U;
+        starfox::render::BloomPass bloom;
+        auto wrong=original, right=original;
+        bloom.apply(layer==PixelLayer::three_d ? 0U : 3U,
+            layer==PixelLayer::three_d ? 3U : 0U,scene,wrong);
+        bloom.apply(layer==PixelLayer::three_d ? 3U : 0U,
+            layer==PixelLayer::three_d ? 0U : 3U,scene,right);
+        require(wrong==original,"disabled bloom layer still emitted light");
+        require(right!=original,"enabled bloom layer emitted no light");
+    }
+    for (const unsigned scale : {1U,2U,4U}) {
+        Framebuffer scene{8,8,scale};
+        scene.clear(1U);
+        scene.set(4,4,129U);
+        std::vector<std::uint8_t> original(scene.pixels().size()*4U,255U);
+        for (const auto amount : {31U,30U,16U,2U,0U}) {
+            auto pixels=original;
+            starfox::simulation::ColourMathEffectState effect{
+                true,true,false,0x27U,std::uint8_t(amount),std::uint8_t(amount),std::uint8_t(amount)};
+            starfox::render::apply_colour_math(effect,scene,pixels);
+            for (std::size_t i=0; i<scene.pixels().size(); ++i) {
+                const auto expected=scene.pixels()[i]>=128U ? 255U : 255U-(amount*8U+(amount>>2U));
+                for (unsigned c=0;c<3;++c) require(pixels[i*4+c]==expected,
+                    "revival colour window changed OBJ or lost native background fade");
+                require(pixels[i*4+3]==255U,"colour window changed alpha");
+            }
+        }
+    }
+    // Golden output from the pre-optimization bloom, plus threaded/cache reuse
+    // coverage at every supported render scale.
+    starfox::render::BloomPass cached_bloom;
+    starfox::render::RowWorkers bloom_workers;
+    bloom_workers.set_worker_count(4);
+    for (const unsigned scale : {1U, 2U, 4U, 2U, 1U}) {
+        Framebuffer scene{768, 224, scale};
+        scene.enable_layer_tags(true);
+        std::vector<std::uint8_t> original(scene.pixels().size()*4);
+        for (unsigned y=0; y<scene.stored_height(); ++y) for (unsigned x=0; x<scene.stored_width(); ++x) {
+            const auto i=std::size_t(y)*scene.stored_width()+x;
+            scene.layer_tags()[i]=std::uint8_t(y<16*scale ? PixelLayer::two_d : PixelLayer::background);
+            original[i*4]=(x/scale*13+y/scale*3)%256;
+            original[i*4+1]=(x/scale*7+y/scale*5)%256;
+            original[i*4+2]=(x/scale*3+y/scale*11)%256;
+            original[i*4+3]=255;
+        }
+        auto serial=original, threaded=original;
+        cached_bloom.apply(3,scene,serial);
+        cached_bloom.apply(3,scene,threaded,&bloom_workers);
+        require(serial==threaded,"threaded bloom differs from serial output");
+        std::uint64_t hash=1469598103934665603ULL;
+        for (auto v:serial) { hash^=v; hash*=1099511628211ULL; }
+        const auto expected=scale==1 ? 13590015223919869339ULL
+            : scale==2 ? 2401763838851610420ULL : 7426840680921405174ULL;
+        require(hash==expected,"optimized bloom changed reference pixels");
+    }
+    for (const unsigned scale : {1U, 2U, 4U}) {
+        Framebuffer scene{32, 32, scale};
+        scene.enable_layer_tags(true);
+        std::fill(scene.layer_tags().begin(), scene.layer_tags().end(), std::uint8_t(PixelLayer::background));
+        std::vector<std::uint8_t> original(scene.pixels().size() * 4, 0);
+        for (std::size_t i = 0; i < scene.pixels().size(); ++i) original[i*4+3] = 255;
+        for (unsigned y = 12*scale; y < 20*scale; ++y) for (unsigned x = 12*scale; x < 20*scale; ++x) {
+            const auto i = std::size_t(y)*scene.stored_width()+x;
+            scene.layer_tags()[i] = std::uint8_t(PixelLayer::three_d);
+            for (unsigned c=0;c<3;++c) original[i*4+c]=255;
+        }
+        const auto hud = std::size_t(16*scale)*scene.stored_width()+10*scale;
+        scene.layer_tags()[hud] = std::uint8_t(PixelLayer::two_d);
+        original[hud*4] = 80;
+        starfox::render::BloomPass bloom;
+        unsigned previous = 0;
+        for (std::uint8_t level=0; level<4; ++level) {
+            auto pixels=original;
+            bloom.apply(level, scene, pixels);
+            if (!level) require(pixels == original, "Bloom Off changed output");
+            const auto halo=(std::size_t(16*scale)*scene.stored_width()+7*scale)*4;
+            if (level) require(pixels[halo]>previous, "Bloom strength did not increase its broad halo");
+            previous=pixels[halo];
+            require(std::equal(pixels.begin()+hud*4,pixels.begin()+hud*4+4,original.begin()+hud*4), "Bloom changed HUD");
+            for (std::size_t i=3;i<pixels.size();i+=4) require(pixels[i]==255,"Bloom changed alpha");
+        }
+        std::fill(scene.layer_tags().begin(), scene.layer_tags().end(), std::uint8_t(PixelLayer::two_d));
+        auto pixels=original;
+        bloom.apply(3,scene,pixels);
+        require(pixels==original,"HUD-only frame generated bloom");
+    }
+    for (const bool world : {false,true}) {
+        std::uint8_t style=0;
+        for (unsigned i=0;i<starfox::render::effect_count*2;++i) {
+            style=starfox::render::next_effect(style,world,false);
+            require(starfox::render::selectable_effect(style,world),"selector exposed a removed style");
+        }
+    }
+    {
+        Framebuffer hud{256U, 224U};
+        hud.enable_layer_tags(true);
+        starfox::simulation::SnesPpuState ppu{};
+        ppu.main_screen = 0x10U;
+        ppu.object_select = 0U;
+        ppu.oam[0] = 12U;
+        ppu.oam[1] = 16U;
+        ppu.vram[0] = 0x80U;
+        starfox::render::SpriteRenderer renderer;
+        renderer.draw_objects(ppu, hud);
+        require(hud.layer_stored(12, 16) == PixelLayer::two_d,
+            "1x HUD sprites were tagged as effect-eligible models");
+        starfox::simulation::MeterState meters{};
+        meters.enabled = true;
+        meters.boss_max_health = 100U;
+        meters.boss_health = 50U;
+        renderer.draw_meters(meters, hud);
+        require(hud.layer_stored(118, 2) == PixelLayer::two_d,
+            "1x boss meter was tagged as an effect-eligible model");
+    }
+    {
+        Framebuffer frame{2U, 1U};
+        frame.enable_layer_tags(true);
+        frame.set_layer_override(PixelLayer::three_d);
+        frame.set(0, 0, 1);
+        frame.set_layer_override(PixelLayer::two_d);
+        frame.set(1, 0, 2);
+        const std::vector<std::uint8_t> original{180, 100, 40, 255, 12, 34, 56, 255};
+        std::vector<std::uint8_t> scratch;
+        for (unsigned effect = 0; effect < starfox::render::effect_names.size(); ++effect) {
+            auto pixels = original;
+            starfox::render::apply_effect(static_cast<starfox::render::Effect>(effect),
+                frame, pixels, scratch);
+            require(std::equal(pixels.begin() + 4, pixels.end(), original.begin() + 4),
+                "effects changed HUD pixels");
+            require((pixels == original) == (effect == 0), "effect/off output mismatch");
+            require(pixels[3] == 255, "effects changed alpha");
+            auto disabled = original;
+            starfox::render::apply_effect(static_cast<starfox::render::Effect>(effect),
+                frame, disabled, scratch, 0U);
+            require(disabled == original, "zero intensity changed pixels");
+            auto halfway = original;
+            starfox::render::apply_effect(static_cast<starfox::render::Effect>(effect),
+                frame, halfway, scratch, 50U);
+            for (unsigned c = 0; c < 3; ++c) require(
+                halfway[c] == (unsigned(original[c]) + pixels[c] + 1U) / 2U,
+                "intensity did not blend linearly");
+        }
+    }
     for (const auto scale : {1U, 2U, 3U, 4U, 6U, 10U}) {
         check_filter(TwoDFilter::edge, scale, dump_directory);
         check_filter(TwoDFilter::sharp_bilinear, scale, dump_directory);
@@ -553,6 +767,57 @@ int main(int argc, char** argv) {
         }
     }
 
+    {
+        Framebuffer frame{5U, 5U};
+        frame.enable_layer_tags(true);
+        frame.set_layer_override(PixelLayer::two_d);
+        frame.set(2, 2, 1);
+        std::vector<std::uint8_t> pixels(5U * 5U * 4U, 0U), scratch;
+        for (std::size_t i = 3; i < pixels.size(); i += 4) pixels[i] = 255;
+        for (unsigned c = 0; c < 3; ++c) pixels[(2 * 5 + 2) * 4 + c] = 255;
+        const auto original = pixels;
+        starfox::render::apply_effect(starfox::render::Effect::bloom, frame, pixels, scratch);
+        require(pixels == original, "bright HUD leaked into bloom");
+        frame.set_layer_override(PixelLayer::three_d);
+        frame.set(2, 2, 1);
+        starfox::render::apply_effect(starfox::render::Effect::bloom, frame, pixels, scratch);
+        require(pixels[(1 * 5 + 1) * 4] > original[(1 * 5 + 1) * 4],
+            "bright world pixel produced no bloom halo");
+    }
+    {
+        Framebuffer frame{4U, 1U};
+        frame.enable_layer_tags(true);
+        frame.layer_tags() = {std::uint8_t(PixelLayer::three_d), std::uint8_t(PixelLayer::background),
+            std::uint8_t(PixelLayer::two_d), std::uint8_t(PixelLayer::world_geometry)};
+        const std::vector<std::uint8_t> original{180,100,40,255,180,100,40,255,180,100,40,255,180,100,40,255};
+        std::vector<std::uint8_t> scratch;
+        using starfox::render::Effect;
+        for (unsigned style = 8; style < starfox::render::effect_count; ++style) {
+            const auto effect = static_cast<Effect>(style);
+            for (const bool world : {false, true}) {
+                auto pixels = original;
+                starfox::render::apply_effect(world ? Effect::off : effect,
+                    frame, pixels, scratch, 100, world ? effect : Effect::off, 100);
+                for (unsigned pixel = 0; pixel < 4; ++pixel) {
+                    const bool selected = world ? pixel == 1 || pixel == 3 : pixel == 0;
+                    const bool same = std::equal(pixels.begin() + pixel * 4,
+                        pixels.begin() + pixel * 4 + 3, original.begin() + pixel * 4);
+                    require(same != selected, "new style missed its layer or leaked into another");
+                    require(pixels[pixel * 4 + 3] == 255, "new style changed alpha");
+                }
+            }
+        }
+        auto model_only = original;
+        starfox::render::apply_effect(Effect::monochrome, frame, model_only, scratch);
+        require(model_only[0] != original[0] && model_only[4] == original[4]
+                && model_only[8] == original[8] && model_only[12] == original[12],
+            "model effects leaked into world or HUD");
+        auto world_only = original;
+        starfox::render::apply_effect(Effect::off, frame, world_only, scratch, 100, Effect::monochrome, 100);
+        require(world_only[0] == original[0] && world_only[4] != original[4]
+                && world_only[8] == original[8] && world_only[12] != original[12],
+            "world effects missed scenery or changed model/HUD");
+    }
     std::cout << "pixel filter tests passed\n";
     return 0;
 }

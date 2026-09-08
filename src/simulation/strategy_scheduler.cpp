@@ -43,6 +43,9 @@ NativeStrategyScheduler::NativeStrategyScheduler(
       path_data_begin_(rom_symbol(symbols, "PATHS")),
       alien_dead_(ram_symbol(symbols, "ALDEAD")),
       game_frame_(ram_symbol(symbols, "GAMEFRAME")),
+      escape_camera_strategy_(rom_symbol(symbols, "VIEWOUTOFLB1_STRAT")),
+      escape_anchor_(ram_symbol(symbols, "MAPVAR1")),
+      game_flags_2_(ram_symbol(symbols, "GAMEFLAGS2")),
       object_instruction_limit_(object_instruction_limit) {
     if (object_instruction_limit_ == 0U) {
         throw std::invalid_argument{
@@ -60,6 +63,27 @@ std::size_t NativeStrategyScheduler::begin_tick() {
 }
 
 std::size_t NativeStrategyScheduler::tick_object(ObjectHandle object) {
+    // The escape camera inserts explosion objects after MAPVAR1. If its
+    // building has already been removed, l_add inserts into the free list
+    // instead and loses slots. Suppress only that obsolete cosmetic burst;
+    // still execute the camera's movement and leave all pool lists untouched.
+    struct RestoreBurstFlag {
+        MapVm* map{};
+        std::uint32_t address{};
+        ~RestoreBurstFlag() {
+            if (map) map->write_native_byte(address,
+                static_cast<std::uint8_t>(map->read_native_byte(address) | 1U));
+        }
+    } restore;
+    if (objects_->at(object).strategy_address == escape_camera_strategy_
+        && (native_state_->read_native_byte(game_flags_2_) & 1U) != 0U
+        && !native_state_->is_native_object_active(
+            native_state_->read_native_word(escape_anchor_))) {
+        native_state_->write_native_byte(game_flags_2_, static_cast<std::uint8_t>(
+            native_state_->read_native_byte(game_flags_2_) & ~1U));
+        restore.map = native_state_;
+        restore.address = game_flags_2_;
+    }
     native_state_->write_native_byte(alien_dead_, 0);
     try {
         return native_state_->call_native_object_routine(

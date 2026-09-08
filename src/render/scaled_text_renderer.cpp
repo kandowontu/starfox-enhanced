@@ -238,6 +238,13 @@ void ScaledTextRenderer::draw_ascii(
             y += 13;
             continue;
         }
+        if (ascii == '/') {
+            for (std::int32_t row = 0; row < 12; ++row) {
+                target.set(x + 3 - row / 3, y + row, output_colour);
+            }
+            x += 5;
+            continue;
+        }
         if (ascii < 32U) continue;
         const auto translated = rom_->read8(
             game_font_translation_ + static_cast<std::uint32_t>(ascii - 32U));
@@ -267,13 +274,23 @@ void ScaledTextRenderer::draw_ascii_compact(
     Framebuffer& target,
     std::uint8_t colour,
     std::uint8_t colour_index_base) const {
-    constexpr std::int32_t output_height = 9;
+    constexpr std::int32_t output_height = 8;
     const auto output_colour = static_cast<std::uint8_t>(
         colour_index_base + (colour & 0x0fU));
     for (const auto character : text) {
         const auto ascii = static_cast<std::uint8_t>(character);
         if (ascii == '\n') {
             y += output_height + 1;
+            continue;
+        }
+        // The source translation aliases slash to a vertical separator.
+        // Host-authored labels need an actual diagonal slash.
+        if (ascii == '/') {
+            for (std::int32_t row = 0; row < output_height; ++row) {
+                target.set(x + 3 - row * 4 / output_height, y + row,
+                    output_colour);
+            }
+            x += 5;
             continue;
         }
         if (ascii < 32U) continue;
@@ -312,7 +329,7 @@ std::int32_t ScaledTextRenderer::measure_ascii(std::string_view text) const {
         if (ascii < 32U) continue;
         const auto translated = rom_->read8(
             game_font_translation_ + static_cast<std::uint32_t>(ascii - 32U));
-        line_width += ascii == 32U ? 5
+        line_width += (ascii == 32U || ascii == '/') ? 5
             : static_cast<std::int32_t>(
                 rom_->read8(game_font_widths_ + translated));
     }

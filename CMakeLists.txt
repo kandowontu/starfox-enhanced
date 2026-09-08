@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(starfox_enhanced VERSION 0.0.4.2 LANGUAGES CXX)
+project(starfox_enhanced VERSION 0.0.5 LANGUAGES CXX)
 
 if(WINDOWS_STORE)
     # Apply the UWP ABI to the entire dependency graph, not only the SDL entry
@@ -407,7 +407,7 @@ if(STARFOX_BUILD_RUNTIME)
             VERBATIM)
         set(STARFOX_UWP_MANIFEST
             "${CMAKE_CURRENT_BINARY_DIR}/Package.appxmanifest")
-        set(STARFOX_UWP_BUILD_REVISION "${PROJECT_VERSION_TWEAK}" CACHE STRING
+        set(STARFOX_UWP_BUILD_REVISION "0" CACHE STRING
             "Fourth component of the Xbox UWP package version")
         if(NOT STARFOX_UWP_BUILD_REVISION MATCHES "^[0-9]+$")
             message(FATAL_ERROR
@@ -689,7 +689,7 @@ if(STARFOX_BUILD_RUNTIME)
         include("$ENV{VITASDK}/share/vita.cmake" REQUIRED)
         set(STARFOX_VITA_TITLE_ID "SFXE00001" CACHE STRING
             "Nine-character PS Vita title id")
-        set(STARFOX_VITA_APP_VERSION "00.04" CACHE STRING
+        set(STARFOX_VITA_APP_VERSION "00.05" CACHE STRING
             "Two-component PS Vita application version")
         # SCE metadata is appended to the executable segment by vita-elf-create.
         # A separate adjacent read-only segment leaves no room for that data.
@@ -710,6 +710,7 @@ if(STARFOX_BUILD_RUNTIME)
         install(TARGETS starfox_asset_builder RUNTIME DESTINATION .)
     endif()
     install(FILES README.md CREDITS.md THIRD_PARTY_NOTICES.md LICENSE-XBRZ.txt DESTINATION .)
+    install(FILES docs/RELEASE-0.0.5.md DESTINATION docs)
 
 endif()
 

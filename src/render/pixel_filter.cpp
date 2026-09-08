@@ -12,8 +12,11 @@
 namespace starfox::render {
 namespace {
 
-constexpr std::uint8_t two_d_tag =
-    static_cast<std::uint8_t>(PixelLayer::two_d);
+constexpr bool is_two_d_art(std::uint8_t tag) noexcept {
+    return tag == static_cast<std::uint8_t>(PixelLayer::two_d)
+        || tag == static_cast<std::uint8_t>(PixelLayer::background)
+        || tag == static_cast<std::uint8_t>(PixelLayer::textured_geometry);
+}
 
 // xBRZ's own packing: alpha in the high byte, blue in the low byte, which is
 // BGRA byte order on the little-endian targets this port builds for. EDGE uses
@@ -348,9 +351,9 @@ void apply_two_d_filter(
     const auto cells = static_cast<std::size_t>(width) * height;
     scratch.source.assign(cells, 0U);
 
-    // A source cell only joins the 2D layer when the render scale expanded it
-    // into a block the 3D pass never overwrote. Partially covered cells stay
-    // holes so a polygon edge crossing 2D art is never filtered over.
+    // A source cell only joins the artwork layer if every stored sample is
+    // eligible (sprites, backgrounds or polygon texels). Solid geometry stays
+    // a hole, and composition cannot write beyond eligible coverage.
     auto first_row = height;
     auto last_row = std::uint32_t{0U};
     for (std::uint32_t y = 0; y < height; ++y) {
@@ -362,7 +365,7 @@ void apply_two_d_filter(
                     + static_cast<std::size_t>(y * scale + row) * stored_width
                     + static_cast<std::size_t>(x) * scale;
                 covered = std::all_of(block, block + scale,
-                    [](std::uint8_t tag) { return tag == two_d_tag; });
+                    [](std::uint8_t tag) { return is_two_d_art(tag); });
             }
             if (!covered) continue;
             const auto index = static_cast<std::size_t>(y) * width + x;
@@ -419,7 +422,7 @@ void apply_two_d_filter(
                 auto* output = rgba.data()
                     + static_cast<std::size_t>(y) * stored_width * 4U;
                 for (std::uint32_t x = 0; x < stored_width; ++x) {
-                    if (row_tags[x] != two_d_tag) continue;
+                    if (!is_two_d_art(row_tags[x])) continue;
                     const auto colour = resolved_sample(filtered, filtered_width, x, y,
                         factor, scale, backend);
                     const auto alpha = (colour >> 24U) & 0xffU;

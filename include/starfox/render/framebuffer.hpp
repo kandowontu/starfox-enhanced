@@ -20,6 +20,11 @@ struct Rgba8;
 enum class PixelLayer : std::uint8_t {
     three_d = 0,
     two_d = 1,
+    // Cartridge scenery: eligible for both 2D filtering and world effects,
+    // unlike HUD/text pixels that also arrive through the source raster.
+    background = 2,
+    world_geometry = 3, // stars/dust/grid: world effects, but not a 2D-art filter
+    textured_geometry = 4, // model texels: filterable artwork, still a 3D surface
 };
 
 // Pixels are stored at the render scale while every cartridge-authored pass

@@ -18,7 +18,8 @@ namespace starfox::render {
 // but every 2D pass keeps addressing the source raster, so sprites,
 // backgrounds, HUD and text arrive as SxS nearest-neighbour blocks. These
 // filters replace that block expansion with an edge-directed reconstruction,
-// using the framebuffer's layer tags so polygon pixels are never touched.
+// using layer tags to include textured polygon artwork without filtering
+// solid-coloured geometry or changing the polygon coverage mask.
 enum class TwoDFilter : std::uint8_t {
     off = 0,
     // Edge-directed corner reconstruction. Original implementation, generalized
@@ -49,7 +50,7 @@ struct PixelFilterScratch {
     std::vector<std::uint32_t> filtered; // filter output, packed ARGB
 };
 
-// Replaces the 2D-owned pixels of `rgba` (stored resolution, RGBA8, as
+// Replaces artwork-owned pixels of `rgba` (stored resolution, RGBA8, as
 // produced by expand_rgba) with a filtered reconstruction of the same art.
 //
 // Requires framebuffer.layer_tags_enabled() and a draw scale of 1 or more;

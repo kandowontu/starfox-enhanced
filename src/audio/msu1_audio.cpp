@@ -32,7 +32,10 @@ Msu1Audio::Msu1Audio(TrackLoader loader) : loader_(std::move(loader)) {}
 
 void Msu1Audio::set_enabled(bool enabled) noexcept {
     enabled_ = enabled;
-    if (!enabled_) playing_ = false;
+    if (!enabled_) {
+        playing_ = false;
+        staff_roll_completed_ = false;
+    }
 }
 
 void Msu1Audio::process_register_writes(
@@ -52,6 +55,7 @@ void Msu1Audio::process_register_writes(
             volume_ = write.value;
             break;
         case 0x2007U:
+            staff_roll_completed_ = false;
             if ((write.value & 0x01U) == 0U) {
                 playing_ = false;
                 source_cursor_ = 0.0;
@@ -62,6 +66,9 @@ void Msu1Audio::process_register_writes(
                 // Bit 2 requests resume. Ordinary play always restarts.
                 if ((write.value & 0x04U) == 0U) source_cursor_ = 0.0;
                 playing_ = true;
+            } else {
+                playing_ = false;
+                source_cursor_ = 0.0;
             }
             break;
         default:
@@ -121,12 +128,16 @@ std::span<const std::int16_t> Msu1Audio::render(
         || output_sample_rate == 0U) return output_;
     const auto step = static_cast<double>(source_sample_rate_)
         / static_cast<double>(output_sample_rate);
-    const auto loop = std::min(loop_frame(selected_track_), source_frames_);
+    // Replacement recordings may end before the source pack's loop marker.
+    // Restart those at zero so EOF always makes progress.
+    const auto requested_loop = loop_frame(loaded_track_);
+    const auto loop = requested_loop < source_frames_ ? requested_loop : 0U;
     const auto volume = static_cast<double>(volume_) / 255.0;
     for (std::size_t frame = 0; frame < output_frames; ++frame) {
         while (source_cursor_ >= static_cast<double>(source_frames_)) {
             if (!repeat_) {
                 playing_ = false;
+                staff_roll_completed_ = loaded_track_ == 49U;
                 return output_;
             }
             source_cursor_ = static_cast<double>(loop)
@@ -151,8 +162,10 @@ std::span<const std::int16_t> Msu1Audio::render(
     }
     // Report completion even when the last sample exactly fills this buffer.
     // Waiting for the next render call kept a finished one-shot marked active.
-    if (!repeat_ && source_cursor_ >= static_cast<double>(source_frames_))
+    if (!repeat_ && source_cursor_ >= static_cast<double>(source_frames_)) {
         playing_ = false;
+        staff_roll_completed_ = loaded_track_ == 49U;
+    }
     return output_;
 }
 

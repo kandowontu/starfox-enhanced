@@ -177,7 +177,9 @@ void SpriteRenderer::draw_objects(
     bool extend_horizontal,
     bool anchor_edge_hud,
     const HudLayout* hud_layout,
-    bool suppress_configurable_hud) const noexcept {
+    bool suppress_configurable_hud,
+    const simulation::MeterState* meters) const noexcept {
+    const ScopedLayer artwork_layer{target, PixelLayer::two_d};
     if ((ppu.main_screen & 0x10U) == 0U) return;
     const auto size_selection = static_cast<std::size_t>(
         (ppu.object_select >> 5U) & 7U);
@@ -248,8 +250,19 @@ void SpriteRenderer::draw_objects(
                 || (y_byte == 193U && down_new_row_pieces >= 2U))) {
             continue;
         }
+        const auto boss_label_glyph = tile & 0x7fU;
+        // SPRITES.ASM adds SPRADD ($80) to the four ENEMY glyphs. Match
+        // their glyph IDs while retaining the real tile bank for drawing.
         const auto boss_label_tile = y_byte < 32U
-            && tile >= 0x71U && tile <= 0x74U;
+            && boss_label_glyph >= 0x71U && boss_label_glyph <= 0x74U;
+        if (boss_label_tile && meters != nullptr) {
+            if (!meters->enabled || meters->boss_max_health == 0U) continue;
+            const auto maximum = meters->boss_max_health;
+            const auto span = (maximum & 0x80U) ? maximum >> 1U : maximum;
+            // The four native glyph tiles are 32 pixels wide. Place their
+            // right edge one pixel before the live, variable-width meter.
+            x = 256 - 18 - (span + 4) - 33 + (boss_label_glyph - 0x71U) * 8;
+        }
         auto object_origin = horizontal_origin;
         if (anchor_edge_hud && horizontal_origin > 0
             && !cockpit_crosshair_tile
@@ -300,7 +313,7 @@ void SpriteRenderer::draw_objects(
         for (std::uint32_t destination_y = 0; destination_y < size; ++destination_y) {
             const auto source_y = flip_y ? size - 1U - destination_y : destination_y;
             const auto raw_y = static_cast<std::int32_t>(y_byte)
-                + object_offset.y +
+                + object_offset.y + (boss_label_tile ? 1 : 0) +
                 static_cast<std::int32_t>(destination_y);
             const std::array<std::int32_t, 2> screen_ys{raw_y, raw_y - 256};
             for (const auto screen_y : screen_ys) {
@@ -332,6 +345,7 @@ void SpriteRenderer::draw_meters(
     bool anchor_to_edges,
     const HudLayout* hud_layout) const noexcept {
     if (!meters.enabled) return;
+    const ScopedLayer meter_layer{target, PixelLayer::two_d};
     const auto solid = [&target](
         std::int32_t x,
         std::int32_t y,

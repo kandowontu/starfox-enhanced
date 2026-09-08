@@ -142,12 +142,34 @@ MatrixQ15 multiply_matrix_q15(
     return result;
 }
 
+MatrixQ15 multiply_presentation_matrix_q15(
+    const MatrixQ15& left, const MatrixQ15& right) noexcept {
+    MatrixQ15 result{};
+    for (std::size_t row = 0; row < 3U; ++row) {
+        for (std::size_t column = 0; column < 3U; ++column) {
+            std::int32_t value{};
+            for (std::size_t k = 0; k < 3U; ++k) {
+                value += arithmetic_shift_right(
+                    std::int32_t(left[row * 3U + k]) * right[k * 3U + column], 15);
+            }
+            result[row * 3U + column] = static_cast<std::int16_t>(
+                std::clamp(value, -32'768, 32'767));
+        }
+    }
+    return result;
+}
+
 MatrixQ15 interpolate_rotation_matrix_q15(
     const MatrixQ15& previous,
     const MatrixQ15& current,
     double alpha) noexcept {
     if (alpha <= 0.0) return previous;
     if (alpha >= 1.0) return current;
+    // A held source rotation is already the correct presentation endpoint.
+    // Normalizing it through a quaternion changes its Q15 coefficients even
+    // with no rotation (32766 -> 32767 on the intro mothership's diagonals),
+    // making polygon edges pulse between source and fractional frames.
+    if (previous == current) return current;
     alpha = std::clamp(alpha, 0.0, 1.0);
 
     struct Quaternion {

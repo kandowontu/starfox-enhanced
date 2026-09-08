@@ -47,6 +47,13 @@ struct GamepadBinding {
 class InputBindings {
 public:
     static constexpr std::size_t action_count = 12U;
+    static constexpr std::size_t reset_action = action_count;
+    [[nodiscard]] static constexpr std::size_t remap_action_count(BindingDevice device) noexcept {
+        return action_count + (device == BindingDevice::keyboard ? 1U : 0U);
+    }
+    bool bind_reset_key(SDL_Scancode scancode) noexcept;
+    [[nodiscard]] bool matches_reset_shortcut(const SDL_KeyboardEvent& event) const noexcept;
+    [[nodiscard]] static bool matches_god_mode_shortcut(const SDL_KeyboardEvent& event) noexcept;
 
     InputBindings();
 
@@ -69,11 +76,12 @@ public:
     [[nodiscard]] static std::string_view action_name(
         std::size_t action) noexcept;
 
-    void load();
-    void save() const;
+    void load(const std::filesystem::path& override_path = {});
+    void save(const std::filesystem::path& override_path = {}) const;
 
 private:
     std::array<SDL_Scancode, action_count> keyboard_{};
+    SDL_Scancode reset_key_{SDL_SCANCODE_R};
     std::array<GamepadBinding, action_count> gamepad_{};
 };
 
@@ -103,6 +111,13 @@ struct PregameSettings {
     std::uint8_t render_scale{};
     bool on_screen_controls{true};
     bool swap_face_buttons{};
+    std::uint8_t effect{};
+    std::uint8_t effect_intensity{100U};
+    std::uint8_t world_effect{};
+    std::uint8_t world_effect_intensity{100U};
+    std::uint8_t bloom{};
+    std::uint8_t bloom_2d{};
+    std::uint8_t model_smoothing{};
 
     [[nodiscard]] bool operator==(const PregameSettings&) const = default;
 };
@@ -110,8 +125,17 @@ struct PregameSettings {
 // Guards the per-user preference directory against a second desktop runtime.
 [[nodiscard]] std::filesystem::path single_instance_lock_path();
 
-// Front-end choices live beside HUD layouts in persistent per-user storage so
-// presentation and accessibility settings survive upgrades and app moves.
+// Desktop data lives beside the executable. Packaged/mobile/console targets
+// retain writable platform storage. Set once at startup, before loading data.
+void set_portable_data_directory(const std::filesystem::path& directory);
+[[nodiscard]] std::filesystem::path input_bindings_path();
+// Copy missing legacy files without overwriting portable data or deleting originals.
+void migrate_legacy_data(const std::filesystem::path& destination,
+    const std::filesystem::path& legacy_settings,
+    const std::filesystem::path& legacy_bindings);
+void migrate_legacy_user_data();
+
+// Front-end choices share the same data root as HUD, bindings and EX SRAM.
 [[nodiscard]] std::filesystem::path pregame_settings_path();
 [[nodiscard]] bool load_pregame_settings(
     const std::filesystem::path& path,

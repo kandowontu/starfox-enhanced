@@ -25,6 +25,9 @@ public:
     [[nodiscard]] bool enabled() const noexcept { return enabled_; }
     [[nodiscard]] bool paused() const noexcept { return paused_; }
     [[nodiscard]] bool playing() const noexcept { return playing_; }
+    [[nodiscard]] bool resume_native_music() const noexcept {
+        return enabled_ && staff_roll_completed_;
+    }
     [[nodiscard]] std::uint16_t selected_track() const noexcept {
         return selected_track_;
     }
@@ -53,6 +56,7 @@ private:
     bool paused_{};
     bool playing_{};
     bool repeat_{};
+    bool staff_roll_completed_{};
 };
 
 } // namespace starfox::audio

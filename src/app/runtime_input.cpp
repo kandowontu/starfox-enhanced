@@ -1,12 +1,14 @@
 #include "starfox/app/runtime_input.hpp"
 
 #include "starfox/input/buttons.hpp"
+#include "starfox/render/effect_types.hpp"
 
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -123,7 +125,20 @@ constexpr std::string_view kPregameTag{"SFE_PREGAME_V"};
 // for anything older.
 constexpr int kPregameRevision = 12;
 
-std::filesystem::path settings_path() {
+std::filesystem::path portable_directory;
+
+std::filesystem::path desktop_data_directory() {
+#if defined(STARFOX_UWP) || defined(__ANDROID__) || defined(SDL_PLATFORM_IOS) || defined(SDL_PLATFORM_VITA) || defined(__SWITCH__)
+    return {};
+#else
+    if (!portable_directory.empty()) return portable_directory;
+    const auto* base = SDL_GetBasePath();
+    if (base == nullptr || *base == '\0') throw std::runtime_error{"Cannot locate portable data directory"};
+    return std::filesystem::path{base};
+#endif
+}
+
+std::filesystem::path legacy_bindings_path() {
     char* preference_path = SDL_GetPrefPath("StarFoxEnhanced", "StarFoxEnhanced");
     if (preference_path == nullptr) return {};
     const std::filesystem::path result =
@@ -132,7 +147,7 @@ std::filesystem::path settings_path() {
     return result;
 }
 
-std::filesystem::path documents_settings_path(std::string_view filename) {
+std::filesystem::path legacy_documents_path(std::string_view filename) {
 #if defined(SDL_PLATFORM_VITA)
     return std::filesystem::path{"ux0:data/StarFoxEnhanced"} / filename;
 #elif defined(STARFOX_UWP)
@@ -180,6 +195,16 @@ std::filesystem::path documents_settings_path(std::string_view filename) {
     }
     return {};
 #endif
+}
+
+std::filesystem::path documents_settings_path(std::string_view filename) {
+    const auto directory = desktop_data_directory();
+    return directory.empty() ? legacy_documents_path(filename) : directory / filename;
+}
+
+std::filesystem::path settings_path() {
+    const auto directory = desktop_data_directory();
+    return directory.empty() ? legacy_bindings_path() : directory / "input-bindings.cfg";
 }
 
 constexpr std::array<std::string_view, 5> kHudElementNames{
@@ -237,6 +262,9 @@ bool is_default_direction(
 } // namespace
 
 std::filesystem::path single_instance_lock_path() {
+    if (const auto directory = desktop_data_directory(); !directory.empty()) {
+        return directory / "runtime.lock";
+    }
     char* preference_path =
         SDL_GetPrefPath("StarFoxEnhanced", "StarFoxEnhanced");
     if (preference_path == nullptr) return {};
@@ -244,6 +272,44 @@ std::filesystem::path single_instance_lock_path() {
         std::filesystem::path{preference_path} / "runtime.lock";
     SDL_free(preference_path);
     return result;
+}
+
+void set_portable_data_directory(const std::filesystem::path& directory) {
+#if defined(STARFOX_UWP) || defined(__ANDROID__) || defined(SDL_PLATFORM_IOS) || defined(SDL_PLATFORM_VITA) || defined(__SWITCH__)
+    static_cast<void>(directory);
+#else
+    if (directory.empty() || !directory.is_absolute()) {
+        throw std::invalid_argument{"Portable data directory must be absolute"};
+    }
+    portable_directory = directory.lexically_normal();
+#endif
+}
+
+std::filesystem::path input_bindings_path() { return settings_path(); }
+
+void migrate_legacy_data(const std::filesystem::path& destination,
+    const std::filesystem::path& legacy_settings,
+    const std::filesystem::path& legacy_bindings) {
+    if (destination.empty()) return;
+    for (const auto* filename : {"pregame.cfg", "hud-layout.cfg", "starfox-ex.srm", "input-bindings.cfg"}) {
+        const auto target = destination / filename;
+        if (std::filesystem::exists(target)) continue;
+        const auto& source_directory = std::string_view{filename} == "input-bindings.cfg"
+            ? legacy_bindings : legacy_settings;
+        if (source_directory.empty()) continue;
+        const auto source = source_directory / filename;
+        if (!std::filesystem::is_regular_file(source)) continue;
+        std::filesystem::create_directories(destination);
+        // skip_existing also protects a target created between the check and copy.
+        std::filesystem::copy_file(source, target, std::filesystem::copy_options::skip_existing);
+    }
+}
+
+void migrate_legacy_user_data() {
+    const auto destination = desktop_data_directory();
+    if (destination.empty()) return;
+    migrate_legacy_data(destination, legacy_documents_path("pregame.cfg").parent_path(),
+        legacy_bindings_path().parent_path());
 }
 
 void configure_native_gamepad_support() noexcept {
@@ -411,6 +477,10 @@ input::ButtonMask InputBindings::sample_fixed_menu_navigation(
 
 void InputBindings::bind_keyboard(
     std::size_t action, SDL_Scancode scancode) noexcept {
+    if (action == reset_action) {
+        static_cast<void>(bind_reset_key(scancode));
+        return;
+    }
     if (action < action_count && scancode >= 0
         && scancode < SDL_SCANCODE_COUNT) keyboard_[action] = scancode;
 }
@@ -436,12 +506,18 @@ void InputBindings::bind_gamepad_axis(
 }
 
 void InputBindings::reset(BindingDevice device) noexcept {
-    if (device == BindingDevice::keyboard) keyboard_ = kDefaultKeyboard;
+    if (device == BindingDevice::keyboard) {
+        keyboard_ = kDefaultKeyboard;
+        reset_key_ = SDL_SCANCODE_R;
+    }
     else gamepad_ = kDefaultGamepad;
 }
 
 std::string InputBindings::binding_name(
     BindingDevice device, std::size_t action) const {
+    if (device == BindingDevice::keyboard && action == reset_action) {
+        return std::string{"CTRL+SHIFT+"} + SDL_GetScancodeName(reset_key_);
+    }
     if (action >= action_count) return "?";
     if (device == BindingDevice::keyboard) {
         const auto* name = SDL_GetScancodeName(keyboard_[action]);
@@ -462,11 +538,38 @@ std::string InputBindings::binding_name(
 }
 
 std::string_view InputBindings::action_name(std::size_t action) noexcept {
+    if (action == reset_action) return "RESET";
     return action < action_count ? kActionNames[action] : std::string_view{"?"};
 }
 
-void InputBindings::load() {
-    const auto path = settings_path();
+bool InputBindings::bind_reset_key(SDL_Scancode scancode) noexcept {
+    if (scancode <= SDL_SCANCODE_UNKNOWN || scancode >= SDL_SCANCODE_COUNT
+        || scancode == SDL_SCANCODE_ESCAPE
+        || (scancode >= SDL_SCANCODE_LCTRL && scancode <= SDL_SCANCODE_RGUI)) return false;
+    const auto* name = SDL_GetScancodeName(scancode);
+    if (name == nullptr || *name == '\0') return false;
+    reset_key_ = scancode;
+    return true;
+}
+
+bool InputBindings::matches_god_mode_shortcut(const SDL_KeyboardEvent& event) noexcept {
+    return event.type == SDL_EVENT_KEY_DOWN && !event.repeat
+        && event.scancode == SDL_SCANCODE_F12
+        && (event.mod & SDL_KMOD_CTRL) != 0U
+        && (event.mod & SDL_KMOD_ALT) != 0U
+        && (event.mod & (SDL_KMOD_SHIFT | SDL_KMOD_GUI)) == 0U;
+}
+
+bool InputBindings::matches_reset_shortcut(const SDL_KeyboardEvent& event) const noexcept {
+    return event.type == SDL_EVENT_KEY_DOWN && !event.repeat
+        && event.scancode == reset_key_
+        && (event.mod & SDL_KMOD_CTRL) != 0U
+        && (event.mod & SDL_KMOD_SHIFT) != 0U
+        && (event.mod & (SDL_KMOD_ALT | SDL_KMOD_GUI)) == 0U;
+}
+
+void InputBindings::load(const std::filesystem::path& override_path) {
+    const auto path = override_path.empty() ? settings_path() : override_path;
     if (path.empty()) return;
     std::ifstream input{path};
     std::string line;
@@ -477,11 +580,12 @@ void InputBindings::load() {
         char device{};
         std::size_t action{};
         fields >> device >> action;
-        if (!fields || action >= action_count) continue;
+        if (!fields || action > reset_action
+            || (action == reset_action && device != 'K')) continue;
         if (device == 'K') {
             int scancode{};
             fields >> scancode;
-            bind_keyboard(action, static_cast<SDL_Scancode>(scancode));
+            if (fields) bind_keyboard(action, static_cast<SDL_Scancode>(scancode));
         } else if (device == 'G') {
             char kind{};
             int control{};
@@ -502,14 +606,15 @@ void InputBindings::load() {
     }
 }
 
-void InputBindings::save() const {
-    const auto path = settings_path();
+void InputBindings::save(const std::filesystem::path& override_path) const {
+    const auto path = override_path.empty() ? settings_path() : override_path;
     if (path.empty()) return;
     std::error_code error;
     std::filesystem::create_directories(path.parent_path(), error);
     std::ofstream output{path, std::ios::trunc};
     if (!output) return;
     output << "SFE_INPUT_V2\n";
+    output << "K " << reset_action << ' ' << static_cast<int>(reset_key_) << '\n';
     for (std::size_t action = 0; action < action_count; ++action) {
         output << "K " << action << ' '
                << static_cast<int>(keyboard_[action]) << '\n';
@@ -548,6 +653,7 @@ bool load_pregame_settings(
     if (revision < 1 || revision > kPregameRevision) return false;
 
     auto loaded = PregameSettings{};
+    bool found_bloom_2d = false;
     std::array<bool, 21> found{};
     if (revision < 12) found[20] = true;
     if (revision < 10) {
@@ -608,6 +714,28 @@ bool load_pregame_settings(
         } else if (name == "TWO_D_FILTER") {
             loaded.two_d_filter = static_cast<std::uint8_t>(value);
             found[20] = value >= 0 && value <= 4;
+        } else if (name == "EFFECTS") {
+            if (value < 0 || value >= render::effect_count) return false;
+            loaded.effect = static_cast<std::uint8_t>(value);
+        } else if (name == "BLOOM") {
+            if (value < 0 || value > 3) return false;
+            loaded.bloom = static_cast<std::uint8_t>(value);
+        } else if (name == "BLOOM_2D") {
+            if (value < 0 || value > 3) return false;
+            loaded.bloom_2d = static_cast<std::uint8_t>(value);
+            found_bloom_2d = true;
+        } else if (name == "MODEL_SMOOTHING") {
+            if (value < 0 || value > 3) return false;
+            loaded.model_smoothing = static_cast<std::uint8_t>(value);
+        } else if (name == "EFFECT_INTENSITY") {
+            if (value < 0 || value > 100) return false;
+            loaded.effect_intensity = static_cast<std::uint8_t>(value);
+        } else if (name == "WORLD_EFFECTS") {
+            if (value < 0 || value >= render::effect_count) return false;
+            loaded.world_effect = static_cast<std::uint8_t>(value);
+        } else if (name == "WORLD_EFFECT_INTENSITY") {
+            if (value < 0 || value > 100) return false;
+            loaded.world_effect_intensity = static_cast<std::uint8_t>(value);
         } else if (name == "VSYNC") {
             loaded.vsync = value != 0;
             found[11] = value == 0 || value == 1;
@@ -643,6 +771,7 @@ bool load_pregame_settings(
             found[19] = value == 0 || value == 1;
         }
     }
+    if (!found_bloom_2d) loaded.bloom_2d = loaded.bloom;
     if (!std::all_of(found.begin(), found.end(),
             [](bool value) { return value; })) return false;
     if (revision == 3) {
@@ -669,9 +798,11 @@ bool save_pregame_settings(
     if (path.empty() || settings.timing_mode > 1U
         || settings.display_mode > 4U || settings.crosshair_colour > 7U
         || settings.anti_aliasing > 3U || settings.rtx_lighting > 3U
-        || settings.two_d_filter > 4U || settings.renderer_mode > 1U
+        || settings.two_d_filter > 4U || settings.effect >= render::effect_count
+        || settings.effect_intensity > 100U || settings.renderer_mode > 1U
+        || settings.world_effect >= render::effect_count || settings.world_effect_intensity > 100U || settings.bloom > 3U || settings.bloom_2d > 3U
         || settings.experience > 1U || settings.music_volume > 100U
-        || settings.sfx_volume > 100U || settings.render_scale > 3U) {
+        || settings.sfx_volume > 100U || settings.render_scale > 3U || settings.model_smoothing > 3U) {
         return false;
     }
     constexpr std::array<std::uint16_t, 8> valid_fps{
@@ -700,6 +831,13 @@ bool save_pregame_settings(
            << static_cast<unsigned>(settings.rtx_lighting) << '\n'
            << "TWO_D_FILTER "
            << static_cast<unsigned>(settings.two_d_filter) << '\n'
+           << "EFFECTS " << static_cast<unsigned>(settings.effect) << '\n'
+           << "EFFECT_INTENSITY " << static_cast<unsigned>(settings.effect_intensity) << '\n'
+           << "WORLD_EFFECTS " << static_cast<unsigned>(settings.world_effect) << '\n'
+           << "WORLD_EFFECT_INTENSITY " << static_cast<unsigned>(settings.world_effect_intensity) << '\n'
+           << "BLOOM " << static_cast<unsigned>(settings.bloom) << '\n'
+           << "BLOOM_2D " << static_cast<unsigned>(settings.bloom_2d) << '\n'
+           << "MODEL_SMOOTHING " << static_cast<unsigned>(settings.model_smoothing) << '\n'
            << "VSYNC " << static_cast<unsigned>(settings.vsync) << '\n'
            << "RENDERER_MODE "
            << static_cast<unsigned>(settings.renderer_mode) << '\n'

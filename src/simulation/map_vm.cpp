@@ -115,6 +115,7 @@ MapVm::MapVm(
           symbols, "BG_DMALIST", kOriginalBackgroundDmaList)),
       current_background_address_(symbol_or(
           symbols, "CURRENTBG", kOriginalCurrentBackground)),
+      stage_counter_address_(symbol_or(symbols, "STAGECNT", 0x00163eU)),
       background_scroll_override_address_(symbol_or(symbols, "BG2VOFSOVERRIDE", 0U)),
       background_scroll_requested_x_(symbol_or(symbols, "BG2HOFSREQ", 0U)),
       background_scroll_requested_y_(symbol_or(symbols, "BG2VOFSREQ", 0U)),
@@ -291,10 +292,8 @@ void MapVm::tick_video_phase() {
             const auto game_frame = cpu_.read8(game_frame_address_);
             if ((game_frame & 1U) != 0U) return;
         }
-        // -2 selects QFADEDOWN in IRQ.ASM. Despite the name it has a single
-        // DEC before sharing the normal store path; unlike +2, it does not
-        // perform multiple brightness changes in one raster.
-        constexpr auto steps = 1U;
+        // QFADEDOWN decrements once, then branches to SETDOWN's decrement.
+        const auto steps = fade_direction_ == -2 ? 2U : 1U;
         if (fade_value_ <= steps) {
             fade_value_ = 0;
             fade_direction_ = 0;
@@ -662,15 +661,7 @@ void MapVm::sync_objects_from_cpu() {
     auto active = read_list(cpu_.read16(active_list_));
     auto free = read_list(cpu_.read16(free_list_));
     if (active.size() + free.size() != object_count_) {
-        // Some EX escape/cutscene strategies temporarily unlink an object
-        // while creating its explosion. Reclaim any slot omitted from both
-        // lists instead of terminating the whole mobile runtime.
-        std::array<bool, kMaximumObjects + 1> listed{};
-        for (const auto handle : active) listed[handle] = true;
-        for (const auto handle : free) listed[handle] = true;
-        for (ObjectHandle handle = 1; handle <= object_count_; ++handle) {
-            if (!listed[handle]) free.push_back(handle);
-        }
+        throw std::runtime_error{"native active/free lists do not cover the object pool"};
     }
     objects_->restore_lists(active, free);
     for (const auto handle : objects_->active_handles()) {
@@ -896,6 +887,7 @@ void MapVm::execute_ready_records() {
         }
         if (opcode == 14) {
             stage_counter_ = 50;
+            write_native_word(stage_counter_address_, stage_counter_);
             cursor_ += 1U;
             continue;
         }

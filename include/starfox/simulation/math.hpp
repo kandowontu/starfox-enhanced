@@ -40,6 +40,11 @@ using MatrixQ15 = std::array<std::int16_t, 9>;
 [[nodiscard]] MatrixQ15 transpose_q15(const MatrixQ15& matrix) noexcept;
 [[nodiscard]] MatrixQ15 multiply_matrix_q15(
     const MatrixQ15& left, const MatrixQ15& right) noexcept;
+// Q15 quaternion rounding can slightly exceed unit length. Compose those
+// matrices with saturation, never the native arithmetic's 16-bit wraparound.
+[[nodiscard]] MatrixQ15 multiply_presentation_matrix_q15(
+    const MatrixQ15& left, const MatrixQ15& right) noexcept;
+
 // Presentation-only normalized matrix interpolation. This is deliberately
 // separate from source state: it smooths rotations between 20 Hz updates
 // without feeding fractional transforms back into cartridge simulation.

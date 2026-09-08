@@ -1,5 +1,6 @@
 #include "starfox/app/runtime_input.hpp"
 #include "starfox/input/buttons.hpp"
+#include "starfox/render/effect_types.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -57,6 +58,58 @@ int main() {
     require(joystick != nullptr, "opened gamepad has no joystick interface");
 
     starfox::app::InputBindings bindings;
+    {
+        SDL_KeyboardEvent key{};
+        key.type = SDL_EVENT_KEY_DOWN;
+        key.scancode = SDL_SCANCODE_R;
+        key.mod = SDL_KMOD_LCTRL | SDL_KMOD_LSHIFT;
+        require(bindings.matches_reset_shortcut(key), "default Ctrl+Shift+R did not reset");
+        key.mod = SDL_KMOD_LCTRL;
+        auto god_key = key;
+        god_key.scancode = SDL_SCANCODE_F12;
+        god_key.mod = SDL_KMOD_LCTRL | SDL_KMOD_LALT;
+        require(bindings.matches_god_mode_shortcut(god_key), "Ctrl+Alt+F12 did not toggle god mode");
+        god_key.mod = SDL_KMOD_RCTRL | SDL_KMOD_RALT;
+        require(bindings.matches_god_mode_shortcut(god_key), "right-side god-mode modifiers failed");
+        god_key.repeat = true;
+        require(!bindings.matches_god_mode_shortcut(god_key), "god-mode key repeat retriggered");
+        god_key.repeat = false;
+        god_key.mod = SDL_KMOD_CTRL;
+        require(!bindings.matches_god_mode_shortcut(god_key), "god-mode hotkey accepted missing Alt");
+        god_key.mod = SDL_KMOD_CTRL | SDL_KMOD_ALT;
+        god_key.type = SDL_EVENT_KEY_UP;
+        require(!bindings.matches_god_mode_shortcut(god_key), "key release toggled god mode");
+        require(!bindings.matches_reset_shortcut(key), "Ctrl alone incorrectly reset");
+        key.mod = SDL_KMOD_RCTRL | SDL_KMOD_RSHIFT;
+        require(bindings.matches_reset_shortcut(key), "right-side modifiers did not reset");
+        key.repeat = true;
+        require(!bindings.matches_reset_shortcut(key), "key repeat retriggered reset");
+        key.repeat = false;
+        const auto gameplay_binding = bindings.binding_name(starfox::app::BindingDevice::keyboard, 8U);
+        require(bindings.bind_reset_key(SDL_SCANCODE_X), "reset suffix could not be remapped");
+        require(bindings.binding_name(starfox::app::BindingDevice::keyboard, 8U) == gameplay_binding,
+            "reset suffix changed the unrelated gameplay binding");
+        require(!bindings.matches_reset_shortcut(key), "old reset suffix remained active");
+        key.scancode = SDL_SCANCODE_X;
+        require(bindings.matches_reset_shortcut(key), "new reset suffix did not trigger");
+        key.mod |= SDL_KMOD_ALT;
+        require(!bindings.matches_reset_shortcut(key), "extra Alt modifier incorrectly reset");
+        require(!bindings.bind_reset_key(SDL_SCANCODE_LCTRL)
+                && !bindings.bind_reset_key(SDL_SCANCODE_ESCAPE), "invalid reset suffix accepted");
+        const auto reset_path = std::filesystem::temp_directory_path()
+            / (std::string{"sfe-reset-binding-"} + std::to_string(SDL_GetPerformanceCounter()) + ".cfg");
+        bindings.save(reset_path);
+        starfox::app::InputBindings restored;
+        restored.load(reset_path);
+        require(restored.binding_name(starfox::app::BindingDevice::keyboard,
+                    starfox::app::InputBindings::reset_action) == "CTRL+SHIFT+X",
+            "reset binding did not survive save/load");
+        std::filesystem::remove(reset_path);
+        bindings.reset(starfox::app::BindingDevice::keyboard);
+        require(bindings.binding_name(starfox::app::BindingDevice::keyboard,
+                    starfox::app::InputBindings::reset_action) == "CTRL+SHIFT+R",
+            "keyboard defaults did not restore reset suffix");
+    }
     require(bindings.binding_name(starfox::app::BindingDevice::keyboard, 2U)
                 == SDL_GetScancodeName(SDL_SCANCODE_APOSTROPHE),
             "keyboard Select did not default to apostrophe");
@@ -144,21 +197,65 @@ int main() {
             && starfox::app::starfox_ex_save_ram_path() == settings_directory / "starfox-ex.srm",
             "UWP settings did not stay in writable app storage");
 #else
-    const auto documents_layout = starfox::app::hud_layout_settings_path();
-    require(documents_layout.filename() == "hud-layout.cfg"
-                && documents_layout.parent_path().filename()
-                    == "Star Fox Enhanced",
-            "HUD layout path is not in its Documents subfolder");
-    const auto documents_pregame = starfox::app::pregame_settings_path();
-    require(documents_pregame.filename() == "pregame.cfg"
-                && documents_pregame.parent_path().filename()
-                    == "Star Fox Enhanced",
-            "pre-game settings path is not in its Documents subfolder");
-    const auto documents_ex_save = starfox::app::starfox_ex_save_ram_path();
-    require(documents_ex_save.filename() == "starfox-ex.srm"
-                && documents_ex_save.parent_path().filename()
-                    == "Star Fox Enhanced",
-            "Star Fox EX SRAM path is not in its Documents subfolder");
+    const auto executable_directory = std::filesystem::path{SDL_GetBasePath()};
+    require(starfox::app::hud_layout_settings_path() == executable_directory / "hud-layout.cfg"
+            && starfox::app::pregame_settings_path() == executable_directory / "pregame.cfg"
+            && starfox::app::starfox_ex_save_ram_path() == executable_directory / "starfox-ex.srm"
+            && starfox::app::input_bindings_path() == executable_directory / "input-bindings.cfg",
+        "desktop data did not default beside the executable");
+    const auto fixture_root = std::filesystem::temp_directory_path()
+        / (std::string{"sfe-portable-"} + std::to_string(SDL_GetPerformanceCounter()));
+    const auto portable = fixture_root / "portable";
+    const auto legacy = fixture_root / "legacy";
+    const auto old_bindings = fixture_root / "bindings";
+    std::filesystem::create_directories(portable);
+    std::filesystem::create_directories(legacy);
+    starfox::app::PregameSettings old_settings;
+    old_settings.effect = 5U;
+    auto new_settings = old_settings;
+    new_settings.effect = 6U;
+    require(starfox::app::save_pregame_settings(legacy / "pregame.cfg", old_settings)
+            && starfox::app::save_pregame_settings(portable / "pregame.cfg", new_settings),
+        "portable fixture settings could not be written");
+    require(starfox::app::save_hud_layout(legacy / "hud-layout.cfg", {}), "legacy HUD fixture failed");
+    const std::vector<std::uint8_t> old_sram(starfox::app::starfox_ex_save_ram_size, 0x5aU);
+    require(starfox::app::save_starfox_ex_save_ram(legacy / "starfox-ex.srm", old_sram),
+        "legacy SRAM fixture failed");
+    starfox::app::InputBindings old_input;
+    old_input.bind_reset_key(SDL_SCANCODE_T);
+    old_input.save(old_bindings / "input-bindings.cfg");
+    starfox::app::set_portable_data_directory(portable);
+    const auto original_cwd = std::filesystem::current_path();
+    std::filesystem::current_path(legacy);
+    require(starfox::app::pregame_settings_path() == portable / "pregame.cfg"
+            && starfox::app::input_bindings_path() == portable / "input-bindings.cfg"
+            && starfox::app::single_instance_lock_path() == portable / "runtime.lock",
+        "portable data followed the working directory instead of the executable");
+    std::filesystem::current_path(original_cwd);
+    starfox::app::migrate_legacy_data(portable, legacy, old_bindings);
+    starfox::app::migrate_legacy_data(portable, legacy, old_bindings);
+    starfox::app::PregameSettings migrated;
+    require(starfox::app::load_pregame_settings(portable / "pregame.cfg", migrated)
+            && migrated == new_settings, "migration overwrote existing portable settings");
+    std::vector<std::uint8_t> migrated_sram;
+    require(starfox::app::load_starfox_ex_save_ram(portable / "starfox-ex.srm", migrated_sram)
+            && migrated_sram == old_sram, "migration changed SRAM bytes");
+    starfox::app::InputBindings migrated_input;
+    migrated_input.load();
+    require(migrated_input.binding_name(starfox::app::BindingDevice::keyboard,
+                starfox::app::InputBindings::reset_action) == "CTRL+SHIFT+T",
+        "legacy input bindings were not migrated");
+    require(std::filesystem::exists(legacy / "starfox-ex.srm")
+            && std::filesystem::exists(portable / "hud-layout.cfg"),
+        "migration removed originals or omitted HUD data");
+    starfox::app::set_portable_data_directory(executable_directory);
+    for (const auto& directory : {portable, legacy, old_bindings}) {
+        for (const auto* filename : {"pregame.cfg", "hud-layout.cfg", "starfox-ex.srm", "input-bindings.cfg"}) {
+            std::filesystem::remove(directory / filename);
+        }
+        std::filesystem::remove(directory);
+    }
+    std::filesystem::remove(fixture_root);
 #endif
     const auto pregame_test_path = std::filesystem::temp_directory_path()
         / "starfox-enhanced-pregame-test.cfg";
@@ -167,7 +264,7 @@ int main() {
     const starfox::app::PregameSettings saved_pregame{
         1U, 90U, 3U, true, true,
         3U, true, false, true, 2U, true, 1U, true, false, 5U, 1U, 70U, 30U,
-        3U, false, true};
+        3U, false, true, 7U, 60U, 6U, 40U};
     require(starfox::app::save_pregame_settings(
                 pregame_test_path, saved_pregame),
             "pre-game settings could not be saved");
@@ -200,7 +297,21 @@ int main() {
             && starfox::app::load_pregame_settings(pregame_test_path, loaded_pregame)
             && loaded_pregame == settings, "filter setting did not round-trip");
     }
+    for (std::uint8_t style = 0; style < starfox::render::effect_count; ++style) {
+        auto settings = saved_pregame;
+        settings.effect = style;
+        settings.world_effect = starfox::render::effect_count - 1U - style;
+        settings.effect_intensity = 70U;
+        settings.world_effect_intensity = 40U;
+        settings.bloom = style % 4U;
+        settings.bloom_2d = (style + 2U) % 4U;
+        settings.model_smoothing = (style + 1U) % 4U;
+        require(starfox::app::save_pregame_settings(pregame_test_path, settings)
+            && starfox::app::load_pregame_settings(pregame_test_path, loaded_pregame)
+            && loaded_pregame == settings, "model/world styles did not round-trip");
+    }
     for (std::uint8_t level = 0; level <= 3; ++level) {
+        // Lighting remains independently configurable alongside all styles.
         auto lighting_settings = saved_pregame;
         lighting_settings.rtx_lighting = level;
         require(starfox::app::save_pregame_settings(pregame_test_path, lighting_settings)
