@@ -662,7 +662,15 @@ void MapVm::sync_objects_from_cpu() {
     auto active = read_list(cpu_.read16(active_list_));
     auto free = read_list(cpu_.read16(free_list_));
     if (active.size() + free.size() != object_count_) {
-        throw std::runtime_error{"native active/free lists do not cover the object pool"};
+        // Some EX escape/cutscene strategies temporarily unlink an object
+        // while creating its explosion. Reclaim any slot omitted from both
+        // lists instead of terminating the whole mobile runtime.
+        std::array<bool, kMaximumObjects + 1> listed{};
+        for (const auto handle : active) listed[handle] = true;
+        for (const auto handle : free) listed[handle] = true;
+        for (ObjectHandle handle = 1; handle <= object_count_; ++handle) {
+            if (!listed[handle]) free.push_back(handle);
+        }
     }
     objects_->restore_lists(active, free);
     for (const auto handle : objects_->active_handles()) {
