@@ -693,7 +693,8 @@ if(STARFOX_BUILD_RUNTIME)
             "Two-component PS Vita application version")
         # SCE metadata is appended to the executable segment by vita-elf-create.
         # A separate adjacent read-only segment leaves no room for that data.
-        target_link_options(starfox_pc PRIVATE "-Wl,-z,noseparate-code")
+        target_link_options(starfox_pc PRIVATE
+            "-Wl,-z,noseparate-code" "-Wl,-z,max-page-size=0x10000")
         vita_create_self(eboot.bin starfox_pc)
         vita_create_vpk(StarFoxEnhanced.vpk
             "${STARFOX_VITA_TITLE_ID}" eboot.bin
