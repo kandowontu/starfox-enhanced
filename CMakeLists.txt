@@ -723,6 +723,7 @@ if(STARFOX_BUILD_RUNTIME)
     install(FILES docs/RELEASE-0.0.5.md DESTINATION docs)
     install(FILES docs/RELEASE-0.0.5.1.md DESTINATION docs)
     install(FILES docs/RELEASE-0.0.6.md DESTINATION docs)
+    install(FILES docs/BUILDING.md docs/SETTINGS-AND-CONTROLS.md docs/ARCHITECTURE.md DESTINATION docs)
 
 endif()
 

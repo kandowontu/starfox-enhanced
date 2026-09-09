@@ -144,9 +144,10 @@ the 0.0.5.1 screenshots alone are not evidence that those defects persist here.
 The Switch pipeline defect is covered by a deterministic host regression, but
 the reported Erista crackling still requires listening tests on real hardware,
 with and without overclocking. A successful cross-build is not an on-device audio
-verification. The initial candidate passed all nine platform build jobs and
-41 local tests. The final follow-up changes require a new platform build run;
-targeted reticle, guard-column, and bloom regressions pass locally.
+verification. The final 0.0.6 source passed all nine platform build jobs:
+Windows x64/x86, Xbox UWP, Linux, macOS, iOS, Android, Switch and Vita.
+The published packages include the tunnel-gate orientation fix (#40).
+Build results: https://github.com/kandowontu/starfox-enhanced/actions/runs/34300149806
 
 The latest September 8 Windows verification passed all 44 local tests,
 including independent HDR/chromatic/shadow captures and a repeated identical
