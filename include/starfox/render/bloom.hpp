@@ -96,20 +96,59 @@ public:
                 x_samples_[x] = {std::min(first, width-1), std::min(first+1, width-1), fx-first};
             }
         }
-        bright_.assign(std::size_t(width) * height, Colour{});
-        for (unsigned y = 0; y < frame.stored_height(); ++y) for (unsigned x = 0; x < frame.stored_width(); ++x) {
-            const auto i = std::size_t(y) * frame.stored_width() + x;
-            if (frame.layer_tags()[i] == std::uint8_t(PixelLayer::two_d)) continue;
-            const auto source_level = (frame.layer_tags()[i] == std::uint8_t(PixelLayer::three_d)
-                || frame.layer_tags()[i] == std::uint8_t(PixelLayer::textured_geometry))
-                ? model_level : world_level;
-            if (source_level == 0U) continue;
-            const auto peak = std::max({rgba[i*4], rgba[i*4+1], rgba[i*4+2]});
-            auto contribution = contribution_table[peak];
-            if (source_level != level) contribution *= strength[source_level] / strength[level];
-            if (contribution == 0.0F) continue;
-            auto& sample = bright_[std::size_t(y / step) * width + x / step];
-            for (unsigned c = 0; c < 3; ++c) sample[c] += linear_table[rgba[i*4+c]] * contribution / float(step * step);
+        bright_.resize(std::size_t(width) * height);
+        // Each reduced cell owns a disjoint rectangle. Accumulate locally in
+        // the same y-then-x order as the original raster traversal, so floating
+        // point sums stay identical without atomics or cross-worker reduction.
+        const auto extract = [&](unsigned first_row, unsigned last_row) {
+            for (unsigned cell_y=first_row; cell_y<last_row; ++cell_y) {
+                const auto end_y=std::min((cell_y+1)*step,frame.stored_height());
+                for (unsigned cell_x=0; cell_x<width; ++cell_x) {
+                    const auto end_x=std::min((cell_x+1)*step,frame.stored_width());
+                    Colour sample{};
+                    for (unsigned y=cell_y*step; y<end_y; ++y) {
+                        for (unsigned x=cell_x*step; x<end_x; ++x) {
+                            const auto i=std::size_t(y)*frame.stored_width()+x;
+                            const auto tag=frame.layer_tags()[i];
+                            if (tag==std::uint8_t(PixelLayer::two_d)) continue;
+                            const auto source_level=(tag==std::uint8_t(PixelLayer::three_d)
+                                || tag==std::uint8_t(PixelLayer::textured_geometry))
+                                ? model_level : world_level;
+                            if (source_level==0U) continue;
+                            const auto peak=std::max({rgba[i*4],rgba[i*4+1],rgba[i*4+2]});
+                            auto contribution=contribution_table[peak];
+                            if (source_level!=level) contribution*=strength[source_level]/strength[level];
+                            if (contribution==0.0F) continue;
+                            for (unsigned c=0;c<3;++c)
+                                sample[c]+=linear_table[rgba[i*4+c]]*contribution/float(step*step);
+                        }
+                    }
+                    bright_[std::size_t(cell_y)*width+cell_x]=sample;
+                }
+            }
+        };
+        if (workers && frame.pixels().size()>=1024U*1024U) {
+            workers->parallel_rows(height,extract);
+        } else {
+            // On small buffers another worker barrier costs more than it
+            // saves. Keep the contiguous raster traversal for that case and
+            // for callers without a worker pool.
+            std::fill(bright_.begin(),bright_.end(),Colour{});
+            for (unsigned y=0;y<frame.stored_height();++y) for (unsigned x=0;x<frame.stored_width();++x) {
+                const auto i=std::size_t(y)*frame.stored_width()+x;
+                const auto tag=frame.layer_tags()[i];
+                if (tag==std::uint8_t(PixelLayer::two_d)) continue;
+                const auto source_level=(tag==std::uint8_t(PixelLayer::three_d)
+                    || tag==std::uint8_t(PixelLayer::textured_geometry))?model_level:world_level;
+                if (source_level==0U) continue;
+                const auto peak=std::max({rgba[i*4],rgba[i*4+1],rgba[i*4+2]});
+                auto contribution=contribution_table[peak];
+                if (source_level!=level) contribution*=strength[source_level]/strength[level];
+                if (contribution==0.0F) continue;
+                auto& sample=bright_[std::size_t(y/step)*width+x/step];
+                for (unsigned c=0;c<3;++c)
+                    sample[c]+=linear_table[rgba[i*4+c]]*contribution/float(step*step);
+            }
         }
         blur(bright_, temp_, width, height, 1, true);
         blur(temp_, core_, width, height, 1, false);

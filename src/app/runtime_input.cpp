@@ -726,7 +726,7 @@ bool load_pregame_settings(
             found_bloom_2d = true;
         } else if (name == "WIREFRAME_THICKNESS") {
             if (value < 1 || value > 4) return false;
-            loaded.wireframe_thickness = static_cast<std::uint8_t>(value);
+            loaded.wireframe_thickness = 1U; // Consume legacy setting, do not apply it.
         } else if (name == "ENHANCED_SHADOWS") {
             if (value < 0 || value > 1) return false;
             loaded.enhanced_shadows = value != 0;
@@ -857,7 +857,6 @@ bool save_pregame_settings(
            << "BLOOM_2D " << static_cast<unsigned>(settings.bloom_2d) << '\n'
            << "MODEL_SMOOTHING " << static_cast<unsigned>(settings.model_smoothing) << '\n'
            << "LANGUAGE " << static_cast<unsigned>(settings.language) << '\n'
-           << "WIREFRAME_THICKNESS " << static_cast<unsigned>(settings.wireframe_thickness) << '\n'
            << "ENHANCED_SHADOWS " << static_cast<unsigned>(settings.enhanced_shadows) << '\n'
            << "CHROMATIC_ABERRATION " << static_cast<unsigned>(settings.chromatic_aberration) << '\n'
            << "HDR_EFFECT " << static_cast<unsigned>(settings.hdr_effect) << '\n'

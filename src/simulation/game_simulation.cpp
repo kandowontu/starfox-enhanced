@@ -1129,13 +1129,6 @@ GameTickResult GameSimulation::tick_pregame_menu(
         result.audio_port_writes = map_.take_apu_port_writes();
         return result;
     }
-    if (graphics_page && pregame_selection_ == 25U
-        && (menu_input.pressed & (starfox::input::a | starfox::input::select
-            | starfox::input::left | starfox::input::right))) {
-        const auto delta = (menu_input.pressed & starfox::input::left) ? 2U : 0U;
-        set_wireframe_thickness(static_cast<std::uint8_t>((wireframe_thickness_ + delta) % 4U + 1U));
-        queue_sound_effect(0x11U);
-    }
     if (graphics_page && pregame_selection_ == 26U
         && (menu_input.pressed & (starfox::input::a | starfox::input::select
             | starfox::input::left | starfox::input::right))) {
@@ -2022,7 +2015,28 @@ void GameSimulation::set_secondary_inputs(
     std::copy_n(controllers.begin(), count, secondary_inputs_.begin());
 }
 
+void GameSimulation::stop_music_on_player_death() {
+    const bool dying=(flow_state_==GameFlowState::gameplay || flow_state_==GameFlowState::training)
+        && (map_.read_native_byte(game_flags_)&0x42U)!=0U;
+    if (!dying) { death_music_cut_latched_=false; return; }
+    if (death_music_cut_latched_) return;
+    death_music_cut_latched_=true;
+    // Cut the encounter immediately, including cockpit death paths which can
+    // skip PLAYERDEAD_ISTRAT's music branch when PSHIPFLAGS2 already has HP0.
+    // Do not touch port 3 (SFX), master volume, or future checkpoint music.
+    map_.write_native_byte(0x002140U,0xf0U);
+    map_.write_native_byte(0x002007U,0U);
+    deferred_msu_track_.reset();
+    deferred_msu_frames_=0U;
+    if (map_.read_native_byte(background_music_command_)!=0x11U) {
+        request_music(0xf0U);
+        map_.write_native_byte(background_music_count_,1U);
+        background_music_hold_phases_=2U;
+    }
+}
+
 void GameSimulation::service_audio_irq(std::vector<std::uint8_t>& commands) {
+    stop_music_on_player_death();
     // IRQ.ASM's STARTMUS runs once per 60 Hz video phase. Keep its two-step
     // port acknowledgements and 16-entry effect queue intact even though the
     // PC presentation loop is decoupled from the 20 Hz gameplay update.
@@ -2054,7 +2068,7 @@ void GameSimulation::service_audio_irq(std::vector<std::uint8_t>& commands) {
             // Boss defeat strategies issue the SPC music-cut command even
             // when their MSU companion call is absent. Apply that same cut
             // to the replacement music, without interrupting native SFX.
-            if (!starfox_ex_cartridge_ && music == 0xf0U) {
+            if (music == 0xf0U) {
                 map_.write_native_byte(0x002006U, 0U);
                 map_.write_native_byte(0x002007U, 0U);
             }
@@ -2424,6 +2438,7 @@ std::uint32_t GameSimulation::resolve_route_stage(std::uint16_t remaining_stage)
 }
 
 void GameSimulation::reset_scene_transition_state() {
+    death_music_cut_latched_ = false;
     pace_debt_ = 0.0;
     paused_ = false;
     frontend_frames_ = 0U;
@@ -6031,6 +6046,7 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
         map_.write_native_byte(
             ex_freeze_strategies_, paused_ ? 1U : 0U);
     }
+    stop_music_on_player_death();
     result.audio_port_writes = map_.take_apu_port_writes();
     return result;
 }

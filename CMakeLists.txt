@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(starfox_enhanced VERSION 0.0.6 LANGUAGES CXX)
+project(starfox_enhanced VERSION 0.0.6.5 LANGUAGES CXX)
 
 if(WINDOWS_STORE)
     # Apply the UWP ABI to the entire dependency graph, not only the SDL entry
@@ -197,6 +197,9 @@ add_library(starfox_core
     src/assets/shape_decoder.cpp
     src/render/background_renderer.cpp
     src/render/dust_renderer.cpp
+    src/render/dxr_shadows.cpp
+    src/render/gpu_effects.cpp
+    src/render/sdl_gpu_effects.cpp
     src/render/framebuffer.cpp
     src/render/palette.cpp
     src/render/particle_renderer.cpp
@@ -228,6 +231,54 @@ target_link_libraries(starfox_core PRIVATE
 if(STARFOX_ENABLE_XBRZ)
     target_link_libraries(starfox_core PRIVATE xbrz_filter)
     target_compile_definitions(starfox_core PRIVATE STARFOX_ENABLE_XBRZ)
+endif()
+
+# Ordinary effects use SM5 compute, not RT cores. Compile DXBC at build time.
+if(WIN32 AND NOT WINDOWS_STORE)
+    file(GLOB STARFOX_SDK_FXC "C:/Program Files (x86)/Windows Kits/10/bin/*/x64/fxc.exe")
+    list(SORT STARFOX_SDK_FXC COMPARE NATURAL ORDER DESCENDING)
+    find_program(STARFOX_FXC NAMES fxc)
+    if(NOT STARFOX_FXC AND STARFOX_SDK_FXC)
+        list(GET STARFOX_SDK_FXC 0 STARFOX_FXC)
+    endif()
+    if(STARFOX_FXC)
+        file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated")
+        add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/effects_compute_shader.hpp"
+            COMMAND "${STARFOX_FXC}" /nologo /T cs_5_0 /E main /O3
+                /D "STARFOX_ENABLE_XBRZ=$<BOOL:${STARFOX_ENABLE_XBRZ}>"
+                /Fh "${CMAKE_CURRENT_BINARY_DIR}/generated/effects_compute_shader.hpp"
+                /Vn effects_compute_shader "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/effects_compute.hlsl"
+            DEPENDS src/render/shaders/effects_compute.hlsl src/render/shaders/xbrz_compute.hlsli
+                src/render/shaders/xbrz_weights.hlsli src/render/shaders/edge_corners.hlsli VERBATIM)
+        target_sources(starfox_core PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated/effects_compute_shader.hpp")
+        target_include_directories(starfox_core PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+        target_compile_definitions(starfox_core PRIVATE STARFOX_GPU_EFFECTS)
+    endif()
+endif()
+
+# DXR shaders are compiled at build time; no compiler DLL is shipped or loaded
+# on user machines. Other platforms retain the CPU shadow implementation.
+if(WIN32 AND NOT WINDOWS_STORE AND CMAKE_SIZEOF_VOID_P EQUAL 8 AND STARFOX_BUILD_RUNTIME)
+    file(GLOB STARFOX_SDK_DXC "C:/Program Files (x86)/Windows Kits/10/bin/*/x64/dxc.exe")
+    list(SORT STARFOX_SDK_DXC COMPARE NATURAL ORDER DESCENDING)
+    find_program(STARFOX_DXC NAMES dxc)
+    if(NOT STARFOX_DXC AND STARFOX_SDK_DXC)
+        list(GET STARFOX_SDK_DXC 0 STARFOX_DXC)
+    endif()
+    if(STARFOX_DXC)
+        set(STARFOX_DXR_ENABLED TRUE)
+        file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated")
+        add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/shadow_dxr_shader.hpp"
+            COMMAND "${STARFOX_DXC}" -T cs_6_5 -E main -O3
+                -Fh "${CMAKE_CURRENT_BINARY_DIR}/generated/shadow_dxr_shader.hpp"
+                -Vn shadow_dxr_shader "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/shadow_dxr.hlsl"
+            DEPENDS src/render/shaders/shadow_dxr.hlsl VERBATIM)
+        target_sources(starfox_core PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated/shadow_dxr_shader.hpp")
+        target_include_directories(starfox_core PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+        target_compile_definitions(starfox_core PRIVATE STARFOX_DXR)
+    else()
+        message(STATUS "DXC not found: hardware DXR disabled")
+    endif()
 endif()
 
 if(MSVC)
@@ -346,6 +397,13 @@ if(STARFOX_BUILD_RUNTIME)
     set(STARFOX_RUNTIME_SOURCES
         src/app/starfox_pc.cpp
         src/app/runtime_input.cpp)
+    if(STARFOX_DXR_ENABLED)
+        # SDL's pinned DirectX headers include DXR interfaces missing from
+        # older MinGW installations. MSVC uses its Windows SDK headers.
+        if(MINGW AND EXISTS "${sdl3_SOURCE_DIR}/src/video/directx/d3d12.h")
+            target_include_directories(starfox_core BEFORE PRIVATE "${sdl3_SOURCE_DIR}/src/video/directx")
+        endif()
+    endif()
     if(ANDROID)
         # SDLActivity loads libmain.so. SDL_main.h exports SDL_main from the
         # otherwise-identical portable runtime entry point.
@@ -462,6 +520,32 @@ if(STARFOX_BUILD_RUNTIME)
             "-Wl,--end-group" nx m)
     else()
         target_link_libraries(starfox_pc PRIVATE starfox_core SDL3::SDL3)
+        if(NOT SWITCH AND NOT VITA AND NOT WINDOWS_STORE)
+            # Checked-in portable shaders must match their shared source.
+            set(STARFOX_EFFECT_SOURCE_TEXT "")
+            foreach(shader effects_compute.hlsl xbrz_compute.hlsli xbrz_weights.hlsli edge_corners.hlsli)
+                file(READ "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/${shader}" shader_text)
+                string(REPLACE "\r\n" "\n" shader_text "${shader_text}")
+                string(APPEND STARFOX_EFFECT_SOURCE_TEXT "${shader_text}")
+                set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "src/render/shaders/${shader}")
+            endforeach()
+            string(SHA256 STARFOX_EFFECT_SOURCE_HASH "${STARFOX_EFFECT_SOURCE_TEXT}")
+            foreach(variant 0 1)
+                file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/generated/effects_portable_${variant}.hpp"
+                    shader_stamp REGEX "^// Source SHA-256:" LIMIT_COUNT 1)
+                if(NOT shader_stamp STREQUAL "// Source SHA-256: ${STARFOX_EFFECT_SOURCE_HASH}")
+                    message(FATAL_ERROR "Portable effects shaders are stale. Run tools/generate_portable_effects.py; see docs/PORTABLE-GPU.md.")
+                endif()
+            endforeach()
+            target_link_libraries(starfox_core PRIVATE SDL3::SDL3)
+            target_compile_definitions(starfox_core PRIVATE STARFOX_SDL_GPU_EFFECTS)
+            target_compile_definitions(starfox_pc PRIVATE STARFOX_SDL_GPU_EFFECTS)
+            if(STARFOX_BUILD_TOOLS)
+                add_executable(starfox_gpu_effects_check tools/benchmark_gpu_effects.cpp)
+                target_compile_definitions(starfox_gpu_effects_check PRIVATE STARFOX_TEST_PORTABLE_GPU)
+                target_link_libraries(starfox_gpu_effects_check PRIVATE starfox_core SDL3::SDL3)
+            endif()
+        endif()
     endif()
     if(APPLE)
         set_target_properties(starfox_pc PROPERTIES
@@ -697,7 +781,7 @@ if(STARFOX_BUILD_RUNTIME)
         include("$ENV{VITASDK}/share/vita.cmake" REQUIRED)
         set(STARFOX_VITA_TITLE_ID "SFXE00001" CACHE STRING
             "Nine-character PS Vita title id")
-        set(STARFOX_VITA_APP_VERSION "00.06" CACHE STRING
+        set(STARFOX_VITA_APP_VERSION "00.07" CACHE STRING
             "Two-component PS Vita application version")
         # SCE metadata is appended to the executable segment by vita-elf-create.
         # A separate adjacent read-only segment leaves no room for that data.
@@ -722,7 +806,8 @@ if(STARFOX_BUILD_RUNTIME)
         DESTINATION docs/fonts)
     install(FILES docs/RELEASE-0.0.5.md DESTINATION docs)
     install(FILES docs/RELEASE-0.0.5.1.md DESTINATION docs)
-    install(FILES docs/RELEASE-0.0.6.md DESTINATION docs)
+    install(FILES docs/RELEASE-0.0.6.5.md docs/RELEASE-0.0.6.md
+        docs/PERFORMANCE-POST-006.md docs/PORTABLE-GPU.md docs/GPU-MIGRATION-STATUS.md DESTINATION docs)
     install(FILES docs/BUILDING.md docs/SETTINGS-AND-CONTROLS.md docs/ARCHITECTURE.md DESTINATION docs)
 
 endif()

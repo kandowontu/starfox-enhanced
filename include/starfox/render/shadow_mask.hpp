@@ -37,25 +37,34 @@ inline void render_mask(const Scene& scene, Camera camera, Vec3 toward_light,
             +bitangent*(radius*std::sin(angle));
         light_samples[i]=direction*(1.0/std::sqrt(dot(direction,direction)));
     }
+    // Keep all eight samples and full resolution, but prepare their constant
+    // triangle terms once per mask rather than for every receiver pixel.
+    std::array<Scene::DirectionQuery,8> queries;
+    for (unsigned i=0;i<queries.size();++i) queries[i]=scene.prepare_direction(light_samples[i]);
     const auto render_rows = [&](std::uint32_t first, std::uint32_t last) {
     for (std::uint32_t y=first;y<last;++y) {
         for (std::uint32_t x=0;x<camera.width;++x) {
             const Vec3 ray{(double(x)+.5-camera.center_x)/camera.focal_length,
                 (double(y)+.5-camera.center_y)/camera.focal_length,1};
-            auto distance=scene.nearest({},ray,1.0);
+            std::optional<double> ground_distance;
             if (ground) {
                 const auto denominator=dot(ray,ground->normal);
                 if (std::abs(denominator)>1e-10) {
                     const auto depth=dot(ground->point,ground->normal)/denominator;
-                    if (depth>1 && depth<65536 && (!distance || depth<*distance)) distance=depth;
+                    if (depth>1 && depth<65536) ground_distance=depth;
                 }
             }
+            // Geometry behind the ground cannot be the visible receiver.
+            // Use that exact depth to bound traversal, keeping the same plane
+            // arithmetic and equal-depth result as the unbounded search.
+            auto distance=scene.nearest({},ray,1.0,ground_distance.value_or(65536.0));
+            if (ground_distance && (!distance || *ground_distance<*distance)) distance=ground_distance;
             if (!distance) continue;
             const auto receiver=ray * (*distance);
             const auto bias=std::max(.1,*distance*1e-5);
             unsigned blocked=0;
-            for (const auto direction:light_samples)
-                blocked+=scene.occluded(receiver,direction,bias)?1U:0U;
+            for (unsigned sample=0;sample<light_samples.size();++sample)
+                blocked+=scene.occluded(receiver,light_samples[sample],bias,65536.0,nullptr,&queries[sample])?1U:0U;
             mask[static_cast<std::size_t>(y)*camera.width+x]=
                 static_cast<std::uint8_t>(160U*blocked/light_samples.size());
         }

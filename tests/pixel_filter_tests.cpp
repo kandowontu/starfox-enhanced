@@ -534,7 +534,79 @@ void check_sprites_are_cartridge_art(std::uint32_t scale) {
 
 } // namespace
 
+// Original per-pixel implementation: independent oracle for the separable taps.
+static void reference_chromatic(const Framebuffer& frame,
+    std::vector<std::uint8_t>& rgba, std::uint8_t intensity) {
+    if (!intensity || intensity>3 || !frame.layer_tags_enabled()) return;
+    const auto width=frame.stored_width(), height=frame.stored_height();
+    if (!width || !height) return;
+    const auto source=rgba;
+    const auto model=[&](unsigned x,unsigned y) {
+        auto layer=frame.layer_stored(x,y);
+        return layer==PixelLayer::three_d || layer==PixelLayer::textured_geometry;
+    };
+    const auto amount=std::array<double,4>{0,.6,1.2,2.4}[intensity]*frame.draw_scale();
+    for (unsigned y=0;y<height;++y) for (unsigned x=0;x<width;++x) {
+        if (!model(x,y)) continue;
+        const auto pixel=(std::size_t(y)*width+x)*4;
+        const auto dx=(2.0*(x+.5)/width-1.0)*amount;
+        const auto dy=(2.0*(y+.5)/height-1.0)*amount;
+        for (unsigned channel : {0U,2U}) {
+            const auto sign=channel==0?1.0:-1.0;
+            const auto sx=std::clamp(x+sign*dx,0.0,double(width-1));
+            const auto sy=std::clamp(y+sign*dy,0.0,double(height-1));
+            const auto x0=unsigned(sx),y0=unsigned(sy);
+            const auto x1=std::min(x0+1,width-1),y1=std::min(y0+1,height-1);
+            const auto sample=[&](unsigned px,unsigned py) {
+                return double(model(px,py)?source[(std::size_t(py)*width+px)*4+channel]
+                    :source[pixel+channel]);
+            };
+            const auto fx=sx-x0,fy=sy-y0;
+            const auto top=sample(x0,y0)*(1-fx)+sample(x1,y0)*fx;
+            const auto bottom=sample(x0,y1)*(1-fx)+sample(x1,y1)*fx;
+            rgba[pixel+channel]=static_cast<std::uint8_t>(std::lround(top*(1-fy)+bottom*fy));
+        }
+    }
+}
+
 int main(int argc, char** argv) {
+    require(std::find(starfox::simulation::three_d_menu_order.begin(),
+        starfox::simulation::three_d_menu_order.end(),25U)==starfox::simulation::three_d_menu_order.end(),
+        "removed line thickness remains in menu navigation");
+    for (const auto dimensions : {std::array<unsigned,2>{0,0}, {1,1}, {1,9}, {13,1}, {37,23}, {256,224}}) {
+        for (unsigned scale : {1U,2U,4U}) {
+            Framebuffer frame{dimensions[0],dimensions[1],scale};
+            frame.enable_layer_tags(true);
+            std::vector<std::uint8_t> original(frame.pixels().size()*4),scratch;
+            for (std::size_t i=0;i<original.size();++i) original[i]=static_cast<std::uint8_t>(i*73+i/17);
+            for (std::size_t i=0;i<frame.pixels().size();++i)
+                frame.layer_tags()[i]=static_cast<std::uint8_t>((i/13+i/37)%5);
+            for (std::uint8_t level : {0,1,2,3,4}) {
+                auto expected=original,actual=original;
+                reference_chromatic(frame,expected,level);
+                starfox::render::apply_chromatic_aberration(frame,actual,scratch,level);
+                require(actual==expected,"separable chromatic taps changed reference output");
+            }
+        }
+    }
+    {
+        starfox::render::RowWorkers workers;
+        const auto colours = make_palette();
+        for (const auto width : {256U, 796U}) {
+            for (const auto scale : {1U, 2U, 4U}) {
+                Framebuffer frame{width, 224U, scale};
+                for (std::size_t i = 0; i < frame.pixels().size(); ++i)
+                    frame.pixels()[i] = static_cast<std::uint8_t>(i * 73 + i / 97);
+                for (const auto count : {1U, 16U, 255U, 256U}) {
+                    const std::span<const Rgba8> palette{colours.data(), count};
+                    std::vector<std::uint8_t> serial, pooled;
+                    starfox::render::expand_rgba(frame, serial, palette);
+                    starfox::render::expand_rgba(frame, pooled, palette, workers);
+                    require(serial == pooled, "adaptive palette expansion changed pixels");
+                }
+            }
+        }
+    }
     {
         starfox::render::Framebuffer frame{256,1};
         frame.enable_layer_tags(true);
@@ -551,6 +623,17 @@ int main(int argc, char** argv) {
         for (std::uint8_t level=1;level<=3;++level) {
             auto output=ramp;
             starfox::render::apply_hdr_effect(frame,output,level);
+            for (unsigned x=0;x<256;++x) {
+                const double exposure=std::array<double,4>{1,1.15,1.35,1.65}[level];
+                const double contrast=std::array<double,4>{0,.2,.4,.6}[level];
+                const double input=x/255.0;
+                const double lifted=input*exposure/(1+input*(exposure-1));
+                const double shaped=lifted*lifted*(3-2*lifted);
+                const auto expected=static_cast<std::uint8_t>(std::lround(
+                    255*(lifted*(1-contrast)+shaped*contrast)));
+                for (unsigned c=0;c<3;++c)
+                    require(output[x*4+c]==expected,"cached HDR curve changed rounding");
+            }
             require(output[0]==0 && output[255*4]==255,"HDR effect lifted black or clipped white endpoint");
             require(output[128*4]>middle,"HDR effect levels did not increase midtone brightness");
             middle=output[128*4];
@@ -597,13 +680,18 @@ int main(int argc, char** argv) {
     starfox::render::RowWorkers restart_workers;
     for (const auto count : {1U, 4U, 2U, 1U, 4U}) {
         restart_workers.set_worker_count(count);
-        std::array<unsigned, 127> rows{};
-        restart_workers.parallel_rows(static_cast<std::uint32_t>(rows.size()),
-            [&](std::uint32_t first, std::uint32_t last) {
-                for (auto row = first; row < last; ++row) ++rows[row];
-            });
-        for (const auto visits : rows) {
-            require(visits == 1U, "resized worker pool skipped or repeated rows");
+        for (unsigned repeat=0;repeat<8;++repeat) {
+            for (unsigned size : {0U,1U,15U,16U,17U,31U,32U,127U,224U,225U}) {
+                std::vector<unsigned> rows(size);
+                restart_workers.parallel_rows(size,
+                    [&](std::uint32_t first, std::uint32_t last) {
+                        require(first<=last && last<=rows.size(),"worker partition out of bounds");
+                        for (auto row = first; row < last; ++row) ++rows[row];
+                    });
+                for (const auto visits : rows) {
+                    require(visits == 1U, "resized worker pool skipped or repeated rows");
+                }
+            }
         }
     }
     const auto dump_directory = argc > 1
@@ -772,6 +860,28 @@ int main(int argc, char** argv) {
         auto pixels=original;
         bloom.apply(3,scene,pixels);
         require(pixels==original,"HUD-only frame generated bloom");
+    }
+    {
+        // Odd source dimensions leave partial reduced cells on both edges.
+        // This exceeds the parallel-extraction threshold at 4x; the serial
+        // raster path remains an independent accumulation-order reference.
+        Framebuffer scene{257,257,4};
+        scene.enable_layer_tags(true);
+        std::vector<std::uint8_t> original(scene.pixels().size()*4);
+        for (std::size_t i=0;i<original.size();++i) original[i]=std::uint8_t(i*73+i/17);
+        for (std::size_t i=0;i<scene.pixels().size();++i)
+            scene.layer_tags()[i]=std::uint8_t((i/13+i/257)%5);
+        starfox::render::BloomPass reused;
+        for (const auto levels : {std::array<std::uint8_t,2>{3,0},{0,3},{1,3},{3,1},{0,0}}) {
+            auto serial=original,threaded=original;
+            reused.apply(levels[0],levels[1],scene,serial);
+            reused.apply(levels[0],levels[1],scene,threaded,&bloom_workers);
+            require(serial==threaded,"parallel bloom extraction changed partial cells or layer strength");
+        }
+        std::fill(scene.layer_tags().begin(),scene.layer_tags().end(),std::uint8_t(PixelLayer::two_d));
+        auto hud=original;
+        reused.apply(3,scene,hud,&bloom_workers);
+        require(hud==original,"parallel extraction retained stale bloom on HUD-only frame");
     }
     for (const bool world : {false,true}) {
         std::uint8_t style=0;

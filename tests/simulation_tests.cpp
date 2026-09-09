@@ -7032,6 +7032,29 @@ int main(int argc, char** argv) {
         const auto player_death_initializer =
             upstream_symbols.find("PLAYERDEAD_ISTRAT").front();
         const auto lives = upstream_symbols.find("LIVES").front();
+        {
+            starfox::simulation::GameSimulation bypass_game{upstream_rom,upstream_symbols,"LEVEL1_1"};
+            for (unsigned tick=0;tick<3000 && bypass_game.map().read_native_word(restart_pointer)==0;++tick)
+                (void)bypass_game.tick({});
+            require(bypass_game.objects().is_active(bypass_game.player()),"HP0 death fixture has no player");
+            bypass_game.map().write_native_byte(player_ship_flags_2,
+                bypass_game.map().read_native_byte(player_ship_flags_2)|0x80U);
+            bypass_game.map().write_native_byte(background_music,5U);
+            bypass_game.map().write_native_byte(background_music_count,2U);
+            bypass_game.objects().at(bypass_game.player()).strategy_address=player_death_initializer;
+            (void)bypass_game.map().take_msu_register_writes();
+            bool cut_native=false,cut_msu=false;
+            for (unsigned tick=0;tick<8;++tick) {
+                const auto result=bypass_game.tick({});
+                cut_native |= std::any_of(result.audio_port_writes.begin(),result.audio_port_writes.end(),
+                    [](const auto& w){return w.port==0U && w.value==0xf0U;});
+                const auto msu=bypass_game.map().take_msu_register_writes();
+                cut_msu |= std::any_of(msu.begin(),msu.end(),
+                    [](const auto& w){return w.address==0x2007U && w.value==0U;});
+                if((bypass_game.map().read_native_byte(game_flags)&0x02U)!=0U) break;
+            }
+            require(cut_native && cut_msu,"HP0 death branch retained encounter music");
+        }
         if (!starfox_ex_cartridge) {
             (void)death_game.map().take_msu_register_writes();
             death_game.map().write_native_byte(background_music, 0xf0U);
@@ -7071,6 +7094,14 @@ int main(int argc, char** argv) {
                 || started_msu_track(death_msu, 38U, false)
                 || started_msu_track(death_msu, 39U, false);
             const auto flags = death_game.map().read_native_byte(game_flags);
+            if (!saw_player_dying && (flags & 0x02U)!=0U) {
+                require(std::any_of(death_tick.audio_port_writes.begin(),death_tick.audio_port_writes.end(),
+                    [](const auto& write){return write.port==0U && write.value==0xf0U;}),
+                    "player death onset did not immediately cut native encounter music");
+                require(std::any_of(death_msu.begin(),death_msu.end(),
+                    [](const auto& write){return write.address==0x2007U && write.value==0U;}),
+                    "player death onset did not immediately stop MSU encounter music");
+            }
             const auto circle = death_game.circle_effect_state();
             saw_player_dying = saw_player_dying || (flags & 0x02U) != 0U;
             saw_player_dead = saw_player_dead || (flags & 0x40U) != 0U;

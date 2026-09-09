@@ -146,5 +146,8 @@ Copyright (C) Zenju (zenju AT gmx DOT de)
 Licensed under the GNU General Public License, version 3. Used as the optional
 `XBRZ` backend of the `2D FILTER` presentation option. It is fetched and
 compiled by default; `-DSTARFOX_ENABLE_XBRZ=OFF` omits it in minimal builds.
-Distributing a binary built with this option enabled carries the GPLv3
+The GPU adaptation in `src/render/shaders/xbrz_compute.hlsli` and
+`src/render/shaders/xbrz_weights.hlsli`, including their generated SPIR-V/Metal
+representations in `src/render/shaders/generated`, is also derived from this implementation
+and covered by GPLv3. Distributing a binary containing either implementation carries the GPLv3
 obligations for the combined work.

@@ -129,6 +129,13 @@ void expand_rgba(
     }
     const auto stored_width = source.stored_width();
     const auto stored_height = source.stored_height();
+    // Small indexed frames are cheaper to expand locally than to wake and
+    // synchronize the presentation pool. Keep larger upscale buffers parallel.
+    // This also avoids creating the pool for an otherwise serial presentation.
+    if (source.pixels().size() <= 256U * 1024U) {
+        expand_rgba(source, destination, palette);
+        return;
+    }
     destination.resize(source.pixels().size() * 4U);
     if (stored_width == 0U || stored_height == 0U) return;
 

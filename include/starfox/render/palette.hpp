@@ -36,9 +36,8 @@ void expand_rgba(
     const Framebuffer& source,
     std::vector<std::uint8_t>& destination,
     std::span<const Rgba8> palette);
-// Render Upscale makes this one of the largest passes in the frame -- at 10x
-// widescreen it converts nine million pixels -- and it is purely per pixel, so
-// it splits across the presentation pool by row.
+// Large upscale buffers split across the presentation pool by row. Small
+// buffers stay serial to avoid a worker hand-off costing more than conversion.
 void expand_rgba(
     const Framebuffer& source,
     std::vector<std::uint8_t>& destination,

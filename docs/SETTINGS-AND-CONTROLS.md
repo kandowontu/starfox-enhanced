@@ -34,8 +34,8 @@ The main page opens dedicated **2D Options** and **3D Options** submenus,
 keeping full-height text and all main-page entries visible without scrolling.
 2D Options contains 2D Filter, 2D Bloom, World Effects and World Effect Intensity.
 3D Options contains Anti-Aliasing, VSync, Render Upscale, 3D Bloom, 3D Smoothing,
-RTX Lighting, HDR Effect, Enhanced Shadows, Chromatic Aberration, Model Effects,
-Model Effect Intensity, and Wireframe Thickness. B or BACK returns to
+Enhanced Lighting, HDR Effect, Enhanced Shadows, Chromatic Aberration, Model Effects,
+and Model Effect Intensity. B or BACK returns to
 the corresponding main-page entry; live Preview stays active in either submenu.
 `MODEL EFFECTS` and `WORLD EFFECTS` independently offer OFF,
 INK, NEON, MONOCHROME, DITHERED, SEPIA,
@@ -53,8 +53,8 @@ Older combined Bloom settings migrate to the same strength for both options.
 `HDR EFFECT` offers OFF/LOW/MEDIUM/HIGH brightness and contrast processing; it is
 not HDR display output. `CHROMATIC ABERRATION` offers three strengths of RGB
 separation on models. `ENHANCED SHADOWS` replaces the original shadows with
-geometry-based soft shadows. `WIREFRAME THICKNESS` ranges from 1 to 4 independently
-of Render Upscale. These options are under 3D Options.
+geometry-based soft shadows. These options are under 3D Options. Wireframe line
+sizing is automatic; legacy thickness overrides are ignored.
 
 `3D SMOOTHING` separately offers OFF/LOW/MEDIUM/HEAVY for colour transitions
 within model surfaces, including untextured faces. It does not replace silhouette
@@ -97,7 +97,7 @@ the menu then skips xBRZ. See `THIRD_PARTY_NOTICES.md` for attribution.
 
 Filtering, palette expansion, anti-aliasing and lighting share persistent CPU
 workers. Higher render scales require more processing time and memory.
-RTX Lighting and Anti-Aliasing remain independent options. For diagnostics,
+Enhanced Lighting and Anti-Aliasing remain independent options. For diagnostics,
 `STARFOX_2D_FILTER_DEBUG=1` highlights filtered framebuffer pixels in magenta.
 
 `CUSTOMIZE SCREEN` opens a mouse-driven captured native-gameplay HUD preview

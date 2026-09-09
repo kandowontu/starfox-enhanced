@@ -90,28 +90,28 @@ void RowWorkers::parallel_rows(
         return;
     }
 
-    std::vector<std::uint32_t> bounds;
-    bounds.reserve(slices * 2U);
     const auto span = rows / static_cast<std::uint32_t>(slices);
     const auto remainder = rows % static_cast<std::uint32_t>(slices);
-    std::uint32_t cursor = 0U;
-    for (std::size_t slice = 0; slice < slices; ++slice) {
-        const auto length = span
-            + (slice < remainder ? std::uint32_t{1U} : std::uint32_t{0U});
-        bounds.push_back(cursor);
-        cursor += length;
-        bounds.push_back(cursor);
-    }
 
     {
         const std::lock_guard<std::mutex> lock{mutex_};
+        // Reuse the persistent job storage instead of allocating a temporary
+        // partition vector and copying it for every presentation pass.
+        job_bounds_.resize(slices * 2U);
+        std::uint32_t cursor = 0U;
+        for (std::size_t slice = 0; slice < slices; ++slice) {
+            const auto length = span
+                + (slice < remainder ? std::uint32_t{1U} : std::uint32_t{0U});
+            job_bounds_[slice * 2U] = cursor;
+            cursor += length;
+            job_bounds_[slice * 2U + 1U] = cursor;
+        }
         job_ = &body;
-        job_bounds_ = bounds;
         pending_ = pool_.size();
         ++generation_;
     }
     work_ready_.notify_all();
-    body(bounds[0], bounds[1]);
+    body(0U, span + (remainder != 0U ? 1U : 0U));
     {
         std::unique_lock<std::mutex> lock{mutex_};
         work_done_.wait(lock, [this] { return pending_ == 0U; });

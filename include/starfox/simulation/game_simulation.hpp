@@ -91,7 +91,7 @@ enum class PregamePage {
 inline constexpr std::array<std::uint8_t, 12> main_menu_order{
     0,1,2,3,4,5,6,20,21,14,15,16};
 inline constexpr std::array<std::uint8_t, 5> two_d_menu_order{8,18,13,24,23};
-inline constexpr std::array<std::uint8_t, 13> three_d_menu_order{7,11,9,17,19,10,28,26,27,12,22,25,23};
+inline constexpr std::array<std::uint8_t, 12> three_d_menu_order{7,11,9,17,19,10,28,26,27,12,22,23};
 inline constexpr std::array<std::uint8_t, 11> options_menu_order{0,1,2,3,4,5,6,7,8,12,11};
 inline std::span<const std::uint8_t> pregame_menu_order(PregamePage page) {
     switch (page) {
@@ -377,16 +377,12 @@ public:
     void set_bloom_2d(std::uint8_t value) noexcept { bloom_2d_ = value < 4U ? value : 0U; }
     [[nodiscard]] std::uint8_t model_smoothing() const noexcept { return model_smoothing_; }
     [[nodiscard]] std::uint8_t language() const noexcept { return language_; }
-    [[nodiscard]] std::uint8_t wireframe_thickness() const noexcept { return wireframe_thickness_; }
     [[nodiscard]] bool enhanced_shadows() const noexcept { return enhanced_shadows_; }
     void set_enhanced_shadows(bool value) noexcept { enhanced_shadows_ = value; }
     [[nodiscard]] std::uint8_t chromatic_aberration() const noexcept { return chromatic_aberration_; }
     void set_chromatic_aberration(std::uint8_t value) noexcept { chromatic_aberration_ = value <= 3 ? value : 0; }
     [[nodiscard]] std::uint8_t hdr_effect() const noexcept { return hdr_effect_; }
     void set_hdr_effect(std::uint8_t value) noexcept { hdr_effect_ = value <= 3 ? value : 0; }
-    void set_wireframe_thickness(std::uint8_t value) noexcept {
-        wireframe_thickness_ = value >= 1 && value <= 4 ? value : 1;
-    }
     void set_language(std::uint8_t value);
     void set_model_smoothing(std::uint8_t value) noexcept { model_smoothing_ = value < 4U ? value : 0U; }
     [[nodiscard]] std::uint8_t effect_intensity() const noexcept { return effect_intensity_; }
@@ -532,6 +528,7 @@ private:
     void calculate_meters();
     void draw_ex_transfer_overlay(GameTickResult& result);
     void service_audio_irq(std::vector<std::uint8_t>& commands);
+    void stop_music_on_player_death();
     void configure_route_for_map(const std::string& symbol);
     [[nodiscard]] std::uint32_t resolve_route_stage(std::uint16_t stage);
     void service_level_exit();
@@ -1059,7 +1056,6 @@ private:
     std::uint8_t bloom_2d_{};
     std::uint8_t model_smoothing_{};
     std::uint8_t language_{};
-    std::uint8_t wireframe_thickness_{1U};
     bool enhanced_shadows_{};
     std::uint8_t chromatic_aberration_{};
     std::uint8_t hdr_effect_{};
@@ -1113,6 +1109,7 @@ private:
     std::uint8_t background_music_start_delay_phases_{};
     std::uint8_t background_music_upload_delay_override_{};
     bool background_music_start_pending_{};
+    bool death_music_cut_latched_{};
     std::optional<std::uint16_t> deferred_msu_track_{};
     std::uint16_t deferred_msu_frames_{};
     bool deferred_msu_repeat_{};

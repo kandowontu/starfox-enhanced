@@ -19,6 +19,9 @@
 #include "starfox/render/row_workers.hpp"
 #include "starfox/render/dust_renderer.hpp"
 #include "starfox/render/shadow_mask.hpp"
+#include "starfox/render/dxr_shadows.hpp"
+#include "starfox/render/gpu_effects.hpp"
+#include "starfox/render/sdl_gpu_effects.hpp"
 #include "starfox/render/chromatic_aberration.hpp"
 #include "starfox/render/hdr_effect.hpp"
 #include "starfox/render/palette.hpp"
@@ -1178,13 +1181,13 @@ public:
 #endif
         window_ = SDL_CreateWindow(
             "Star Fox Enhanced - native PC runtime", 1024, 896,
-            window_flags);
+            window_flags | (std::getenv("STARFOX_TEST_HIDDEN") ? SDL_WINDOW_HIDDEN : 0));
         if (window_ == nullptr) {
             throw std::runtime_error{
                 std::string{"SDL_CreateWindow: "} + SDL_GetError()};
         }
         recreate_renderer(renderer_mode);
-        SDL_ShowWindow(window_);
+        if(!std::getenv("STARFOX_TEST_HIDDEN")) SDL_ShowWindow(window_);
         static_cast<void>(SDL_SyncWindow(window_));
         // Put an actual black frame on the desktop before ROM decoding, game
         // construction or audio-device setup can begin. A merely-created SDL
@@ -1196,6 +1199,8 @@ public:
     }
 
     ~Window() {
+        gpu_effects_.release_device(); // Release COM objects before SDL unloads the graphics driver.
+        sdl_gpu_effects_.release_device();
         SDL_DestroyTexture(bloom_texture_);
         SDL_DestroyTexture(smooth_model_texture_);
         SDL_DestroyTexture(smooth_target_texture_);
@@ -1214,6 +1219,7 @@ public:
         const starfox::simulation::CircleEffectState& circle,
         const PresentationEffects& effects = {}) {
         window_scale_ = framebuffer.draw_scale();
+        gpu_frame_pending_=false;
         ensure_dimensions(
             framebuffer.stored_width(), framebuffer.stored_height());
         starfox::render::expand_rgba(
@@ -1231,9 +1237,12 @@ public:
             const auto* value = std::getenv("STARFOX_2D_FILTER_DEBUG");
             return value != nullptr && std::string_view{value} != "0";
         }();
-        starfox::render::apply_two_d_filter(
-            two_d_filter_, framebuffer, palette, rgba_, pixel_filter_scratch_,
-            presentation_workers_, highlight_filtered);
+        starfox::render::GpuEffectSettings filter_gpu;
+        filter_gpu.filter=static_cast<unsigned>(two_d_filter_);filter_gpu.highlight_filter=highlight_filtered;
+        if (!apply_gpu_effects(framebuffer,filter_gpu))
+            starfox::render::apply_two_d_filter(
+                two_d_filter_, framebuffer, palette, rgba_, pixel_filter_scratch_,
+                presentation_workers_, highlight_filtered);
         // Presentation effects address the source raster. Apply each one to
         // every stored pixel the render scale expanded that raster cell into.
         const auto render_scale = framebuffer.draw_scale();
@@ -1269,7 +1278,8 @@ public:
             // see them. Filter the layer on its own and composite the result,
             // or the planet sequence's portraits stay blocky while the planet
             // behind them resolves.
-            if (starfox::render::filter_overlay_layer(two_d_filter_, overlay,
+            if (filter_overlay_gpu(overlay,palette,render_scale,overlay_argb_)
+                || starfox::render::filter_overlay_layer(two_d_filter_, overlay,
                     palette, render_scale, overlay_argb_,
                     pixel_filter_scratch_, presentation_workers_)) {
                 const auto stored_width =
@@ -1634,11 +1644,23 @@ public:
             }
         }
         smooth_layer_ready_ = false;
-        if (rtx_lighting_) apply_rtx_lighting(framebuffer, effects);
-        starfox::render::apply_hdr_effect(framebuffer,rgba_,effects.hdr_effect);
-        starfox::render::apply_chromatic_aberration(framebuffer, rgba_,
-            chromatic_scratch_, effects.chromatic_aberration);
-        if (effects.shadow_mask != nullptr) {
+        starfox::render::GpuEffectSettings early_gpu;
+        early_gpu.hdr=effects.hdr_effect; early_gpu.chromatic=effects.chromatic_aberration;
+        early_gpu.lighting=rtx_lighting_; early_gpu.surfaces=effects.model_surfaces;
+        early_gpu.surface_x=effects.model_surface_x;early_gpu.surface_y=effects.model_surface_y;
+        if(effects.shadow_mask) {
+            early_gpu.shadow_mask=*effects.shadow_mask;
+            early_gpu.shadow_width=effects.shadow_width;early_gpu.shadow_height=effects.shadow_height;
+            early_gpu.shadow_offset_y=effects.shadow_offset_y;
+        }
+        const bool early_on_gpu=apply_gpu_effects(framebuffer,early_gpu);
+        if (!early_on_gpu) {
+            if (rtx_lighting_) apply_rtx_lighting(framebuffer,effects);
+            starfox::render::apply_hdr_effect(framebuffer,rgba_,effects.hdr_effect);
+            starfox::render::apply_chromatic_aberration(framebuffer, rgba_,
+                chromatic_scratch_, effects.chromatic_aberration);
+        }
+        if (!early_on_gpu && effects.shadow_mask != nullptr) {
             for (std::uint32_t y=0; y<framebuffer.stored_height(); ++y) {
                 const auto sy=static_cast<int>(y)-effects.shadow_offset_y;
                 if (sy<0 || sy>=static_cast<int>(effects.shadow_height)) continue;
@@ -1752,15 +1774,59 @@ public:
                 }
             }
         }
-        starfox::render::smooth_models(model_smoothing_, framebuffer, rgba_, smoothing_scratch_, &presentation_workers_);
-        starfox::render::apply_effect(effect_, framebuffer, rgba_, style_scratch_, effect_intensity_,
-            world_effect_, world_effect_intensity_);
+        starfox::render::GpuEffectSettings style_gpu;
+        style_gpu.smoothing=model_smoothing_;
+        style_gpu.model_effect=static_cast<unsigned>(effect_);
+        style_gpu.world_effect=static_cast<unsigned>(world_effect_);
+        style_gpu.model_intensity=effect_intensity_; style_gpu.world_intensity=world_effect_intensity_;
         bloom_layer_ready_ = bloom_ != 0U || bloom_2d_ != 0U;
+        style_gpu.bloom_model=bloom_;style_gpu.bloom_world=bloom_2d_;
+        style_gpu.anti_aliasing=static_cast<unsigned>(anti_aliasing_);
+        if(bloom_layer_ready_) {
+            style_gpu.bloom_base=&bloom_base_rgba_;style_gpu.bloom_glow=&bloom_glow_rgba_;
+        }
+        // No subsequent CPU composition is needed on this path. SDL samples
+        // the compute result directly; screenshots/history read back on demand.
+        if(!effects.setup_overlay && !effects.touch_controls
+            && renderer_mode_==starfox::simulation::RendererMode::gpu) {
+            style_gpu.presentation_texture=effect_texture(texture_);
+            if(bloom_layer_ready_ && style_gpu.presentation_texture) {
+                ensure_bloom_texture(framebuffer.stored_width(),framebuffer.stored_height());
+                style_gpu.presentation_glow_texture=effect_texture(bloom_texture_);
+            }
+            const bool has_model_layer=smooth_polys_ && effects.model_surfaces && !effects.model_surfaces->empty();
+            if(has_model_layer && style_gpu.presentation_texture) {
+                ensure_1440p_model_textures(framebuffer.stored_width(),framebuffer.stored_height());
+                style_gpu.presentation_model_texture=effect_texture(smooth_model_texture_);
+                style_gpu.surfaces=effects.model_surfaces;style_gpu.surface_x=effects.model_surface_x;
+                style_gpu.surface_y=effects.model_surface_y;
+            }
+            if(style_gpu.presentation_texture && (!bloom_layer_ready_ || style_gpu.presentation_glow_texture)
+                && (!has_model_layer || style_gpu.presentation_model_texture)
+                && apply_gpu_effects(framebuffer,style_gpu)) {
+                gpu_frame_pending_=true;
+                smooth_layer_ready_=has_model_layer;
+                if(std::getenv("STARFOX_TRACE_GPU") && !gpu_direct_reported_) {
+                    std::cerr<<"gpu-presentation: direct "<<(portable_gpu_?"SDL GPU":"D3D11")<<"; bloom="<<bloom_layer_ready_
+                        <<" model-layer="<<has_model_layer<<'\n';gpu_direct_reported_=true;
+                }
+                present_rgba_pixels(framebuffer.stored_width(),framebuffer.stored_height(),rgba_,true);
+                return;
+            }
+            style_gpu.presentation_texture=nullptr;
+            style_gpu.presentation_glow_texture=nullptr;
+            style_gpu.presentation_model_texture=nullptr;
+        }
+        if (!apply_gpu_effects(framebuffer,style_gpu)) {
+            starfox::render::smooth_models(model_smoothing_, framebuffer, rgba_, smoothing_scratch_, &presentation_workers_);
+            starfox::render::apply_effect(effect_, framebuffer, rgba_, style_scratch_, effect_intensity_,
+                world_effect_, world_effect_intensity_);
         if (bloom_layer_ready_) bloom_base_rgba_ = rgba_;
         bloom_pass_.apply(bloom_, bloom_2d_, framebuffer, rgba_, &presentation_workers_);
         if (bloom_layer_ready_) bloom_glow_rgba_ = rgba_;
         if (anti_aliasing_ != starfox::simulation::AntiAliasingMode::off) {
             apply_fxaa(anti_aliasing_);
+        }
         }
         if (effects.setup_overlay) {
             const auto& overlay = *effects.setup_overlay;
@@ -1803,6 +1869,7 @@ public:
 
     void present_rgba(std::uint32_t width, std::uint32_t height,
         std::span<const std::uint8_t> rgba) {
+        gpu_frame_pending_=false;
         if (rgba.size() != static_cast<std::size_t>(width) * height * 4U) {
             throw std::invalid_argument{"RGBA presentation size mismatch"};
         }
@@ -1813,7 +1880,12 @@ public:
         present_rgba_pixels(width, height, rgba_);
     }
 
-    [[nodiscard]] std::span<const std::uint8_t> rgba() const noexcept {
+    [[nodiscard]] std::span<const std::uint8_t> rgba() {
+        if(gpu_frame_pending_) {
+            if(!(portable_gpu_?sdl_gpu_effects_.readback(rgba_):gpu_effects_.readback(rgba_)))
+                throw std::runtime_error("GPU frame readback failed");
+            gpu_frame_pending_=false;
+        }
         return rgba_;
     }
 
@@ -1853,7 +1925,8 @@ public:
         }
     }
 
-    void save_bmp(const std::filesystem::path& path) const {
+    void save_bmp(const std::filesystem::path& path) {
+        static_cast<void>(rgba());
         auto* surface = SDL_CreateSurfaceFrom(
             texture_width_, texture_height_, SDL_PIXELFORMAT_RGBA32,
             const_cast<std::uint8_t*>(rgba_.data()), texture_width_ * 4U);
@@ -1934,7 +2007,67 @@ public:
     }
 
 private:
+    void* effect_texture(SDL_Texture* texture) const {
+        return SDL_GetPointerProperty(SDL_GetTextureProperties(texture),portable_gpu_
+            ? SDL_PROP_TEXTURE_GPU_TEXTURE_POINTER:SDL_PROP_TEXTURE_D3D11_TEXTURE_POINTER,nullptr);
+    }
+    void* effect_device() const {
+        return SDL_GetPointerProperty(SDL_GetRendererProperties(renderer_),portable_gpu_
+            ? SDL_PROP_RENDERER_GPU_DEVICE_POINTER:SDL_PROP_RENDERER_D3D11_DEVICE_POINTER,nullptr);
+    }
+    bool run_gpu_effects(const starfox::render::Framebuffer& frame,std::vector<std::uint8_t>& pixels,
+        const starfox::render::GpuEffectSettings& settings) {
+        SDL_FlushRenderer(renderer_);
+        const bool ok=portable_gpu_?sdl_gpu_effects_.apply(effect_device(),frame,pixels,settings)
+            :gpu_effects_.apply(effect_device(),frame,pixels,settings);
+        if(!ok && portable_gpu_ && frame.layer_tags_enabled() && effect_device() && !gpu_fallback_reported_) {
+            std::cerr<<"GPU effects fallback: "<<sdl_gpu_effects_.status()<<'\n';gpu_fallback_reported_=true;
+        }
+        return ok;
+    }
+    bool filter_overlay_gpu(const starfox::render::Framebuffer& overlay,
+        std::span<const starfox::render::Rgba8> palette,unsigned scale,
+        std::vector<std::uint32_t>& output) {
+        if(two_d_filter_==starfox::render::TwoDFilter::off || palette.empty()
+            || renderer_mode_!=starfox::simulation::RendererMode::gpu
+            || std::getenv("STARFOX_DISABLE_GPU_EFFECTS")) return false;
+        auto* device=effect_device();
+        if(!device) return false;
+        starfox::render::Framebuffer frame(overlay.width(),overlay.height(),scale);
+        frame.enable_layer_tags(true);
+        std::vector<std::uint8_t> pixels(frame.pixels().size()*4,0);
+        for(unsigned y=0;y<overlay.height();++y) for(unsigned x=0;x<overlay.width();++x) {
+            const auto entry=overlay.get(x,y);
+            if(!entry || entry>=palette.size()) continue;
+            const auto i=(std::size_t(y)*frame.stored_width()+x)*4;
+            pixels[i]=palette[entry].r;pixels[i+1]=palette[entry].g;
+            pixels[i+2]=palette[entry].b;pixels[i+3]=255;
+        }
+        starfox::render::GpuEffectSettings settings;
+        settings.filter=static_cast<unsigned>(two_d_filter_);settings.overlay_filter=true;
+        SDL_FlushRenderer(renderer_);
+        if(!run_gpu_effects(frame,pixels,settings)) return false;
+        output.resize(frame.pixels().size());
+        for(std::size_t i=0;i<output.size();++i)
+            output[i]=(std::uint32_t(pixels[i*4+3])<<24)|(std::uint32_t(pixels[i*4])<<16)
+                |(std::uint32_t(pixels[i*4+1])<<8)|pixels[i*4+2];
+        return true;
+    }
+    bool apply_gpu_effects(const starfox::render::Framebuffer& frame,
+        const starfox::render::GpuEffectSettings& settings) {
+        if(renderer_mode_!=starfox::simulation::RendererMode::gpu
+            || std::getenv("STARFOX_DISABLE_GPU_EFFECTS")) return false;
+        if(!settings.hdr && !settings.chromatic && !settings.smoothing
+            && !settings.model_effect && !settings.world_effect && !settings.anti_aliasing && !settings.lighting
+            && !settings.bloom_model && !settings.bloom_world && !settings.filter && settings.shadow_mask.empty()
+            && !settings.presentation_texture) return true;
+        return run_gpu_effects(frame,rgba_,settings);
+    }
     void recreate_renderer(starfox::simulation::RendererMode mode) {
+        gpu_effects_.release_device();
+        sdl_gpu_effects_.release_device();
+        portable_gpu_=false;gpu_fallback_reported_=false;gpu_direct_reported_=false;
+        gpu_frame_pending_=false;
         const auto replace_window = renderer_ != nullptr
             && renderer_mode_ == starfox::simulation::RendererMode::gpu
             && mode == starfox::simulation::RendererMode::software;
@@ -1959,17 +2092,29 @@ private:
         const auto* renderer_driver =
             mode == starfox::simulation::RendererMode::software
                 ? "software" : "direct3d11";
+#elif defined(_WIN32)
+        const auto* renderer_driver = mode == starfox::simulation::RendererMode::software
+            ? "software" : std::string_view(SDL_GetCurrentVideoDriver())=="dummy"?nullptr:
+                std::getenv("STARFOX_TEST_SDL_GPU")?"gpu":"direct3d11";
+#elif defined(STARFOX_SDL_GPU_EFFECTS)
+        const auto* renderer_driver = mode == starfox::simulation::RendererMode::software
+            ? "software" : std::string_view(SDL_GetCurrentVideoDriver())=="dummy"?nullptr:"gpu";
 #else
         const auto* renderer_driver =
             mode == starfox::simulation::RendererMode::software
                 ? "software" : nullptr;
 #endif
         renderer_ = SDL_CreateRenderer(window_, renderer_driver);
+        if(!renderer_ && renderer_driver && std::string_view(renderer_driver)=="gpu") {
+            std::cerr<<"SDL GPU unavailable: "<<SDL_GetError()<<"; using native renderer fallback\n";
+            renderer_=SDL_CreateRenderer(window_,nullptr);
+        }
         if (renderer_ == nullptr) {
             throw std::runtime_error{
                 std::string{"SDL_CreateRenderer: "} + SDL_GetError()};
         }
         renderer_mode_ = mode;
+        portable_gpu_=SDL_GetPointerProperty(SDL_GetRendererProperties(renderer_),SDL_PROP_RENDERER_GPU_DEVICE_POINTER,nullptr)!=nullptr;
         // Presentation has its own exact schedule. Following an arbitrary
         // desktop refresh is opt-in through the saved VSYNC menu choice.
         static_cast<void>(SDL_SetRenderVSync(renderer_, vsync_ ? 1 : 0));
@@ -2606,19 +2751,27 @@ private:
             static_cast<int>(raster_height * integer_scale));
     }
 
+    void ensure_bloom_texture(std::uint32_t width,std::uint32_t height) {
+        if(bloom_texture_) return;
+        bloom_texture_=SDL_CreateTexture(renderer_,SDL_PIXELFORMAT_RGBA32,
+            SDL_TEXTUREACCESS_STREAMING,static_cast<int>(width),static_cast<int>(height));
+        if(!bloom_texture_ || !SDL_SetTextureScaleMode(bloom_texture_,SDL_SCALEMODE_LINEAR)
+            || !SDL_SetTextureBlendMode(bloom_texture_,SDL_BLENDMODE_ADD))
+            throw std::runtime_error{std::string{"SDL bloom texture: "}+SDL_GetError()};
+    }
     void present_rgba_pixels(std::uint32_t width, std::uint32_t height,
-        std::span<const std::uint8_t> rgba) {
+        std::span<const std::uint8_t> rgba, bool gpu_uploaded=false) {
         update_temporary_status();
         const auto base = smooth_layer_ready_
             ? std::span<const std::uint8_t>{smooth_base_rgba_}
             : bloom_layer_ready_ ? std::span<const std::uint8_t>{bloom_base_rgba_} : rgba;
-        if (!SDL_UpdateTexture(texture_, nullptr, base.data(),
+        if (!gpu_uploaded && !SDL_UpdateTexture(texture_, nullptr, base.data(),
                 static_cast<int>(width * 4U))) {
             throw std::runtime_error{std::string{"SDL_UpdateTexture: "} + SDL_GetError()};
         }
         if (smooth_layer_ready_) {
             ensure_1440p_model_textures(width, height);
-            if (!SDL_UpdateTexture(smooth_model_texture_, nullptr,
+            if (!gpu_uploaded && !SDL_UpdateTexture(smooth_model_texture_, nullptr,
                     smooth_model_rgba_.data(), static_cast<int>(width * 4U))) {
                 throw std::runtime_error{
                     std::string{"SDL_UpdateTexture (1440p model): "}
@@ -2644,16 +2797,8 @@ private:
         SDL_RenderTexture(renderer_, smooth_layer_ready_
             ? smooth_target_texture_ : texture_, nullptr, nullptr);
         if (bloom_layer_ready_) {
-            if (bloom_texture_ == nullptr) {
-                bloom_texture_ = SDL_CreateTexture(renderer_, SDL_PIXELFORMAT_RGBA32,
-                    SDL_TEXTUREACCESS_STREAMING, static_cast<int>(width), static_cast<int>(height));
-                if (bloom_texture_ == nullptr
-                    || !SDL_SetTextureScaleMode(bloom_texture_, SDL_SCALEMODE_LINEAR)
-                    || !SDL_SetTextureBlendMode(bloom_texture_, SDL_BLENDMODE_ADD)) {
-                    throw std::runtime_error{std::string{"SDL bloom texture: "} + SDL_GetError()};
-                }
-            }
-            if (!SDL_UpdateTexture(bloom_texture_, nullptr, bloom_glow_rgba_.data(),
+            ensure_bloom_texture(width,height);
+            if (!gpu_uploaded && !SDL_UpdateTexture(bloom_texture_, nullptr, bloom_glow_rgba_.data(),
                     static_cast<int>(width * 4U))) {
                 throw std::runtime_error{std::string{"SDL bloom upload: "} + SDL_GetError()};
             }
@@ -2736,6 +2881,11 @@ private:
     std::vector<std::uint8_t> effect_source_;
     std::vector<std::uint8_t> style_scratch_;
     starfox::render::BloomPass bloom_pass_;
+    starfox::render::GpuEffects gpu_effects_;
+    starfox::render::SdlGpuEffects sdl_gpu_effects_;
+    bool portable_gpu_{},gpu_fallback_reported_{};
+    bool gpu_frame_pending_{};
+    bool gpu_direct_reported_{};
     std::uint8_t bloom_{};
     std::uint8_t bloom_2d_{};
     std::uint8_t model_smoothing_{};
@@ -3739,7 +3889,7 @@ int main(int argc, char** argv) {
                 game.bloom_2d(),
                 game.model_smoothing(),
                 game.language(),
-                game.wireframe_thickness(),
+                1U, // Reserved legacy settings slot; renderer owns line sizing.
                 game.enhanced_shadows(),
                 game.chromatic_aberration(),
                 game.hdr_effect(),
@@ -3876,7 +4026,6 @@ int main(int argc, char** argv) {
             game.set_language(saved_pregame.language);
             if (const auto* language = std::getenv("STARFOX_TEST_LANGUAGE"))
                 game.set_language(static_cast<std::uint8_t>(std::atoi(language)));
-            game.set_wireframe_thickness(saved_pregame.wireframe_thickness);
             game.set_enhanced_shadows(saved_pregame.enhanced_shadows);
             game.set_chromatic_aberration(saved_pregame.chromatic_aberration);
             if (const auto* chromatic = std::getenv("STARFOX_TEST_CHROMATIC_ABERRATION"))
@@ -4347,6 +4496,8 @@ int main(int argc, char** argv) {
             snes_width * render_scale, superfx_height * render_scale};
         starfox::render::shadows::Scene shadow_scene;
         starfox::render::RowWorkers shadow_workers;
+        starfox::render::shadows::DxrShadows dxr_shadows;
+        std::string shadow_backend_status;
         std::vector<std::uint8_t> shadow_mask;
         starfox::render::Framebuffer superfx_ui{
             superfx_ui_width, superfx_height, render_scale};
@@ -4545,6 +4696,10 @@ int main(int argc, char** argv) {
         const auto test_frames = test_frames_text == nullptr
             ? std::uint64_t{0}
             : static_cast<std::uint64_t>(std::stoull(test_frames_text));
+        const bool profile_distribution = test_frames != 0U
+            && std::getenv("STARFOX_TRACE_PROFILE_DISTRIBUTION") != nullptr;
+        std::vector<std::uint64_t> profile_render_samples;
+        if (profile_distribution) profile_render_samples.reserve(test_frames);
         const auto capture_path_text = std::getenv("STARFOX_CAPTURE_PATH");
         const auto capture_path = capture_path_text == nullptr
             ? std::filesystem::path{} : std::filesystem::path{capture_path_text};
@@ -5592,9 +5747,9 @@ int main(int argc, char** argv) {
                 ? 0 : superfx_offset_y;
             render_scale = render_scale_factor(game.render_scale());
             if (render_settings.render_scale != render_scale
-                || render_settings.wireframe_thickness != game.wireframe_thickness()) {
+                || render_settings.wireframe_thickness != 1U) {
                 render_settings.render_scale = render_scale;
-                render_settings.wireframe_thickness = game.wireframe_thickness();
+                render_settings.wireframe_thickness = 1U;
                 renderer = starfox::render::SoftwareRenderer{render_settings};
             }
             for (auto* layer : {&framebuffer, &superfx_frame, &superfx_hud,
@@ -6681,8 +6836,6 @@ int main(int argc, char** argv) {
                     enhanced_shadows_active ? &shadow_scene : nullptr);
             }
             if (enhanced_shadows_active) {
-                if (shadow_workers.worker_count() == 0U) shadow_workers.set_worker_count(0);
-                shadow_scene.build();
                 const auto light=world_to_camera(camera.x-1,camera.y-1,camera.z-1,camera,view_matrix);
                 std::optional<starfox::render::shadows::ReceiverPlane> ground;
                 if (shadows_enabled) {
@@ -6691,12 +6844,27 @@ int main(int argc, char** argv) {
                     ground=starfox::render::shadows::ReceiverPlane{
                         {point.x,point.y,point.z},{normal.x,normal.y,normal.z}};
                 }
-                starfox::render::shadows::render_mask(shadow_scene,
-                    {superfx_frame.stored_width(),superfx_frame.stored_height(),256.0*render_scale,
+                const starfox::render::shadows::Camera shadow_camera{
+                    superfx_frame.stored_width(),superfx_frame.stored_height(),256.0*render_scale,
                         static_cast<double>(game.map().read_native_word(vanish_x_address)+superfx_ui_offset_x)*render_scale,
                         static_cast<double>(game.map().read_native_word(vanish_y_address)
-                            +(extend_scene_vertical?superfx_offset_y:0))*render_scale},
-                    {light.x,light.y,light.z},ground,shadow_mask,&shadow_workers);
+                            +(extend_scene_vertical?superfx_offset_y:0))*render_scale};
+                const bool hardware=game.renderer_mode()==starfox::simulation::RendererMode::gpu
+                    && std::getenv("STARFOX_DISABLE_DXR")==nullptr
+                    && dxr_shadows.render(shadow_scene,shadow_camera,
+                        {light.x,light.y,light.z},ground,shadow_mask);
+                if (!hardware) {
+                    shadow_scene.build();
+                    starfox::render::shadows::render_mask(shadow_scene,shadow_camera,
+                        {light.x,light.y,light.z},ground,shadow_mask,&shadow_workers);
+                }
+                const std::string status=hardware?dxr_shadows.status():
+                    game.renderer_mode()==starfox::simulation::RendererMode::software
+                        ?"CPU shadows (software renderer)":dxr_shadows.status();
+                if (status!=shadow_backend_status) {
+                    std::cerr << "shadow-backend: " << status << '\n';
+                    shadow_backend_status=status;
+                }
             }
             if (game.flow_state()
                     == starfox::simulation::GameFlowState::ex_pregame_menu
@@ -7571,7 +7739,7 @@ int main(int argc, char** argv) {
                         draw_graphics_row("RENDER UPSCALE",
                             render_scale_name(game.render_scale()), row_y[9],
                             game.pregame_selection() == 9U);
-                        draw_graphics_row("RTX LIGHTING",
+                        draw_graphics_row("ENHANCED LIGHTING",
                             std::array<std::string_view, 4>{
                                 "OFF", "LOW", "MEDIUM", "HIGH"}
                                 [game.rtx_lighting_intensity()], row_y[10],
@@ -7599,7 +7767,6 @@ int main(int argc, char** argv) {
                         draw_graphics_row("MODEL EFFECT INTENSITY", std::to_string(game.effect_intensity()) + "%", row_y[22], game.pregame_selection() == 22U);
                         draw_graphics_row("WORLD EFFECT INTENSITY", std::to_string(game.world_effect_intensity()) + "%", row_y[24], game.pregame_selection() == 24U);
                         draw_graphics_row("BACK", "", row_y[23], game.pregame_selection() == 23U);
-                        draw_graphics_row("WIREFRAME THICKNESS", std::to_string(game.wireframe_thickness()), row_y[25], game.pregame_selection() == 25U);
                         draw_graphics_row("ENHANCED SHADOWS", on_off(game.enhanced_shadows()), row_y[26], game.pregame_selection() == 26U);
                         draw_graphics_row("CHROMATIC ABERRATION", std::array<std::string_view,4>{"OFF","LOW","MEDIUM","HIGH"}[game.chromatic_aberration()], row_y[27], game.pregame_selection() == 27U);
                         draw_graphics_row("HDR EFFECT", std::array<std::string_view,4>{"OFF","LOW","MEDIUM","HIGH"}[game.hdr_effect()], row_y[28], game.pregame_selection() == 28U);
@@ -7836,6 +8003,11 @@ int main(int argc, char** argv) {
             }
 #endif
             const auto profile_present_done = std::chrono::steady_clock::now();
+            if (profile_distribution) {
+                profile_render_samples.push_back(static_cast<std::uint64_t>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        profile_present_done - profile_frame_start).count()));
+            }
             profile_background_ns += static_cast<std::uint64_t>(
                 std::chrono::duration_cast<std::chrono::nanoseconds>(
                     profile_background_done - profile_frame_start).count());
@@ -7924,6 +8096,16 @@ int main(int argc, char** argv) {
             }
             ++presented_frames;
             if (test_frames != 0 && presented_frames >= test_frames) {
+                if (!profile_render_samples.empty()) {
+                    std::sort(profile_render_samples.begin(), profile_render_samples.end());
+                    const auto percentile_us = [&](std::size_t percent) {
+                        return profile_render_samples[(profile_render_samples.size()-1U)*percent/100U] / 1'000U;
+                    };
+                    std::cerr << "render-distribution-us median=" << percentile_us(50)
+                              << " p95=" << percentile_us(95)
+                              << " p99=" << percentile_us(99)
+                              << " max=" << profile_render_samples.back()/1'000U << '\n';
+                }
                 if (std::getenv("STARFOX_TRACE_FPS") != nullptr) {
                     std::cerr << "fps-matrix display="
                               << static_cast<unsigned>(game.display_mode())

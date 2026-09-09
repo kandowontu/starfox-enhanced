@@ -125,7 +125,7 @@ struct PregameSettings {
     std::uint8_t model_smoothing{};
     // 0=English, 1=Japanese, 2=German, 3=French, 4=Spanish.
     std::uint8_t language{};
-    std::uint8_t wireframe_thickness{1U};
+    std::uint8_t wireframe_thickness{1U}; // Legacy aggregate slot; no longer saved or applied.
     bool enhanced_shadows{};
     std::uint8_t chromatic_aberration{};
     std::uint8_t hdr_effect{};

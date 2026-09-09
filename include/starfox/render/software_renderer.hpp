@@ -134,6 +134,7 @@ public:
 
     [[nodiscard]] std::uint32_t width() const noexcept { return width_; }
     [[nodiscard]] std::uint32_t height() const noexcept { return height_; }
+    [[nodiscard]] std::span<const SurfaceSample> samples() const noexcept { return samples_; }
 
     void resize(std::uint32_t width, std::uint32_t height) {
         if (width == width_ && height == height_) return;

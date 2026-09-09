@@ -4,8 +4,8 @@ A native C++/SDL3 port of [UltraStarFox](https://github.com/Sunlitspace542/ultra
 with **Original Star Fox** and **Star Fox EX** experiences, high-frame-rate
 presentation, widescreen support, and optional visual enhancements.
 
-**[Download 0.0.6](https://github.com/kandowontu/starfox-enhanced/releases/tag/v0.0.6)** ·
-[Changelog](docs/RELEASE-0.0.6.md) ·
+**[Download 0.0.6.5](https://github.com/kandowontu/starfox-enhanced/releases/tag/v0.0.6.5)** ·
+[Changelog](docs/RELEASE-0.0.6.5.md) ·
 [Settings and controls](docs/SETTINGS-AND-CONTROLS.md) ·
 [Build guide](docs/BUILDING.md) ·
 [Report a bug](https://github.com/kandowontu/starfox-enhanced/issues)
@@ -55,7 +55,7 @@ competition cartridges, Star Fox 2 and unknown revisions are not supported.
 | Xbox UWP x64 | Developer Mode required; [setup](https://github.com/kandowontu/starfox-enhanced/blob/main/platform/uwp/README.md). |
 
 Build success does not guarantee identical behavior on every device.
-See the [release notes](docs/RELEASE-0.0.6.md) for verification limits.
+See the [release notes](docs/RELEASE-0.0.6.5.md) for verification limits.
 
 **Android upgrades:** 0.0.6 uses a permanent signing key. Older APKs used
 temporary keys, so upgrading from those builds requires a one-time reinstall.
@@ -74,8 +74,8 @@ retain the permanent signing certificate.
 - **2D Options:** artwork filtering, 2D Bloom, World Effects and their intensity.
   The artwork filter also covers textures on 3D polygons.
 - **3D Options:** anti-aliasing, VSync, 1–4× Render Upscale, 3D Bloom, 3D Smoothing,
-  RTX Lighting, HDR Effect, Enhanced Shadows, Chromatic Aberration, Model Effects
-  and independent Wireframe Thickness. HDR Effect is brightness/contrast
+  Enhanced Lighting, HDR Effect, Enhanced Shadows, Chromatic Aberration, Model Effects
+  and Model Effect Intensity. HDR Effect is brightness/contrast
   processing, **not HDR display output**.
 - **Preview:** a fixed reference scene shows graphics changes live. Hold **Tab**
   to hide the menu temporarily. Preview defaults off each launch.

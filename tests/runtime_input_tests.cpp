@@ -325,13 +325,22 @@ int main() {
     for (std::uint8_t language = 0; language < 5; ++language) {
         auto settings = saved_pregame;
         settings.language = language;
-        settings.wireframe_thickness = language % 4 + 1;
         settings.enhanced_shadows = (language % 2) != 0;
         settings.chromatic_aberration = language % 4;
         settings.hdr_effect = language % 4;
         require(starfox::app::save_pregame_settings(pregame_test_path, settings)
             && starfox::app::load_pregame_settings(pregame_test_path, loaded_pregame)
             && loaded_pregame == settings, "language setting did not round-trip");
+    }
+    {
+        require(starfox::app::save_pregame_settings(pregame_test_path,saved_pregame),
+            "could not write thickness migration fixture");
+        std::ofstream legacy{pregame_test_path,std::ios::app};
+        legacy << "WIREFRAME_THICKNESS 4\n";
+        legacy.close();
+        require(starfox::app::load_pregame_settings(pregame_test_path,loaded_pregame)
+            && loaded_pregame.wireframe_thickness==1U,
+            "legacy line thickness override was not ignored");
     }
     {
         auto settings = saved_pregame;
