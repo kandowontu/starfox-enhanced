@@ -16,6 +16,11 @@
 
 namespace starfox::app {
 
+[[nodiscard]] constexpr bool peek_setup_menu(
+    bool in_menu, bool tab_held, bool input_capture_active) noexcept {
+    return in_menu && tab_held && !input_capture_active;
+}
+
 // Installs controller-driver defaults before SDL_INIT_GAMEPAD. Explicit user
 // or environment overrides retain priority over these application defaults.
 void configure_native_gamepad_support() noexcept;
@@ -118,6 +123,12 @@ struct PregameSettings {
     std::uint8_t bloom{};
     std::uint8_t bloom_2d{};
     std::uint8_t model_smoothing{};
+    // 0=English, 1=Japanese, 2=German, 3=French, 4=Spanish.
+    std::uint8_t language{};
+    std::uint8_t wireframe_thickness{1U};
+    bool enhanced_shadows{};
+    std::uint8_t chromatic_aberration{};
+    std::uint8_t hdr_effect{};
 
     [[nodiscard]] bool operator==(const PregameSettings&) const = default;
 };

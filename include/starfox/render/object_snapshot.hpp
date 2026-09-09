@@ -22,6 +22,18 @@ struct ObjectPresentationSnapshot {
 using ObjectSnapshotMap = std::unordered_map<simulation::ObjectHandle,
     ObjectPresentationSnapshot>;
 
+// UPDOORCOL_ISTRAT adds deg180 in one source tick to change the arrow's
+// direction. That is a discrete state change, not a rotating-door animation.
+inline simulation::MatrixQ15 interpolate_object_rotation(
+    const ObjectPresentationSnapshot& previous,
+    const ObjectPresentationSnapshot& current, double alpha,
+    std::uint16_t discrete_rotation_shape) {
+    if (discrete_rotation_shape != 0U && current.shape == discrete_rotation_shape)
+        return current.rotation_matrix;
+    return simulation::interpolate_rotation_matrix_q15(
+        previous.rotation_matrix, current.rotation_matrix, alpha);
+}
+
 // EX implements the sight line as recycled, advancing particles. Presentation
 // must match the sight's depth stations, not the particle that moves from one
 // station to the next during a native tick.

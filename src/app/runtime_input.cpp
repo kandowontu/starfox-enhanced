@@ -724,6 +724,21 @@ bool load_pregame_settings(
             if (value < 0 || value > 3) return false;
             loaded.bloom_2d = static_cast<std::uint8_t>(value);
             found_bloom_2d = true;
+        } else if (name == "WIREFRAME_THICKNESS") {
+            if (value < 1 || value > 4) return false;
+            loaded.wireframe_thickness = static_cast<std::uint8_t>(value);
+        } else if (name == "ENHANCED_SHADOWS") {
+            if (value < 0 || value > 1) return false;
+            loaded.enhanced_shadows = value != 0;
+        } else if (name == "CHROMATIC_ABERRATION") {
+            if (value < 0 || value > 3) return false;
+            loaded.chromatic_aberration = static_cast<std::uint8_t>(value);
+        } else if (name == "HDR_EFFECT") {
+            if (value < 0 || value > 3) return false;
+            loaded.hdr_effect = static_cast<std::uint8_t>(value);
+        } else if (name == "LANGUAGE") {
+            if (value < 0 || value > 4) return false;
+            loaded.language = static_cast<std::uint8_t>(value);
         } else if (name == "MODEL_SMOOTHING") {
             if (value < 0 || value > 3) return false;
             loaded.model_smoothing = static_cast<std::uint8_t>(value);
@@ -801,7 +816,10 @@ bool save_pregame_settings(
         || settings.two_d_filter > 4U || settings.effect >= render::effect_count
         || settings.effect_intensity > 100U || settings.renderer_mode > 1U
         || settings.world_effect >= render::effect_count || settings.world_effect_intensity > 100U || settings.bloom > 3U || settings.bloom_2d > 3U
-        || settings.experience > 1U || settings.music_volume > 100U
+        || settings.wireframe_thickness < 1U || settings.wireframe_thickness > 4U
+        || settings.chromatic_aberration > 3U
+        || settings.hdr_effect > 3U
+        || settings.language > 4U || settings.experience > 1U || settings.music_volume > 100U
         || settings.sfx_volume > 100U || settings.render_scale > 3U || settings.model_smoothing > 3U) {
         return false;
     }
@@ -838,6 +856,11 @@ bool save_pregame_settings(
            << "BLOOM " << static_cast<unsigned>(settings.bloom) << '\n'
            << "BLOOM_2D " << static_cast<unsigned>(settings.bloom_2d) << '\n'
            << "MODEL_SMOOTHING " << static_cast<unsigned>(settings.model_smoothing) << '\n'
+           << "LANGUAGE " << static_cast<unsigned>(settings.language) << '\n'
+           << "WIREFRAME_THICKNESS " << static_cast<unsigned>(settings.wireframe_thickness) << '\n'
+           << "ENHANCED_SHADOWS " << static_cast<unsigned>(settings.enhanced_shadows) << '\n'
+           << "CHROMATIC_ABERRATION " << static_cast<unsigned>(settings.chromatic_aberration) << '\n'
+           << "HDR_EFFECT " << static_cast<unsigned>(settings.hdr_effect) << '\n'
            << "VSYNC " << static_cast<unsigned>(settings.vsync) << '\n'
            << "RENDERER_MODE "
            << static_cast<unsigned>(settings.renderer_mode) << '\n'

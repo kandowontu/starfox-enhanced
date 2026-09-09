@@ -13,6 +13,7 @@
 #include <optional>
 
 namespace starfox::render {
+namespace shadows { class Scene; }
 
 struct RenderPose {
     double x{};
@@ -109,6 +110,7 @@ struct RenderSettings {
     // fractional geometry shared by rasterization, visibility and BSP order
     // stays scale-independent and stable across source-frame boundaries.
     std::uint32_t render_scale{1U};
+    std::uint8_t wireframe_thickness{1U};
 };
 
 // Presentation metadata for a host-rendered Super FX surface. The indexed
@@ -209,7 +211,8 @@ public:
         const RenderPose& pose,
         Framebuffer& target,
         bool clear_target = true,
-        SurfaceBuffer* surfaces = nullptr) const;
+        SurfaceBuffer* surfaces = nullptr,
+        shadows::Scene* shadow_scene = nullptr) const;
 
     // MHUD.MC's first-person direction indicators are a Super FX line pass,
     // separate from both the 3D object list and the SNES OAM reticle.

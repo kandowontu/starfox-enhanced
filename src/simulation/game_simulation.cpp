@@ -435,6 +435,8 @@ GameSimulation::GameSimulation(
     find_window_priority_ = find_optional_rom("FIND_WINDOW_PRI_L");
     window_pointer_ = find_optional_ram("WINDOWPTR");
     window_array_ = find_optional_ram("WINDOWARRAY");
+    nucleus_debris_strategy_ = find_optional_rom("BOSS8SHRAP_STRAT");
+    background_base_y_ = find_optional_ram("BG2YSCROLL");
     if (credits_entry_ == 0U && end_game_sequence_ != 0U) {
         // Retail MAIN.ASM does not export a CREDSTUFF label. Its equivalent
         // boundary is the instruction immediately following JSL ENDSEQ_L:
@@ -1079,6 +1081,14 @@ GameTickResult GameSimulation::tick_pregame_menu(
     }
 
     auto menu_input = input;
+    // A confirmation belongs to one action, including across page changes.
+    // Require physical release before allowing another confirmation.
+    pregame_confirmation_blocked_ &= input.held;
+    menu_input.pressed &= static_cast<input::ButtonMask>(
+        ~pregame_confirmation_blocked_);
+    pregame_confirmation_blocked_ |= static_cast<input::ButtonMask>(
+        menu_input.pressed & input.held
+        & (input::a | input::b | input::select | input::start));
     constexpr auto horizontal = static_cast<starfox::input::ButtonMask>(
         starfox::input::left | starfox::input::right);
     if (pregame_horizontal_blocked_) {
@@ -1119,6 +1129,33 @@ GameTickResult GameSimulation::tick_pregame_menu(
         result.audio_port_writes = map_.take_apu_port_writes();
         return result;
     }
+    if (graphics_page && pregame_selection_ == 25U
+        && (menu_input.pressed & (starfox::input::a | starfox::input::select
+            | starfox::input::left | starfox::input::right))) {
+        const auto delta = (menu_input.pressed & starfox::input::left) ? 2U : 0U;
+        set_wireframe_thickness(static_cast<std::uint8_t>((wireframe_thickness_ + delta) % 4U + 1U));
+        queue_sound_effect(0x11U);
+    }
+    if (graphics_page && pregame_selection_ == 26U
+        && (menu_input.pressed & (starfox::input::a | starfox::input::select
+            | starfox::input::left | starfox::input::right))) {
+        set_enhanced_shadows(!enhanced_shadows_);
+        queue_sound_effect(0x11U);
+    }
+    if (graphics_page && pregame_selection_ == 27U
+        && (menu_input.pressed & (starfox::input::a | starfox::input::select
+            | starfox::input::left | starfox::input::right))) {
+        set_chromatic_aberration(static_cast<std::uint8_t>((chromatic_aberration_
+            + ((menu_input.pressed & starfox::input::left) ? 3U : 1U)) % 4U));
+        queue_sound_effect(0x11U);
+    }
+    if (graphics_page && pregame_selection_ == 28U
+        && (menu_input.pressed & (starfox::input::a | starfox::input::select
+            | starfox::input::left | starfox::input::right))) {
+        set_hdr_effect(static_cast<std::uint8_t>((hdr_effect_
+            + ((menu_input.pressed & starfox::input::left) ? 3U : 1U)) % 4U));
+        queue_sound_effect(0x11U);
+    }
     if (graphics_page && (pregame_selection_ == 22U || pregame_selection_ == 24U)
         && (menu_input.pressed & (starfox::input::a | starfox::input::select
             | starfox::input::left | starfox::input::right))) {
@@ -1129,6 +1166,13 @@ GameTickResult GameSimulation::tick_pregame_menu(
     }
 
     if (pregame_page_ == PregamePage::options) {
+        if (pregame_selection_ == 12U
+            && (menu_input.pressed & (starfox::input::left | starfox::input::right
+                | starfox::input::select | starfox::input::a)) != 0U) {
+            set_language(static_cast<std::uint8_t>((language_ +
+                ((menu_input.pressed & starfox::input::left) != 0U ? 4U : 1U)) % 5U));
+            queue_sound_effect(0x11U);
+        }
         const auto go_back = (menu_input.pressed & starfox::input::b) != 0U
             || (pregame_selection_ == 11U
                 && (menu_input.pressed & (starfox::input::a
@@ -1359,8 +1403,10 @@ GameTickResult GameSimulation::tick_pregame_menu(
         return result;
     }
 
-    const auto start_pressed = (menu_input.pressed & starfox::input::start) != 0U;
-    const auto confirm_start = pregame_selection_ == 15U
+    const auto start_pressed = pregame_page_ == PregamePage::main
+        && (menu_input.pressed & starfox::input::start) != 0U;
+    const auto confirm_start = pregame_page_ == PregamePage::main
+        && pregame_selection_ == 15U
         && (menu_input.pressed & (starfox::input::a | starfox::input::b)) != 0U;
     if (start_pressed || confirm_start) {
         if (menu_preview_) {
@@ -2005,6 +2051,13 @@ void GameSimulation::service_audio_irq(std::vector<std::uint8_t>& commands) {
             --background_music_start_delay_phases_;
         } else {
             map_.write_native_byte(0x002140U, music);
+            // Boss defeat strategies issue the SPC music-cut command even
+            // when their MSU companion call is absent. Apply that same cut
+            // to the replacement music, without interrupting native SFX.
+            if (!starfox_ex_cartridge_ && music == 0xf0U) {
+                map_.write_native_byte(0x002006U, 0U);
+                map_.write_native_byte(0x002007U, 0U);
+            }
             map_.write_native_byte(background_music_count_, 1U);
             background_music_start_pending_ = false;
             // The CPU-side bus model cannot observe the emulated SPC
@@ -2381,6 +2434,11 @@ void GameSimulation::reset_scene_transition_state() {
     boss_music_before_death_.reset();
     post_boss_dialogue_active_ = false;
     circle_effect_ = {};
+    colour_math_effect_ = {};
+    // INITGAME clears WINDOWMODE. Host-owned map/menu transitions can skip
+    // that entry point; retire its allocator as well as the presentation copy.
+    map_.write_native_byte(ram_symbol("WINDOWMODE"), 0U);
+    if (window_pointer_ != 0U) map_.write_native_word(window_pointer_, 0U);
     // Every cartridge scene wrapper tears down its colour-window program
     // before handing ownership to the next screen. Host-directed transitions
     // can bypass that common wrapper, so clear both the native bytes and the
@@ -2507,6 +2565,12 @@ void GameSimulation::enter_game_over() {
     registers.status = 0x24U;
     map_.call_native_routine(
         game_over_initialize_, registers, 50'000'000, true);
+    registers = {};
+    registers.status = 0x24U;
+    // MAIN.ASM queues this separately from GAMEOVERINIT_L. Selecting the MSU
+    // replacement alone leaves native-audio players without the game-over cue.
+    map_.call_native_routine(
+        rom_symbol("DO_BGM_GAMEOVER"), registers, 20'000'000, true);
     request_msu_music(msu_track::game_over, false);
     map_.restore_map_state_from_native();
     refresh_player_reference();
@@ -2921,7 +2985,8 @@ GameTickResult GameSimulation::tick_continue_screen(const input::TickInput& inpu
         service_audio_irq(result.sound_effect_commands);
     }
     ++flow_ticks_;
-    if (frontend_phase_ == FrontendPhase::continue_fade_in) {
+    if (frontend_phase_ == FrontendPhase::continue_fade_in
+        || frontend_phase_ == FrontendPhase::continue_accept) {
         result.audio_port_writes = map_.take_apu_port_writes();
         return result;
     }
@@ -2990,8 +3055,14 @@ GameTickResult GameSimulation::tick_continue_screen(const input::TickInput& inpu
         map_.set_display_brightness(15U);
         frontend_frames_ = 0U;
         frontend_phase_ = option == 0U
-            ? FrontendPhase::continue_fade_to_stage
+            ? FrontendPhase::continue_accept
             : FrontendPhase::continue_fade_to_title;
+        request_music(0xf1U);
+        queue_sound_effect(option == 0U ? 0x67U : 0x10U);
+        if (option == 0U) {
+            map_.write_native_byte(foxy_frame_, 1U);
+            update_continue_sprites();
+        }
     } else if (flow_ticks_ >= 1'200U) {
         map_.set_display_brightness(15U);
         frontend_frames_ = 0U;
@@ -3171,6 +3242,23 @@ void GameSimulation::apply_control_type() {
     map_.set_bg2_scroll(horizontal, vertical);
 }
 
+void GameSimulation::set_language(std::uint8_t value) {
+    language_ = value < 5U ? value : 0U;
+    if (flow_state_ != GameFlowState::controls_type
+        && flow_state_ != GameFlowState::controls_choice) return;
+    // Also apply when preferences are restored after a direct Controls boot.
+    // Only the seven background palettes belong to the controller artwork.
+    for (const auto address : symbols_->find(language_ == 0U ? "BGCONTPAC" : "BG2EPPAC")) {
+        if ((address >> 16U) != 0x7fU) continue;
+        std::array<std::uint16_t, 112> palette{};
+        for (std::size_t index = 0; index < palette.size(); ++index)
+            palette[index] = map_.read_native_word(
+                address + static_cast<std::uint32_t>(index * 2U));
+        map_.write_cgram(0U, palette);
+        break;
+    }
+}
+
 void GameSimulation::enter_controls(
     GameFlowState state, std::uint8_t selection) {
     Wdc65816Registers registers;
@@ -3223,6 +3311,7 @@ void GameSimulation::enter_controls(
     map_.set_display_brightness(0U);
     frontend_phase_ = FrontendPhase::controls_reveal_hold;
     flow_state_ = state;
+    set_language(language_);
     set_player_control(state == GameFlowState::controls_type);
     apply_control_type();
     update_control_screen_sprites();
@@ -3856,6 +3945,17 @@ void GameSimulation::present_frame() {
                    && map_.display_brightness() == 15U) {
             frontend_frames_ = 0U;
             frontend_phase_ = FrontendPhase::none;
+        }
+    }
+    if (frontend_phase_ == FrontendPhase::continue_accept) {
+        // FOXYTRANS advances the gesture once per native raster, independently
+        // of host presentation FPS, before the 32-frame acceptance hold ends.
+        const auto frame = map_.read_native_byte(foxy_frame_);
+        map_.write_native_byte(foxy_frame_, static_cast<std::uint8_t>(frame + 1U));
+        update_continue_sprites();
+        if (frame >= 32U) {
+            frontend_frames_ = 0U;
+            frontend_phase_ = FrontendPhase::continue_fade_to_stage;
         }
     }
     if (frontend_phase_ == FrontendPhase::ex_menu_fade_out
@@ -4614,6 +4714,7 @@ void GameSimulation::service_transfer_request() {
         // GROUND_STRAT has cleared CIRCLEANIM. Do not carry the pre-strategy
         // presentation snapshot into the newly initialized checkpoint.
         circle_effect_ = {};
+        colour_math_effect_ = {};
         ++scene_revision_;
         boss_music_before_death_.reset();
         post_boss_dialogue_active_ = false;
@@ -5447,6 +5548,22 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
                 strategies_.tick_all_no_objects(protected_objects);
         } else {
             result.strategies = strategies_.tick_all();
+        }
+        // GB3STRAT's debris shake stores 248..251 with an 8-bit STA into
+        // the 16-bit BG2YSCROLL initialized to 264 by the nucleus room.
+        // Retaining that high byte selects rows 504..507 (unrelated art).
+        // Repair only this routine's known byte-write range, not ordinary
+        // scrolling or the intact room's legitimate 264-pixel offset.
+        if (nucleus_debris_strategy_ != 0U && background_base_y_ != 0U) {
+            const auto scroll = map_.read_native_word(background_base_y_);
+            if (scroll >= 504U && scroll <= 507U) {
+                for (const auto handle : objects_.active_handles()) {
+                    if (objects_.at(handle).strategy_address == nucleus_debris_strategy_) {
+                        map_.write_native_word(background_base_y_, scroll - 256U);
+                        break;
+                    }
+                }
+            }
         }
         refresh_player_reference();
         apply_god_mode_state();

@@ -782,6 +782,8 @@ struct Wdc65816::Impl {
     }
 
     void tick_background_video_phase() {
+        ppu.tunnel_scene = tunnel_flag != 0U && read8(tunnel_flag) != 0U
+            && (ppu.background_mode == 1U || ppu.background_mode == 2U);
         ppu.bg2_scanline_scroll_enabled = tunnel_flag != 0U
             && (ppu.background_mode == 1U || ppu.background_mode == 2U)
             && tunnel_tables != 0U && tunnel_previous_z != 0U

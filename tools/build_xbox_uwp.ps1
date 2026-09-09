@@ -3,14 +3,14 @@ param(
     [string]$BuildDirectory = "build/xbox-uwp-x64",
     [string]$InstallDirectory = "dist/StarFoxEnhanced-xbox-uwp-x64",
     [ValidateRange(0, 65535)]
-    [int]$BuildRevision = 2
+    [int]$BuildRevision = 0
 )
 
 $ErrorActionPreference = 'Stop'
 $source = [System.IO.Path]::GetFullPath($SourceRoot)
 $build = [System.IO.Path]::GetFullPath((Join-Path $source $BuildDirectory))
 $install = [System.IO.Path]::GetFullPath((Join-Path $source $InstallDirectory))
-$packageName = 'StarFoxEnhanced-0.0.5.2-xbox-uwp-x64.appx'
+$packageName = 'StarFoxEnhanced-0.0.6-xbox-uwp-x64.appx'
 $sourcePrefix = $source.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
 if (-not $build.StartsWith($sourcePrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "BuildDirectory must remain inside SourceRoot"
@@ -217,7 +217,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Xbox UWP package verification failed' }
     [xml]$verifiedManifest = Get-Content -LiteralPath (Join-Path $verification 'AppxManifest.xml') -Raw
     if ($verifiedManifest.Package.Identity.ProcessorArchitecture -ne 'x64' `
-        -or $verifiedManifest.Package.Identity.Version -ne "0.0.5.$BuildRevision") {
+        -or $verifiedManifest.Package.Identity.Version -ne "0.0.6.$BuildRevision") {
         throw 'Xbox UWP package has the wrong architecture or build revision'
     }
     if ((Get-FileHash -LiteralPath (Join-Path $verification 'starfox_pc.exe')).Hash `

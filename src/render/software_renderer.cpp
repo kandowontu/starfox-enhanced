@@ -1,4 +1,5 @@
 #include "starfox/render/software_renderer.hpp"
+#include "starfox/render/shadow_scene.hpp"
 
 #include "starfox/simulation/math.hpp"
 
@@ -1116,7 +1117,8 @@ void draw_line(
     ScreenPoint a,
     ScreenPoint b,
     FaceColour colour,
-    std::uint8_t colour_index_base) {
+    std::uint8_t colour_index_base,
+    std::uint32_t render_scale, std::uint8_t wireframe_thickness) {
     auto x0 = static_cast<int>(std::lround(a.x));
     auto y0 = static_cast<int>(std::lround(a.y));
     const auto x1 = static_cast<int>(std::lround(b.x));
@@ -1125,10 +1127,22 @@ void draw_line(
     const auto sx = x0 < x1 ? 1 : -1;
     const auto dy = std::abs(y1 - y0);
     const auto sy = y0 < y1 ? 1 : -1;
+    const auto dither_scale = static_cast<int>(std::clamp(render_scale, 1U, 4U));
+    const auto thickness = static_cast<int>(std::clamp(render_scale, 1U, 4U)
+        * std::clamp<unsigned>(wireframe_thickness, 1U, 4U));
+    const auto offset = (thickness - 1) / 2;
     const auto plot = [&] {
-        target.set(x0, y0, static_cast<std::uint8_t>(colour_index_base
-            + (colour.dither && ((x0 ^ y0) & 1) != 0
-                ? colour.odd : colour.even)));
+        // Keep one logical pixel of wire thickness when the model raster is
+        // supersampled. A single stored pixel shrinks to 1/scale on screen.
+        for (int row = 0; row < thickness; ++row) {
+            for (int column = 0; column < thickness; ++column) {
+                const auto x = x0 + column - offset;
+                const auto y = y0 + row - offset;
+                target.set(x, y, static_cast<std::uint8_t>(colour_index_base
+                    + (colour.dither && (((x / dither_scale) ^ (y / dither_scale)) & 1) != 0
+                        ? colour.odd : colour.even)));
+            }
+        }
     };
     // MDRAWC.MC mline uses a major-axis counter and a floor(major/2)
     // accumulator. Its strict-underflow tie rule differs from the common
@@ -1478,7 +1492,10 @@ void apply_source_depth_tables(
         return;
     }
     if (object_depth_offset != 0U) {
-        threshold_pointer = static_cast<std::uint16_t>(threshold_pointer
+        // MOBJ replaces the scene pointer with DEPTHTABLES + (offset-1)*4.
+        // It does not index relative to the current scene's table. SCRAMBLE
+        // uses offset 1 to keep its hangar bright despite tunnel depth cues.
+        threshold_pointer = static_cast<std::uint16_t>(depth_table_address
             + static_cast<std::uint16_t>(object_depth_offset - 1U) * 4U);
     }
     for (std::size_t index = 0; index < pose.depth_thresholds.size(); ++index) {
@@ -1504,7 +1521,7 @@ void SoftwareRenderer::draw(
     const RenderPose& pose,
     Framebuffer& target,
     bool clear_target,
-    SurfaceBuffer* surfaces) const {
+    SurfaceBuffer* surfaces, shadows::Scene* shadow_scene) const {
     // Everything this renderer emits is the Super FX layer, whatever draw
     // scale each path happens to use. Scan conversion drops the scale to 1 and
     // would derive that correctly on its own, but the sprite paths below
@@ -1618,6 +1635,27 @@ void SoftwareRenderer::draw(
             word_exact, pose.vanish_x, pose.vanish_y,
             pose.subpixel_projection));
     }
+    if (shadow_scene != nullptr) {
+        // Casters include faces hidden from the camera: they can still block
+        // the light. Use the actual animated/transformed mesh, not the native
+        // flattened shadow model or an interpolated object-slot history.
+        for (const auto& face : shape.faces) {
+            if (face.sprite || face.vertex_indices.size() < 3U) continue;
+            const auto offset = explosion_offset(face, pose);
+            const auto point = [&](std::size_t index) {
+                const auto& p = continuous_upscaled_geometry
+                    ? upscaled_vertices[index] : transformed_vertices[index];
+                return shadows::Vec3{p.x + offset.x, p.y + offset.y, p.z + offset.z};
+            };
+            const auto first = face.vertex_indices[0];
+            if (first >= transformed_vertices.size()) continue;
+            for (std::size_t vertex = 1; vertex + 1 < face.vertex_indices.size(); ++vertex) {
+                const auto b = face.vertex_indices[vertex], c = face.vertex_indices[vertex + 1];
+                if (b < transformed_vertices.size() && c < transformed_vertices.size())
+                    shadow_scene->add({point(first), point(b), point(c)});
+            }
+        }
+    }
     const auto& raster_vertices = continuous_upscaled_geometry
         ? upscaled_vertices : transformed_vertices;
     const auto& visibility_vertices = raster_vertices;
@@ -1713,7 +1751,7 @@ void SoftwareRenderer::draw(
                     scale_to_stored(near_screen, settings_.render_scale);
                     scale_to_stored(far_screen, settings_.render_scale);
                     draw_line(target, near_screen, far_screen, material.colour,
-                        settings_.colour_index_base);
+                        settings_.colour_index_base, settings_.render_scale, settings_.wireframe_thickness);
                 }
             }
         }
@@ -1910,7 +1948,7 @@ void SoftwareRenderer::draw(
             scale_to_stored(polygon[0], settings_.render_scale);
             scale_to_stored(polygon[1], settings_.render_scale);
             draw_line(target, polygon[0], polygon[1], material.colour,
-                settings_.colour_index_base);
+                settings_.colour_index_base, settings_.render_scale, settings_.wireframe_thickness);
             continue;
         }
 

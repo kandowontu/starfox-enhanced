@@ -1,4 +1,8 @@
 #include "starfox/render/scaled_text_renderer.hpp"
+#include "starfox/localization/bitmap_font.hpp"
+#include "starfox/localization/menu_catalog.hpp"
+#include "starfox/localization/dialogue_catalog.hpp"
+#include "starfox/localization/ex_dialogue_catalog.hpp"
 
 #include <algorithm>
 #include <array>
@@ -8,6 +12,100 @@
 #include <vector>
 
 namespace starfox::render {
+namespace {
+struct MenuLatinGlyph { char32_t base; char32_t accent; };
+MenuLatinGlyph menu_latin_glyph(char32_t code) {
+    constexpr std::u32string_view accented = U"ÀÁÂÃÄÅÇÈÉÊËÌÍÎÏÑÒÓÔÕÖÙÚÛÜÝàáâãäåçèéêëìíîïñòóôõöùúûüýÿ";
+    constexpr std::u32string_view bases = U"AAAAAACEEEEIIIINOOOOOUUUUYaaaaaaceeeeiiiinooooouuuuyy";
+    constexpr std::u32string_view accents = U"\u0300\u0301\u0302\u0303\u0308\u030a\u0327\u0300\u0301\u0302\u0308\u0300\u0301\u0302\u0308\u0303\u0300\u0301\u0302\u0303\u0308\u0300\u0301\u0302\u0308\u0301\u0300\u0301\u0302\u0303\u0308\u030a\u0327\u0300\u0301\u0302\u0308\u0300\u0301\u0302\u0308\u0303\u0300\u0301\u0302\u0303\u0308\u0300\u0301\u0302\u0308\u0301\u0308";
+    static_assert(accented.size() == bases.size() && bases.size() == accents.size());
+    const auto found = accented.find(code);
+    return found == std::u32string_view::npos ? MenuLatinGlyph{code, 0}
+        : MenuLatinGlyph{bases[found], accents[found]};
+}
+}
+
+std::int32_t ScaledTextRenderer::menu_glyph_advance(char32_t code) const {
+    const auto latin = menu_latin_glyph(code);
+    if (latin.base >= 32 && latin.base < 127) {
+        if (latin.base == U' ' || latin.base == U'/') return 5;
+        const auto index = rom_->read8(game_font_translation_ + latin.base - 32U);
+        return rom_->read8(game_font_widths_ + index);
+    }
+    const auto* glyph = localization::glyph(code);
+    if (!glyph) glyph = localization::glyph(U'?');
+    return glyph ? (glyph->advance * 3 + 1) / 2 + 1 : 0;
+}
+
+std::int32_t ScaledTextRenderer::measure_menu_unicode(std::u32string_view text) const {
+    std::int32_t width = 0, widest = 0;
+    for (auto code : text) {
+        if (code == U'\n') { widest = std::max(widest, width); width = 0; }
+        else width += menu_glyph_advance(code);
+    }
+    return std::max(widest, width);
+}
+
+void ScaledTextRenderer::draw_unicode(std::u32string_view text,
+    std::int32_t x, std::int32_t y, Framebuffer& target,
+    std::uint8_t colour, std::uint8_t colour_index_base, bool menu_size) const {
+    const auto start_x = x;
+    for (const auto code : text) {
+        if (code == U'\n') { x = start_x; y += menu_size ? 15 : 10; continue; }
+        const auto latin = menu_latin_glyph(code);
+        if (menu_size && latin.base >= 32 && latin.base < 127) {
+            // Use the same full-height cartridge font as English, rather than
+            // magnifying Misaki's three-pixel-wide Latin letters.
+            const auto advance = menu_glyph_advance(code);
+            const auto ink = static_cast<std::uint8_t>(colour_index_base + colour);
+            if (latin.base == U'/') {
+                for (int row = 0; row < 12; ++row) target.set(x + 3 - row / 3, y + row, ink);
+            } else if (latin.base != U' ') {
+                const auto index = rom_->read8(game_font_translation_ + latin.base - 32U);
+                for (int row = 0; row < 12; ++row) {
+                    const auto bits = rom_->read16(game_font_glyphs_ + index * 24U + row * 2U);
+                    for (int column = 0; column < advance; ++column)
+                        if (bits & (0x8000U >> column)) target.set(x + column, y + row, ink);
+                }
+                const auto centre = x + std::max(1, (advance - 1) / 2);
+                switch (latin.accent) {
+                case U'\u0301': target.set(centre + 1,y - 2,ink); target.set(centre,y - 1,ink); break;
+                case U'\u0300': target.set(centre - 1,y - 2,ink); target.set(centre,y - 1,ink); break;
+                case U'\u0302': target.set(centre,y - 2,ink); target.set(centre - 1,y - 1,ink); target.set(centre + 1,y - 1,ink); break;
+                case U'\u0308': target.set(centre - 1,y - 1,ink); target.set(centre + 1,y - 1,ink); break;
+                case U'\u0303': target.set(centre - 1,y - 2,ink); target.set(centre,y - 2,ink); target.set(centre,y - 1,ink); target.set(centre + 1,y - 1,ink); break;
+                case U'\u030a': target.set(centre,y - 3,ink); target.set(centre - 1,y - 2,ink); target.set(centre + 1,y - 2,ink); target.set(centre,y - 1,ink); break;
+                case U'\u0327': target.set(centre,y + 12,ink); target.set(centre - 1,y + 13,ink); break;
+                default: break;
+                }
+            }
+            x += advance;
+            continue;
+        }
+        const auto* glyph = localization::glyph(code);
+        if (glyph == nullptr) glyph = localization::glyph(U'?');
+        if (glyph == nullptr) continue;
+        const auto edge = menu_size ? 12 : 8;
+        for (int row = 0; row < edge; ++row)
+            for (int column = 0; column < edge; ++column)
+                if ((glyph->rows[row * 8 / edge] & (0x80U >> (column * 8 / edge))) != 0U)
+                    target.set(x + column, y + row,
+                        static_cast<std::uint8_t>(colour_index_base + colour));
+        x += menu_size ? menu_glyph_advance(code) : glyph->advance;
+    }
+}
+
+std::int32_t ScaledTextRenderer::measure_unicode(std::u32string_view text) const {
+    std::int32_t width = 0, widest = 0;
+    for (const auto code : text) {
+        if (code == U'\n') { widest = std::max(widest, width); width = 0; continue; }
+        const auto* glyph = localization::glyph(code);
+        if (glyph == nullptr) glyph = localization::glyph(U'?');
+        if (glyph != nullptr) width += glyph->advance;
+    }
+    return std::max(widest, width);
+}
+
 namespace {
 
 std::uint32_t rom_symbol(
@@ -41,6 +139,18 @@ ScaledTextRenderer::ScaledTextRenderer(
             break;
         }
     }
+    // EX uses different message tables; do not apply original IDs to them.
+    if (face_data_2_ == 0U) {
+        for (const auto table : symbols.find("MESSAGES")) {
+            if ((table & 0xffffU) < 0x8000U) continue;
+            for (unsigned index = 0; index < std::size(localization::original_dialogue); ++index) {
+                const auto pointer = rom.read16(table + index * 2U);
+                if (pointer < 0x8000U) continue;
+                dialogue_ids_.emplace((table & 0xff0000U) | (pointer + 2U), index + 1U);
+            }
+            break;
+        }
+    }
 }
 
 void ScaledTextRenderer::draw(
@@ -66,7 +176,17 @@ void ScaledTextRenderer::draw(
     }
     if (characters.empty()) return;
 
-    constexpr double focal_length = 256.0;
+    // Project directly into the stored raster at enhanced resolutions. Doing
+    // the projection at logical resolution first discarded subpixel movement
+    // and expanded each coarse output pixel into a scale-by-scale block.
+    const auto raster_scale = target.draw_scale();
+    struct RestoreTextScale {
+        Framebuffer& target;
+        std::uint32_t scale;
+        ~RestoreTextScale() { target.set_draw_scale(scale); }
+    } restore{target, raster_scale};
+    target.set_draw_scale(1U);
+    const double focal_length = 256.0 * raster_scale;
     const auto world_character_size = 127 + static_cast<int>(size_adjustment);
     if (world_character_size <= 0) return;
     const auto dimension = static_cast<int>(std::trunc(
@@ -99,6 +219,36 @@ void ScaledTextRenderer::draw(
     }
 }
 
+std::vector<std::u32string_view> ScaledTextRenderer::translated_game_text_lines(
+    std::uint32_t address, std::int32_t width, std::size_t max_characters) const {
+    std::vector<std::u32string_view> lines;
+    if (language_ == 0 || width <= 0) return lines;
+    const auto found=dialogue_ids_.find(address);
+    auto text=face_data_2_ != 0
+        ? localization::translated_ex_dialogue(address,language_)
+        : found != dialogue_ids_.end()
+            ? localization::translated_dialogue(found->second,language_) : std::u32string_view{};
+    text=text.substr(0,max_characters);
+    while (!text.empty()) {
+        std::size_t end=0, last_space=std::u32string_view::npos;
+        int used=0;
+        while (end<text.size()) {
+            const auto advance=measure_unicode(text.substr(end,1));
+            if (used+advance>width && end>0) break;
+            if (text[end]==U' ') last_space=end;
+            used+=advance;
+            ++end;
+        }
+        auto next=end;
+        if (end<text.size() && last_space!=std::u32string_view::npos) {
+            end=last_space; next=last_space+1;
+        }
+        lines.push_back(text.substr(0,end));
+        text.remove_prefix(next);
+    }
+    return lines;
+}
+
 void ScaledTextRenderer::draw_game_text(
     std::uint32_t text_address,
     std::int32_t x,
@@ -114,6 +264,23 @@ void ScaledTextRenderer::draw_game_text(
     // integer zero. The SNES sees open bus in the lower half of a LoROM bank;
     // it does not try to read a string there.
     if ((text_address & 0xffffU) < 0x8000U) return;
+    if (language_ != 0U) {
+        const auto found = dialogue_ids_.find(text_address);
+        auto translated = face_data_2_ != 0U
+            ? localization::translated_ex_dialogue(text_address, language_)
+            : found != dialogue_ids_.end()
+                ? localization::translated_dialogue(found->second, language_)
+                : std::u32string_view{};
+        if (!translated.empty()) {
+            const auto colour = forced_colour.value_or(rom_->read8(text_address)) & 15U;
+            for (const auto line : translated_game_text_lines(text_address,right_clip-x,max_characters)) {
+                draw_unicode(line, x, y, target,
+                    static_cast<std::uint8_t>(colour), colour_index_base);
+                y += 10;
+            }
+            return;
+        }
+    }
     const auto colour = rom_->read8(text_address++);
     const auto output_colour = static_cast<std::uint8_t>(
         colour_index_base + (forced_colour.value_or(colour) & 0x0fU));
@@ -230,6 +397,14 @@ void ScaledTextRenderer::draw_ascii(
     Framebuffer& target,
     std::uint8_t colour,
     std::uint8_t colour_index_base) const {
+    if (const auto translated = localization::menu_translation(text, language_); !translated.empty()) {
+        draw_unicode(translated, x, y, target, colour, colour_index_base, true);
+        return;
+    }
+    if (language_ != 0U) {
+        draw_unicode(std::u32string{text.begin(), text.end()}, x, y, target, colour, colour_index_base, true);
+        return;
+    }
     const auto output_colour = static_cast<std::uint8_t>(
         colour_index_base + (colour & 0x0fU));
     for (const auto character : text) {
@@ -274,6 +449,14 @@ void ScaledTextRenderer::draw_ascii_compact(
     Framebuffer& target,
     std::uint8_t colour,
     std::uint8_t colour_index_base) const {
+    if (const auto translated = localization::menu_translation(text, language_); !translated.empty()) {
+        draw_unicode(translated, x, y, target, colour, colour_index_base, true);
+        return;
+    }
+    if (language_ != 0U) {
+        draw_unicode(std::u32string{text.begin(), text.end()}, x, y, target, colour, colour_index_base, true);
+        return;
+    }
     constexpr std::int32_t output_height = 8;
     const auto output_colour = static_cast<std::uint8_t>(
         colour_index_base + (colour & 0x0fU));
@@ -317,6 +500,9 @@ void ScaledTextRenderer::draw_ascii_compact(
 }
 
 std::int32_t ScaledTextRenderer::measure_ascii(std::string_view text) const {
+    if (const auto translated = localization::menu_translation(text, language_); !translated.empty())
+        return measure_menu_unicode(translated);
+    if (language_ != 0U) return measure_menu_unicode(std::u32string{text.begin(), text.end()});
     std::int32_t line_width{};
     std::int32_t maximum_width{};
     for (const auto character : text) {

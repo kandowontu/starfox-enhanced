@@ -40,6 +40,7 @@ struct SnesPpuState {
     // pages. These are discrete HDMA page selections, not roll offsets.
     std::array<std::int16_t, 224> bg2_scanline_scroll_y{};
     bool bg2_scanline_scroll_enabled{};
+    bool tunnel_scene{};
 };
 
 } // namespace starfox::simulation

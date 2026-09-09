@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(starfox_enhanced VERSION 0.0.5.2 LANGUAGES CXX)
+project(starfox_enhanced VERSION 0.0.6 LANGUAGES CXX)
 
 if(WINDOWS_STORE)
     # Apply the UWP ABI to the entire dependency graph, not only the SDL entry
@@ -412,6 +412,9 @@ if(STARFOX_BUILD_RUNTIME)
             VERBATIM)
         set(STARFOX_UWP_MANIFEST
             "${CMAKE_CURRENT_BINARY_DIR}/Package.appxmanifest")
+        if(PROJECT_VERSION_TWEAK STREQUAL "")
+            set(PROJECT_VERSION_TWEAK 0)
+        endif()
         set(STARFOX_UWP_BUILD_REVISION "${PROJECT_VERSION_TWEAK}" CACHE STRING
             "Fourth component of the Xbox UWP package version")
         if(NOT STARFOX_UWP_BUILD_REVISION MATCHES "^[0-9]+$")
@@ -694,7 +697,7 @@ if(STARFOX_BUILD_RUNTIME)
         include("$ENV{VITASDK}/share/vita.cmake" REQUIRED)
         set(STARFOX_VITA_TITLE_ID "SFXE00001" CACHE STRING
             "Nine-character PS Vita title id")
-        set(STARFOX_VITA_APP_VERSION "00.05" CACHE STRING
+        set(STARFOX_VITA_APP_VERSION "00.06" CACHE STRING
             "Two-component PS Vita application version")
         # SCE metadata is appended to the executable segment by vita-elf-create.
         # A separate adjacent read-only segment leaves no room for that data.
@@ -715,9 +718,11 @@ if(STARFOX_BUILD_RUNTIME)
         install(TARGETS starfox_asset_builder RUNTIME DESTINATION .)
     endif()
     install(FILES README.md CREDITS.md THIRD_PARTY_NOTICES.md LICENSE-XBRZ.txt DESTINATION .)
+    install(FILES assets/fonts/README.md assets/fonts/misaki.txt
+        DESTINATION docs/fonts)
     install(FILES docs/RELEASE-0.0.5.md DESTINATION docs)
     install(FILES docs/RELEASE-0.0.5.1.md DESTINATION docs)
-    install(FILES docs/RELEASE-0.0.5.2.md DESTINATION docs)
+    install(FILES docs/RELEASE-0.0.6.md DESTINATION docs)
 
 endif()
 
@@ -783,6 +788,11 @@ if(STARFOX_BUILD_TESTS)
                 "${STARFOX_RETAIL_GERMANY_V10_PATCH_FILE}")
     endif()
     add_executable(starfox_core_tests tests/timing_tests.cpp)
+    add_executable(starfox_shadow_geometry_tests tests/shadow_geometry_tests.cpp)
+    target_include_directories(starfox_shadow_geometry_tests PRIVATE include)
+    target_compile_features(starfox_shadow_geometry_tests PRIVATE cxx_std_20)
+    target_link_libraries(starfox_shadow_geometry_tests PRIVATE starfox_core)
+    add_test(NAME starfox_shadow_geometry_tests COMMAND starfox_shadow_geometry_tests)
     target_link_libraries(starfox_core_tests PRIVATE starfox_core)
     add_test(NAME starfox_core_tests COMMAND starfox_core_tests)
 
@@ -971,6 +981,9 @@ if(STARFOX_BUILD_TESTS)
             add_test(
                 NAME starfox_exit_confirmation_smoke
                 COMMAND starfox_pc
+                        "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
+                        "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT"
+                        BOOT
             )
             set_tests_properties(starfox_exit_confirmation_smoke PROPERTIES
                 ENVIRONMENT
@@ -1082,6 +1095,25 @@ if(STARFOX_BUILD_TESTS)
 
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
+        if(STARFOX_BUILD_RUNTIME AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC")
+            add_test(NAME starfox_isolated_effects
+                COMMAND "${Python3_EXECUTABLE}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_isolated_effects.py"
+                    "$<TARGET_FILE:starfox_pc>"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SF.SFC"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/upstream-ultrastarfox/SYMBOLS.TXT")
+            set_tests_properties(starfox_isolated_effects PROPERTIES TIMEOUT 240)
+        endif()
+        add_test(
+            NAME starfox_dialogue_catalog_tests
+            COMMAND "${Python3_EXECUTABLE}" -m unittest discover
+                    -s "${CMAKE_CURRENT_SOURCE_DIR}/tests"
+                    -p "test_dialogue_catalog.py"
+        )
+        set_tests_properties(starfox_dialogue_catalog_tests PROPERTIES
+            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+            ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}"
+        )
         add_test(
             NAME starfox_shape_audit_tests
             COMMAND "${Python3_EXECUTABLE}" -m unittest discover

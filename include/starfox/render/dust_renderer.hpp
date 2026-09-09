@@ -18,7 +18,9 @@ public:
         std::size_t active_count,
         const timing::RenderTransform& camera,
         const simulation::MatrixQ15& view_matrix,
-        Framebuffer& target) const noexcept;
+        Framebuffer& target,
+        std::int32_t projection_offset_x = 0,
+        std::int32_t projection_offset_y = 0) const noexcept;
 
     void draw_grid(
         const timing::RenderTransform& camera,

@@ -1,6 +1,7 @@
 #include "starfox/assets/rom.hpp"
 #include "starfox/assets/shape_decoder.hpp"
 #include "starfox/render/dust_renderer.hpp"
+#include "starfox/render/shadow_scene.hpp"
 #include "starfox/render/framebuffer.hpp"
 #include "starfox/render/software_renderer.hpp"
 
@@ -231,6 +232,13 @@ int main() {
     starfox::render::SurfaceBuffer surfaces{224, 192};
     starfox::render::SoftwareRenderer renderer{{180.0, false, 0}};
     renderer.draw(shape, {}, framebuffer, true, &surfaces);
+    starfox::render::shadows::Scene shadow_scene;
+    starfox::render::Framebuffer caster_capture{224, 192};
+    renderer.draw(shape, {}, caster_capture, true, nullptr, &shadow_scene);
+    require(shadow_scene.triangle_count() > 0U,
+        "renderer did not export actual model faces for shadow occlusion");
+    require(caster_capture.pixels() == framebuffer.pixels(),
+        "shadow geometry collection changed the original raster");
     std::size_t coloured_pixels = 0;
     std::size_t surface_pixels = 0;
     for (std::uint32_t y = 0U; y < framebuffer.height(); ++y) {
@@ -290,6 +298,40 @@ int main() {
             "scaled scan conversion did not add polygon edge resolution");
     require(scaled_surface_pixels == scaled_coloured_pixels,
             "scaled polygon surface metadata diverged from its raster");
+
+    // A two-point source face must retain one logical pixel of thickness
+    // after supersampling, rather than becoming a hairline at 4x.
+    auto line_shape = shape;
+    line_shape.bsp_root_address = 0U;
+    line_shape.faces.front().visibility_index = -1;
+    line_shape.faces.front().vertex_indices.resize(2);
+    std::size_t native_line_pixels = 0;
+    for (std::uint32_t scale = 1; scale <= 4; ++scale) {
+        starfox::render::RenderSettings line_settings;
+        line_settings.focal_length = 180.0;
+        line_settings.render_scale = scale;
+        starfox::render::Framebuffer line_frame{224U, 192U, scale};
+        starfox::render::SoftwareRenderer{line_settings}.draw(line_shape, {}, line_frame, true);
+        const auto pixels = static_cast<std::size_t>(std::count_if(
+            line_frame.pixels().begin(), line_frame.pixels().end(),
+            [](auto colour) { return colour != 0; }));
+        if (scale == 1) native_line_pixels = pixels;
+        require(native_line_pixels > 0, "wireframe fixture rendered no line");
+        require(pixels >= native_line_pixels * scale * scale * 3 / 4,
+            "supersampled wireframe lost logical thickness");
+        auto last_pixels = pixels;
+        for (std::uint8_t thickness = 2; thickness <= 4; ++thickness) {
+            line_settings.wireframe_thickness = thickness;
+            line_frame.clear(0);
+            starfox::render::SoftwareRenderer{line_settings}.draw(line_shape, {}, line_frame, true);
+            const auto thick_pixels = static_cast<std::size_t>(std::count_if(
+                line_frame.pixels().begin(), line_frame.pixels().end(),
+                [](auto colour) { return colour != 0; }));
+            require(thick_pixels > last_pixels,
+                "wireframe thickness setting did not increase line coverage");
+            last_pixels = thick_pixels;
+        }
+    }
 
     // COLSMOOTH's $c000 flag pair is not a two-nibble dither descriptor.
     // Audit every exposed scale because the erroneous black nibble was subtle
@@ -617,6 +659,30 @@ int main() {
         0, 32'767, 0,
         0, 0, 32'767,
     };
+    starfox::simulation::DustSystem viewport_dust;
+    viewport_dust.tick({0, 0, 0}, identity_matrix, true);
+    starfox::render::Framebuffer centered_dust{224, 192};
+    dust_renderer.draw(viewport_dust, 120U, grid_camera, identity_matrix,
+        centered_dust);
+    require(std::any_of(centered_dust.pixels().begin(), centered_dust.pixels().end(),
+                [](std::uint8_t pixel) { return pixel != 0U; }),
+        "viewport dust fixture must contain visible stars");
+    for (const auto width : {224U, 398U, 796U}) {
+        starfox::render::Framebuffer viewport_frame{width, 192};
+        const auto ui_offset = static_cast<int>((width - 224U) / 2U);
+        const auto offset_x = 64 + ui_offset - static_cast<int>(width / 2U);
+        dust_renderer.draw(viewport_dust, 120U, grid_camera, identity_matrix,
+            viewport_frame, offset_x, -48);
+        // Compare the shared visible interior, avoiding clipping at either
+        // framebuffer edge. Controls use native (64,48), not (112,96).
+        for (int y = 2; y < 142; ++y) {
+            for (int x = 2; x < 172; ++x) {
+                require(viewport_frame.pixels()[y * width + x + ui_offset]
+                        == centered_dust.pixels()[(y + 48) * 224 + x + 48],
+                    "Controls stars must project about their viewport at every aspect ratio");
+            }
+        }
+    }
     starfox::render::Framebuffer grid_points{224, 192};
     dust_renderer.draw_grid(grid_camera, identity_matrix, grid_points);
     starfox::render::Framebuffer grid_lines{224, 192};

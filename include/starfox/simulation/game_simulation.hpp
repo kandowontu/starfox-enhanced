@@ -91,8 +91,8 @@ enum class PregamePage {
 inline constexpr std::array<std::uint8_t, 12> main_menu_order{
     0,1,2,3,4,5,6,20,21,14,15,16};
 inline constexpr std::array<std::uint8_t, 5> two_d_menu_order{8,18,13,24,23};
-inline constexpr std::array<std::uint8_t, 9> three_d_menu_order{7,11,9,17,19,10,12,22,23};
-inline constexpr std::array<std::uint8_t, 10> options_menu_order{0,1,2,3,4,5,6,7,8,11};
+inline constexpr std::array<std::uint8_t, 13> three_d_menu_order{7,11,9,17,19,10,28,26,27,12,22,25,23};
+inline constexpr std::array<std::uint8_t, 11> options_menu_order{0,1,2,3,4,5,6,7,8,12,11};
 inline std::span<const std::uint8_t> pregame_menu_order(PregamePage page) {
     switch (page) {
     case PregamePage::two_d: return two_d_menu_order;
@@ -376,6 +376,18 @@ public:
     [[nodiscard]] std::uint8_t bloom_2d() const noexcept { return bloom_2d_; }
     void set_bloom_2d(std::uint8_t value) noexcept { bloom_2d_ = value < 4U ? value : 0U; }
     [[nodiscard]] std::uint8_t model_smoothing() const noexcept { return model_smoothing_; }
+    [[nodiscard]] std::uint8_t language() const noexcept { return language_; }
+    [[nodiscard]] std::uint8_t wireframe_thickness() const noexcept { return wireframe_thickness_; }
+    [[nodiscard]] bool enhanced_shadows() const noexcept { return enhanced_shadows_; }
+    void set_enhanced_shadows(bool value) noexcept { enhanced_shadows_ = value; }
+    [[nodiscard]] std::uint8_t chromatic_aberration() const noexcept { return chromatic_aberration_; }
+    void set_chromatic_aberration(std::uint8_t value) noexcept { chromatic_aberration_ = value <= 3 ? value : 0; }
+    [[nodiscard]] std::uint8_t hdr_effect() const noexcept { return hdr_effect_; }
+    void set_hdr_effect(std::uint8_t value) noexcept { hdr_effect_ = value <= 3 ? value : 0; }
+    void set_wireframe_thickness(std::uint8_t value) noexcept {
+        wireframe_thickness_ = value >= 1 && value <= 4 ? value : 1;
+    }
+    void set_language(std::uint8_t value);
     void set_model_smoothing(std::uint8_t value) noexcept { model_smoothing_ = value < 4U ? value : 0U; }
     [[nodiscard]] std::uint8_t effect_intensity() const noexcept { return effect_intensity_; }
     void set_effect_intensity(std::uint8_t value) noexcept { effect_intensity_ = value <= 100U ? value : 100U; }
@@ -483,6 +495,7 @@ private:
         ex_menu_fade_out,
         game_over_fade_to_continue,
         continue_fade_in,
+        continue_accept,
         continue_fade_to_stage,
         continue_fade_to_title,
         title_fade_to_controls,
@@ -678,6 +691,8 @@ private:
     std::uint32_t find_window_priority_{};
     std::uint32_t window_pointer_{};
     std::uint32_t window_array_{};
+    std::uint32_t nucleus_debris_strategy_{};
+    std::uint32_t background_base_y_{};
     std::uint32_t friends_messages_{};
     std::uint32_t friends_messages_2_{};
     std::uint32_t generate_collision_list_{};
@@ -1043,6 +1058,11 @@ private:
     std::uint8_t bloom_{};
     std::uint8_t bloom_2d_{};
     std::uint8_t model_smoothing_{};
+    std::uint8_t language_{};
+    std::uint8_t wireframe_thickness_{1U};
+    bool enhanced_shadows_{};
+    std::uint8_t chromatic_aberration_{};
+    std::uint8_t hdr_effect_{};
     std::uint8_t world_effect_intensity_{100U};
     bool menu_preview_{};
     bool preview_requested_{};
@@ -1057,6 +1077,7 @@ private:
     bool on_screen_controls_{true};
     bool swap_face_buttons_{};
     bool pregame_horizontal_blocked_{};
+    input::ButtonMask pregame_confirmation_blocked_{};
     CrosshairColour crosshair_colour_{CrosshairColour::green};
     RenderScale render_scale_{RenderScale::scale_1x};
     bool planet_travel_complete_{};

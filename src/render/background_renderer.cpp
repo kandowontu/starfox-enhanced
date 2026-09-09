@@ -456,6 +456,14 @@ void BackgroundRenderer::draw_bg2(
         for (auto screen_x = first_x; screen_x < final_x; ++screen_x) {
             const auto logical_x = static_cast<std::int32_t>(screen_x)
                 - horizontal_origin;
+            if (ppu.tunnel_scene && extend_horizontal
+                && (logical_x < 0 || logical_x >= 256)) {
+                // Tunnel art is a closed, cartridge-width cross-section.
+                // Fill only the background; models/HUD still render wide.
+                target.set(static_cast<std::int32_t>(screen_x),
+                    static_cast<std::int32_t>(screen_y), black_colour);
+                continue;
+            }
             const auto sample_x = mosaic_coordinate(
                 logical_x, ppu.mosaic, 0x02U);
             const auto sampled_screen_x = std::clamp(
@@ -645,13 +653,16 @@ void BackgroundRenderer::draw_title_foreground(
     // high-priority roster/logo tiles remain in front. Reapplying every BG2
     // tile lets the backdrop cut a black wedge into the model; omitting BG2
     // entirely lets the model cover the roster. Restore only its foreground
-    // priority pass, followed by source BG1 text and BG3's PRESS START prompt.
+    // priority pass (including the retail PUSH START prompt and its black
+    // outline), followed by BG1 and high-priority BG3 artwork.
     draw_bg2(ppu, bg2_scroll_x, bg2_scroll_y, target,
         TilePriorityPass::high, horizontal_origin, extend_bg2_unwrapped,
-        !extend_bg2_unwrapped, true);
+        !extend_bg2_unwrapped, false);
     if (include_bg1_overlay) {
+        // Only tile colour zero is transparent. BG2's prompt outline and
+        // other opaque black foreground pixels must cover the model too.
         draw_bg1(ppu, target, TilePriorityPass::all,
-            horizontal_origin, false, 0U, true);
+            horizontal_origin, false, 0U, false);
     }
     draw_bg3(ppu, target, TilePriorityPass::high,
         horizontal_origin, false);

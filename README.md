@@ -19,8 +19,8 @@ first launch it validates the user's own unmodified Star Fox USA v1.2 (Rev 2)
 ROM, reconstructs the Original and Star Fox EX runtime data locally, and writes
 one version-bound `Starfox-Assets.BIN` companion beside the executable. Later
 launches use that validated companion without requiring the retail ROM to stay
-present. `v0.0.5.1` is the current public alpha release. See
-[the 0.0.5.1 changelog](docs/RELEASE-0.0.5.1.md) and
+present. `v0.0.6` is the current public alpha release. See
+[the 0.0.6 changelog](docs/RELEASE-0.0.6.md) and
 [the full 0.0.5 changelog](docs/RELEASE-0.0.5.md).
 
 This project utilizes Codex GPT 5.6 Sol at Ex-High thought.

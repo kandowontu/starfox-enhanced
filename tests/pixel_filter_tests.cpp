@@ -1,5 +1,7 @@
 #include "starfox/render/framebuffer.hpp"
 #include "starfox/render/effects.hpp"
+#include "starfox/render/chromatic_aberration.hpp"
+#include "starfox/render/hdr_effect.hpp"
 #include "starfox/render/bloom.hpp"
 #include "starfox/render/colour_math.hpp"
 #include "starfox/render/model_smoothing.hpp"
@@ -533,6 +535,65 @@ void check_sprites_are_cartridge_art(std::uint32_t scale) {
 } // namespace
 
 int main(int argc, char** argv) {
+    {
+        starfox::render::Framebuffer frame{256,1};
+        frame.enable_layer_tags(true);
+        const starfox::render::ScopedLayer model{frame,starfox::render::PixelLayer::three_d};
+        std::vector<std::uint8_t> ramp(256*4,255);
+        for (unsigned x=0;x<256;++x) {
+            frame.set(x,0,1);
+            for (unsigned c=0;c<3;++c) ramp[x*4+c]=x;
+        }
+        auto off=ramp;
+        starfox::render::apply_hdr_effect(frame,off,0);
+        require(off==ramp,"HDR effect OFF changed colors");
+        auto middle=ramp[128*4];
+        for (std::uint8_t level=1;level<=3;++level) {
+            auto output=ramp;
+            starfox::render::apply_hdr_effect(frame,output,level);
+            require(output[0]==0 && output[255*4]==255,"HDR effect lifted black or clipped white endpoint");
+            require(output[128*4]>middle,"HDR effect levels did not increase midtone brightness");
+            middle=output[128*4];
+            for (unsigned x=1;x<256;++x)
+                require(output[x*4]>=output[(x-1)*4] && output[x*4+3]==255,
+                    "HDR tone curve reversed contrast or changed alpha");
+        }
+        { const starfox::render::ScopedLayer hud{frame,starfox::render::PixelLayer::two_d}; frame.set(128,0,1); }
+        auto output=ramp;
+        starfox::render::apply_hdr_effect(frame,output,3);
+        require(output[128*4]==ramp[128*4],"HDR effect changed HUD text");
+    }
+    {
+        starfox::render::Framebuffer frame{64,8};
+        frame.enable_layer_tags(true);
+        std::vector<std::uint8_t> original(64*8*4,255), scratch;
+        const starfox::render::ScopedLayer model_layer{frame,starfox::render::PixelLayer::three_d};
+        for (unsigned y=0;y<8;++y) for (unsigned x=0;x<64;++x) {
+            frame.set(x,y,1);
+            for (unsigned c=0;c<3;++c) original[(y*64+x)*4+c]=x*4;
+        }
+        auto off=original;
+        starfox::render::apply_chromatic_aberration(frame,off,scratch,0);
+        require(off==original,"chromatic aberration OFF changed pixels");
+        int previous=original[(4*64+52)*4];
+        for (std::uint8_t level=1;level<=3;++level) {
+            auto output=original;
+            starfox::render::apply_chromatic_aberration(frame,output,scratch,level);
+            const auto pixel=(4*64+52)*4;
+            require(output[pixel]>previous,"chromatic levels did not increase channel separation");
+            require(output[pixel+1]==original[pixel+1] && output[pixel+3]==255,
+                "chromatic effect changed green or opacity");
+            previous=output[pixel];
+        }
+        {
+            const starfox::render::ScopedLayer hud{frame,starfox::render::PixelLayer::two_d};
+            frame.set(52,4,1);
+        }
+        auto output=original;
+        starfox::render::apply_chromatic_aberration(frame,output,scratch,3);
+        require(output[(4*64+52)*4]==original[(4*64+52)*4],
+            "chromatic aberration affected HUD text");
+    }
     starfox::render::RowWorkers restart_workers;
     for (const auto count : {1U, 4U, 2U, 1U, 4U}) {
         restart_workers.set_worker_count(count);

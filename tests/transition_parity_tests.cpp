@@ -156,6 +156,15 @@ int main(int argc, char** argv) {
         {starfox::input::a, starfox::input::a, 0U}));
     require(continue_game->map().display_brightness() == 15U,
         "Continue choice cut away before its fade-out");
+    const auto fox_frame = symbols.find("FOXY_FRAME").front();
+    require(continue_game->map().read_native_byte(fox_frame) == 1U,
+        "Continue acceptance omitted Fox's gesture");
+    for (unsigned frame = 0; frame < 31U; ++frame) {
+        continue_game->present_frame();
+        require(continue_game->map().display_brightness() == 15U
+                && continue_game->map().fade_direction() == 0,
+            "Continue faded before Fox's 32-raster gesture completed");
+    }
     continue_game->present_frame();
     require(continue_game->map().display_brightness() == 15U
             && continue_game->map().fade_direction() == -1,

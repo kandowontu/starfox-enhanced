@@ -1,0 +1,6577 @@
+{
+  "schema": 1,
+  "source": "UltraStarFox SF/MSG",
+  "languages": {
+    "en": {
+      "file": "ENGLISH.INC",
+      "controller_palette": "ntsc",
+      "sha256": "45cfa4f6e759e7f78d78bda078d71744d25de76a47f209f40bd0e24becaddbb2",
+      "identical_to_english": 142,
+      "status": "source"
+    },
+    "ja": {
+      "file": "JAPANESE.INC",
+      "controller_palette": "japanese",
+      "sha256": "cef64a721a83b267bf99cb4078d4e0283015caa508fdbb29aebbc6651dc6b513",
+      "identical_to_english": 0,
+      "status": "upstream_translation"
+    },
+    "de": {
+      "file": "GERMAN.INC",
+      "controller_palette": "pal",
+      "sha256": "25fa270fc2520acd2d83ab5c39c266a54d5c530e30856298f1a39fbb67a904bf",
+      "identical_to_english": 0,
+      "status": "upstream_translation"
+    },
+    "fr": {
+      "file": "FRENCH.INC",
+      "controller_palette": "pal",
+      "sha256": "8b20b9a44989bdd726a59b3722810dd38e00ceeefa8d53dface2de10957b83a8",
+      "identical_to_english": 3,
+      "status": "upstream_translation"
+    },
+    "es": {
+      "file": "SPANISH.INC",
+      "controller_palette": "pal",
+      "sha256": "45cfa4f6e759e7f78d78bda078d71744d25de76a47f209f40bd0e24becaddbb2",
+      "identical_to_english": 0,
+      "status": "authored_translation_draft",
+      "translation_file": "spanish-original.txt",
+      "translation_sha256": "89b8bce71b18ff1b4dfe8d83fac5affcd271371142d1a223ea7f95bae9d1d6d7"
+    }
+  },
+  "messages": [
+    {
+      "id": "original.radio.001",
+      "variants": {
+        "en": {
+          "id": 1,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "all ships check in!",
+          "kind": "other",
+          "line": 1
+        },
+        "ja": {
+          "id": 1,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "セﾞンキ ホウコクセヨ!",
+          "kind": "other",
+          "line": 1
+        },
+        "de": {
+          "id": 1,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "alles okay, jungs?!",
+          "kind": "other",
+          "line": 1
+        },
+        "fr": {
+          "id": 1,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "c'est ok les mecs?!",
+          "kind": "other",
+          "line": 1
+        },
+        "es": {
+          "id": 1,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "¡Todas las naves, informen!",
+          "kind": "other",
+          "line": 1,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.002",
+      "variants": {
+        "en": {
+          "id": 2,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "we did it!",
+          "kind": "other",
+          "line": 2
+        },
+        "ja": {
+          "id": 2,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "ヤッホ-!",
+          "kind": "other",
+          "line": 2
+        },
+        "de": {
+          "id": 2,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "geschafft!",
+          "kind": "other",
+          "line": 2
+        },
+        "fr": {
+          "id": 2,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "youhouuu!!",
+          "kind": "other",
+          "line": 2
+        },
+        "es": {
+          "id": 2,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "¡Lo conseguimos!",
+          "kind": "other",
+          "line": 2,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.003",
+      "variants": {
+        "en": {
+          "id": 3,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "slippy slippy##",
+          "kind": "other",
+          "line": 3
+        },
+        "ja": {
+          "id": 3,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "スリッヒﾟ- スリッヒﾟ-",
+          "kind": "other",
+          "line": 3
+        },
+        "de": {
+          "id": 3,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "slippy slippy!",
+          "kind": "other",
+          "line": 3
+        },
+        "fr": {
+          "id": 3,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "slippy slippy!",
+          "kind": "other",
+          "line": 3
+        },
+        "es": {
+          "id": 3,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "Slippy, Slippy...",
+          "kind": "other",
+          "line": 3,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.004",
+      "variants": {
+        "en": {
+          "id": 4,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "go back to the base!",
+          "kind": "other",
+          "line": 4
+        },
+        "ja": {
+          "id": 4,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "コレヨリ キカンスル!",
+          "kind": "other",
+          "line": 4
+        },
+        "de": {
+          "id": 4,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "zurück zur basis!",
+          "kind": "other",
+          "line": 4
+        },
+        "fr": {
+          "id": 4,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "retourne a la base! ",
+          "kind": "other",
+          "line": 4
+        },
+        "es": {
+          "id": 4,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "¡Vuelve a la base!",
+          "kind": "other",
+          "line": 4,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.005",
+      "variants": {
+        "en": {
+          "id": 5,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "ready, fox!",
+          "kind": "other",
+          "line": 5
+        },
+        "ja": {
+          "id": 5,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "ウテﾞカﾞ ナルセﾞ!",
+          "kind": "other",
+          "line": 5
+        },
+        "de": {
+          "id": 5,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "auf geht's, fox!",
+          "kind": "other",
+          "line": 5
+        },
+        "fr": {
+          "id": 5,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "pret, fox! ",
+          "kind": "other",
+          "line": 5
+        },
+        "es": {
+          "id": 5,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "¡Listo, Fox!",
+          "kind": "other",
+          "line": 5,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.006",
+      "variants": {
+        "en": {
+          "id": 6,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "i'm with you, fox!",
+          "kind": "other",
+          "line": 6
+        },
+        "ja": {
+          "id": 6,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "トﾞウッテコトノナイ シコﾞトタﾞッタセﾞ!",
+          "kind": "other",
+          "line": 6
+        },
+        "de": {
+          "id": 6,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "wir sind ein team!",
+          "kind": "other",
+          "line": 6
+        },
+        "fr": {
+          "id": 6,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "je suis avec toi! ",
+          "kind": "other",
+          "line": 6
+        },
+        "es": {
+          "id": 6,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "¡Voy contigo, Fox!",
+          "kind": "other",
+          "line": 6,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.007",
+      "variants": {
+        "en": {
+          "id": 7,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "bogey on my six!",
+          "kind": "help",
+          "line": 7
+        },
+        "ja": {
+          "id": 7,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "チッ フリキレネ-セﾞ!",
+          "kind": "help",
+          "line": 7
+        },
+        "de": {
+          "id": 7,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "sie verfolgen mich!",
+          "kind": "help",
+          "line": 7
+        },
+        "fr": {
+          "id": 7,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "lache moi, co##!",
+          "kind": "help",
+          "line": 7
+        },
+        "es": {
+          "id": 7,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "¡Enemigo a mis seis!",
+          "kind": "help",
+          "line": 7,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.008",
+      "variants": {
+        "en": {
+          "id": 8,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "mind your own business, fox!",
+          "kind": "other",
+          "line": 8
+        },
+        "ja": {
+          "id": 8,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "ヨケイナコトヲ シヤカﾞッテ・・・",
+          "kind": "other",
+          "line": 8
+        },
+        "de": {
+          "id": 8,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "schieb ab, fox!",
+          "kind": "other",
+          "line": 8
+        },
+        "fr": {
+          "id": 8,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "regarde ce que tu fait, fox!",
+          "kind": "other",
+          "line": 8
+        },
+        "es": {
+          "id": 8,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "¡Métete en tus asuntos, Fox!",
+          "kind": "other",
+          "line": 8,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.009",
+      "variants": {
+        "en": {
+          "id": 9,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "they got me! i'm gone!!",
+          "kind": "down",
+          "line": 9
+        },
+        "ja": {
+          "id": 9,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "ウォ-ッ アトハ タノンタﾞソﾞ!",
+          "kind": "down",
+          "line": 9
+        },
+        "de": {
+          "id": 9,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "sie haben mich! gehe runter###",
+          "kind": "down",
+          "line": 9
+        },
+        "fr": {
+          "id": 9,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "haa! je suis touche!!!!",
+          "kind": "down",
+          "line": 9
+        },
+        "es": {
+          "id": 9,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "¡Me dieron! ¡Estoy perdido!",
+          "kind": "down",
+          "line": 9,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.010",
+      "variants": {
+        "en": {
+          "id": 10,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "i'll blast 'em all!",
+          "kind": "other",
+          "line": 10
+        },
+        "ja": {
+          "id": 10,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "シツコイヤツラタﾞ キエチマエ!",
+          "kind": "other",
+          "line": 10
+        },
+        "de": {
+          "id": 10,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "ich werde sie alle vernichten!",
+          "kind": "other",
+          "line": 10
+        },
+        "fr": {
+          "id": 10,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "j'vais les eclater!",
+          "kind": "other",
+          "line": 10
+        },
+        "es": {
+          "id": 10,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "¡Los haré pedazos!",
+          "kind": "other",
+          "line": 10,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.011",
+      "variants": {
+        "en": {
+          "id": 11,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "there's more on the way!",
+          "kind": "other",
+          "line": 11
+        },
+        "ja": {
+          "id": 11,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "チッ キリカﾞナイセﾞ!",
+          "kind": "other",
+          "line": 11
+        },
+        "de": {
+          "id": 11,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "da vorne sind noch mehr!",
+          "kind": "other",
+          "line": 11
+        },
+        "fr": {
+          "id": 11,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "il y en a plus en route!",
+          "kind": "other",
+          "line": 11
+        },
+        "es": {
+          "id": 11,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "¡Vienen más en camino!",
+          "kind": "other",
+          "line": 11,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.012",
+      "variants": {
+        "en": {
+          "id": 12,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "you can run, but you can't hide!",
+          "kind": "other",
+          "line": 12
+        },
+        "ja": {
+          "id": 12,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "ニカﾞスカヨッ ソレッ!",
+          "kind": "other",
+          "line": 12
+        },
+        "de": {
+          "id": 12,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "abhauen nützt euch gar nichts!",
+          "kind": "other",
+          "line": 12
+        },
+        "fr": {
+          "id": 12,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "laches, ne vous cachez pas!",
+          "kind": "other",
+          "line": 12
+        },
+        "es": {
+          "id": 12,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "¡Puedes huir, pero no esconderte!",
+          "kind": "other",
+          "line": 12,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.013",
+      "variants": {
+        "en": {
+          "id": 13,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "this one's mine!",
+          "kind": "other",
+          "line": 13
+        },
+        "ja": {
+          "id": 13,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "フォックス テヲタﾞスナヨ!",
+          "kind": "other",
+          "line": 13
+        },
+        "de": {
+          "id": 13,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "der gehört mir!",
+          "kind": "other",
+          "line": 13
+        },
+        "fr": {
+          "id": 13,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "il est a moi!",
+          "kind": "other",
+          "line": 13
+        },
+        "es": {
+          "id": 13,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "¡Este es mío!",
+          "kind": "other",
+          "line": 13,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.014",
+      "variants": {
+        "en": {
+          "id": 14,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "watch it, fox!",
+          "kind": "help",
+          "line": 14
+        },
+        "ja": {
+          "id": 14,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "ウシロノヤツカﾞ ウルサイセﾞ!",
+          "kind": "help",
+          "line": 14
+        },
+        "de": {
+          "id": 14,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "pass auf, fox! ",
+          "kind": "help",
+          "line": 14
+        },
+        "fr": {
+          "id": 14,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "regarde ca!",
+          "kind": "help",
+          "line": 14
+        },
+        "es": {
+          "id": 14,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "¡Cuidado, Fox!",
+          "kind": "help",
+          "line": 14,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.015",
+      "variants": {
+        "en": {
+          "id": 15,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "i'm hit!!",
+          "kind": "other",
+          "line": 15
+        },
+        "ja": {
+          "id": 15,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "チッ イッハﾟツ クラッチマッタ!",
+          "kind": "other",
+          "line": 15
+        },
+        "de": {
+          "id": 15,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "ich bin getroffen###",
+          "kind": "other",
+          "line": 15
+        },
+        "fr": {
+          "id": 15,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "ouille!!!",
+          "kind": "other",
+          "line": 15
+        },
+        "es": {
+          "id": 15,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "¡Me dieron!",
+          "kind": "other",
+          "line": 15,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.016",
+      "variants": {
+        "en": {
+          "id": 16,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "here they come! ",
+          "kind": "other",
+          "line": 16
+        },
+        "ja": {
+          "id": 16,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "テキサンノ オテﾞマシタﾞセﾞ!",
+          "kind": "other",
+          "line": 16
+        },
+        "de": {
+          "id": 16,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "da kommen sie!",
+          "kind": "other",
+          "line": 16
+        },
+        "fr": {
+          "id": 16,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "ils viennent!",
+          "kind": "other",
+          "line": 16
+        },
+        "es": {
+          "id": 16,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "¡Ahí vienen!",
+          "kind": "other",
+          "line": 16,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.017",
+      "variants": {
+        "en": {
+          "id": 17,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "make the neck and tail shorter, fox!!",
+          "kind": "other",
+          "line": 17
+        },
+        "ja": {
+          "id": 17,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "クヒﾞトシッホﾟヲ ミシﾞカクスルンタﾞ!",
+          "kind": "other",
+          "line": 17
+        },
+        "de": {
+          "id": 17,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "jetzt wird es eng, fox!",
+          "kind": "other",
+          "line": 17
+        },
+        "fr": {
+          "id": 17,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "coupe son cou et sa queue, fox!!!",
+          "kind": "other",
+          "line": 17
+        },
+        "es": {
+          "id": 17,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "¡Acórtale el cuello y la cola, Fox!",
+          "kind": "other",
+          "line": 17,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.018",
+      "variants": {
+        "en": {
+          "id": 18,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "shoot down its arms to hit its body!",
+          "kind": "other",
+          "line": 18
+        },
+        "ja": {
+          "id": 18,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "タﾞメ-シﾞハ ウテﾞカラ ホﾞテﾞィ-ニ ツタワルセﾞ",
+          "kind": "other",
+          "line": 18
+        },
+        "de": {
+          "id": 18,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "zerstöre erst die beiden arme!",
+          "kind": "other",
+          "line": 18
+        },
+        "fr": {
+          "id": 18,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "detruit ses bras puis vise le corps!",
+          "kind": "other",
+          "line": 18
+        },
+        "es": {
+          "id": 18,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "¡Destruye sus brazos para alcanzar el cuerpo!",
+          "kind": "other",
+          "line": 18,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.019",
+      "variants": {
+        "en": {
+          "id": 19,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "slow it down, fox!",
+          "kind": "other",
+          "line": 19
+        },
+        "ja": {
+          "id": 19,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "スヒﾟ-トﾞヲ コロスンタﾞヨ!",
+          "kind": "other",
+          "line": 19
+        },
+        "de": {
+          "id": 19,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "mach langsamer, fox!",
+          "kind": "other",
+          "line": 19
+        },
+        "fr": {
+          "id": 19,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "ralentit le, fox!",
+          "kind": "other",
+          "line": 19
+        },
+        "es": {
+          "id": 19,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "¡Frena, Fox!",
+          "kind": "other",
+          "line": 19,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.020",
+      "variants": {
+        "en": {
+          "id": 20,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "roll, baby! rock 'n roll!",
+          "kind": "other",
+          "line": 20
+        },
+        "ja": {
+          "id": 20,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "ロ-リンクﾞテﾞ フリハラエ!",
+          "kind": "other",
+          "line": 20
+        },
+        "de": {
+          "id": 20,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "und jetzt auf die stabile seitenlage!",
+          "kind": "other",
+          "line": 20
+        },
+        "fr": {
+          "id": 20,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "roule baby! rock 'n roll!",
+          "kind": "other",
+          "line": 20
+        },
+        "es": {
+          "id": 20,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "¡Gira, vamos! ¡A todo ritmo!",
+          "kind": "other",
+          "line": 20,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.021",
+      "variants": {
+        "en": {
+          "id": 21,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "my ship's messed up###",
+          "kind": "other",
+          "line": 21
+        },
+        "ja": {
+          "id": 21,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "シクシﾞッタセﾞ・・ キュウシュツヲタノム",
+          "kind": "other",
+          "line": 21
+        },
+        "de": {
+          "id": 21,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "mich hat's erwischt###",
+          "kind": "other",
+          "line": 21
+        },
+        "fr": {
+          "id": 21,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "mon vaisseau, merde###",
+          "kind": "other",
+          "line": 21
+        },
+        "es": {
+          "id": 21,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "Mi nave está destrozada...",
+          "kind": "other",
+          "line": 21,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.022",
+      "variants": {
+        "en": {
+          "id": 22,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "hey! that one was mine!",
+          "kind": "other",
+          "line": 22
+        },
+        "ja": {
+          "id": 22,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "ソイツハ オレノ エモノタﾞセﾞ!",
+          "kind": "other",
+          "line": 22
+        },
+        "de": {
+          "id": 22,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "hey! das war meiner!",
+          "kind": "other",
+          "line": 22
+        },
+        "fr": {
+          "id": 22,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "he! c'est le mien!",
+          "kind": "other",
+          "line": 22
+        },
+        "es": {
+          "id": 22,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "¡Eh! ¡Ese era mío!",
+          "kind": "other",
+          "line": 22,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.023",
+      "variants": {
+        "en": {
+          "id": 23,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "bogies, i'm comin' through!",
+          "kind": "other",
+          "line": 23
+        },
+        "ja": {
+          "id": 23,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "サﾞコハ ヒッコンテﾞナ!",
+          "kind": "other",
+          "line": 23
+        },
+        "de": {
+          "id": 23,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "aufgepasst, ich komme!",
+          "kind": "other",
+          "line": 23
+        },
+        "fr": {
+          "id": 23,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "les mecs, j'arrive!!!!!!",
+          "kind": "other",
+          "line": 23
+        },
+        "es": {
+          "id": 23,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "¡Abran paso, enemigos!",
+          "kind": "other",
+          "line": 23,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.024",
+      "variants": {
+        "en": {
+          "id": 24,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "i'll cover your tail!",
+          "kind": "other",
+          "line": 24
+        },
+        "ja": {
+          "id": 24,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "コウホウヲ エンコﾞスルセﾞ!",
+          "kind": "other",
+          "line": 24
+        },
+        "de": {
+          "id": 24,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "ich gebe dir rückendeckung!",
+          "kind": "other",
+          "line": 24
+        },
+        "fr": {
+          "id": 24,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "je te couvre!",
+          "kind": "other",
+          "line": 24
+        },
+        "es": {
+          "id": 24,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "¡Te cubro la espalda!",
+          "kind": "other",
+          "line": 24,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.025",
+      "variants": {
+        "en": {
+          "id": 25,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "yeah - let's go!",
+          "kind": "other",
+          "line": 25
+        },
+        "ja": {
+          "id": 25,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "ムチャハ スルナヨ!",
+          "kind": "other",
+          "line": 25
+        },
+        "de": {
+          "id": 25,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "yeah - auf geht's!",
+          "kind": "other",
+          "line": 25
+        },
+        "fr": {
+          "id": 25,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "on y vas! ouais!",
+          "kind": "other",
+          "line": 25
+        },
+        "es": {
+          "id": 25,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡Sí, vamos!",
+          "kind": "other",
+          "line": 25,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.026",
+      "variants": {
+        "en": {
+          "id": 26,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "i'm behind you, fox!",
+          "kind": "other",
+          "line": 26
+        },
+        "ja": {
+          "id": 26,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "アンタノウシロニ イルサ",
+          "kind": "other",
+          "line": 26
+        },
+        "de": {
+          "id": 26,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "ich bin hinter dir, fox!",
+          "kind": "other",
+          "line": 26
+        },
+        "fr": {
+          "id": 26,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "je te suis, fox!",
+          "kind": "other",
+          "line": 26
+        },
+        "es": {
+          "id": 26,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡Voy detrás de ti, Fox!",
+          "kind": "other",
+          "line": 26,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.027",
+      "variants": {
+        "en": {
+          "id": 27,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "get lost, you fiend!",
+          "kind": "help",
+          "line": 27
+        },
+        "ja": {
+          "id": 27,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "シマッタ ハﾞックヲトラレタ!",
+          "kind": "help",
+          "line": 27
+        },
+        "de": {
+          "id": 27,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "hau ab, du mistkerl!",
+          "kind": "help",
+          "line": 27
+        },
+        "fr": {
+          "id": 27,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "crevez, enfoires!!!!",
+          "kind": "help",
+          "line": 27
+        },
+        "es": {
+          "id": 27,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡Lárgate, maldito!",
+          "kind": "help",
+          "line": 27,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.028",
+      "variants": {
+        "en": {
+          "id": 28,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "yeah! thanks!",
+          "kind": "other",
+          "line": 28
+        },
+        "ja": {
+          "id": 28,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "スマン フォックス・・・",
+          "kind": "other",
+          "line": 28
+        },
+        "de": {
+          "id": 28,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "yeah! danke!",
+          "kind": "other",
+          "line": 28
+        },
+        "fr": {
+          "id": 28,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "tranquille!",
+          "kind": "other",
+          "line": 28
+        },
+        "es": {
+          "id": 28,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡Sí! ¡Gracias!",
+          "kind": "other",
+          "line": 28,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.029",
+      "variants": {
+        "en": {
+          "id": 29,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "aargh!! i'm a goner!",
+          "kind": "down",
+          "line": 29
+        },
+        "ja": {
+          "id": 29,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "ウワ〜 ナンテコッタ-!",
+          "kind": "down",
+          "line": 29
+        },
+        "de": {
+          "id": 29,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "aargh! mich hat's erwischt!",
+          "kind": "down",
+          "line": 29
+        },
+        "fr": {
+          "id": 29,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "aargh!! j'ai perdu!!",
+          "kind": "down",
+          "line": 29
+        },
+        "es": {
+          "id": 29,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡Aaah! ¡Estoy perdido!",
+          "kind": "down",
+          "line": 29,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.030",
+      "variants": {
+        "en": {
+          "id": 30,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "let's smash 'em!",
+          "kind": "other",
+          "line": 30
+        },
+        "ja": {
+          "id": 30,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "ソ-レ ヤッチマエ-!",
+          "kind": "other",
+          "line": 30
+        },
+        "de": {
+          "id": 30,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "jetzt sind sie dran!",
+          "kind": "other",
+          "line": 30
+        },
+        "fr": {
+          "id": 30,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "detruit les!!",
+          "kind": "other",
+          "line": 30
+        },
+        "es": {
+          "id": 30,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡Vamos a aplastarlos!",
+          "kind": "other",
+          "line": 30,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.031",
+      "variants": {
+        "en": {
+          "id": 31,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "i got one! i got one!!",
+          "kind": "other",
+          "line": 31
+        },
+        "ja": {
+          "id": 31,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "ヨ-シ イッチョウアカﾞリ!",
+          "kind": "other",
+          "line": 31
+        },
+        "de": {
+          "id": 31,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "ich hab' ihn! ich hab' ihn!",
+          "kind": "other",
+          "line": 31
+        },
+        "fr": {
+          "id": 31,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "j'en ai eu un !!!",
+          "kind": "other",
+          "line": 31
+        },
+        "es": {
+          "id": 31,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡Derribé a uno! ¡A uno!",
+          "kind": "other",
+          "line": 31,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.032",
+      "variants": {
+        "en": {
+          "id": 32,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "take this, enemy brute!",
+          "kind": "other",
+          "line": 32
+        },
+        "ja": {
+          "id": 32,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "フン コレテﾞモクラエ!",
+          "kind": "other",
+          "line": 32
+        },
+        "de": {
+          "id": 32,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "nimm das, du bastard!",
+          "kind": "other",
+          "line": 32
+        },
+        "fr": {
+          "id": 32,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "prend ca, salopard!!",
+          "kind": "other",
+          "line": 32
+        },
+        "es": {
+          "id": 32,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡Toma esto, bestia!",
+          "kind": "other",
+          "line": 32,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.033",
+      "variants": {
+        "en": {
+          "id": 33,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "you're not getting away!",
+          "kind": "other",
+          "line": 33
+        },
+        "ja": {
+          "id": 33,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "ニケﾞラレルワケ ナイタﾞロ!",
+          "kind": "other",
+          "line": 33
+        },
+        "de": {
+          "id": 33,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "du entwischst mir nicht!",
+          "kind": "other",
+          "line": 33
+        },
+        "fr": {
+          "id": 33,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "pas de chance, mon pote!",
+          "kind": "other",
+          "line": 33
+        },
+        "es": {
+          "id": 33,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡No vas a escapar!",
+          "kind": "other",
+          "line": 33,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.034",
+      "variants": {
+        "en": {
+          "id": 34,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "watch your aim, fox!",
+          "kind": "help",
+          "line": 34
+        },
+        "ja": {
+          "id": 34,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "オレタﾞ オレタﾞ ウツンシﾞャナイ!",
+          "kind": "help",
+          "line": 34
+        },
+        "de": {
+          "id": 34,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "was soll das, fox???",
+          "kind": "help",
+          "line": 34
+        },
+        "fr": {
+          "id": 34,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "vise mieux, fox!",
+          "kind": "help",
+          "line": 34
+        },
+        "es": {
+          "id": 34,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡Mira dónde disparas, Fox!",
+          "kind": "help",
+          "line": 34,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.035",
+      "variants": {
+        "en": {
+          "id": 35,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "ouch! ouch!",
+          "kind": "other",
+          "line": 35
+        },
+        "ja": {
+          "id": 35,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "アイタタタ・・・・",
+          "kind": "other",
+          "line": 35
+        },
+        "de": {
+          "id": 35,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "aaaarrrghhh!",
+          "kind": "other",
+          "line": 35
+        },
+        "fr": {
+          "id": 35,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "ouch! ouch!",
+          "kind": "other",
+          "line": 35
+        },
+        "es": {
+          "id": 35,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡Ay! ¡Ay!",
+          "kind": "other",
+          "line": 35,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.036",
+      "variants": {
+        "en": {
+          "id": 36,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "incoming enemy craft! ",
+          "kind": "other",
+          "line": 36
+        },
+        "ja": {
+          "id": 36,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "ソﾞロソﾞロト オイテﾞナサッタソﾞ!",
+          "kind": "other",
+          "line": 36
+        },
+        "de": {
+          "id": 36,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "feind nähert sich!",
+          "kind": "other",
+          "line": 36
+        },
+        "fr": {
+          "id": 36,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "he! un boss arrive!",
+          "kind": "other",
+          "line": 36
+        },
+        "es": {
+          "id": 36,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡Se acercan naves enemigas!",
+          "kind": "other",
+          "line": 36,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.037",
+      "variants": {
+        "en": {
+          "id": 37,
+          "colour": "white",
+          "speaker": "rabbit3",
+          "text": "please make the neck and tail shorter, fox!",
+          "kind": "other",
+          "line": 37
+        },
+        "ja": {
+          "id": 37,
+          "colour": "white",
+          "speaker": "rabbit3",
+          "text": "クヒﾞトシッホﾟヲ ミシﾞカクスルンタﾞ!",
+          "kind": "other",
+          "line": 37
+        },
+        "de": {
+          "id": 37,
+          "colour": "white",
+          "speaker": "rabbit3",
+          "text": "gleich wird es eng, fox!",
+          "kind": "other",
+          "line": 37
+        },
+        "fr": {
+          "id": 37,
+          "colour": "white",
+          "speaker": "rabbit3",
+          "text": "racourcit son cou et sa queue, fox!",
+          "kind": "other",
+          "line": 37
+        },
+        "es": {
+          "id": 37,
+          "colour": "white",
+          "speaker": "rabbit3",
+          "text": "¡Acórtale el cuello y la cola, Fox, por favor!",
+          "kind": "other",
+          "line": 37,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.038",
+      "variants": {
+        "en": {
+          "id": 38,
+          "colour": "white",
+          "speaker": "rabbit3",
+          "text": "shoot down its arms to hit its body!",
+          "kind": "other",
+          "line": 38
+        },
+        "ja": {
+          "id": 38,
+          "colour": "white",
+          "speaker": "rabbit3",
+          "text": "タﾞメ-シﾞハ ウテﾞカラ ホﾞテﾞィ-ニ ツタワルソﾞ",
+          "kind": "other",
+          "line": 38
+        },
+        "de": {
+          "id": 38,
+          "colour": "white",
+          "speaker": "rabbit3",
+          "text": "zerstöre erst die beiden arme!",
+          "kind": "other",
+          "line": 38
+        },
+        "fr": {
+          "id": 38,
+          "colour": "white",
+          "speaker": "rabbit3",
+          "text": "detruit ses bras puis vise le corps!",
+          "kind": "other",
+          "line": 38
+        },
+        "es": {
+          "id": 38,
+          "colour": "white",
+          "speaker": "rabbit3",
+          "text": "¡Destruye sus brazos para alcanzar el cuerpo!",
+          "kind": "other",
+          "line": 38,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.039",
+      "variants": {
+        "en": {
+          "id": 39,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "retros!  fire retros!",
+          "kind": "other",
+          "line": 39
+        },
+        "ja": {
+          "id": 39,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "フォックス フﾞレ-キタﾞ!",
+          "kind": "other",
+          "line": 39
+        },
+        "de": {
+          "id": 39,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "rückschub! du musst bremsen!",
+          "kind": "other",
+          "line": 39
+        },
+        "fr": {
+          "id": 39,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "relentit! ralentit!!!",
+          "kind": "other",
+          "line": 39
+        },
+        "es": {
+          "id": 39,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡Frenos! ¡Activa los frenos!",
+          "kind": "other",
+          "line": 39,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.040",
+      "variants": {
+        "en": {
+          "id": 40,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "roll over! shake it off!",
+          "kind": "other",
+          "line": 40
+        },
+        "ja": {
+          "id": 40,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "キタイヲ ロ-リンクﾞサセロ!",
+          "kind": "other",
+          "line": 40
+        },
+        "de": {
+          "id": 40,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "jetzt zeig mal, was du kannst!",
+          "kind": "other",
+          "line": 40
+        },
+        "fr": {
+          "id": 40,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "he! fox! evite ca!",
+          "kind": "other",
+          "line": 40
+        },
+        "es": {
+          "id": 40,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡Gira! ¡Quítatelo de encima!",
+          "kind": "other",
+          "line": 40,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.041",
+      "variants": {
+        "en": {
+          "id": 41,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "pick me up on your way back!",
+          "kind": "other",
+          "line": 41
+        },
+        "ja": {
+          "id": 41,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "スマンナ カエリニ ヒロッテクレヨ",
+          "kind": "other",
+          "line": 41
+        },
+        "de": {
+          "id": 41,
+          "colour": "white",
+          "speaker": "rabbit3",
+          "text": "hol' mich ab, wenn du zurückkommst!",
+          "kind": "other",
+          "line": 41
+        },
+        "fr": {
+          "id": 41,
+          "colour": "white",
+          "speaker": "rabbit3",
+          "text": "recupere moi a ton retour!",
+          "kind": "other",
+          "line": 41
+        },
+        "es": {
+          "id": 41,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡Recógeme a la vuelta!",
+          "kind": "other",
+          "line": 41,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.042",
+      "variants": {
+        "en": {
+          "id": 42,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "hey! he was mine!",
+          "kind": "other",
+          "line": 42
+        },
+        "ja": {
+          "id": 42,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "タノシミヲ トラナイテﾞクレヨ!",
+          "kind": "other",
+          "line": 42
+        },
+        "de": {
+          "id": 42,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "hey! das war meiner!",
+          "kind": "other",
+          "line": 42
+        },
+        "fr": {
+          "id": 42,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "c'etait le mien!",
+          "kind": "other",
+          "line": 42
+        },
+        "es": {
+          "id": 42,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡Eh! ¡Ese era mío!",
+          "kind": "other",
+          "line": 42,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.043",
+      "variants": {
+        "en": {
+          "id": 43,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "out of my way!",
+          "kind": "other",
+          "line": 43
+        },
+        "ja": {
+          "id": 43,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "シﾞャマスルナ- キエロ-!",
+          "kind": "other",
+          "line": 43
+        },
+        "de": {
+          "id": 43,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "aus dem weg!",
+          "kind": "other",
+          "line": 43
+        },
+        "fr": {
+          "id": 43,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "degage!!",
+          "kind": "other",
+          "line": 43
+        },
+        "es": {
+          "id": 43,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡Fuera de mi camino!",
+          "kind": "other",
+          "line": 43,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.044",
+      "variants": {
+        "en": {
+          "id": 44,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "i'm off your starboard!",
+          "kind": "other",
+          "line": 44
+        },
+        "ja": {
+          "id": 44,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "ミキﾞカﾞワ エンコﾞスル!",
+          "kind": "other",
+          "line": 44
+        },
+        "de": {
+          "id": 44,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "ich bin rechts von dir, fox!",
+          "kind": "other",
+          "line": 44
+        },
+        "fr": {
+          "id": 44,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "je te suis de pres!",
+          "kind": "other",
+          "line": 44
+        },
+        "es": {
+          "id": 44,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡Estoy a tu estribor!",
+          "kind": "other",
+          "line": 44,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.045",
+      "variants": {
+        "en": {
+          "id": 45,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "ok!!",
+          "kind": "other",
+          "line": 45
+        },
+        "ja": {
+          "id": 45,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "カﾞンハﾞルソﾞ- ケロケロ!",
+          "kind": "other",
+          "line": 45
+        },
+        "de": {
+          "id": 45,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "okay!",
+          "kind": "other",
+          "line": 45
+        },
+        "fr": {
+          "id": 45,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "ok!!",
+          "kind": "other",
+          "line": 45
+        },
+        "es": {
+          "id": 45,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡De acuerdo!",
+          "kind": "other",
+          "line": 45,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.046",
+      "variants": {
+        "en": {
+          "id": 46,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "ribbit! i'll bring up the rear, fox!",
+          "kind": "other",
+          "line": 46
+        },
+        "ja": {
+          "id": 46,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "モウ タﾞメカト オモッタ ケﾞロ",
+          "kind": "other",
+          "line": 46
+        },
+        "de": {
+          "id": 46,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "ribbit! ich bilde die nachhut!",
+          "kind": "other",
+          "line": 46
+        },
+        "fr": {
+          "id": 46,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "flippe pas, je m'ocupe de la queue!",
+          "kind": "other",
+          "line": 46
+        },
+        "es": {
+          "id": 46,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡Croac! ¡Cubriré la retaguardia, Fox!",
+          "kind": "other",
+          "line": 46,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.047",
+      "variants": {
+        "en": {
+          "id": 47,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "croak!  help me!",
+          "kind": "help",
+          "line": 47
+        },
+        "ja": {
+          "id": 47,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "ウワ〜! シニタクナイヨ〜!",
+          "kind": "help",
+          "line": 47
+        },
+        "de": {
+          "id": 47,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "quak! helft mir!",
+          "kind": "help",
+          "line": 47
+        },
+        "fr": {
+          "id": 47,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "au secours, fox!",
+          "kind": "help",
+          "line": 47
+        },
+        "es": {
+          "id": 47,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡Croac! ¡Ayúdame!",
+          "kind": "help",
+          "line": 47,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.048",
+      "variants": {
+        "en": {
+          "id": 48,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "ribbit!  thanks fer the save!",
+          "kind": "other",
+          "line": 48
+        },
+        "ja": {
+          "id": 48,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "フゥ・・・ タスカッタ ケロ・・",
+          "kind": "other",
+          "line": 48
+        },
+        "de": {
+          "id": 48,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "ribbit! vielen dank!",
+          "kind": "other",
+          "line": 48
+        },
+        "fr": {
+          "id": 48,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "merci, a charge de revanche!",
+          "kind": "other",
+          "line": 48
+        },
+        "es": {
+          "id": 48,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡Croac! ¡Gracias por salvarme!",
+          "kind": "other",
+          "line": 48,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.049",
+      "variants": {
+        "en": {
+          "id": 49,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "no! no! crrooakk!",
+          "kind": "down",
+          "line": 49
+        },
+        "ja": {
+          "id": 49,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "ケﾞロケﾞロ モ・モウタﾞメタﾞ〜!",
+          "kind": "down",
+          "line": 49
+        },
+        "de": {
+          "id": 49,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "oh nein! quuuaaak!",
+          "kind": "down",
+          "line": 49
+        },
+        "fr": {
+          "id": 49,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "non! non! crroaa!",
+          "kind": "down",
+          "line": 49
+        },
+        "es": {
+          "id": 49,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡No! ¡No! ¡Croooac!",
+          "kind": "down",
+          "line": 49,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.050",
+      "variants": {
+        "en": {
+          "id": 50,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "i'll get him -- ribbit!",
+          "kind": "other",
+          "line": 50
+        },
+        "ja": {
+          "id": 50,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "ニケﾞテモ ムタﾞ ケロ!",
+          "kind": "other",
+          "line": 50
+        },
+        "de": {
+          "id": 50,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "den kriege ich - ribbit!",
+          "kind": "other",
+          "line": 50
+        },
+        "fr": {
+          "id": 50,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "je l'aurais, c'est sur!",
+          "kind": "other",
+          "line": 50
+        },
+        "es": {
+          "id": 50,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡Lo atraparé! ¡Croac!",
+          "kind": "other",
+          "line": 50,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.051",
+      "variants": {
+        "en": {
+          "id": 51,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "piece of c-c-cake!",
+          "kind": "other",
+          "line": 51
+        },
+        "ja": {
+          "id": 51,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "アラヨット ケロケロ!",
+          "kind": "other",
+          "line": 51
+        },
+        "de": {
+          "id": 51,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "n-n-null problemo!",
+          "kind": "other",
+          "line": 51
+        },
+        "fr": {
+          "id": 51,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "fils de pute!!",
+          "kind": "other",
+          "line": 51
+        },
+        "es": {
+          "id": 51,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡Pan c-c-comido!",
+          "kind": "other",
+          "line": 51,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.052",
+      "variants": {
+        "en": {
+          "id": 52,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "take this, j-j-junk heap!",
+          "kind": "other",
+          "line": 52
+        },
+        "ja": {
+          "id": 52,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "クタハﾞレ! ケロ",
+          "kind": "other",
+          "line": 52
+        },
+        "de": {
+          "id": 52,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "nimm das, aliens-s- schrott!",
+          "kind": "other",
+          "line": 52
+        },
+        "fr": {
+          "id": 52,
+          "colour": "white",
+          "speaker": "frog3",
+          "text": "prend ca, salopard!!",
+          "kind": "other",
+          "line": 52
+        },
+        "es": {
+          "id": 52,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡Toma, m-m-montón de chatarra!",
+          "kind": "other",
+          "line": 52,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.053",
+      "variants": {
+        "en": {
+          "id": 53,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "i'll get this one! ribbit!",
+          "kind": "other",
+          "line": 53
+        },
+        "ja": {
+          "id": 53,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "イタタﾞキ イタタﾞキ!",
+          "kind": "other",
+          "line": 53
+        },
+        "de": {
+          "id": 53,
+          "colour": "white",
+          "speaker": "frog3",
+          "text": "dieser hier gehört mir! ribbit!",
+          "kind": "other",
+          "line": 53
+        },
+        "fr": {
+          "id": 53,
+          "colour": "white",
+          "speaker": "frog3",
+          "text": "je l'aurais celui la!!",
+          "kind": "other",
+          "line": 53
+        },
+        "es": {
+          "id": 53,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡Voy por este! ¡Croac!",
+          "kind": "other",
+          "line": 53,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.054",
+      "variants": {
+        "en": {
+          "id": 54,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "hey! it's me, slippy!",
+          "kind": "help",
+          "line": 54
+        },
+        "ja": {
+          "id": 54,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "ケﾞロケﾞロ オレタﾞヨ〜ッ!",
+          "kind": "help",
+          "line": 54
+        },
+        "de": {
+          "id": 54,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "hey! ich bin's doch, slippy!",
+          "kind": "help",
+          "line": 54
+        },
+        "fr": {
+          "id": 54,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "he, c'est moi, slippy!",
+          "kind": "help",
+          "line": 54
+        },
+        "es": {
+          "id": 54,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡Eh! ¡Soy yo, Slippy!",
+          "kind": "help",
+          "line": 54,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.055",
+      "variants": {
+        "en": {
+          "id": 55,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "ribbit!  i'm hit!!",
+          "kind": "other",
+          "line": 55
+        },
+        "ja": {
+          "id": 55,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "ケﾞ〜ッ クラッタ〜!",
+          "kind": "other",
+          "line": 55
+        },
+        "de": {
+          "id": 55,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "ribbit! ich bin getroffen##",
+          "kind": "other",
+          "line": 55
+        },
+        "fr": {
+          "id": 55,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "je suis touche!!",
+          "kind": "other",
+          "line": 55
+        },
+        "es": {
+          "id": 55,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡Croac! ¡Me dieron!",
+          "kind": "other",
+          "line": 55,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.056",
+      "variants": {
+        "en": {
+          "id": 56,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "there's too many of them!",
+          "kind": "other",
+          "line": 56
+        },
+        "ja": {
+          "id": 56,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "ケﾞロケﾞロ コウサンシチャオウカァ!",
+          "kind": "other",
+          "line": 56
+        },
+        "de": {
+          "id": 56,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "es sind einfach zu viele!",
+          "kind": "other",
+          "line": 56
+        },
+        "fr": {
+          "id": 56,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "merde! il y en a trop!!",
+          "kind": "other",
+          "line": 56
+        },
+        "es": {
+          "id": 56,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡Son demasiados!",
+          "kind": "other",
+          "line": 56,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.057",
+      "variants": {
+        "en": {
+          "id": 57,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "let's turn back, okay?!",
+          "kind": "other",
+          "line": 57
+        },
+        "ja": {
+          "id": 57,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "ケﾞロケﾞロ モウカエリタイヨ〜!",
+          "kind": "other",
+          "line": 57
+        },
+        "de": {
+          "id": 57,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "wir sollten lieber umkehren!",
+          "kind": "other",
+          "line": 57
+        },
+        "fr": {
+          "id": 57,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "on le contourne, okay?!",
+          "kind": "other",
+          "line": 57
+        },
+        "es": {
+          "id": 57,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡Volvamos, por favor!",
+          "kind": "other",
+          "line": 57,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.058",
+      "variants": {
+        "en": {
+          "id": 58,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "let's be careful!",
+          "kind": "other",
+          "line": 58
+        },
+        "ja": {
+          "id": 58,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "ケﾞロ〜 アフﾞナイヨ〜!",
+          "kind": "other",
+          "line": 58
+        },
+        "de": {
+          "id": 58,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "wir sollten vorsichtig sein!",
+          "kind": "other",
+          "line": 58
+        },
+        "fr": {
+          "id": 58,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "fait attention!!",
+          "kind": "other",
+          "line": 58
+        },
+        "es": {
+          "id": 58,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡Tengamos cuidado!",
+          "kind": "other",
+          "line": 58,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.059",
+      "variants": {
+        "en": {
+          "id": 59,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "something's sticking to me!",
+          "kind": "other",
+          "line": 59
+        },
+        "ja": {
+          "id": 59,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "ケﾞロ〜 ナンカ ヒッツイタ〜!",
+          "kind": "other",
+          "line": 59
+        },
+        "de": {
+          "id": 59,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "irgendetwas klebt an mir!",
+          "kind": "other",
+          "line": 59
+        },
+        "fr": {
+          "id": 59,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "un truc me colle de pres!!",
+          "kind": "other",
+          "line": 59
+        },
+        "es": {
+          "id": 59,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡Se me ha pegado algo!",
+          "kind": "other",
+          "line": 59,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.060",
+      "variants": {
+        "en": {
+          "id": 60,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "i c-c-couldn't go, fox!",
+          "kind": "other",
+          "line": 60
+        },
+        "ja": {
+          "id": 60,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "ア〜アッ ハヤク タスケニ キテクレヨ",
+          "kind": "other",
+          "line": 60
+        },
+        "de": {
+          "id": 60,
+          "colour": "white",
+          "speaker": "frog3",
+          "text": "ich hab's nicht g-g-geschafft, fox!",
+          "kind": "other",
+          "line": 60
+        },
+        "fr": {
+          "id": 60,
+          "colour": "white",
+          "speaker": "frog3",
+          "text": "je pourrait pas, fox!!",
+          "kind": "other",
+          "line": 60
+        },
+        "es": {
+          "id": 60,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡No p-p-pude seguir, Fox!",
+          "kind": "other",
+          "line": 60,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.061",
+      "variants": {
+        "en": {
+          "id": 61,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "hey! don't be so g-g-greedy!",
+          "kind": "other",
+          "line": 61
+        },
+        "ja": {
+          "id": 61,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "ホﾞクニモ ヤラセテヨ〜!",
+          "kind": "other",
+          "line": 61
+        },
+        "de": {
+          "id": 61,
+          "colour": "white",
+          "speaker": "frog3",
+          "text": "hey! lass mir auch n-n-noch einen!",
+          "kind": "other",
+          "line": 61
+        },
+        "fr": {
+          "id": 61,
+          "colour": "white",
+          "speaker": "frog3",
+          "text": "he! soit pas si gourmant!!",
+          "kind": "other",
+          "line": 61
+        },
+        "es": {
+          "id": 61,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡Eh! ¡No seas tan a-a-acaparador!",
+          "kind": "other",
+          "line": 61,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.062",
+      "variants": {
+        "en": {
+          "id": 62,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "c-c-clear out, astro-geeks!",
+          "kind": "other",
+          "line": 62
+        },
+        "ja": {
+          "id": 62,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "シﾞャマタﾞヨ〜 ケロケロ!",
+          "kind": "other",
+          "line": 62
+        },
+        "de": {
+          "id": 62,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "verzieh dich, abschaum!",
+          "kind": "other",
+          "line": 62
+        },
+        "fr": {
+          "id": 62,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "degagez, bande de cons!!",
+          "kind": "other",
+          "line": 62
+        },
+        "es": {
+          "id": 62,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡F-f-fuera, bichos espaciales!",
+          "kind": "other",
+          "line": 62,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.063",
+      "variants": {
+        "en": {
+          "id": 63,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "hope there's no more!",
+          "kind": "other",
+          "line": 63
+        },
+        "ja": {
+          "id": 63,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "コッチニ キマセンヨウニ・・・",
+          "kind": "other",
+          "line": 63
+        },
+        "de": {
+          "id": 63,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "ich hoffe, das war's!",
+          "kind": "other",
+          "line": 63
+        },
+        "fr": {
+          "id": 63,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "he! trop c'est trop!!",
+          "kind": "other",
+          "line": 63
+        },
+        "es": {
+          "id": 63,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡Espero que no haya más!",
+          "kind": "other",
+          "line": 63,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.064",
+      "variants": {
+        "en": {
+          "id": 64,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "did you see me?",
+          "kind": "other",
+          "line": 64
+        },
+        "ja": {
+          "id": 64,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "ミテタ?! ミテタ〜?!",
+          "kind": "other",
+          "line": 64
+        },
+        "de": {
+          "id": 64,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "hast du tomaten auf den augen?",
+          "kind": "other",
+          "line": 64
+        },
+        "fr": {
+          "id": 64,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "tu m'a pas vu?",
+          "kind": "other",
+          "line": 64
+        },
+        "es": {
+          "id": 64,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¿Me viste?",
+          "kind": "other",
+          "line": 64,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.065",
+      "variants": {
+        "en": {
+          "id": 65,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "i can't tell which is real!!",
+          "kind": "other",
+          "line": 65
+        },
+        "ja": {
+          "id": 65,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "ワ〜 フﾞンシンシタソﾞ!",
+          "kind": "other",
+          "line": 65
+        },
+        "de": {
+          "id": 65,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "ich weiss nicht, welcher echt ist!",
+          "kind": "other",
+          "line": 65
+        },
+        "fr": {
+          "id": 65,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "j'arrive pas a le croire!!",
+          "kind": "other",
+          "line": 65
+        },
+        "es": {
+          "id": 65,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡No distingo cuál es el real!",
+          "kind": "other",
+          "line": 65,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.066",
+      "variants": {
+        "en": {
+          "id": 66,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "let's head in!",
+          "kind": "other",
+          "line": 66
+        },
+        "ja": {
+          "id": 66,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "アノフネニ ツッコムソﾞ!",
+          "kind": "other",
+          "line": 66
+        },
+        "de": {
+          "id": 66,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "da müssen wir rein!",
+          "kind": "other",
+          "line": 66
+        },
+        "fr": {
+          "id": 66,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "on rentre!!",
+          "kind": "other",
+          "line": 66
+        },
+        "es": {
+          "id": 66,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "¡Entremos!",
+          "kind": "other",
+          "line": 66,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.067",
+      "variants": {
+        "en": {
+          "id": 67,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "i'll follow you in!",
+          "kind": "other",
+          "line": 67
+        },
+        "ja": {
+          "id": 67,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "シンチョウニ モクﾞリコメ!",
+          "kind": "other",
+          "line": 67
+        },
+        "de": {
+          "id": 67,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "ich folge dir rein!",
+          "kind": "other",
+          "line": 67
+        },
+        "fr": {
+          "id": 67,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "j'te suis la dans!!",
+          "kind": "other",
+          "line": 67
+        },
+        "es": {
+          "id": 67,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡Te sigo adentro!",
+          "kind": "other",
+          "line": 67,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.068",
+      "variants": {
+        "en": {
+          "id": 68,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "should we go in?!",
+          "kind": "other",
+          "line": 68
+        },
+        "ja": {
+          "id": 68,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "クウホﾞニ トツケﾞキ ケロ!",
+          "kind": "other",
+          "line": 68
+        },
+        "de": {
+          "id": 68,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "müssen wir da wirklich rein?!",
+          "kind": "other",
+          "line": 68
+        },
+        "fr": {
+          "id": 68,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "on peut entrer?!",
+          "kind": "other",
+          "line": 68
+        },
+        "es": {
+          "id": 68,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¿Entramos?",
+          "kind": "other",
+          "line": 68,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.069",
+      "variants": {
+        "en": {
+          "id": 69,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "###this one could be trouble###",
+          "kind": "help",
+          "line": 69
+        },
+        "ja": {
+          "id": 69,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "シツコイヤツタﾞセﾞ!",
+          "kind": "help",
+          "line": 69
+        },
+        "de": {
+          "id": 69,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "das riecht nach ärger##!",
+          "kind": "help",
+          "line": 69
+        },
+        "fr": {
+          "id": 69,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "###il doit pas etre bien###",
+          "kind": "help",
+          "line": 69
+        },
+        "es": {
+          "id": 69,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "...Este podría darnos problemas...",
+          "kind": "help",
+          "line": 69,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.070",
+      "variants": {
+        "en": {
+          "id": 70,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "hurry!",
+          "kind": "help",
+          "line": 70
+        },
+        "ja": {
+          "id": 70,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "タノム! カタスﾞケテクレ!",
+          "kind": "help",
+          "line": 70
+        },
+        "de": {
+          "id": 70,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "beeilung!",
+          "kind": "help",
+          "line": 70
+        },
+        "fr": {
+          "id": 70,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "allez!",
+          "kind": "help",
+          "line": 70
+        },
+        "es": {
+          "id": 70,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡Date prisa!",
+          "kind": "help",
+          "line": 70,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.071",
+      "variants": {
+        "en": {
+          "id": 71,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "hurry up, fox!  croak!",
+          "kind": "help",
+          "line": 71
+        },
+        "ja": {
+          "id": 71,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "タﾞカラ カエルッテ イッタノニ〜!",
+          "kind": "help",
+          "line": 71
+        },
+        "de": {
+          "id": 71,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "beeil dich, fox! quak!",
+          "kind": "help",
+          "line": 71
+        },
+        "fr": {
+          "id": 71,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "allez, fox! croaa!!",
+          "kind": "help",
+          "line": 71
+        },
+        "es": {
+          "id": 71,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡Date prisa, Fox! ¡Croac!",
+          "kind": "help",
+          "line": 71,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.072",
+      "variants": {
+        "en": {
+          "id": 72,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "eyes forward, fox!",
+          "kind": "other",
+          "line": 72
+        },
+        "ja": {
+          "id": 72,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "マエヲ ミテロヨ!",
+          "kind": "other",
+          "line": 72
+        },
+        "de": {
+          "id": 72,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "vor dir, fox!",
+          "kind": "other",
+          "line": 72
+        },
+        "fr": {
+          "id": 72,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "derriere toi, fox!",
+          "kind": "other",
+          "line": 72
+        },
+        "es": {
+          "id": 72,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "¡Mira al frente, Fox!",
+          "kind": "other",
+          "line": 72,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.073",
+      "variants": {
+        "en": {
+          "id": 73,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "be careful, fox!",
+          "kind": "other",
+          "line": 73
+        },
+        "ja": {
+          "id": 73,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "フォックス キヲツケロヨ!",
+          "kind": "other",
+          "line": 73
+        },
+        "de": {
+          "id": 73,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "sei vorsichtig, fox!",
+          "kind": "other",
+          "line": 73
+        },
+        "fr": {
+          "id": 73,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "attention, fox!",
+          "kind": "other",
+          "line": 73
+        },
+        "es": {
+          "id": 73,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡Ten cuidado, Fox!",
+          "kind": "other",
+          "line": 73,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.074",
+      "variants": {
+        "en": {
+          "id": 74,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "this time, i saved you!",
+          "kind": "other",
+          "line": 74
+        },
+        "ja": {
+          "id": 74,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "タスケタリモ スルンタﾞナ ケロ!",
+          "kind": "other",
+          "line": 74
+        },
+        "de": {
+          "id": 74,
+          "colour": "white",
+          "speaker": "frog3",
+          "text": "diesmal habe ich dich noch retten können!",
+          "kind": "other",
+          "line": 74
+        },
+        "fr": {
+          "id": 74,
+          "colour": "white",
+          "speaker": "frog3",
+          "text": "on est quitte, fox!!",
+          "kind": "other",
+          "line": 74
+        },
+        "es": {
+          "id": 74,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡Esta vez te salvé yo!",
+          "kind": "other",
+          "line": 74,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.075",
+      "variants": {
+        "en": {
+          "id": 75,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "no sweat, fox!",
+          "kind": "other",
+          "line": 75
+        },
+        "ja": {
+          "id": 75,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "チョロイモンタﾞセﾞ!",
+          "kind": "other",
+          "line": 75
+        },
+        "de": {
+          "id": 75,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "war das alles?",
+          "kind": "other",
+          "line": 75
+        },
+        "fr": {
+          "id": 75,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "cool, fox!",
+          "kind": "other",
+          "line": 75
+        },
+        "es": {
+          "id": 75,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "¡Sin problemas, Fox!",
+          "kind": "other",
+          "line": 75,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.076",
+      "variants": {
+        "en": {
+          "id": 76,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "ok, ok! what's next?!",
+          "kind": "other",
+          "line": 76
+        },
+        "ja": {
+          "id": 76,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "ヨッシャ ツキﾞイコ ツキﾞ!",
+          "kind": "other",
+          "line": 76
+        },
+        "de": {
+          "id": 76,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "okay! und weiter##?",
+          "kind": "other",
+          "line": 76
+        },
+        "fr": {
+          "id": 76,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "ou est le prochain?!",
+          "kind": "other",
+          "line": 76
+        },
+        "es": {
+          "id": 76,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡Bien, bien! ¿Qué sigue?",
+          "kind": "other",
+          "line": 76,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.077",
+      "variants": {
+        "en": {
+          "id": 77,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "so far, so g-g-good!",
+          "kind": "other",
+          "line": 77
+        },
+        "ja": {
+          "id": 77,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "ナントカ イキノヒﾞテルンタﾞナ",
+          "kind": "other",
+          "line": 77
+        },
+        "de": {
+          "id": 77,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "so weit, so g-g-gut!",
+          "kind": "other",
+          "line": 77
+        },
+        "fr": {
+          "id": 77,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "c'est ca, fuit!!",
+          "kind": "other",
+          "line": 77
+        },
+        "es": {
+          "id": 77,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡Hasta ahora, todo b-b-bien!",
+          "kind": "other",
+          "line": 77,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.078",
+      "variants": {
+        "en": {
+          "id": 78,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "look, look!",
+          "kind": "other",
+          "line": 78
+        },
+        "ja": {
+          "id": 78,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "ミテケロ ミテケロ!",
+          "kind": "other",
+          "line": 78
+        },
+        "de": {
+          "id": 78,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "schau mal, da!",
+          "kind": "other",
+          "line": 78
+        },
+        "fr": {
+          "id": 78,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "regarde!!",
+          "kind": "other",
+          "line": 78
+        },
+        "es": {
+          "id": 78,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡Mira, mira!",
+          "kind": "other",
+          "line": 78,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.079",
+      "variants": {
+        "en": {
+          "id": 79,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "it's looking good, fox!",
+          "kind": "other",
+          "line": 79
+        },
+        "ja": {
+          "id": 79,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "ウテﾞカﾞ ナマッチマウセﾞ!",
+          "kind": "other",
+          "line": 79
+        },
+        "de": {
+          "id": 79,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "es sieht gut aus, fox!",
+          "kind": "other",
+          "line": 79
+        },
+        "fr": {
+          "id": 79,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "ca a l'air cool, fox!!",
+          "kind": "other",
+          "line": 79
+        },
+        "es": {
+          "id": 79,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "¡Esto va bien, Fox!",
+          "kind": "other",
+          "line": 79,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.080",
+      "variants": {
+        "en": {
+          "id": 80,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "we did it, let's go!",
+          "kind": "other",
+          "line": 80
+        },
+        "ja": {
+          "id": 80,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "イイチョウシタﾞナ フォックス!",
+          "kind": "other",
+          "line": 80
+        },
+        "de": {
+          "id": 80,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "wir haben es geschafft!",
+          "kind": "other",
+          "line": 80
+        },
+        "fr": {
+          "id": 80,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "c'est fait, allez!!",
+          "kind": "other",
+          "line": 80
+        },
+        "es": {
+          "id": 80,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡Lo conseguimos! ¡Vamos!",
+          "kind": "other",
+          "line": 80,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.081",
+      "variants": {
+        "en": {
+          "id": 81,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "g-g-great!",
+          "kind": "other",
+          "line": 81
+        },
+        "ja": {
+          "id": 81,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "カンタンナンタﾞナ ケロ!",
+          "kind": "other",
+          "line": 81
+        },
+        "de": {
+          "id": 81,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "s-s-super!",
+          "kind": "other",
+          "line": 81
+        },
+        "fr": {
+          "id": 81,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "super!!",
+          "kind": "other",
+          "line": 81
+        },
+        "es": {
+          "id": 81,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡G-g-genial!",
+          "kind": "other",
+          "line": 81,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.082",
+      "variants": {
+        "en": {
+          "id": 82,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "be a bit more careful fox!",
+          "kind": "other",
+          "line": 82
+        },
+        "ja": {
+          "id": 82,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "ソロソロ ホンキヲ タﾞソウカネ・・・・",
+          "kind": "other",
+          "line": 82
+        },
+        "de": {
+          "id": 82,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "ein bisschen vorsichtiger!",
+          "kind": "other",
+          "line": 82
+        },
+        "fr": {
+          "id": 82,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "fait plus attention, fox!",
+          "kind": "other",
+          "line": 82
+        },
+        "es": {
+          "id": 82,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "¡Ten un poco más de cuidado, Fox!",
+          "kind": "other",
+          "line": 82,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.083",
+      "variants": {
+        "en": {
+          "id": 83,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "please tread carefully, fox!",
+          "kind": "other",
+          "line": 83
+        },
+        "ja": {
+          "id": 83,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "シッカリ ヤッテクレヨ リ-タﾞ-!",
+          "kind": "other",
+          "line": 83
+        },
+        "de": {
+          "id": 83,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "in zukunft vorsichtiger!",
+          "kind": "other",
+          "line": 83
+        },
+        "fr": {
+          "id": 83,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "plus doucement, fox!!",
+          "kind": "other",
+          "line": 83
+        },
+        "es": {
+          "id": 83,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡Avanza con cuidado, Fox!",
+          "kind": "other",
+          "line": 83,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.084",
+      "variants": {
+        "en": {
+          "id": 84,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "remember not to shoot m-m-me!",
+          "kind": "help",
+          "line": 84
+        },
+        "ja": {
+          "id": 84,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "セﾞッタイ ホﾞクヲ ウタナイテﾞヨネ!",
+          "kind": "help",
+          "line": 84
+        },
+        "de": {
+          "id": 84,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "nicht mehr auf mich s-schiessen!",
+          "kind": "help",
+          "line": 84
+        },
+        "fr": {
+          "id": 84,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "rappelle toi de pas me tuer!!",
+          "kind": "help",
+          "line": 84
+        },
+        "es": {
+          "id": 84,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡Recuerda no dispararme a m-m-mí!",
+          "kind": "help",
+          "line": 84,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.085",
+      "variants": {
+        "en": {
+          "id": 85,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "it's going pretty badly!",
+          "kind": "help",
+          "line": 85
+        },
+        "ja": {
+          "id": 85,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "ヤハﾞイコトニ ナッチマッタセﾞ・・・",
+          "kind": "help",
+          "line": 85
+        },
+        "de": {
+          "id": 85,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "das sieht nicht gut aus!",
+          "kind": "help",
+          "line": 85
+        },
+        "fr": {
+          "id": 85,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "ca sent pas bon ici!!",
+          "kind": "help",
+          "line": 85
+        },
+        "es": {
+          "id": 85,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "¡Esto va bastante mal!",
+          "kind": "help",
+          "line": 85,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.086",
+      "variants": {
+        "en": {
+          "id": 86,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "i don't think i'm going to make it!",
+          "kind": "help",
+          "line": 86
+        },
+        "ja": {
+          "id": 86,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "モウ ホﾞロホﾞロタﾞ〜! ナントカシテクレ・・・",
+          "kind": "help",
+          "line": 86
+        },
+        "de": {
+          "id": 86,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "ich glaube, ich schaffe es nicht!",
+          "kind": "help",
+          "line": 86
+        },
+        "fr": {
+          "id": 86,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "je le crois pas! je l'ai fait!!",
+          "kind": "help",
+          "line": 86
+        },
+        "es": {
+          "id": 86,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡No creo que lo consiga!",
+          "kind": "help",
+          "line": 86,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.087",
+      "variants": {
+        "en": {
+          "id": 87,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "my ship's falling apart### ribbit!",
+          "kind": "help",
+          "line": 87
+        },
+        "ja": {
+          "id": 87,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "モウタﾞメケﾞロ! モウタﾞメタﾞケﾞロ〜!",
+          "kind": "help",
+          "line": 87
+        },
+        "de": {
+          "id": 87,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "mein schiff ist demoliert!",
+          "kind": "help",
+          "line": 87
+        },
+        "fr": {
+          "id": 87,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "mon vaisseau est abime###!",
+          "kind": "help",
+          "line": 87
+        },
+        "es": {
+          "id": 87,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "Mi nave se cae a pedazos... ¡Croac!",
+          "kind": "help",
+          "line": 87,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.088",
+      "variants": {
+        "en": {
+          "id": 88,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "star fox team, our last resort is to counter attack venom!  good luck!",
+          "kind": "other",
+          "line": 88
+        },
+        "ja": {
+          "id": 88,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "ア-  スタ-フォックス ノ ショクン・・・ ワレワレニ ノコサレタテハ ヘﾞノムヲ チョクセツタタクコトタﾞ. ワカﾞ コ-ネリアヲマモルタメ カﾞンハﾞッテクレ.",
+          "kind": "other",
+          "line": 88
+        },
+        "de": {
+          "id": 88,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "star fox team! euer ziel ist der planet venom, den ihr vernichten müsst! viel glück!",
+          "kind": "other",
+          "line": 88
+        },
+        "fr": {
+          "id": 88,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "equipe star fox, il ne reste plus qu'a contrer l'attaque! bonne chance!",
+          "kind": "other",
+          "line": 88
+        },
+        "es": {
+          "id": 88,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "¡Equipo Star Fox, solo nos queda contraatacar en Venom! ¡Buena suerte!",
+          "kind": "other",
+          "line": 88,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.089",
+      "variants": {
+        "en": {
+          "id": 89,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "andross's forces intend to build a base in this area!  destroy their rock crusher!",
+          "kind": "other",
+          "line": 89
+        },
+        "ja": {
+          "id": 89,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "フォックスクン !  アントﾞルフノクﾞンセﾞイハ コノチイキニキチヲ ケンセツシヨウトシテオル.  ロッククラッシャ-ヲ ハカイシテクレ !",
+          "kind": "other",
+          "line": 89
+        },
+        "de": {
+          "id": 89,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "andross lässt in diesem gebiet eine basis errichten!  ihr müsst alle maschinen zerstören!",
+          "kind": "other",
+          "line": 89
+        },
+        "fr": {
+          "id": 89,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "andross veut construire une base dans cette zone! detruisez son concasseur!!",
+          "kind": "other",
+          "line": 89
+        },
+        "es": {
+          "id": 89,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "¡Las fuerzas de Andross quieren construir una base aquí! ¡Destruyan su trituradora de rocas!",
+          "kind": "other",
+          "line": 89,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.090",
+      "variants": {
+        "en": {
+          "id": 90,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "the space armada consists of powerful battleships! destroy their energy cores!",
+          "kind": "other",
+          "line": 90
+        },
+        "ja": {
+          "id": 90,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "フォックスクン! コノ スヘﾟ-スアマタﾞハ ウチュウ サイキョウノ カンタイタﾞ. センカンニセンニュウシ ソノ エネルキﾞ-コアヲ ハカイシテクレ !",
+          "kind": "other",
+          "line": 90
+        },
+        "de": {
+          "id": 90,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "die raumflotte besteht aus gewaltigen schlachtschiffen! zerstört ihre energiekerne!",
+          "kind": "other",
+          "line": 90
+        },
+        "fr": {
+          "id": 90,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "l'armada spatiale est constitue de vaisseaux puissants! detruisez leur coeur!",
+          "kind": "other",
+          "line": 90
+        },
+        "es": {
+          "id": 90,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "¡La armada espacial cuenta con poderosos acorazados! ¡Destruyan sus núcleos de energía!",
+          "kind": "other",
+          "line": 90,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.091",
+      "variants": {
+        "en": {
+          "id": 91,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "be sure to use your retros if you're going too fast!  be careful with my arwings!",
+          "kind": "other",
+          "line": 91
+        },
+        "ja": {
+          "id": 91,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "フﾞレ-キ・フﾞ-ストヲ ツカッテオルカネ ヘﾞノムハ スクﾞソコタﾞ. ア-ウィンヲ コワサヌヨウニ カﾞンハﾞッテクレ スタ-フォックスノショクン !",
+          "kind": "other",
+          "line": 91
+        },
+        "de": {
+          "id": 91,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "nur ein tip### benutzt den rückschub, wenn ihr zu schnell seid# viel glück!",
+          "kind": "other",
+          "line": 91
+        },
+        "fr": {
+          "id": 91,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "utilisez vos freins si vous allez trop vite! faites attention a mes arwings!",
+          "kind": "other",
+          "line": 91
+        },
+        "es": {
+          "id": 91,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "¡Usen los frenos si van demasiado rápido! ¡Cuiden mis Arwings!",
+          "kind": "other",
+          "line": 91,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.092",
+      "variants": {
+        "en": {
+          "id": 92,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "andross is hiding on venom!  fox, you must find his core brain and destroy it!",
+          "kind": "other",
+          "line": 92
+        },
+        "ja": {
+          "id": 92,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "フォックスクン! アントﾞルフハ キットコノヘﾞノムニ ヒソンテﾞオル. テキクﾞンノコントロ-ルフﾞレインヲ ミツケタﾞシ ハカイシテクレ !",
+          "kind": "other",
+          "line": 92
+        },
+        "de": {
+          "id": 92,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "andross hält sich auf venom versteckt! finde und zerstöre sein hauptquartier, fox!",
+          "kind": "other",
+          "line": 92
+        },
+        "fr": {
+          "id": 92,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "andross se cache sur venom! fox, tu doit trouver et detruire ce fou dangereux!",
+          "kind": "other",
+          "line": 92
+        },
+        "es": {
+          "id": 92,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "¡Andross se oculta en Venom! ¡Fox, encuentra su cerebro central y destrúyelo!",
+          "kind": "other",
+          "line": 92,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.093",
+      "variants": {
+        "en": {
+          "id": 93,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "        CORNERIA - THE BASE",
+          "kind": "other",
+          "line": 93
+        },
+        "ja": {
+          "id": 93,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "       CORNERIA - THE BASE",
+          "kind": "other",
+          "line": 93
+        },
+        "de": {
+          "id": 93,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "       CORNERIA - DIE BASIS",
+          "kind": "other",
+          "line": 93
+        },
+        "fr": {
+          "id": 93,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "       CORNERIA - LA BASE",
+          "kind": "other",
+          "line": 93
+        },
+        "es": {
+          "id": 93,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "CORNERIA: LA BASE",
+          "kind": "other",
+          "line": 93,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.094",
+      "variants": {
+        "en": {
+          "id": 94,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "           ASTEROID BELT",
+          "kind": "other",
+          "line": 94
+        },
+        "ja": {
+          "id": 94,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "          ASTEROID BELT",
+          "kind": "other",
+          "line": 94
+        },
+        "de": {
+          "id": 94,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "        ASTEROIDEN GÜRTEL",
+          "kind": "other",
+          "line": 94
+        },
+        "fr": {
+          "id": 94,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "        CHAMP D'ASTEROIDES",
+          "kind": "other",
+          "line": 94
+        },
+        "es": {
+          "id": 94,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "CINTURÓN DE ASTEROIDES",
+          "kind": "other",
+          "line": 94,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.095",
+      "variants": {
+        "en": {
+          "id": 95,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "              SECTOR  X",
+          "kind": "other",
+          "line": 95
+        },
+        "ja": {
+          "id": 95,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "             SECTOR  X",
+          "kind": "other",
+          "line": 95
+        },
+        "de": {
+          "id": 95,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "             SEKTOR  X",
+          "kind": "other",
+          "line": 95
+        },
+        "fr": {
+          "id": 95,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "             SECTEUR  X",
+          "kind": "other",
+          "line": 95
+        },
+        "es": {
+          "id": 95,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "SECTOR X",
+          "kind": "other",
+          "line": 95,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.096",
+      "variants": {
+        "en": {
+          "id": 96,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "       THE PLANET FORTUNA",
+          "kind": "other",
+          "line": 96
+        },
+        "ja": {
+          "id": 96,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "      THE PLANET FORTUNA",
+          "kind": "other",
+          "line": 96
+        },
+        "de": {
+          "id": 96,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "      DER PLANET FORTUNA",
+          "kind": "other",
+          "line": 96
+        },
+        "fr": {
+          "id": 96,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "      LA PLANETE FORTUNA",
+          "kind": "other",
+          "line": 96
+        },
+        "es": {
+          "id": 96,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "EL PLANETA FORTUNA",
+          "kind": "other",
+          "line": 96,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.097",
+      "variants": {
+        "en": {
+          "id": 97,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "     THE ANDROSS SPACE ARMADA",
+          "kind": "other",
+          "line": 97
+        },
+        "ja": {
+          "id": 97,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "    THE ANDORF SPACE ARMADA",
+          "kind": "other",
+          "line": 97
+        },
+        "de": {
+          "id": 97,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "    DIE ANDROSS RAUMFLOTTE",
+          "kind": "other",
+          "line": 97
+        },
+        "fr": {
+          "id": 97,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "     L'ARMADA DE L'ESPACE",
+          "kind": "other",
+          "line": 97
+        },
+        "es": {
+          "id": 97,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "LA ARMADA ESPACIAL DE ANDROSS",
+          "kind": "other",
+          "line": 97,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.098",
+      "variants": {
+        "en": {
+          "id": 98,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "        THE PLANET TITANIA",
+          "kind": "other",
+          "line": 98
+        },
+        "ja": {
+          "id": 98,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "       THE PLANET TITANIA",
+          "kind": "other",
+          "line": 98
+        },
+        "de": {
+          "id": 98,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "       DER PLANET TITANIA",
+          "kind": "other",
+          "line": 98
+        },
+        "fr": {
+          "id": 98,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "        LA PLANETE TITANIA",
+          "kind": "other",
+          "line": 98
+        },
+        "es": {
+          "id": 98,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "EL PLANETA TITANIA",
+          "kind": "other",
+          "line": 98,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.099",
+      "variants": {
+        "en": {
+          "id": 99,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "      THE AWESOME BLACK HOLE",
+          "kind": "other",
+          "line": 99
+        },
+        "ja": {
+          "id": 99,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "     THE AWESOME BLACK HOLE",
+          "kind": "other",
+          "line": 99
+        },
+        "de": {
+          "id": 99,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "             SCHW. LOCH",
+          "kind": "other",
+          "line": 99
+        },
+        "fr": {
+          "id": 99,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "    LE CURIEUX TROU NOIR",
+          "kind": "other",
+          "line": 99
+        },
+        "es": {
+          "id": 99,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "EL IMPONENTE AGUJERO NEGRO",
+          "kind": "other",
+          "line": 99,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.100",
+      "variants": {
+        "en": {
+          "id": 100,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "              SECTOR  Y",
+          "kind": "other",
+          "line": 100
+        },
+        "ja": {
+          "id": 100,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "             SECTOR  Y",
+          "kind": "other",
+          "line": 100
+        },
+        "de": {
+          "id": 100,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "             SEKTOR  Y",
+          "kind": "other",
+          "line": 100
+        },
+        "fr": {
+          "id": 100,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "             SECTEUR  Y",
+          "kind": "other",
+          "line": 100
+        },
+        "es": {
+          "id": 100,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "SECTOR Y",
+          "kind": "other",
+          "line": 100,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.101",
+      "variants": {
+        "en": {
+          "id": 101,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "      THE BATTLE BASE METEOR",
+          "kind": "other",
+          "line": 101
+        },
+        "ja": {
+          "id": 101,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "     THE BATTLE BASE METEOR",
+          "kind": "other",
+          "line": 101
+        },
+        "de": {
+          "id": 101,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "    DIE METEOR SCHLACHTBASIS",
+          "kind": "other",
+          "line": 101
+        },
+        "fr": {
+          "id": 101,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "    LA BASE DE COMBAT METEOR",
+          "kind": "other",
+          "line": 101
+        },
+        "es": {
+          "id": 101,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "METEOR: LA BASE DE COMBATE",
+          "kind": "other",
+          "line": 101,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.102",
+      "variants": {
+        "en": {
+          "id": 102,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "              SECTOR  Z",
+          "kind": "other",
+          "line": 102
+        },
+        "ja": {
+          "id": 102,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "             SECTOR  Z",
+          "kind": "other",
+          "line": 102
+        },
+        "de": {
+          "id": 102,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "             SEKTOR  Z",
+          "kind": "other",
+          "line": 102
+        },
+        "fr": {
+          "id": 102,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "             SECTEUR  Z",
+          "kind": "other",
+          "line": 102
+        },
+        "es": {
+          "id": 102,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "SECTOR Z",
+          "kind": "other",
+          "line": 102,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.103",
+      "variants": {
+        "en": {
+          "id": 103,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "        THE PLANET MACBETH",
+          "kind": "other",
+          "line": 103
+        },
+        "ja": {
+          "id": 103,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "       THE PLANET MACBETH",
+          "kind": "other",
+          "line": 103
+        },
+        "de": {
+          "id": 103,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "       DER PLANET MACBETH",
+          "kind": "other",
+          "line": 103
+        },
+        "fr": {
+          "id": 103,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "       LA PLANETE MACBETH",
+          "kind": "other",
+          "line": 103
+        },
+        "es": {
+          "id": 103,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "EL PLANETA MACBETH",
+          "kind": "other",
+          "line": 103,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.104",
+      "variants": {
+        "en": {
+          "id": 104,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "      VENOM - THE FINAL GOAL",
+          "kind": "other",
+          "line": 104
+        },
+        "ja": {
+          "id": 104,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "     VENOM - THE FINAL GOAL",
+          "kind": "other",
+          "line": 104
+        },
+        "de": {
+          "id": 104,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "        VENOM - DAS ZIEL",
+          "kind": "other",
+          "line": 104
+        },
+        "fr": {
+          "id": 104,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "        VENOM - LE BUT FINAL",
+          "kind": "other",
+          "line": 104
+        },
+        "es": {
+          "id": 104,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "VENOM: EL OBJETIVO FINAL",
+          "kind": "other",
+          "line": 104,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.105",
+      "variants": {
+        "en": {
+          "id": 105,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "      OUT OF THIS DIMENSION",
+          "kind": "other",
+          "line": 105
+        },
+        "ja": {
+          "id": 105,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "     OUT OF THIS DIMENSION",
+          "kind": "other",
+          "line": 105
+        },
+        "de": {
+          "id": 105,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "     EINE ANDERE DIMENSION",
+          "kind": "other",
+          "line": 105
+        },
+        "fr": {
+          "id": 105,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "     LA 4 EME DIMENSION",
+          "kind": "other",
+          "line": 105
+        },
+        "es": {
+          "id": 105,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "FUERA DE ESTA DIMENSIÓN",
+          "kind": "other",
+          "line": 105,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.106",
+      "variants": {
+        "en": {
+          "id": 106,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "corneria's resource world has been overrun!  you must re-take the weather control unit!",
+          "kind": "other",
+          "line": 106
+        },
+        "ja": {
+          "id": 106,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "ショクン!  ココハカツテ ワカﾞコ-ネリアノ シケﾞンワクセイタﾞッタ. テンコウソウサユニットヲ サトﾞウサセ タタカイヲ ユウリニススメテクレ !",
+          "kind": "other",
+          "line": 106
+        },
+        "de": {
+          "id": 106,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "cornerias versorgungsplanet wird belagert! erobere die klimakontrollstation zurück!",
+          "kind": "other",
+          "line": 106
+        },
+        "fr": {
+          "id": 106,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "les ressources de corneria sont taries! vous devez re-attaquer le controle du temps!",
+          "kind": "other",
+          "line": 106
+        },
+        "es": {
+          "id": 106,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "¡Han invadido el planeta que abastece a Corneria! ¡Recuperen la unidad de control climático!",
+          "kind": "other",
+          "line": 106,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.107",
+      "variants": {
+        "en": {
+          "id": 107,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "how are the arwings handling?  if an amoeba clings to your ship, use l or r to get rid of it#",
+          "kind": "other",
+          "line": 107
+        },
+        "ja": {
+          "id": 107,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "ショクン ア-ウィンノ チョウシハトﾞウカネ? コノセクタ-テﾞ アメ-ハﾞ-ニ トリツカレタラ [(L)]・[(R)] ホﾞタンテﾞ フリハラウコトタﾞ !",
+          "kind": "other",
+          "line": 107
+        },
+        "de": {
+          "id": 107,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "sollte sich eine der amöben an deinem schiff festsetzen, benutze l und r, um sie loszuwerden!",
+          "kind": "other",
+          "line": 107
+        },
+        "fr": {
+          "id": 107,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "faites gaffe en volant! Si un amoeba grimpe sur votre arwing, utilisez l & r pour l'eliminer#",
+          "kind": "other",
+          "line": 107
+        },
+        "es": {
+          "id": 107,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "¿Qué tal responden los Arwings? Si una ameba se pega a su nave, usen L o R para quitársela.",
+          "kind": "other",
+          "line": 107,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.108",
+      "variants": {
+        "en": {
+          "id": 108,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "you've chosen course three###  a good choice to take venom by surprise!",
+          "kind": "other",
+          "line": 108
+        },
+        "ja": {
+          "id": 108,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "キミカﾞ コノコ-スヲエラフﾞナラ ワシハナニモ イワン! テキノウラヲカクニハ ヨイセンタクカモ シレヌ.  ケントウヲイノル フォックスクン !",
+          "kind": "other",
+          "line": 108
+        },
+        "de": {
+          "id": 108,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "du hast dich für die dritte route entschieden### damit rechnet andross nie!",
+          "kind": "other",
+          "line": 108
+        },
+        "fr": {
+          "id": 108,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "vous avez choisi la route 3### un bon choix pour surprendre venom!",
+          "kind": "other",
+          "line": 108
+        },
+        "es": {
+          "id": 108,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "Eligieron la ruta tres... ¡Una buena elección para tomar Venom por sorpresa!",
+          "kind": "other",
+          "line": 108,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.109",
+      "variants": {
+        "en": {
+          "id": 109,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "use the l or r button to escape the tractor beam of the enemy battleship! you can do it, fox!",
+          "kind": "other",
+          "line": 109
+        },
+        "ja": {
+          "id": 109,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "テキハ アラユルモノヲハネカエス センカンヲ カイハツシタヨウタﾞ.  トラクタ-ヒﾞ-ムニ ツカマッタラ [(L)]・[(R)] ホﾞタンテﾞ タﾞッシュツセヨ !",
+          "kind": "other",
+          "line": 109
+        },
+        "de": {
+          "id": 109,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "benutze l und r, um den traktorstrahlen des feindlichen schlachtschiffes auszuweichen!",
+          "kind": "other",
+          "line": 109
+        },
+        "fr": {
+          "id": 109,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "utilise le bouton l ou r pour fuir le rayon attracteur de l'ennemi! tu peut le faire, fox!!",
+          "kind": "other",
+          "line": 109
+        },
+        "es": {
+          "id": 109,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "¡Usa L o R para escapar del rayo tractor del acorazado enemigo! ¡Tú puedes, Fox!",
+          "kind": "other",
+          "line": 109,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.110",
+      "variants": {
+        "en": {
+          "id": 110,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "andross has taken control of the huge creatures who live on fortuna!  take care, fox!",
+          "kind": "other",
+          "line": 110
+        },
+        "ja": {
+          "id": 110,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "フォ-チュナハ キョタﾞイセイフﾞツカﾞ セイソクスル シセﾞンニ メクﾞマレタホシタﾞカﾞ アントﾞルフハ コノキョタﾞイセイフﾞツヲ アヤツリハシﾞメタヨウタﾞ",
+          "kind": "other",
+          "line": 110
+        },
+        "de": {
+          "id": 110,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "andross kontrolliert die riesigen geschöpfe, die auf fortuna leben! alles klar, fox?",
+          "kind": "other",
+          "line": 110
+        },
+        "fr": {
+          "id": 110,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "andross a pris le controle des creatures enormes vivant sur fortuna!  attention, fox!",
+          "kind": "other",
+          "line": 110
+        },
+        "es": {
+          "id": 110,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "¡Andross controla las enormes criaturas que habitan Fortuna! ¡Ten cuidado, Fox!",
+          "kind": "other",
+          "line": 110,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.111",
+      "variants": {
+        "en": {
+          "id": 111,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "your team is doing well, fox!  i hope you're taking good care of my arwings!  go for macbeth!",
+          "kind": "other",
+          "line": 111
+        },
+        "ja": {
+          "id": 111,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "オ-  ケﾞンキテﾞアッタカ フォックスクン ! ア-ウィンハ コワレテオランタﾞロウネ? コノセクタ-ヲ ヌケレハﾞ マクヘﾞスタﾞ !",
+          "kind": "other",
+          "line": 111
+        },
+        "de": {
+          "id": 111,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "du hast ein starkes team, fox! dein nächstes ziel ist der planet macbeth!",
+          "kind": "other",
+          "line": 111
+        },
+        "fr": {
+          "id": 111,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "votre equipe fonctionne, fox!  j'espere que tu prend soin de mes arwings! direction macbeth!!",
+          "kind": "other",
+          "line": 111
+        },
+        "es": {
+          "id": 111,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "¡Tu equipo lo hace bien, Fox! ¡Espero que cuiden mis Arwings! ¡Rumbo a Macbeth!",
+          "kind": "other",
+          "line": 111,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.112",
+      "variants": {
+        "en": {
+          "id": 112,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "the hollow interior of macbeth is ideal for a base!  prevent andross from building here!",
+          "kind": "other",
+          "line": 112
+        },
+        "ja": {
+          "id": 112,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "フォックスクン!  コノホシハ クウトﾞウヲモツ. アントﾞルフカﾞキチヲツクルニハ カッコウノホシタﾞ キチノケンセツヲ カナラスﾞヤ ソシシテクレ !",
+          "kind": "other",
+          "line": 112
+        },
+        "de": {
+          "id": 112,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "das innere des planeten macbeth eignet sich gut für den bau einer basis! haltet andross davon ab!",
+          "kind": "other",
+          "line": 112
+        },
+        "fr": {
+          "id": 112,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "l'interieur de macbeth est ideal pour une base! empechons andross d'en construire une!",
+          "kind": "other",
+          "line": 112
+        },
+        "es": {
+          "id": 112,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "¡El interior hueco de Macbeth es ideal para una base! ¡Impidan que Andross construya aquí!",
+          "kind": "other",
+          "line": 112,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.113",
+      "variants": {
+        "en": {
+          "id": 113,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "this space grave yard, created by andross's experiments, is where your father vanished, fox!",
+          "kind": "other",
+          "line": 113
+        },
+        "ja": {
+          "id": 113,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "キミノチチウエモ コノフシキﾞナクウカンテﾞ キエテシマッタ. ソコハアントﾞルフノシﾞッケンカﾞ ウンタﾞ ハカハﾞタﾞ! キヲツケロ フォックスクン !",
+          "kind": "other",
+          "line": 113
+        },
+        "de": {
+          "id": 113,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "diesen weltraumfriedhof haben wir andross zu verdanken! hier ist dein vater verschwunden, fox!",
+          "kind": "other",
+          "line": 113
+        },
+        "fr": {
+          "id": 113,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "c'est dans le cimetiere ou ton pere est entere que andross fait ces experiences! aller, fox!",
+          "kind": "other",
+          "line": 113
+        },
+        "es": {
+          "id": 113,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "¡Este cementerio espacial, creado por los experimentos de Andross, es donde desapareció tu padre, Fox!",
+          "kind": "other",
+          "line": 113,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.114",
+      "variants": {
+        "en": {
+          "id": 114,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "is everyone all right, fox?!  you're on course to sneak into venom's back door!",
+          "kind": "other",
+          "line": 114
+        },
+        "ja": {
+          "id": 114,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "セﾞンイン フﾞシﾞタﾞッタカ! フォックスクン・・? ヘﾞノムノ テキキチコウホウヨリセンニュウセヨ アントﾞルフハ アセリハシﾞメテオルヨウタﾞ!",
+          "kind": "other",
+          "line": 114
+        },
+        "de": {
+          "id": 114,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "alles in ordnung, fox? okay, dann schleiche dich jetzt durch die hintertür an venom ran!",
+          "kind": "other",
+          "line": 114
+        },
+        "fr": {
+          "id": 114,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "tout le monde est ok, fox?!  vous allez vous infiltrer discretement dans venom!",
+          "kind": "other",
+          "line": 114
+        },
+        "es": {
+          "id": 114,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "¿Están todos bien, Fox? ¡Esa ruta los llevará a la entrada trasera de Venom!",
+          "kind": "other",
+          "line": 114,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.115",
+      "variants": {
+        "en": {
+          "id": 115,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "come in, arwings!  fox, where are you?!  we need you to protect corneria!",
+          "kind": "other",
+          "line": 115
+        },
+        "ja": {
+          "id": 115,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "フォックスクン! フォックス!・・・ア-ウィン イッタイ トﾞコヘキエテシマッタノタﾞ・・・ コ-ネリアヲ マモッテクレ!",
+          "kind": "other",
+          "line": 115
+        },
+        "de": {
+          "id": 115,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "star fox team - bitte melden! wir brauchen euch, um corneria zu beschützen!",
+          "kind": "other",
+          "line": 115
+        },
+        "fr": {
+          "id": 115,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "venez, arwings!  ou est fox?!  on a besoin de lui pour proteger corneria!",
+          "kind": "other",
+          "line": 115
+        },
+        "es": {
+          "id": 115,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "¡Respondan, Arwings! ¡Fox, dónde estás! ¡Te necesitamos para proteger Corneria!",
+          "kind": "other",
+          "line": 115,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.116",
+      "variants": {
+        "en": {
+          "id": 116,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "you've made it this far### it's your fate to destroy andross!  we're counting on you, fox!",
+          "kind": "other",
+          "line": 116
+        },
+        "ja": {
+          "id": 116,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "オ- キミタチカﾞ ココマテﾞヤルトハ・・・・ ! アントﾞルフヲタオスノハ ヤハリキミノ シュクメイ タﾞッタノカモシレン. ケントウヲイノル フォックス!",
+          "kind": "other",
+          "line": 116
+        },
+        "de": {
+          "id": 116,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "du bist weit gekommen### jetzt musst du nur noch andross vernichten! wir zählen auf dich!",
+          "kind": "other",
+          "line": 116
+        },
+        "fr": {
+          "id": 116,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "fox, c'est tn destin de detruire andross!  nous comptons sur toi, fox!",
+          "kind": "other",
+          "line": 116
+        },
+        "es": {
+          "id": 116,
+          "colour": "white",
+          "speaker": "fox",
+          "text": "Han llegado hasta aquí... ¡Tu destino es destruir a Andross! ¡Contamos contigo, Fox!",
+          "kind": "other",
+          "line": 116,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.117",
+      "variants": {
+        "en": {
+          "id": 117,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "the attack- carrier will be mine!",
+          "kind": "other",
+          "line": 117
+        },
+        "ja": {
+          "id": 117,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "アタック キャリア-ハ モラッタセﾞ!",
+          "kind": "other",
+          "line": 117
+        },
+        "de": {
+          "id": 117,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "das kommandoschiff gehört mir!",
+          "kind": "other",
+          "line": 117
+        },
+        "fr": {
+          "id": 117,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "ce bombardier est a moi!",
+          "kind": "other",
+          "line": 117
+        },
+        "es": {
+          "id": 117,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "¡El portaaviones de ataque será mío!",
+          "kind": "other",
+          "line": 117,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.118",
+      "variants": {
+        "en": {
+          "id": 118,
+          "colour": "white",
+          "speaker": "pepper3",
+          "text": "ok, fox! let's see your real ability!",
+          "kind": "other",
+          "line": 118
+        },
+        "ja": {
+          "id": 118,
+          "colour": "white",
+          "speaker": "pepper3",
+          "text": "キミノ シﾞツリョクヲ ミセテモラウヨ",
+          "kind": "other",
+          "line": 118
+        },
+        "de": {
+          "id": 118,
+          "colour": "white",
+          "speaker": "pepper3",
+          "text": "okay, fox! zeig mal, was du drauf hast!",
+          "kind": "other",
+          "line": 118
+        },
+        "fr": {
+          "id": 118,
+          "colour": "white",
+          "speaker": "pepper3",
+          "text": "ok, fox! montre moi ce que tu vaut!",
+          "kind": "other",
+          "line": 118
+        },
+        "es": {
+          "id": 118,
+          "colour": "white",
+          "speaker": "pepper3",
+          "text": "¡Bien, Fox! ¡Demuestra de qué eres capaz!",
+          "kind": "other",
+          "line": 118,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.119",
+      "variants": {
+        "en": {
+          "id": 119,
+          "colour": "white",
+          "speaker": "rabbit3",
+          "text": "we've got to fly through all the rings!",
+          "kind": "other",
+          "line": 119
+        },
+        "ja": {
+          "id": 119,
+          "colour": "white",
+          "speaker": "rabbit3",
+          "text": "リンクﾞヲ ツツﾞケテ ククﾞレッテサ !",
+          "kind": "other",
+          "line": 119
+        },
+        "de": {
+          "id": 119,
+          "colour": "white",
+          "speaker": "rabbit3",
+          "text": "wir müssen durch alle ringe fliegen!",
+          "kind": "other",
+          "line": 119
+        },
+        "fr": {
+          "id": 119,
+          "colour": "white",
+          "speaker": "rabbit3",
+          "text": "nous devons traverser tous les anneaux!",
+          "kind": "other",
+          "line": 119
+        },
+        "es": {
+          "id": 119,
+          "colour": "white",
+          "speaker": "rabbit3",
+          "text": "¡Tenemos que atravesar todos los anillos!",
+          "kind": "other",
+          "line": 119,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.120",
+      "variants": {
+        "en": {
+          "id": 120,
+          "colour": "white",
+          "speaker": "pepper3",
+          "text": "i recommend you use control type a or b!",
+          "kind": "other",
+          "line": 120
+        },
+        "ja": {
+          "id": 120,
+          "colour": "white",
+          "speaker": "pepper3",
+          "text": "ワシハ コントロ-ル[(A)] マタハ[(B)]ヲ ススメル",
+          "kind": "other",
+          "line": 120
+        },
+        "de": {
+          "id": 120,
+          "colour": "white",
+          "speaker": "pepper3",
+          "text": "ich rate dir zu tastenbelegung a oder b!",
+          "kind": "other",
+          "line": 120
+        },
+        "fr": {
+          "id": 120,
+          "colour": "white",
+          "speaker": "pepper3",
+          "text": "je te conseille les controles a ou b!",
+          "kind": "other",
+          "line": 120
+        },
+        "es": {
+          "id": 120,
+          "colour": "white",
+          "speaker": "pepper3",
+          "text": "¡Recomiendo el control de tipo A o B!",
+          "kind": "other",
+          "line": 120,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.121",
+      "variants": {
+        "en": {
+          "id": 121,
+          "colour": "white",
+          "speaker": "pepper3",
+          "text": "ahhh### you are quite skillful,   fox!",
+          "kind": "other",
+          "line": 121
+        },
+        "ja": {
+          "id": 121,
+          "colour": "white",
+          "speaker": "pepper3",
+          "text": "オ- ナカナカノ   モノタﾞナ",
+          "kind": "other",
+          "line": 121
+        },
+        "de": {
+          "id": 121,
+          "colour": "white",
+          "speaker": "pepper3",
+          "text": "nicht schlecht, fox!",
+          "kind": "other",
+          "line": 121
+        },
+        "fr": {
+          "id": 121,
+          "colour": "white",
+          "speaker": "pepper3",
+          "text": "ahhh### tu est assez adroit, fox!",
+          "kind": "other",
+          "line": 121
+        },
+        "es": {
+          "id": 121,
+          "colour": "white",
+          "speaker": "pepper3",
+          "text": "Ah... ¡Eres muy hábil, Fox!",
+          "kind": "other",
+          "line": 121,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.122",
+      "variants": {
+        "en": {
+          "id": 122,
+          "colour": "white",
+          "speaker": "pepper3",
+          "text": "ok, you passed! go fight the real enemy!",
+          "kind": "other",
+          "line": 122
+        },
+        "ja": {
+          "id": 122,
+          "colour": "white",
+          "speaker": "pepper3",
+          "text": "ハヤク シﾞッセンニテﾞテ クレ テキカﾞセマッテオル",
+          "kind": "other",
+          "line": 122
+        },
+        "de": {
+          "id": 122,
+          "colour": "white",
+          "speaker": "pepper3",
+          "text": "okay, das war gut, aber jetzt wird es ernst!",
+          "kind": "other",
+          "line": 122
+        },
+        "fr": {
+          "id": 122,
+          "colour": "white",
+          "speaker": "pepper3",
+          "text": "ok, c'est bon! vas vers de vrais enemis!",
+          "kind": "other",
+          "line": 122
+        },
+        "es": {
+          "id": 122,
+          "colour": "white",
+          "speaker": "pepper3",
+          "text": "¡Bien, aprobaste! ¡Ve a combatir al enemigo real!",
+          "kind": "other",
+          "line": 122,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.123",
+      "variants": {
+        "en": {
+          "id": 123,
+          "colour": "white",
+          "speaker": "frog3",
+          "text": "hit start to   go back to the game, ribbit!",
+          "kind": "other",
+          "line": 123
+        },
+        "ja": {
+          "id": 123,
+          "colour": "white",
+          "speaker": "frog3",
+          "text": "スタ-トホﾞタンテﾞ ケﾞ-ムニ モトﾞル ケロ!",
+          "kind": "other",
+          "line": 123
+        },
+        "de": {
+          "id": 123,
+          "colour": "white",
+          "speaker": "frog3",
+          "text": "drücke start, um das spiel zu beginnen!",
+          "kind": "other",
+          "line": 123
+        },
+        "fr": {
+          "id": 123,
+          "colour": "white",
+          "speaker": "frog3",
+          "text": "appuie start pour retourner au jeu, ribbit!",
+          "kind": "other",
+          "line": 123
+        },
+        "es": {
+          "id": 123,
+          "colour": "white",
+          "speaker": "frog3",
+          "text": "¡Pulsa START para volver al juego! ¡Croac!",
+          "kind": "other",
+          "line": 123,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.124",
+      "variants": {
+        "en": {
+          "id": 124,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "i can't believe pepper has to test us!",
+          "kind": "other",
+          "line": 124
+        },
+        "ja": {
+          "id": 124,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "フン ! ナメラレタモンタﾞセﾞ !",
+          "kind": "other",
+          "line": 124
+        },
+        "de": {
+          "id": 124,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "general pepper will uns wohl testen!",
+          "kind": "other",
+          "line": 124
+        },
+        "fr": {
+          "id": 124,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "je crois pas que pepper nous teste!",
+          "kind": "other",
+          "line": 124
+        },
+        "es": {
+          "id": 124,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "¡No puedo creer que Pepper nos ponga a prueba!",
+          "kind": "other",
+          "line": 124,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.125",
+      "variants": {
+        "en": {
+          "id": 125,
+          "colour": "white",
+          "speaker": "pepper3",
+          "text": "i'm sorry         i doubted you! press start!",
+          "kind": "other",
+          "line": 125
+        },
+        "ja": {
+          "id": 125,
+          "colour": "white",
+          "speaker": "pepper3",
+          "text": "ウタカﾞッテ ワルカッタ スタ-トヲ オシテクレ !",
+          "kind": "other",
+          "line": 125
+        },
+        "de": {
+          "id": 125,
+          "colour": "white",
+          "speaker": "pepper3",
+          "text": "na gut! du kannst jetzt start drücken!",
+          "kind": "other",
+          "line": 125
+        },
+        "fr": {
+          "id": 125,
+          "colour": "white",
+          "speaker": "pepper3",
+          "text": "je suis desole d'avoir doute! presse start!",
+          "kind": "other",
+          "line": 125
+        },
+        "es": {
+          "id": 125,
+          "colour": "white",
+          "speaker": "pepper3",
+          "text": "¡Perdón por dudar de ti! ¡Pulsa START!",
+          "kind": "other",
+          "line": 125,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.126",
+      "variants": {
+        "en": {
+          "id": 126,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "fox,           you are indeed a worthy foe###",
+          "kind": "other",
+          "line": 126
+        },
+        "ja": {
+          "id": 126,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "フォックス ! ヨク ココマテﾞキタ !",
+          "kind": "other",
+          "line": 126
+        },
+        "de": {
+          "id": 126,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "fast könnte ich angst vor dir bekommen, fox##",
+          "kind": "other",
+          "line": 126
+        },
+        "fr": {
+          "id": 126,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "fox,           tu est un ennemi valable!  ###",
+          "kind": "other",
+          "line": 126
+        },
+        "es": {
+          "id": 126,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "Fox, eres un rival digno, sin duda...",
+          "kind": "other",
+          "line": 126,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.127",
+      "variants": {
+        "en": {
+          "id": 127,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "but, your foolish efforts are futile!",
+          "kind": "other",
+          "line": 127
+        },
+        "ja": {
+          "id": 127,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "トﾞイツモ コイツモ ヤクニタタヌヤツラタﾞ",
+          "kind": "other",
+          "line": 127
+        },
+        "de": {
+          "id": 127,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "### aber gegen mich hast du keine chance!",
+          "kind": "other",
+          "line": 127
+        },
+        "fr": {
+          "id": 127,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "mais vos efforts seronts vains!",
+          "kind": "other",
+          "line": 127
+        },
+        "es": {
+          "id": 127,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "¡Pero tus necios esfuerzos son inútiles!",
+          "kind": "other",
+          "line": 127,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.128",
+      "variants": {
+        "en": {
+          "id": 128,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "your arwings have no chance against me!",
+          "kind": "other",
+          "line": 128
+        },
+        "ja": {
+          "id": 128,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "オマエコﾞトキニ ワシカﾞ タオセルカ?",
+          "kind": "other",
+          "line": 128
+        },
+        "de": {
+          "id": 128,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "dein starfighter hat gegen mich keine chance!",
+          "kind": "other",
+          "line": 128
+        },
+        "fr": {
+          "id": 128,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "vous n'avez aucune chance contre moi!",
+          "kind": "other",
+          "line": 128
+        },
+        "es": {
+          "id": 128,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "¡Tus Arwings no tienen nada que hacer contra mí!",
+          "kind": "other",
+          "line": 128,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.129",
+      "variants": {
+        "en": {
+          "id": 129,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "i thought you might make it eventually###",
+          "kind": "other",
+          "line": 129
+        },
+        "ja": {
+          "id": 129,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "モウ アラワレルコロト オモッテイタ !",
+          "kind": "other",
+          "line": 129
+        },
+        "de": {
+          "id": 129,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "ich ahnte, dass es mit dir nicht leicht wird##!",
+          "kind": "other",
+          "line": 129
+        },
+        "fr": {
+          "id": 129,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "je pensait que vous y arriveriez      ###",
+          "kind": "other",
+          "line": 129
+        },
+        "es": {
+          "id": 129,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "Sabía que acabarías llegando...",
+          "kind": "other",
+          "line": 129,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.130",
+      "variants": {
+        "en": {
+          "id": 130,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "general pepper has guided you well!",
+          "kind": "other",
+          "line": 130
+        },
+        "ja": {
+          "id": 130,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "ヘﾟッハﾟ-ニ ウマク ノセラレオッテ・・・",
+          "kind": "other",
+          "line": 130
+        },
+        "de": {
+          "id": 130,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "general pepper ist ein guter lehrer!",
+          "kind": "other",
+          "line": 130
+        },
+        "fr": {
+          "id": 130,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "le general pepper vous a bien mene!",
+          "kind": "other",
+          "line": 130
+        },
+        "es": {
+          "id": 130,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "¡El general Pepper te ha guiado bien!",
+          "kind": "other",
+          "line": 130,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.131",
+      "variants": {
+        "en": {
+          "id": 131,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "however, you will not escape here alive!",
+          "kind": "other",
+          "line": 131
+        },
+        "ja": {
+          "id": 131,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "シカシ オマエヲイキテ カエスコトハ テﾞキヌ!",
+          "kind": "other",
+          "line": 131
+        },
+        "de": {
+          "id": 131,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "du kannst mir nicht mehr entkommen!",
+          "kind": "other",
+          "line": 131
+        },
+        "fr": {
+          "id": 131,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "cependant, vous allez mourrir ici!",
+          "kind": "other",
+          "line": 131
+        },
+        "es": {
+          "id": 131,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "¡Pero no saldrás de aquí con vida!",
+          "kind": "other",
+          "line": 131,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.132",
+      "variants": {
+        "en": {
+          "id": 132,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "ah## your choice of routes took me by surprise!",
+          "kind": "other",
+          "line": 132
+        },
+        "ja": {
+          "id": 132,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "ムム・・ イツノマニ ココマテﾞキタ?",
+          "kind": "other",
+          "line": 132
+        },
+        "de": {
+          "id": 132,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "mit dieser flug route habe ich nicht gerechnet#",
+          "kind": "other",
+          "line": 132
+        },
+        "fr": {
+          "id": 132,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "ah## votre choix de route m'a surpris!",
+          "kind": "other",
+          "line": 132
+        },
+        "es": {
+          "id": 132,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "Ah... ¡Tu elección de ruta me sorprendió!",
+          "kind": "other",
+          "line": 132,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.133",
+      "variants": {
+        "en": {
+          "id": 133,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "your father was a reckless fighter too###",
+          "kind": "other",
+          "line": 133
+        },
+        "ja": {
+          "id": 133,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "オマエノ オヤシﾞモ ムテッホﾟウタﾞッタカﾞ・・",
+          "kind": "other",
+          "line": 133
+        },
+        "de": {
+          "id": 133,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "dein vater war der gleiche draufgänger###",
+          "kind": "other",
+          "line": 133
+        },
+        "fr": {
+          "id": 133,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "ton pere etait aussi imprudent        ###",
+          "kind": "other",
+          "line": 133
+        },
+        "es": {
+          "id": 133,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "Tu padre también era un piloto temerario...",
+          "kind": "other",
+          "line": 133,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.134",
+      "variants": {
+        "en": {
+          "id": 134,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "but this will be the mccloud's last battle!",
+          "kind": "other",
+          "line": 134
+        },
+        "ja": {
+          "id": 134,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "コレカﾞ オマエニトッテ サイコﾞノ タタカイタﾞ!",
+          "kind": "other",
+          "line": 134
+        },
+        "de": {
+          "id": 134,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "jetzt werde ich die mcclouds ausrotten!",
+          "kind": "other",
+          "line": 134
+        },
+        "fr": {
+          "id": 134,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "mais ce sera la derniere bataille mccloud!!",
+          "kind": "other",
+          "line": 134
+        },
+        "es": {
+          "id": 134,
+          "colour": "white",
+          "speaker": "andross3",
+          "text": "¡Pero esta será la última batalla de los McCloud!",
+          "kind": "other",
+          "line": 134,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.135",
+      "variants": {
+        "en": {
+          "id": 135,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "follow me, fox!",
+          "kind": "other",
+          "line": 135
+        },
+        "ja": {
+          "id": 135,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "ツイテコイヨ フォックス!",
+          "kind": "other",
+          "line": 135
+        },
+        "de": {
+          "id": 135,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "nicht zurückbleiben!",
+          "kind": "other",
+          "line": 135
+        },
+        "fr": {
+          "id": 135,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "suis moi, fox!!",
+          "kind": "other",
+          "line": 135
+        },
+        "es": {
+          "id": 135,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "¡Sígueme, Fox!",
+          "kind": "other",
+          "line": 135,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.136",
+      "variants": {
+        "en": {
+          "id": 136,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "roll, fox! rock'n roll!",
+          "kind": "other",
+          "line": 136
+        },
+        "ja": {
+          "id": 136,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "ロ-リンクﾞタﾞセﾞ フォックス !",
+          "kind": "other",
+          "line": 136
+        },
+        "de": {
+          "id": 136,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "und jetzt auf die seite, fox!",
+          "kind": "other",
+          "line": 136
+        },
+        "fr": {
+          "id": 136,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "roll, fox! rock'n roll!",
+          "kind": "other",
+          "line": 136
+        },
+        "es": {
+          "id": 136,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "¡Gira, Fox! ¡A todo ritmo!",
+          "kind": "other",
+          "line": 136,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.137",
+      "variants": {
+        "en": {
+          "id": 137,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "stay in formation!",
+          "kind": "other",
+          "line": 137
+        },
+        "ja": {
+          "id": 137,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "ヘンタイヲ  ミタﾞスナヨ !",
+          "kind": "other",
+          "line": 137
+        },
+        "de": {
+          "id": 137,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "bleibe in der formation!",
+          "kind": "other",
+          "line": 137
+        },
+        "fr": {
+          "id": 137,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "reste en groupe!",
+          "kind": "other",
+          "line": 137
+        },
+        "es": {
+          "id": 137,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡Mantengan la formación!",
+          "kind": "other",
+          "line": 137,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.138",
+      "variants": {
+        "en": {
+          "id": 138,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "what's wrong with you today, fox?!",
+          "kind": "other",
+          "line": 138
+        },
+        "ja": {
+          "id": 138,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "キョウハ トﾞウシタンタﾞ フォックス?",
+          "kind": "other",
+          "line": 138
+        },
+        "de": {
+          "id": 138,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "ist mit dir alles in ordnung, fox?!",
+          "kind": "other",
+          "line": 138
+        },
+        "fr": {
+          "id": 138,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "qu'est ce qui ne vas pas, fox?!",
+          "kind": "other",
+          "line": 138
+        },
+        "es": {
+          "id": 138,
+          "colour": "white",
+          "speaker": "falcon3",
+          "text": "¿Qué te pasa hoy, Fox?",
+          "kind": "other",
+          "line": 138,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.139",
+      "variants": {
+        "en": {
+          "id": 139,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "yer g-g-great, fox! ribbit!",
+          "kind": "other",
+          "line": 139
+        },
+        "ja": {
+          "id": 139,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "サ〜スカﾞ フォックス ケロケロ !",
+          "kind": "other",
+          "line": 139
+        },
+        "de": {
+          "id": 139,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "nicht s-s-schlecht, fox! ribbit!",
+          "kind": "other",
+          "line": 139
+        },
+        "fr": {
+          "id": 139,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "s-s-s-super, fox! ribbit!",
+          "kind": "other",
+          "line": 139
+        },
+        "es": {
+          "id": 139,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡Eres g-g-genial, Fox! ¡Croac!",
+          "kind": "other",
+          "line": 139,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.140",
+      "variants": {
+        "en": {
+          "id": 140,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "beware of the big stingray!",
+          "kind": "other",
+          "line": 140
+        },
+        "ja": {
+          "id": 140,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "テﾞカイヤツニハ テヲタﾞスナヨ !",
+          "kind": "other",
+          "line": 140
+        },
+        "de": {
+          "id": 140,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "pass auf den stingray auf!",
+          "kind": "other",
+          "line": 140
+        },
+        "fr": {
+          "id": 140,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "attention a la piqure!",
+          "kind": "other",
+          "line": 140
+        },
+        "es": {
+          "id": 140,
+          "colour": "white",
+          "speaker": "falcon",
+          "text": "¡Cuidado con la mantarraya gigante!",
+          "kind": "other",
+          "line": 140,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.141",
+      "variants": {
+        "en": {
+          "id": 141,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "beware of the big stingray!",
+          "kind": "other",
+          "line": 141
+        },
+        "ja": {
+          "id": 141,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "テﾞカイヤツニハ テヲタﾞスナヨ !",
+          "kind": "other",
+          "line": 141
+        },
+        "de": {
+          "id": 141,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "pass auf den stingray auf!",
+          "kind": "other",
+          "line": 141
+        },
+        "fr": {
+          "id": 141,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "attention a la piqure!",
+          "kind": "other",
+          "line": 141
+        },
+        "es": {
+          "id": 141,
+          "colour": "white",
+          "speaker": "rabbit",
+          "text": "¡Cuidado con la mantarraya gigante!",
+          "kind": "other",
+          "line": 141,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    },
+    {
+      "id": "original.radio.142",
+      "variants": {
+        "en": {
+          "id": 142,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "beware of the big stingray!",
+          "kind": "other",
+          "line": 142
+        },
+        "ja": {
+          "id": 142,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "オオキイノハ ホットイテ ケロ !",
+          "kind": "other",
+          "line": 142
+        },
+        "de": {
+          "id": 142,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "pass auf den stingray auf!",
+          "kind": "other",
+          "line": 142
+        },
+        "fr": {
+          "id": 142,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "attention a la piqure!",
+          "kind": "other",
+          "line": 142
+        },
+        "es": {
+          "id": 142,
+          "colour": "white",
+          "speaker": "frog",
+          "text": "¡Cuidado con la mantarraya gigante!",
+          "kind": "other",
+          "line": 142,
+          "provenance": "Star Fox Enhanced translation draft"
+        }
+      }
+    }
+  ]
+}

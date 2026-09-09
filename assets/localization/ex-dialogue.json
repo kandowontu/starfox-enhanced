@@ -1,0 +1,3254 @@
+{
+  "schema": 1,
+  "source": "Star Fox EX user-supplied ROM radio tables",
+  "messages": [
+    {
+      "id": "ex.radio.1.001",
+      "address": 1025311,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "all ships check in!"
+    },
+    {
+      "id": "ex.radio.1.002",
+      "address": 1025334,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "we did it!"
+    },
+    {
+      "id": "ex.radio.1.003",
+      "address": 1025348,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "slippy slippy##"
+    },
+    {
+      "id": "ex.radio.1.004",
+      "address": 1025367,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "go back to the base!"
+    },
+    {
+      "id": "ex.radio.1.005",
+      "address": 1025391,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "ready, fox!"
+    },
+    {
+      "id": "ex.radio.1.006",
+      "address": 1025406,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "i'm with you, fox!"
+    },
+    {
+      "id": "ex.radio.1.007",
+      "address": 1025428,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "bogey on my six!"
+    },
+    {
+      "id": "ex.radio.1.008",
+      "address": 1025448,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "i guess i should be thankful###"
+    },
+    {
+      "id": "ex.radio.1.009",
+      "address": 1025483,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "they got me! i'm gone!!"
+    },
+    {
+      "id": "ex.radio.1.010",
+      "address": 1025510,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "i'll blast 'em all!"
+    },
+    {
+      "id": "ex.radio.1.011",
+      "address": 1025533,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "there's more on the way!"
+    },
+    {
+      "id": "ex.radio.1.012",
+      "address": 1025561,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "you can run, but you can't hide!"
+    },
+    {
+      "id": "ex.radio.1.013",
+      "address": 1025597,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "this one's mine!"
+    },
+    {
+      "id": "ex.radio.1.014",
+      "address": 1025617,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "watch it, fox!"
+    },
+    {
+      "id": "ex.radio.1.015",
+      "address": 1025635,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "i'm hit!!"
+    },
+    {
+      "id": "ex.radio.1.016",
+      "address": 1025648,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "here they come! "
+    },
+    {
+      "id": "ex.radio.1.017",
+      "address": 1025668,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 14,
+      "en": "make the neck and tail shorter, fox!!"
+    },
+    {
+      "id": "ex.radio.1.018",
+      "address": 1025709,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 14,
+      "en": "shoot down its arms to hit its body!"
+    },
+    {
+      "id": "ex.radio.1.019",
+      "address": 1025749,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "slow it down, fox!"
+    },
+    {
+      "id": "ex.radio.1.020",
+      "address": 1025771,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "roll, baby! rock 'n roll!"
+    },
+    {
+      "id": "ex.radio.1.021",
+      "address": 1025800,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "my ship's messed up###"
+    },
+    {
+      "id": "ex.radio.1.022",
+      "address": 1025826,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "hey! that one was mine!"
+    },
+    {
+      "id": "ex.radio.1.023",
+      "address": 1025853,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "bogies, i'm gonna get ya!"
+    },
+    {
+      "id": "ex.radio.1.024",
+      "address": 1025882,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "i'll cover your tail!"
+    },
+    {
+      "id": "ex.radio.1.025",
+      "address": 1025907,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "yeah - let's go!"
+    },
+    {
+      "id": "ex.radio.1.026",
+      "address": 1025927,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "i'm behind you, fox!"
+    },
+    {
+      "id": "ex.radio.1.027",
+      "address": 1025951,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "get lost, you fiend!"
+    },
+    {
+      "id": "ex.radio.1.028",
+      "address": 1025975,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "yeah! thanks!"
+    },
+    {
+      "id": "ex.radio.1.029",
+      "address": 1025992,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "aargh!! i'm a goner!"
+    },
+    {
+      "id": "ex.radio.1.030",
+      "address": 1026016,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "let's smash 'em!"
+    },
+    {
+      "id": "ex.radio.1.031",
+      "address": 1026036,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "i got one! i got one!!"
+    },
+    {
+      "id": "ex.radio.1.032",
+      "address": 1026062,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "take this, enemy brute!"
+    },
+    {
+      "id": "ex.radio.1.033",
+      "address": 1026089,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "you're not getting away!"
+    },
+    {
+      "id": "ex.radio.1.034",
+      "address": 1026117,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "watch your aim, fox!"
+    },
+    {
+      "id": "ex.radio.1.035",
+      "address": 1026141,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "ouch! ouch!"
+    },
+    {
+      "id": "ex.radio.1.036",
+      "address": 1026156,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "incoming enemy craft! "
+    },
+    {
+      "id": "ex.radio.1.037",
+      "address": 1026182,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 14,
+      "en": "please make the neck and tail shorter, fox!"
+    },
+    {
+      "id": "ex.radio.1.038",
+      "address": 1026229,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 14,
+      "en": "shoot down its arms to hit its body!"
+    },
+    {
+      "id": "ex.radio.1.039",
+      "address": 1026269,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "retros!  fire retros!"
+    },
+    {
+      "id": "ex.radio.1.040",
+      "address": 1026294,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "roll over! shake it off!"
+    },
+    {
+      "id": "ex.radio.1.041",
+      "address": 1026322,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "pick me up on your way back!"
+    },
+    {
+      "id": "ex.radio.1.042",
+      "address": 1026354,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "hey! he was mine!"
+    },
+    {
+      "id": "ex.radio.1.043",
+      "address": 1026375,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "out of my way!"
+    },
+    {
+      "id": "ex.radio.1.044",
+      "address": 1026393,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "i'm off your starboard!"
+    },
+    {
+      "id": "ex.radio.1.045",
+      "address": 1026420,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "ok!!"
+    },
+    {
+      "id": "ex.radio.1.046",
+      "address": 1026428,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "ribbit! i'll bring up the rear,fox!"
+    },
+    {
+      "id": "ex.radio.1.047",
+      "address": 1026467,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "croak!  help me!"
+    },
+    {
+      "id": "ex.radio.1.048",
+      "address": 1026487,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "ribbit!  thanks fer the save!"
+    },
+    {
+      "id": "ex.radio.1.049",
+      "address": 1026520,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "no! no! crrooakk!"
+    },
+    {
+      "id": "ex.radio.1.050",
+      "address": 1026541,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "i'll get him -- ribbit!"
+    },
+    {
+      "id": "ex.radio.1.051",
+      "address": 1026568,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "piece of c-c-cake!"
+    },
+    {
+      "id": "ex.radio.1.052",
+      "address": 1026590,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "take this, j-j-junk heap!"
+    },
+    {
+      "id": "ex.radio.1.053",
+      "address": 1026619,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "i'll get this one! ribbit!"
+    },
+    {
+      "id": "ex.radio.1.054",
+      "address": 1026649,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "hey! it's me, slippy!"
+    },
+    {
+      "id": "ex.radio.1.055",
+      "address": 1026674,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "ribbit!  i'm hit!!"
+    },
+    {
+      "id": "ex.radio.1.056",
+      "address": 1026696,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "there's too many of them!"
+    },
+    {
+      "id": "ex.radio.1.057",
+      "address": 1026725,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "let's turn back, okay?!"
+    },
+    {
+      "id": "ex.radio.1.058",
+      "address": 1026752,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "let's be careful!"
+    },
+    {
+      "id": "ex.radio.1.059",
+      "address": 1026773,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "something's sticking to me!"
+    },
+    {
+      "id": "ex.radio.1.060",
+      "address": 1026804,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "i c-c-couldn't go, fox!"
+    },
+    {
+      "id": "ex.radio.1.061",
+      "address": 1026831,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "hey! don't be so g-g-greedy!"
+    },
+    {
+      "id": "ex.radio.1.062",
+      "address": 1026863,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "c-c-clear out, astro-geeks!"
+    },
+    {
+      "id": "ex.radio.1.063",
+      "address": 1026894,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "hope there's no more!"
+    },
+    {
+      "id": "ex.radio.1.064",
+      "address": 1026919,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "did you see me?"
+    },
+    {
+      "id": "ex.radio.1.065",
+      "address": 1026938,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "i can't tell which is real!!"
+    },
+    {
+      "id": "ex.radio.1.066",
+      "address": 1026970,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "let's head in!"
+    },
+    {
+      "id": "ex.radio.1.067",
+      "address": 1026988,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "i'll follow you in!"
+    },
+    {
+      "id": "ex.radio.1.068",
+      "address": 1027011,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "should we go in?!"
+    },
+    {
+      "id": "ex.radio.1.069",
+      "address": 1027032,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "###this one could be trouble###"
+    },
+    {
+      "id": "ex.radio.1.070",
+      "address": 1027067,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "hurry! help!"
+    },
+    {
+      "id": "ex.radio.1.071",
+      "address": 1027083,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "hurry up, fox!  croak!"
+    },
+    {
+      "id": "ex.radio.1.072",
+      "address": 1027109,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "eyes forward, fox!"
+    },
+    {
+      "id": "ex.radio.1.073",
+      "address": 1027131,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "be careful, fox!"
+    },
+    {
+      "id": "ex.radio.1.074",
+      "address": 1027151,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "this time, i saved you!"
+    },
+    {
+      "id": "ex.radio.1.075",
+      "address": 1027178,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "no sweat, fox!"
+    },
+    {
+      "id": "ex.radio.1.076",
+      "address": 1027196,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "ok, ok! what's next?!"
+    },
+    {
+      "id": "ex.radio.1.077",
+      "address": 1027221,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "so far, so g-g-good!"
+    },
+    {
+      "id": "ex.radio.1.078",
+      "address": 1027245,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "look, look!"
+    },
+    {
+      "id": "ex.radio.1.079",
+      "address": 1027260,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "it's looking good, fox!"
+    },
+    {
+      "id": "ex.radio.1.080",
+      "address": 1027287,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "we did it, let's go!"
+    },
+    {
+      "id": "ex.radio.1.081",
+      "address": 1027311,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "g-g-great!"
+    },
+    {
+      "id": "ex.radio.1.082",
+      "address": 1027325,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "be a bit more careful fox!"
+    },
+    {
+      "id": "ex.radio.1.083",
+      "address": 1027355,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "please tread carefully, fox!"
+    },
+    {
+      "id": "ex.radio.1.084",
+      "address": 1027387,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "remember not to shoot m-m-me!"
+    },
+    {
+      "id": "ex.radio.1.085",
+      "address": 1027420,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "it's going pretty badly!"
+    },
+    {
+      "id": "ex.radio.1.086",
+      "address": 1027448,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "i don't think i'm going to make it!"
+    },
+    {
+      "id": "ex.radio.1.087",
+      "address": 1027487,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "my ship's falling apart### ribbit!"
+    },
+    {
+      "id": "ex.radio.1.088",
+      "address": 1027525,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "star fox team, our last resort is to counter attack venom!  good luck!"
+    },
+    {
+      "id": "ex.radio.1.089",
+      "address": 1027599,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "andross's forces intend to build a base in this area!  destroy their rock crusher!"
+    },
+    {
+      "id": "ex.radio.1.090",
+      "address": 1027685,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "the space armada consists of powerful battleships! destroy their energy cores!"
+    },
+    {
+      "id": "ex.radio.1.091",
+      "address": 1027767,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "be sure to use your retros if you're going too fast!  be careful with my arwings!"
+    },
+    {
+      "id": "ex.radio.1.092",
+      "address": 1027852,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "andross is hiding on venom!  fox, you must find his core brain and destroy it!"
+    },
+    {
+      "id": "ex.radio.1.093",
+      "address": 1027934,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "        CORNERIA - THE BASE"
+    },
+    {
+      "id": "ex.radio.1.094",
+      "address": 1027965,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "           ASTEROID BELT"
+    },
+    {
+      "id": "ex.radio.1.095",
+      "address": 1027993,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "              SECTOR  X"
+    },
+    {
+      "id": "ex.radio.1.096",
+      "address": 1028020,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "       THE PLANET FORTUNA"
+    },
+    {
+      "id": "ex.radio.1.097",
+      "address": 1028049,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "     THE ANDROSS SPACE ARMADA"
+    },
+    {
+      "id": "ex.radio.1.098",
+      "address": 1028082,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "        THE PLANET TITANIA"
+    },
+    {
+      "id": "ex.radio.1.099",
+      "address": 1028112,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "      THE AWESOME BLACK HOLE"
+    },
+    {
+      "id": "ex.radio.1.100",
+      "address": 1028144,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "              SECTOR  Y"
+    },
+    {
+      "id": "ex.radio.1.101",
+      "address": 1028171,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "      THE BATTLE BASE METEOR"
+    },
+    {
+      "id": "ex.radio.1.102",
+      "address": 1028203,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "              SECTOR  Z"
+    },
+    {
+      "id": "ex.radio.1.103",
+      "address": 1028230,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "        THE PLANET MACBETH"
+    },
+    {
+      "id": "ex.radio.1.104",
+      "address": 1028260,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "      VENOM - THE FINAL GOAL"
+    },
+    {
+      "id": "ex.radio.1.105",
+      "address": 1028292,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "      OUT OF THIS DIMENSION"
+    },
+    {
+      "id": "ex.radio.1.106",
+      "address": 1028323,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "corneria's resource world has been overrun!  you must re-take the weather control unit!"
+    },
+    {
+      "id": "ex.radio.1.107",
+      "address": 1028414,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "how are the arwings handling?  if an amoeba clings to your ship, use l or r to get rid of it#"
+    },
+    {
+      "id": "ex.radio.1.108",
+      "address": 1028511,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "you've chosen course three###  a good choice to take venom by surprise!"
+    },
+    {
+      "id": "ex.radio.1.109",
+      "address": 1028586,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "use the l or r button to escape the tractor beam of the enemy battleship! you can do it, fox!"
+    },
+    {
+      "id": "ex.radio.1.110",
+      "address": 1028683,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "andross has taken control of the huge creatures who live on fortuna!  take care, fox!"
+    },
+    {
+      "id": "ex.radio.1.111",
+      "address": 1028772,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "your team is doing well, fox!  i hope you're taking good care of my arwings!  go for macbeth!"
+    },
+    {
+      "id": "ex.radio.1.112",
+      "address": 1028869,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "the hollow interior of macbeth is ideal for a base!  prevent andross from building here!"
+    },
+    {
+      "id": "ex.radio.1.113",
+      "address": 1028961,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "this space grave yard, created by andross's experiments, is where your father vanished, fox!"
+    },
+    {
+      "id": "ex.radio.1.114",
+      "address": 1029057,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "is everyone all right, fox?!  you're on course to sneak into venom's back door!"
+    },
+    {
+      "id": "ex.radio.1.115",
+      "address": 1029140,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "come in, arwings!  fox, where are you?!  we need you to protect corneria!"
+    },
+    {
+      "id": "ex.radio.1.116",
+      "address": 1029217,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "you've made it this far### it's your fate to destroy andross!  we're counting on you, fox!"
+    },
+    {
+      "id": "ex.radio.1.117",
+      "address": 1029311,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 14,
+      "en": "the attack carrier is ahead!"
+    },
+    {
+      "id": "ex.radio.1.118",
+      "address": 1029343,
+      "speaker": 132,
+      "sound": 2,
+      "colour": 14,
+      "en": "#"
+    },
+    {
+      "id": "ex.radio.1.119",
+      "address": 1029348,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 14,
+      "en": "#"
+    },
+    {
+      "id": "ex.radio.1.120",
+      "address": 1029353,
+      "speaker": 132,
+      "sound": 2,
+      "colour": 14,
+      "en": "#"
+    },
+    {
+      "id": "ex.radio.1.121",
+      "address": 1029358,
+      "speaker": 132,
+      "sound": 2,
+      "colour": 14,
+      "en": "ahhh### you are quite skillful,   fox!"
+    },
+    {
+      "id": "ex.radio.1.122",
+      "address": 1029400,
+      "speaker": 132,
+      "sound": 2,
+      "colour": 14,
+      "en": "ok, you passed! go fight the real enemy!"
+    },
+    {
+      "id": "ex.radio.1.123",
+      "address": 1029444,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 14,
+      "en": "hit start to   go back to the game, ribbit!"
+    },
+    {
+      "id": "ex.radio.1.124",
+      "address": 1029491,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 14,
+      "en": "#"
+    },
+    {
+      "id": "ex.radio.1.125",
+      "address": 1029496,
+      "speaker": 132,
+      "sound": 2,
+      "colour": 14,
+      "en": "i'm sorry         i doubted you! press start!"
+    },
+    {
+      "id": "ex.radio.1.126",
+      "address": 1029545,
+      "speaker": 133,
+      "sound": 2,
+      "colour": 14,
+      "en": "fox,           you are indeed a worthy foe###"
+    },
+    {
+      "id": "ex.radio.1.127",
+      "address": 1029594,
+      "speaker": 133,
+      "sound": 2,
+      "colour": 14,
+      "en": "but, your foolish efforts are futile!"
+    },
+    {
+      "id": "ex.radio.1.128",
+      "address": 1029635,
+      "speaker": 133,
+      "sound": 2,
+      "colour": 14,
+      "en": "your arwings have no chance against me!"
+    },
+    {
+      "id": "ex.radio.1.129",
+      "address": 1029678,
+      "speaker": 133,
+      "sound": 2,
+      "colour": 14,
+      "en": "i thought you might make it eventually###"
+    },
+    {
+      "id": "ex.radio.1.130",
+      "address": 1029723,
+      "speaker": 133,
+      "sound": 2,
+      "colour": 14,
+      "en": "general pepper has guided you well!"
+    },
+    {
+      "id": "ex.radio.1.131",
+      "address": 1029762,
+      "speaker": 133,
+      "sound": 2,
+      "colour": 14,
+      "en": "however, you will not escape here alive!"
+    },
+    {
+      "id": "ex.radio.1.132",
+      "address": 1029806,
+      "speaker": 133,
+      "sound": 2,
+      "colour": 14,
+      "en": "ah## your choice of routes took me by surprise!"
+    },
+    {
+      "id": "ex.radio.1.133",
+      "address": 1029857,
+      "speaker": 133,
+      "sound": 2,
+      "colour": 14,
+      "en": "your father was a reckless fighter too###"
+    },
+    {
+      "id": "ex.radio.1.134",
+      "address": 1029902,
+      "speaker": 133,
+      "sound": 2,
+      "colour": 14,
+      "en": "but this will be the mccloud's last battle!"
+    },
+    {
+      "id": "ex.radio.1.135",
+      "address": 1029949,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "follow me, fox!"
+    },
+    {
+      "id": "ex.radio.1.136",
+      "address": 1029968,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "roll, fox! rock'n roll!"
+    },
+    {
+      "id": "ex.radio.1.137",
+      "address": 1029995,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "stay in formation!"
+    },
+    {
+      "id": "ex.radio.1.138",
+      "address": 1030017,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 14,
+      "en": "what's wrong with you today, fox?!"
+    },
+    {
+      "id": "ex.radio.1.139",
+      "address": 1030055,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "yer g-g-great, fox! ribbit!"
+    },
+    {
+      "id": "ex.radio.1.140",
+      "address": 1030086,
+      "speaker": 2,
+      "sound": 2,
+      "colour": 14,
+      "en": "beware of the big stingray!"
+    },
+    {
+      "id": "ex.radio.1.141",
+      "address": 1030117,
+      "speaker": 1,
+      "sound": 2,
+      "colour": 14,
+      "en": "beware of the big stingray!"
+    },
+    {
+      "id": "ex.radio.1.142",
+      "address": 1030148,
+      "speaker": 3,
+      "sound": 2,
+      "colour": 14,
+      "en": "beware of the big stingray!"
+    },
+    {
+      "id": "ex.radio.1.143",
+      "address": 1030179,
+      "speaker": 133,
+      "sound": 2,
+      "colour": 14,
+      "en": "hope you enjoyed the view!"
+    },
+    {
+      "id": "ex.radio.1.144",
+      "address": 1030209,
+      "speaker": 133,
+      "sound": 2,
+      "colour": 14,
+      "en": "oh## you took the scenic route!"
+    },
+    {
+      "id": "ex.radio.1.145",
+      "address": 1030244,
+      "speaker": 133,
+      "sound": 2,
+      "colour": 14,
+      "en": "your father only liked planets too###"
+    },
+    {
+      "id": "ex.radio.1.146",
+      "address": 1030285,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "this course isn't anywhere in our records###  good luck, fox!"
+    },
+    {
+      "id": "ex.radio.1.147",
+      "address": 1030350,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "all of the bosses are coming at you! be careful, fox!"
+    },
+    {
+      "id": "ex.radio.1.148",
+      "address": 1030407,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "you've made it this far###  keep going!"
+    },
+    {
+      "id": "ex.radio.1.149",
+      "address": 1030450,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "they just won't stop coming! can you finish them off?"
+    },
+    {
+      "id": "ex.radio.1.150",
+      "address": 1030507,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "all that's left is to take out andross himself# you can do it, fox!"
+    },
+    {
+      "id": "ex.radio.1.151",
+      "address": 1030578,
+      "speaker": 133,
+      "sound": 2,
+      "colour": 14,
+      "en": "argh! how?! i'll show you###"
+    },
+    {
+      "id": "ex.radio.1.152",
+      "address": 1030610,
+      "speaker": 133,
+      "sound": 2,
+      "colour": 14,
+      "en": "aha! i feel so powerful now! die, fox!"
+    },
+    {
+      "id": "ex.radio.1.153",
+      "address": 1030652,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "it's about time you showed up, fox! corneria is under attack!"
+    },
+    {
+      "id": "ex.radio.1.154",
+      "address": 1030717,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "    CORNERIA - HABITABLE ZONE"
+    },
+    {
+      "id": "ex.radio.1.155",
+      "address": 1030750,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "it's an all out marine assault! stop them from getting to our military base!"
+    },
+    {
+      "id": "ex.radio.1.156",
+      "address": 1030830,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "           PEBBLE BEACH"
+    },
+    {
+      "id": "ex.radio.1.157",
+      "address": 1030857,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "this zone has not been explored yet# be careful, fox!"
+    },
+    {
+      "id": "ex.radio.1.158",
+      "address": 1030914,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "          TARKUS-H 2-112"
+    },
+    {
+      "id": "ex.radio.1.159",
+      "address": 1030942,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "our intel has heard whispers of a psychological weapon hidden in this sector# destroy it!"
+    },
+    {
+      "id": "ex.radio.1.160",
+      "address": 1031035,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "              SECTOR K"
+    },
+    {
+      "id": "ex.radio.1.161",
+      "address": 1031061,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "looks like this planet is where these enemies are coming from# please, come back in one piece!"
+    },
+    {
+      "id": "ex.radio.1.162",
+      "address": 1031159,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "               KAZARU"
+    },
+    {
+      "id": "ex.radio.1.163",
+      "address": 1031184,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "fox, this planet does not have any breathable air# please stay in those arwings!"
+    },
+    {
+      "id": "ex.radio.1.164",
+      "address": 1031268,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "              TOLIMAS"
+    },
+    {
+      "id": "ex.radio.1.165",
+      "address": 1031293,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "don't be fooled by this planet's green fields, its inhabitants are known to be hostile!"
+    },
+    {
+      "id": "ex.radio.1.166",
+      "address": 1031384,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "                ALPHA"
+    },
+    {
+      "id": "ex.radio.1.167",
+      "address": 1031409,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "this planet is home to some kind of psychic, or###sorcerer? please, put a stop to his antics!"
+    },
+    {
+      "id": "ex.radio.1.168",
+      "address": 1031506,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "               CYGARD"
+    },
+    {
+      "id": "ex.radio.1.169",
+      "address": 1031531,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "the moon base of gekou has been overrun# destroy the enemies and free the base!"
+    },
+    {
+      "id": "ex.radio.1.170",
+      "address": 1031614,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "                GEKOU"
+    },
+    {
+      "id": "ex.radio.1.171",
+      "address": 1031639,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "fox, your home planet is under attack! hurry and stop their mothership!"
+    },
+    {
+      "id": "ex.radio.1.172",
+      "address": 1031714,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "              PAPETOON"
+    },
+    {
+      "id": "ex.radio.1.173",
+      "address": 1031740,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "this arctic planet has the first signs of life in a long time# destroy anything hostile!"
+    },
+    {
+      "id": "ex.radio.1.174",
+      "address": 1031832,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "                EIS"
+    },
+    {
+      "id": "ex.radio.1.175",
+      "address": 1031855,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "kuraudo has no solid ground, and is covered in gaseous clouds# fly carefully, fox!"
+    },
+    {
+      "id": "ex.radio.1.176",
+      "address": 1031941,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "              KURAUDO"
+    },
+    {
+      "id": "ex.radio.1.177",
+      "address": 1031966,
+      "speaker": 135,
+      "sound": 2,
+      "colour": 14,
+      "en": "can't let you do that, star fox!"
+    },
+    {
+      "id": "ex.radio.1.178",
+      "address": 1032002,
+      "speaker": 135,
+      "sound": 2,
+      "colour": 14,
+      "en": "playtime is over, star fox!"
+    },
+    {
+      "id": "ex.radio.1.179",
+      "address": 1032033,
+      "speaker": 136,
+      "sound": 2,
+      "colour": 14,
+      "en": "too bad dad's not here to see ya fail!"
+    },
+    {
+      "id": "ex.radio.1.180",
+      "address": 1032075,
+      "speaker": 138,
+      "sound": 2,
+      "colour": 14,
+      "en": "let's see how you handle our ships!"
+    },
+    {
+      "id": "ex.radio.1.181",
+      "address": 1032114,
+      "speaker": 137,
+      "sound": 2,
+      "colour": 14,
+      "en": "we'll make sure you never reach andross!"
+    },
+    {
+      "id": "ex.radio.1.182",
+      "address": 1032158,
+      "speaker": 135,
+      "sound": 2,
+      "colour": 14,
+      "en": "don't get too cocky, star fox!"
+    },
+    {
+      "id": "ex.radio.1.183",
+      "address": 1032192,
+      "speaker": 128,
+      "sound": 2,
+      "colour": 14,
+      "en": "we'll just see about that star wolf#"
+    },
+    {
+      "id": "ex.radio.1.184",
+      "address": 1032232,
+      "speaker": 139,
+      "sound": 2,
+      "colour": 14,
+      "en": "no way! i don't believe it!"
+    },
+    {
+      "id": "ex.radio.1.185",
+      "address": 1032263,
+      "speaker": 140,
+      "sound": 2,
+      "colour": 14,
+      "en": "this can't be happening!"
+    },
+    {
+      "id": "ex.radio.1.186",
+      "address": 1032291,
+      "speaker": 142,
+      "sound": 2,
+      "colour": 14,
+      "en": "he's too strong!"
+    },
+    {
+      "id": "ex.radio.1.187",
+      "address": 1032311,
+      "speaker": 141,
+      "sound": 2,
+      "colour": 14,
+      "en": "aaaaahhhhhh!!!"
+    },
+    {
+      "id": "ex.radio.1.188",
+      "address": 1032329,
+      "speaker": 135,
+      "sound": 2,
+      "colour": 14,
+      "en": "you're good, but i'm better#"
+    },
+    {
+      "id": "ex.radio.1.189",
+      "address": 1032361,
+      "speaker": 136,
+      "sound": 2,
+      "colour": 14,
+      "en": "you can't beat me! i've got a better ship!"
+    },
+    {
+      "id": "ex.radio.1.190",
+      "address": 1032407,
+      "speaker": 138,
+      "sound": 2,
+      "colour": 14,
+      "en": "not yet# the party's just begun!"
+    },
+    {
+      "id": "ex.radio.1.191",
+      "address": 1032443,
+      "speaker": 137,
+      "sound": 2,
+      "colour": 14,
+      "en": "give it up# you can't win!"
+    },
+    {
+      "id": "ex.radio.1.192",
+      "address": 1032473,
+      "speaker": 128,
+      "sound": 2,
+      "colour": 14,
+      "en": "i see it up ahead# let's rock and roll!"
+    },
+    {
+      "id": "ex.radio.1.193",
+      "address": 1032516,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 14,
+      "en": "fox, n-n-no!!!!!!"
+    },
+    {
+      "id": "ex.radio.1.194",
+      "address": 1032537,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 14,
+      "en": "fox, no!!!!!!"
+    },
+    {
+      "id": "ex.radio.1.195",
+      "address": 1032554,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 14,
+      "en": "fox!!!!!!"
+    },
+    {
+      "id": "ex.radio.1.196",
+      "address": 1032567,
+      "speaker": 128,
+      "sound": 2,
+      "colour": 14,
+      "en": "this can't be the end!!!!!!"
+    },
+    {
+      "id": "ex.radio.1.197",
+      "address": 1032598,
+      "speaker": 134,
+      "sound": 2,
+      "colour": 14,
+      "en": "hey paizanos!"
+    },
+    {
+      "id": "ex.radio.1.198",
+      "address": 1032615,
+      "speaker": 143,
+      "sound": 2,
+      "colour": 14,
+      "en": "soon, you're-a gonna be playin' with power###!"
+    },
+    {
+      "id": "ex.radio.1.199",
+      "address": 1032665,
+      "speaker": 144,
+      "sound": 2,
+      "colour": 14,
+      "en": "pasta power!"
+    },
+    {
+      "id": "ex.radio.1.200",
+      "address": 1032681,
+      "speaker": 144,
+      "sound": 2,
+      "colour": 14,
+      "en": "surprise! it's-a us again#"
+    },
+    {
+      "id": "ex.radio.1.201",
+      "address": 1032711,
+      "speaker": 143,
+      "sound": 2,
+      "colour": 14,
+      "en": "it's time for us to feed you###"
+    },
+    {
+      "id": "ex.radio.1.202",
+      "address": 1032746,
+      "speaker": 144,
+      "sound": 2,
+      "colour": 14,
+      "en": "into the intergalactic insinkerator!"
+    },
+    {
+      "id": "ex.radio.1.203",
+      "address": 1032786,
+      "speaker": 145,
+      "sound": 2,
+      "colour": 14,
+      "en": "it's me### mr# l!"
+    },
+    {
+      "id": "ex.radio.1.204",
+      "address": 1032807,
+      "speaker": 146,
+      "sound": 2,
+      "colour": 14,
+      "en": "and me, the red lightning!"
+    },
+    {
+      "id": "ex.radio.1.205",
+      "address": 1032837,
+      "speaker": 145,
+      "sound": 2,
+      "colour": 14,
+      "en": "we're about to give you a burial at sea!"
+    },
+    {
+      "id": "ex.radio.1.206",
+      "address": 1032881,
+      "speaker": 145,
+      "sound": 2,
+      "colour": 14,
+      "en": "or, uh, in space# have at you!"
+    },
+    {
+      "id": "ex.radio.1.207",
+      "address": 1032915,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 3,
+      "en": "there's s-s-something strong up there!"
+    },
+    {
+      "id": "ex.radio.1.208",
+      "address": 1032957,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 3,
+      "en": "fox, my sensors are off the charts!"
+    },
+    {
+      "id": "ex.radio.1.209",
+      "address": 1032996,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 3,
+      "en": "i'm detecting a powerful object ahead!"
+    },
+    {
+      "id": "ex.radio.1.210",
+      "address": 1033038,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 8,
+      "en": "careful! there's lots of meteors ahead!"
+    },
+    {
+      "id": "ex.radio.1.211",
+      "address": 1033081,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 8,
+      "en": "don't get too cocky here! meteors ahead!"
+    },
+    {
+      "id": "ex.radio.1.212",
+      "address": 1033125,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 8,
+      "en": "fly carefully through those meteors!"
+    },
+    {
+      "id": "ex.radio.1.213",
+      "address": 1033165,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 4,
+      "en": "here we g-g-go again, ribbit!"
+    },
+    {
+      "id": "ex.radio.1.214",
+      "address": 1033198,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 4,
+      "en": "just another easy paycheck, right fox?"
+    },
+    {
+      "id": "ex.radio.1.215",
+      "address": 1033240,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 4,
+      "en": "one day i'm gonna be too old for this###"
+    },
+    {
+      "id": "ex.radio.1.216",
+      "address": 1033284,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 3,
+      "en": "who do you think is doing all of this?"
+    },
+    {
+      "id": "ex.radio.1.217",
+      "address": 1033326,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 3,
+      "en": "whoever is behind all this is toast!"
+    },
+    {
+      "id": "ex.radio.1.218",
+      "address": 1033366,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 3,
+      "en": "why do we do this? money? glory? money#"
+    },
+    {
+      "id": "ex.radio.1.219",
+      "address": 1033409,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 8,
+      "en": "its the dark side of the moon!"
+    },
+    {
+      "id": "ex.radio.1.220",
+      "address": 1033443,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 8,
+      "en": "it feels like we could float away here###"
+    },
+    {
+      "id": "ex.radio.1.221",
+      "address": 1033488,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 8,
+      "en": "it's quiet### too quiet###"
+    },
+    {
+      "id": "ex.radio.1.222",
+      "address": 1033518,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 3,
+      "en": "something's g-giving me the willies###"
+    },
+    {
+      "id": "ex.radio.1.223",
+      "address": 1033560,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 3,
+      "en": "feels like a trap, eyes forward!"
+    },
+    {
+      "id": "ex.radio.1.224",
+      "address": 1033596,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 3,
+      "en": "i've got a bad feeling about this, fox###"
+    },
+    {
+      "id": "ex.radio.1.225",
+      "address": 1033641,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 8,
+      "en": "watch out for those metroids!"
+    },
+    {
+      "id": "ex.radio.1.226",
+      "address": 1033674,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 8,
+      "en": "those things ahead are clingy###"
+    },
+    {
+      "id": "ex.radio.1.227",
+      "address": 1033710,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 8,
+      "en": "you may have to do some barrel rolls!"
+    },
+    {
+      "id": "ex.radio.1.228",
+      "address": 1033751,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 3,
+      "en": "get these things off of us, ribbit!"
+    },
+    {
+      "id": "ex.radio.1.229",
+      "address": 1033790,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 3,
+      "en": "my ship is all slimy now, guys!"
+    },
+    {
+      "id": "ex.radio.1.230",
+      "address": 1033825,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 3,
+      "en": "these things are relentless###"
+    },
+    {
+      "id": "ex.radio.1.231",
+      "address": 1033859,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 4,
+      "en": "the sky is so nice here, ribbit!"
+    },
+    {
+      "id": "ex.radio.1.232",
+      "address": 1033895,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 4,
+      "en": "remember, we aren't on vacation, fox!"
+    },
+    {
+      "id": "ex.radio.1.233",
+      "address": 1033936,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 4,
+      "en": "i could really retire around here###"
+    },
+    {
+      "id": "ex.radio.1.234",
+      "address": 1033976,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 3,
+      "en": "will this ever stop??"
+    },
+    {
+      "id": "ex.radio.1.235",
+      "address": 1034001,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 3,
+      "en": "something really strong is close by###"
+    },
+    {
+      "id": "ex.radio.1.236",
+      "address": 1034043,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 3,
+      "en": "let's push through! almost at the end!"
+    },
+    {
+      "id": "ex.radio.1.237",
+      "address": 1034085,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 8,
+      "en": "guys, i'm s-s-scared, ribbit!"
+    },
+    {
+      "id": "ex.radio.1.238",
+      "address": 1034118,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 8,
+      "en": "let's end this, almost there!"
+    },
+    {
+      "id": "ex.radio.1.239",
+      "address": 1034151,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 8,
+      "en": "fox, you are so much like your father###"
+    },
+    {
+      "id": "ex.radio.1.240",
+      "address": 1034195,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 3,
+      "en": "it's almost too quiet###"
+    },
+    {
+      "id": "ex.radio.1.241",
+      "address": 1034223,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 3,
+      "en": "this feels like a trap###"
+    },
+    {
+      "id": "ex.radio.1.242",
+      "address": 1034252,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 3,
+      "en": "something's got me on edge###"
+    },
+    {
+      "id": "ex.radio.1.243",
+      "address": 1034285,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 4,
+      "en": "fox, try to save some for us this time!"
+    },
+    {
+      "id": "ex.radio.1.244",
+      "address": 1034328,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 4,
+      "en": "alright! lets get that paycheck!"
+    },
+    {
+      "id": "ex.radio.1.245",
+      "address": 1034364,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 4,
+      "en": "what did you get me into this time, fox?"
+    },
+    {
+      "id": "ex.radio.1.246",
+      "address": 1034408,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "fox? where did you go? you left your teammates behind? make contact quick and help them!"
+    },
+    {
+      "id": "ex.radio.1.247",
+      "address": 1034500,
+      "speaker": 0,
+      "sound": 2,
+      "colour": 14,
+      "en": "               SUISEI "
+    },
+    {
+      "id": "ex.radio.1.248",
+      "address": 1034526,
+      "speaker": 147,
+      "sound": 2,
+      "colour": 4,
+      "en": "green yoshi mode, egg attack!"
+    },
+    {
+      "id": "ex.radio.1.249",
+      "address": 1034559,
+      "speaker": 149,
+      "sound": 2,
+      "colour": 3,
+      "en": "red yoshi mode, fire attack!"
+    },
+    {
+      "id": "ex.radio.1.250",
+      "address": 1034591,
+      "speaker": 148,
+      "sound": 2,
+      "colour": 8,
+      "en": "blue yoshi mode, heal and defend!"
+    },
+    {
+      "id": "ex.radio.1.251",
+      "address": 1034628,
+      "speaker": 128,
+      "sound": 2,
+      "colour": 3,
+      "en": "that's it!"
+    },
+    {
+      "id": "ex.radio.1.252",
+      "address": 1034642,
+      "speaker": 128,
+      "sound": 2,
+      "colour": 3,
+      "en": "now i'm mad!"
+    },
+    {
+      "id": "ex.radio.2.001",
+      "address": 1035162,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 4,
+      "en": "go through the p-pine trees!"
+    },
+    {
+      "id": "ex.radio.2.002",
+      "address": 1035194,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 4,
+      "en": "think you can fly between the trees, fox?"
+    },
+    {
+      "id": "ex.radio.2.003",
+      "address": 1035239,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 4,
+      "en": "don't try to fly between those trees, fox!"
+    },
+    {
+      "id": "ex.radio.2.004",
+      "address": 1035285,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 4,
+      "en": "the wind feels s-s-stronger, ribbit!"
+    },
+    {
+      "id": "ex.radio.2.005",
+      "address": 1035325,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 4,
+      "en": "is anyone else getting that feeling?"
+    },
+    {
+      "id": "ex.radio.2.006",
+      "address": 1035365,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 4,
+      "en": "i can feel the electricity in the air!"
+    },
+    {
+      "id": "ex.radio.2.007",
+      "address": 1035407,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 8,
+      "en": "don't fly too l-l-low, you'll hit rocks!"
+    },
+    {
+      "id": "ex.radio.2.008",
+      "address": 1035451,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 8,
+      "en": "these mountains are so strange###"
+    },
+    {
+      "id": "ex.radio.2.009",
+      "address": 1035488,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 8,
+      "en": "now's not the time for sightseeing, fox!"
+    },
+    {
+      "id": "ex.radio.2.010",
+      "address": 1035532,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 3,
+      "en": "there's t-t-too many of them!"
+    },
+    {
+      "id": "ex.radio.2.011",
+      "address": 1035565,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 3,
+      "en": "i always love some target practice!"
+    },
+    {
+      "id": "ex.radio.2.012",
+      "address": 1035604,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 3,
+      "en": "don't go showing off now, stay focused!"
+    },
+    {
+      "id": "ex.radio.2.013",
+      "address": 1035647,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 4,
+      "en": "this is it, ribbit! let's g-g-go!"
+    },
+    {
+      "id": "ex.radio.2.014",
+      "address": 1035684,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 4,
+      "en": "time to collect that paycheck, lets go!"
+    },
+    {
+      "id": "ex.radio.2.015",
+      "address": 1035727,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 4,
+      "en": "this is our final job, rock and roll!"
+    },
+    {
+      "id": "ex.radio.2.016",
+      "address": 1035768,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 3,
+      "en": "i'm g-g-getting some high energy readings!"
+    },
+    {
+      "id": "ex.radio.2.017",
+      "address": 1035814,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 3,
+      "en": "whatever is up ahead, its really strong!"
+    },
+    {
+      "id": "ex.radio.2.018",
+      "address": 1035858,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 3,
+      "en": "we'll have to be tactical ahead, fox!"
+    },
+    {
+      "id": "ex.radio.2.019",
+      "address": 1035899,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 8,
+      "en": "come on fox! i've been p-p-practicing!"
+    },
+    {
+      "id": "ex.radio.2.020",
+      "address": 1035941,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 8,
+      "en": "i hope we find a real challenge this time!"
+    },
+    {
+      "id": "ex.radio.2.021",
+      "address": 1035987,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 8,
+      "en": "alright fox, here we go!"
+    },
+    {
+      "id": "ex.radio.2.022",
+      "address": 1036015,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 4,
+      "en": "i've n-n-never seen corneria like this!"
+    },
+    {
+      "id": "ex.radio.2.023",
+      "address": 1036058,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 4,
+      "en": "this planet sure is full of life###"
+    },
+    {
+      "id": "ex.radio.2.024",
+      "address": 1036097,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 4,
+      "en": "stay focused, somethings up ahead!"
+    },
+    {
+      "id": "ex.radio.2.025",
+      "address": 1036135,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 4,
+      "en": "its really d-d-dry here, ribbit!"
+    },
+    {
+      "id": "ex.radio.2.026",
+      "address": 1036171,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 4,
+      "en": "i wonder what we'll find around here#"
+    },
+    {
+      "id": "ex.radio.2.027",
+      "address": 1036212,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 4,
+      "en": "i'm just starting to warm up!"
+    },
+    {
+      "id": "ex.radio.2.028",
+      "address": 1036245,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 3,
+      "en": "d-d-did you hear that noise ahead?"
+    },
+    {
+      "id": "ex.radio.2.029",
+      "address": 1036283,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 3,
+      "en": "hey, are we heading the right way?"
+    },
+    {
+      "id": "ex.radio.2.030",
+      "address": 1036321,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 3,
+      "en": "my radar is all jammed up!"
+    },
+    {
+      "id": "ex.radio.2.031",
+      "address": 1036351,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 8,
+      "en": "ahh! it's too c-c-cold!"
+    },
+    {
+      "id": "ex.radio.2.032",
+      "address": 1036378,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 8,
+      "en": "my feathers are frozen# argh!"
+    },
+    {
+      "id": "ex.radio.2.033",
+      "address": 1036411,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 8,
+      "en": "i hope our ships hold up in this ice!"
+    },
+    {
+      "id": "ex.radio.2.034",
+      "address": 1036452,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 3,
+      "en": "i feel s-s-something warm ahead!"
+    },
+    {
+      "id": "ex.radio.2.035",
+      "address": 1036488,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 3,
+      "en": "hey, my feathers freed up!"
+    },
+    {
+      "id": "ex.radio.2.036",
+      "address": 1036518,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 3,
+      "en": "the heat is off the charts ahead!"
+    },
+    {
+      "id": "ex.radio.2.037",
+      "address": 1036555,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 8,
+      "en": "that cloud looks like a f-f-frog!"
+    },
+    {
+      "id": "ex.radio.2.038",
+      "address": 1036592,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 8,
+      "en": "keep your head out of the clouds!"
+    },
+    {
+      "id": "ex.radio.2.039",
+      "address": 1036629,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 8,
+      "en": "oh my, that is really bright!"
+    },
+    {
+      "id": "ex.radio.2.040",
+      "address": 1036662,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 8,
+      "en": "that cloud looks like you, fox!"
+    },
+    {
+      "id": "ex.radio.2.041",
+      "address": 1036697,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 8,
+      "en": "excuse me, just floating by###"
+    },
+    {
+      "id": "ex.radio.2.042",
+      "address": 1036731,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 3,
+      "en": "my radar is detecting something!"
+    },
+    {
+      "id": "ex.radio.2.043",
+      "address": 1036767,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 4,
+      "en": "let's go! i g-g-got your back!"
+    },
+    {
+      "id": "ex.radio.2.044",
+      "address": 1036801,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 4,
+      "en": "lets finish this and get paid!"
+    },
+    {
+      "id": "ex.radio.2.045",
+      "address": 1036835,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 4,
+      "en": "i can't wait to retire###"
+    },
+    {
+      "id": "ex.radio.2.046",
+      "address": 1036864,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 8,
+      "en": "i hope t-t-this is the end###"
+    },
+    {
+      "id": "ex.radio.2.047",
+      "address": 1036897,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 8,
+      "en": "its vacation time after this!"
+    },
+    {
+      "id": "ex.radio.2.048",
+      "address": 1036930,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 8,
+      "en": "this is it! one last job!"
+    },
+    {
+      "id": "ex.radio.2.049",
+      "address": 1036959,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 3,
+      "en": "things sure are hectic, ribbit!"
+    },
+    {
+      "id": "ex.radio.2.050",
+      "address": 1036994,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 3,
+      "en": "i'm glad i replaced my wipers!"
+    },
+    {
+      "id": "ex.radio.2.051",
+      "address": 1037028,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 3,
+      "en": "i'm seeing something up ahead###"
+    },
+    {
+      "id": "ex.radio.2.052",
+      "address": 1037064,
+      "speaker": 134,
+      "sound": 2,
+      "colour": 3,
+      "en": "fox, w-w-where are you?? we need backup!"
+    },
+    {
+      "id": "ex.radio.2.053",
+      "address": 1037108,
+      "speaker": 134,
+      "sound": 2,
+      "colour": 3,
+      "en": "hey! i got your signal but i can't see you!"
+    },
+    {
+      "id": "ex.radio.2.054",
+      "address": 1037155,
+      "speaker": 134,
+      "sound": 2,
+      "colour": 3,
+      "en": "fox, we finished the core, where are you?"
+    },
+    {
+      "id": "ex.radio.2.055",
+      "address": 1037200,
+      "speaker": 134,
+      "sound": 2,
+      "colour": 3,
+      "en": "i s-s-see you on our radar! on the way, fox!"
+    },
+    {
+      "id": "ex.radio.2.056",
+      "address": 1037248,
+      "speaker": 134,
+      "sound": 2,
+      "colour": 3,
+      "en": "fox, don't worry about us, we can handle this#"
+    },
+    {
+      "id": "ex.radio.2.057",
+      "address": 1037298,
+      "speaker": 134,
+      "sound": 2,
+      "colour": 3,
+      "en": "we have your position# follow our beacon!"
+    },
+    {
+      "id": "ex.radio.2.058",
+      "address": 1037343,
+      "speaker": 134,
+      "sound": 2,
+      "colour": 3,
+      "en": "gee# it's the famous star fox!"
+    },
+    {
+      "id": "ex.radio.2.059",
+      "address": 1037377,
+      "speaker": 147,
+      "sound": 2,
+      "colour": 3,
+      "en": "this time, i'm going to handle things#"
+    },
+    {
+      "id": "ex.radio.2.060",
+      "address": 1037419,
+      "speaker": 147,
+      "sound": 2,
+      "colour": 3,
+      "en": "no more being a sidekick for me#"
+    },
+    {
+      "id": "ex.radio.2.061",
+      "address": 1037455,
+      "speaker": 147,
+      "sound": 2,
+      "colour": 3,
+      "en": "i bet you taste delicious!"
+    },
+    {
+      "id": "ex.radio.2.062",
+      "address": 1037485,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 3,
+      "en": "well, this isn't t-t-too bad so far###"
+    },
+    {
+      "id": "ex.radio.2.063",
+      "address": 1037527,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 3,
+      "en": "so where's the challenge here?"
+    },
+    {
+      "id": "ex.radio.2.064",
+      "address": 1037561,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 3,
+      "en": "don't get too comfortable###"
+    },
+    {
+      "id": "ex.radio.2.065",
+      "address": 1037593,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 4,
+      "en": "now this is my kind of place!"
+    },
+    {
+      "id": "ex.radio.2.066",
+      "address": 1037626,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 4,
+      "en": "i better not get my feathers wet!"
+    },
+    {
+      "id": "ex.radio.2.067",
+      "address": 1037663,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 4,
+      "en": "remember, our ships can't go under!"
+    },
+    {
+      "id": "ex.radio.2.068",
+      "address": 1037702,
+      "speaker": 134,
+      "sound": 2,
+      "colour": 8,
+      "en": "you may think the galaxy is safe###"
+    },
+    {
+      "id": "ex.radio.2.069",
+      "address": 1037741,
+      "speaker": 134,
+      "sound": 2,
+      "colour": 8,
+      "en": "but you've only just scratched the surface!"
+    },
+    {
+      "id": "ex.radio.2.070",
+      "address": 1037788,
+      "speaker": 143,
+      "sound": 2,
+      "colour": 8,
+      "en": "explore the cosmos all you like###"
+    },
+    {
+      "id": "ex.radio.2.071",
+      "address": 1037826,
+      "speaker": 144,
+      "sound": 2,
+      "colour": 8,
+      "en": "###but you'll never beat us!"
+    },
+    {
+      "id": "ex.radio.2.072",
+      "address": 1037858,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 8,
+      "en": "welcome to training!"
+    },
+    {
+      "id": "ex.radio.2.073",
+      "address": 1037882,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 8,
+      "en": "control type a or c are recommended!"
+    },
+    {
+      "id": "ex.radio.2.074",
+      "address": 1037922,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 8,
+      "en": "use l and r to pivot your ship#"
+    },
+    {
+      "id": "ex.radio.2.075",
+      "address": 1037957,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 8,
+      "en": "tap l or r twice to barrel roll!"
+    },
+    {
+      "id": "ex.radio.2.076",
+      "address": 1037993,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 8,
+      "en": "remember to tilt your ship to move faster!"
+    },
+    {
+      "id": "ex.radio.2.077",
+      "address": 1038039,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 8,
+      "en": "barrel rolls are also essential to surviving!"
+    },
+    {
+      "id": "ex.radio.2.078",
+      "address": 1038088,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 8,
+      "en": "use them often!"
+    },
+    {
+      "id": "ex.radio.2.079",
+      "address": 1038107,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 8,
+      "en": "now go on and protect the galaxy!"
+    },
+    {
+      "id": "ex.radio.2.080",
+      "address": 1038144,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 3,
+      "en": "allow me to introduce myself#"
+    },
+    {
+      "id": "ex.radio.2.081",
+      "address": 1038177,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 3,
+      "en": "i am panther! and###"
+    },
+    {
+      "id": "ex.radio.2.082",
+      "address": 1038201,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 3,
+      "en": "all who see my rose meet death!"
+    },
+    {
+      "id": "ex.radio.2.083",
+      "address": 1038236,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 3,
+      "en": "you'll never get to wolf!"
+    },
+    {
+      "id": "ex.radio.2.084",
+      "address": 1038265,
+      "speaker": 128,
+      "sound": 2,
+      "colour": 8,
+      "en": "you won't stop me that easily!"
+    },
+    {
+      "id": "ex.radio.2.085",
+      "address": 1038299,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 3,
+      "en": "how could this be?!? i-i've been###"
+    },
+    {
+      "id": "ex.radio.2.086",
+      "address": 1038338,
+      "speaker": 132,
+      "sound": 2,
+      "colour": 8,
+      "en": "heaah###!?"
+    },
+    {
+      "id": "ex.radio.2.087",
+      "address": 1038352,
+      "speaker": 132,
+      "sound": 2,
+      "colour": 8,
+      "en": "beep boop### hyaaaa!"
+    },
+    {
+      "id": "ex.radio.2.088",
+      "address": 1038376,
+      "speaker": 132,
+      "sound": 2,
+      "colour": 8,
+      "en": "wooow# what are all those heads?"
+    },
+    {
+      "id": "ex.radio.2.089",
+      "address": 1038412,
+      "speaker": 132,
+      "sound": 2,
+      "colour": 8,
+      "en": "oh wait, boop# that's me#"
+    },
+    {
+      "id": "ex.radio.2.090",
+      "address": 1038441,
+      "speaker": 132,
+      "sound": 2,
+      "colour": 8,
+      "en": "beep beep boop#"
+    },
+    {
+      "id": "ex.radio.2.091",
+      "address": 1038460,
+      "speaker": 132,
+      "sound": 2,
+      "colour": 8,
+      "en": "yahaha! you found me!"
+    },
+    {
+      "id": "ex.radio.2.092",
+      "address": 1038485,
+      "speaker": 132,
+      "sound": 2,
+      "colour": 3,
+      "en": "but none of that matters!"
+    },
+    {
+      "id": "ex.radio.2.093",
+      "address": 1038514,
+      "speaker": 132,
+      "sound": 2,
+      "colour": 3,
+      "en": "it's time to bomb some dodongos!"
+    },
+    {
+      "id": "ex.radio.2.094",
+      "address": 1038550,
+      "speaker": 135,
+      "sound": 2,
+      "colour": 8,
+      "en": "greetings, star fox team!"
+    },
+    {
+      "id": "ex.radio.2.095",
+      "address": 1038579,
+      "speaker": 135,
+      "sound": 2,
+      "colour": 8,
+      "en": "you're heading in the right direction#"
+    },
+    {
+      "id": "ex.radio.2.096",
+      "address": 1038621,
+      "speaker": 135,
+      "sound": 2,
+      "colour": 8,
+      "en": "before you go, are you###"
+    },
+    {
+      "id": "ex.radio.2.097",
+      "address": 1038650,
+      "speaker": 135,
+      "sound": 2,
+      "colour": 8,
+      "en": "###in the mood for a challenge?"
+    },
+    {
+      "id": "ex.radio.2.098",
+      "address": 1038685,
+      "speaker": 134,
+      "sound": 2,
+      "colour": 8,
+      "en": "the rusted chains of prison moons###"
+    },
+    {
+      "id": "ex.radio.2.099",
+      "address": 1038725,
+      "speaker": 134,
+      "sound": 2,
+      "colour": 8,
+      "en": "###are shattered by the sun#"
+    },
+    {
+      "id": "ex.radio.2.100",
+      "address": 1038757,
+      "speaker": 134,
+      "sound": 2,
+      "colour": 8,
+      "en": "i walk a road, horizons change###"
+    },
+    {
+      "id": "ex.radio.2.101",
+      "address": 1038794,
+      "speaker": 134,
+      "sound": 2,
+      "colour": 8,
+      "en": "###the tournament's begun#"
+    },
+    {
+      "id": "ex.radio.2.102",
+      "address": 1038824,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 8,
+      "en": "if master has called me###"
+    },
+    {
+      "id": "ex.radio.2.103",
+      "address": 1038854,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 8,
+      "en": "things must be getting bad!"
+    },
+    {
+      "id": "ex.radio.2.104",
+      "address": 1038885,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 3,
+      "en": "come face me! ###craig!"
+    },
+    {
+      "id": "ex.radio.2.105",
+      "address": 1038912,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 3,
+      "en": "i###i'm sorry, mar###"
+    },
+    {
+      "id": "ex.radio.2.106",
+      "address": 1038937,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 8,
+      "en": "doing this moves your ship faster!"
+    },
+    {
+      "id": "ex.radio.2.107",
+      "address": 1038975,
+      "speaker": 128,
+      "sound": 2,
+      "colour": 8,
+      "en": "i barely recognize this place###"
+    },
+    {
+      "id": "ex.radio.2.108",
+      "address": 1039011,
+      "speaker": 128,
+      "sound": 2,
+      "colour": 8,
+      "en": "this is my home? unrecognizable###"
+    },
+    {
+      "id": "ex.radio.2.109",
+      "address": 1039049,
+      "speaker": 128,
+      "sound": 2,
+      "colour": 8,
+      "en": "what happened here? this is awful!"
+    },
+    {
+      "id": "ex.radio.2.110",
+      "address": 1039087,
+      "speaker": 128,
+      "sound": 2,
+      "colour": 8,
+      "en": "is this### it can't be###"
+    },
+    {
+      "id": "ex.radio.2.111",
+      "address": 1039116,
+      "speaker": 128,
+      "sound": 2,
+      "colour": 8,
+      "en": "why would they do all of this?!"
+    },
+    {
+      "id": "ex.radio.2.112",
+      "address": 1039151,
+      "speaker": 128,
+      "sound": 2,
+      "colour": 8,
+      "en": "someone's gotta pay for all this###"
+    },
+    {
+      "id": "ex.radio.2.113",
+      "address": 1039190,
+      "speaker": 136,
+      "sound": 2,
+      "colour": 3,
+      "en": "say, how's the view?"
+    },
+    {
+      "id": "ex.radio.2.114",
+      "address": 1039214,
+      "speaker": 128,
+      "sound": 2,
+      "colour": 8,
+      "en": "what?! who are you?!"
+    },
+    {
+      "id": "ex.radio.2.115",
+      "address": 1039238,
+      "speaker": 136,
+      "sound": 2,
+      "colour": 3,
+      "en": "end of the line, fox!"
+    },
+    {
+      "id": "ex.radio.2.116",
+      "address": 1039263,
+      "speaker": 128,
+      "sound": 2,
+      "colour": 8,
+      "en": "wait### is that###"
+    },
+    {
+      "id": "ex.radio.2.117",
+      "address": 1039285,
+      "speaker": 136,
+      "sound": 2,
+      "colour": 3,
+      "en": "###hey, how do you steer this thing!?"
+    },
+    {
+      "id": "ex.radio.2.118",
+      "address": 1039326,
+      "speaker": 136,
+      "sound": 2,
+      "colour": 3,
+      "en": "noooo!!"
+    },
+    {
+      "id": "ex.radio.2.119",
+      "address": 1039337,
+      "speaker": 128,
+      "sound": 2,
+      "colour": 8,
+      "en": "everyone! kill your engines, quick!"
+    },
+    {
+      "id": "ex.radio.2.120",
+      "address": 1039376,
+      "speaker": 128,
+      "sound": 2,
+      "colour": 8,
+      "en": "###what happened?"
+    },
+    {
+      "id": "ex.radio.2.121",
+      "address": 1039397,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 3,
+      "en": "my s-s-ship stopped responding!"
+    },
+    {
+      "id": "ex.radio.2.122",
+      "address": 1039432,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 3,
+      "en": "all those meteors were destroyed###"
+    },
+    {
+      "id": "ex.radio.2.123",
+      "address": 1039471,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 3,
+      "en": "my systems went down momentarily!"
+    },
+    {
+      "id": "ex.radio.2.124",
+      "address": 1039508,
+      "speaker": 131,
+      "sound": 2,
+      "colour": 3,
+      "en": "we have to be really careful!"
+    },
+    {
+      "id": "ex.radio.2.125",
+      "address": 1039541,
+      "speaker": 130,
+      "sound": 2,
+      "colour": 3,
+      "en": "let's take this slow guys###"
+    },
+    {
+      "id": "ex.radio.2.126",
+      "address": 1039573,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 3,
+      "en": "we should approach with caution, fox#"
+    },
+    {
+      "id": "ex.radio.2.127",
+      "address": 1039614,
+      "speaker": 128,
+      "sound": 2,
+      "colour": 8,
+      "en": "follow my lead, team!"
+    },
+    {
+      "id": "ex.radio.2.128",
+      "address": 1039639,
+      "speaker": 128,
+      "sound": 2,
+      "colour": 8,
+      "en": "this place seems to just repeat###"
+    },
+    {
+      "id": "ex.radio.2.129",
+      "address": 1039677,
+      "speaker": 128,
+      "sound": 2,
+      "colour": 8,
+      "en": "we should reset to get out of here!"
+    },
+    {
+      "id": "ex.radio.2.130",
+      "address": 1039716,
+      "speaker": 137,
+      "sound": 2,
+      "colour": 3,
+      "en": "who's making all this noise up here?!"
+    },
+    {
+      "id": "ex.radio.2.131",
+      "address": 1039757,
+      "speaker": 137,
+      "sound": 2,
+      "colour": 3,
+      "en": "you're not going any further, punk!"
+    },
+    {
+      "id": "ex.radio.2.132",
+      "address": 1039796,
+      "speaker": 128,
+      "sound": 2,
+      "colour": 8,
+      "en": "stop what you're doing right now!"
+    },
+    {
+      "id": "ex.radio.2.133",
+      "address": 1039833,
+      "speaker": 137,
+      "sound": 2,
+      "colour": 3,
+      "en": "i'd like to see you try###"
+    },
+    {
+      "id": "ex.radio.2.134",
+      "address": 1039863,
+      "speaker": 137,
+      "sound": 2,
+      "colour": 3,
+      "en": "i'm gonna burn ya up!"
+    },
+    {
+      "id": "ex.radio.2.135",
+      "address": 1039888,
+      "speaker": 137,
+      "sound": 2,
+      "colour": 3,
+      "en": "heh, you're not as weak as i thought!"
+    },
+    {
+      "id": "ex.radio.2.136",
+      "address": 1039929,
+      "speaker": 137,
+      "sound": 2,
+      "colour": 3,
+      "en": "argh! i'm not done with you yet!"
+    },
+    {
+      "id": "ex.radio.2.137",
+      "address": 1039965,
+      "speaker": 137,
+      "sound": 2,
+      "colour": 3,
+      "en": "uarghhh! this is impossible!!"
+    },
+    {
+      "id": "ex.radio.2.138",
+      "address": 1039998,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 8,
+      "en": "don't forget to barrel roll!"
+    },
+    {
+      "id": "ex.radio.2.139",
+      "address": 1040030,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 8,
+      "en": "doing this blocks most enemy attacks!"
+    },
+    {
+      "id": "ex.radio.2.140",
+      "address": 1040071,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 8,
+      "en": "banking is important too! hold l or r###"
+    },
+    {
+      "id": "ex.radio.2.141",
+      "address": 1040115,
+      "speaker": 129,
+      "sound": 2,
+      "colour": 8,
+      "en": "to move faster in that direction!"
+    },
+    {
+      "id": "ex.radio.2.142",
+      "address": 1040152,
+      "speaker": 140,
+      "sound": 2,
+      "colour": 3,
+      "en": "this is bsnes 1#51 based. enjoy!"
+    },
+    {
+      "id": "ex.radio.2.143",
+      "address": 1040188,
+      "speaker": 140,
+      "sound": 2,
+      "colour": 3,
+      "en": "you are on mister or analogue pocket! cool!"
+    },
+    {
+      "id": "ex.radio.2.144",
+      "address": 1040235,
+      "speaker": 140,
+      "sound": 2,
+      "colour": 3,
+      "en": "this is snes9x based - overclock it!"
+    },
+    {
+      "id": "ex.radio.2.145",
+      "address": 1040275,
+      "speaker": 140,
+      "sound": 2,
+      "colour": 3,
+      "en": "wait, this thing runs on zsnes? sorta###"
+    },
+    {
+      "id": "ex.radio.2.146",
+      "address": 1040319,
+      "speaker": 140,
+      "sound": 2,
+      "colour": 3,
+      "en": "you are on canoe, nintendo's official emu!"
+    },
+    {
+      "id": "ex.radio.2.147",
+      "address": 1040365,
+      "speaker": 140,
+      "sound": 2,
+      "colour": 3,
+      "en": "this is an sd2snes or fxpak! hardware rocks!"
+    },
+    {
+      "id": "ex.radio.2.148",
+      "address": 1040413,
+      "speaker": 140,
+      "sound": 2,
+      "colour": 3,
+      "en": "this appears to be bsnes plus# overclock everything!"
+    },
+    {
+      "id": "ex.radio.2.149",
+      "address": 1040469,
+      "speaker": 140,
+      "sound": 2,
+      "colour": 3,
+      "en": "mesen - a superb choice#"
+    },
+    {
+      "id": "ex.radio.2.150",
+      "address": 1040497,
+      "speaker": 140,
+      "sound": 2,
+      "colour": 3,
+      "en": "ares detected - how accurate!"
+    },
+    {
+      "id": "ex.radio.2.151",
+      "address": 1040530,
+      "speaker": 140,
+      "sound": 2,
+      "colour": 3,
+      "en": "actual hardware?! no way!!"
+    },
+    {
+      "id": "ex.radio.2.152",
+      "address": 1040560,
+      "speaker": 140,
+      "sound": 2,
+      "colour": 3,
+      "en": "this device is an analogue super nt! cool!"
+    },
+    {
+      "id": "ex.radio.2.153",
+      "address": 1040606,
+      "speaker": 140,
+      "sound": 2,
+      "colour": 3,
+      "en": "super fx 3!! rip and tear!!"
+    },
+    {
+      "id": "ex.radio.2.154",
+      "address": 1040637,
+      "speaker": 140,
+      "sound": 2,
+      "colour": 3,
+      "en": "no way! msu-i?! impossible!"
+    }
+  ]
+}

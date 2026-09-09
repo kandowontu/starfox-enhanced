@@ -8,14 +8,19 @@
 #include <cstddef>
 #include <optional>
 #include <string_view>
+#include <unordered_map>
+#include <vector>
 
 namespace starfox::render {
+
+inline constexpr std::uint8_t briefing_text_palette_base = 6U * 16U;
 
 // Renderer for MDSPRITE.MC's 16x16 projected text objects. Strings and glyph
 // rows are consumed directly from the assembled ROM rather than substituted
 // with a host font.
 class ScaledTextRenderer {
 public:
+    void set_language(std::uint8_t language) noexcept { language_ = language < 5 ? language : 0; }
     ScaledTextRenderer(
         const assets::RomImage& rom,
         const assets::SymbolMap& symbols);
@@ -68,8 +73,18 @@ public:
         std::uint8_t colour_index_base = 7U * 16U) const;
 
     [[nodiscard]] std::int32_t measure_ascii(std::string_view text) const;
+    void draw_unicode(std::u32string_view text, std::int32_t x, std::int32_t y,
+        Framebuffer& target, std::uint8_t colour = 14U,
+        std::uint8_t colour_index_base = 7U * 16U, bool menu_size = false) const;
+    [[nodiscard]] std::int32_t measure_unicode(std::u32string_view text) const;
+    [[nodiscard]] std::vector<std::u32string_view> translated_game_text_lines(
+        std::uint32_t address, std::int32_t width, std::size_t max_characters = 256U) const;
 
 private:
+    [[nodiscard]] std::int32_t menu_glyph_advance(char32_t code) const;
+    [[nodiscard]] std::int32_t measure_menu_unicode(std::u32string_view text) const;
+    std::uint8_t language_{};
+    std::unordered_map<std::uint32_t, unsigned> dialogue_ids_;
     const assets::RomImage* rom_{};
     std::uint32_t font_{};
     std::uint32_t messages_{};

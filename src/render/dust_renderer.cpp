@@ -64,7 +64,8 @@ void DustRenderer::draw(
     std::size_t active_count,
     const timing::RenderTransform& camera,
     const simulation::MatrixQ15& view_matrix,
-    Framebuffer& target) const noexcept {
+    Framebuffer& target, std::int32_t projection_offset_x,
+    std::int32_t projection_offset_y) const noexcept {
     // Dust is world-space geometry that happens to address the source raster,
     // so it opts out of 2D presentation filtering and keeps its crisp
     // block-replicated specks.
@@ -88,9 +89,11 @@ void DustRenderer::draw(
         }
         const auto clipped_z = std::min(camera_z, 4'095.0);
         const auto screen_x = static_cast<std::int32_t>(target.width() / 2U)
+            + projection_offset_x
             + static_cast<std::int32_t>(
                 std::trunc(camera_x * 256.0 / clipped_z));
         const auto screen_y = static_cast<std::int32_t>(target.height() / 2U)
+            + projection_offset_y
             + static_cast<std::int32_t>(
                 std::trunc(camera_y * 256.0 / clipped_z));
         if (screen_x < 0 || screen_x >= static_cast<std::int32_t>(target.width())

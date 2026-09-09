@@ -126,6 +126,15 @@ No standalone licence file is included by the pinned music-pack repository;
 this notice records provenance and attribution and does not alter any rights
 in the music or the underlying game.
 
+## Misaki Gothic localization font
+
+Copyright (C) 2002–2021 Num Kadoma. Source and license:
+<https://littlelimit.net/misaki.htm> and <https://littlelimit.net/font.htm#license>.
+Permission permits use, copying and distribution with or without modification,
+commercially or noncommercially, without warranty. The original documentation
+and license are included under `docs/fonts` in application packages; source BDF
+and generation instructions are in `assets/fonts` in this repository.
+
 ## xBRZ (optional)
 
 Source: <https://github.com/janisozaur/xbrz>

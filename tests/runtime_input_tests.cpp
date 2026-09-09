@@ -25,6 +25,31 @@ void require(bool condition, const char* message) {
 } // namespace
 
 int main() {
+    {
+        starfox::input::InputLatch menu_input;
+        menu_input.sample(starfox::input::a);
+        require(menu_input.consume().pressed == starfox::input::a,
+                "menu A press was not detected");
+        // The runtime keeps this latch across preview rebuilds and page changes.
+        for (unsigned frame = 0; frame < 480; ++frame) {
+            menu_input.sample(starfox::input::a);
+            require(menu_input.consume().pressed == 0,
+                    "holding menu A repeated its action");
+        }
+        menu_input.sample(0);
+        static_cast<void>(menu_input.consume());
+        menu_input.sample(starfox::input::a);
+        require(menu_input.consume().pressed == starfox::input::a,
+                "menu A did not re-arm after release");
+    }
+    require(starfox::app::peek_setup_menu(true, true, false),
+            "holding Tab did not hide the setup menu");
+    require(!starfox::app::peek_setup_menu(true, false, false),
+            "releasing Tab did not restore the setup menu");
+    require(!starfox::app::peek_setup_menu(false, true, false),
+            "menu peek intercepted gameplay Tab");
+    require(!starfox::app::peek_setup_menu(true, true, true),
+            "menu peek interfered with binding capture or the HUD editor");
     starfox::app::configure_native_gamepad_support();
 #if defined(STARFOX_UWP)
     require(SDL_GetHintBoolean(SDL_HINT_JOYSTICK_WGI, false),
@@ -296,6 +321,23 @@ int main() {
         require(starfox::app::save_pregame_settings(pregame_test_path, settings)
             && starfox::app::load_pregame_settings(pregame_test_path, loaded_pregame)
             && loaded_pregame == settings, "filter setting did not round-trip");
+    }
+    for (std::uint8_t language = 0; language < 5; ++language) {
+        auto settings = saved_pregame;
+        settings.language = language;
+        settings.wireframe_thickness = language % 4 + 1;
+        settings.enhanced_shadows = (language % 2) != 0;
+        settings.chromatic_aberration = language % 4;
+        settings.hdr_effect = language % 4;
+        require(starfox::app::save_pregame_settings(pregame_test_path, settings)
+            && starfox::app::load_pregame_settings(pregame_test_path, loaded_pregame)
+            && loaded_pregame == settings, "language setting did not round-trip");
+    }
+    {
+        auto settings = saved_pregame;
+        settings.language = 5;
+        require(!starfox::app::save_pregame_settings(pregame_test_path, settings),
+            "invalid language setting was saved");
     }
     for (std::uint8_t style = 0; style < starfox::render::effect_count; ++style) {
         auto settings = saved_pregame;
