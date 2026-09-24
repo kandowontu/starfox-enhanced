@@ -4,6 +4,8 @@ A native C++/SDL3 port of [UltraStarFox](https://github.com/Sunlitspace542/ultra
 with **Original Star Fox** and **Star Fox EX** experiences, high-frame-rate
 presentation, widescreen support, and optional visual enhancements.
 
+# THIS PROJECT WAS PORTED AND CODED BY AI/CODEX
+
 **[Download 0.0.6.7](https://github.com/kandowontu/starfox-enhanced/releases/tag/v0.0.6.7)** ·
 [Changelog](https://github.com/kandowontu/starfox-enhanced/blob/main/docs/RELEASE-0.0.6.7.md) ·
 [Settings and controls](https://github.com/kandowontu/starfox-enhanced/blob/main/docs/SETTINGS-AND-CONTROLS.md) ·
