@@ -2,7 +2,7 @@
 
 A native C++/SDL3 port of [UltraStarFox](https://github.com/Sunlitspace542/ultrastarfox),
 with **Original Star Fox** and **Star Fox EX** experiences, high-frame-rate
-presentation, widescreen support, and optional visual enhancements.
+presentation, widescreen support, and optional visual enhancements using Codex AI (5.6 Sol, 6 Astra, 6 Sol).
 
 # THIS PROJECT WAS PORTED AND CODED BY AI/CODEX
 
