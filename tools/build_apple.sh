@@ -35,7 +35,8 @@ ios)
 esac
 if [[ "${platform}" == "ios" ]]; then
     metal_source="${build_root}/_deps/sdl3-src/src/gpu/metal/SDL_gpu_metal.m"
-    grep -n 'SDL_StarfoxMetalDevice' "${metal_source}"
+    grep -n 'starfox_metal_interop.inc' "${metal_source}"
+    grep -n 'SDL_StarfoxMetalDevice' "${build_root}/_deps/sdl3-src/src/gpu/metal/starfox_metal_interop.inc"
     cmake --build "${build_root}" --config Release --target SDL3-static
     metal_archive="${build_root}/_deps/sdl3-build/Release-iphoneos/libSDL3.a"
     xcrun nm -g "${metal_archive}" | grep 'SDL_StarfoxMetal' || {

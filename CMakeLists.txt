@@ -396,16 +396,7 @@ if(STARFOX_BUILD_RUNTIME)
                     "-DPATCH_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/sdl3-switch-audio-pipeline.patch"
                     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/apply_git_patch_once.cmake")
         elseif(APPLE OR STARFOX_METAL_INTEROP)
-            # Metal ray tracing must encode on SDL's own GPU command stream and
-            # keep its resident geometry/output buffers in SDL's lifetime graph.
-            # This narrow pinned-backend hook exposes only those native handles.
-            find_package(Git REQUIRED)
-            set(STARFOX_SDL3_PATCH_COMMAND
-                PATCH_COMMAND "${CMAKE_COMMAND}"
-                    "-DGIT_EXECUTABLE=${GIT_EXECUTABLE}"
-                    "-DSOURCE_DIR=<SOURCE_DIR>"
-                    "-DPATCH_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/sdl3-metal-ray-interop.patch"
-                    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/apply_git_patch_once.cmake")
+            set(STARFOX_SDL3_PATCH_COMMAND "")
         else()
             set(STARFOX_SDL3_PATCH_COMMAND "")
         endif()
@@ -439,25 +430,33 @@ if(STARFOX_BUILD_RUNTIME)
         endif()
         FetchContent_MakeAvailable(SDL3)
         if(APPLE OR STARFOX_METAL_INTEROP)
-            # FetchContent's URL patch step is not consistently invoked by
-            # Xcode/iOS configurations. Apply idempotently to the populated
-            # source and fail configure if the native interop hooks are absent.
-            execute_process(COMMAND "${CMAKE_COMMAND}"
-                "-DGIT_EXECUTABLE=${GIT_EXECUTABLE}"
-                "-DSOURCE_DIR=${SDL3_SOURCE_DIR}"
-                "-DPATCH_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/sdl3-metal-ray-interop.patch"
-                -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/apply_git_patch_once.cmake"
-                COMMAND_ERROR_IS_FATAL ANY)
+            # URL-based FetchContent patch hooks did not update iOS's SDL
+            # source in CI. Inject the narrow native-handle functions into
+            # this private pinned SDL copy, before its Metal guard closes.
             set(STARFOX_SDL3_METAL_SOURCE
                 "${SDL3_SOURCE_DIR}/src/gpu/metal/SDL_gpu_metal.m")
             if(NOT EXISTS "${STARFOX_SDL3_METAL_SOURCE}")
                 message(FATAL_ERROR "SDL Metal backend source missing: ${STARFOX_SDL3_METAL_SOURCE}")
             endif()
             file(READ "${STARFOX_SDL3_METAL_SOURCE}" STARFOX_SDL3_METAL_TEXT)
-            string(FIND "${STARFOX_SDL3_METAL_TEXT}" "SDL_StarfoxMetalDevice"
-                STARFOX_SDL3_METAL_SYMBOL_POS)
-            if(STARFOX_SDL3_METAL_SYMBOL_POS EQUAL -1)
-                message(FATAL_ERROR "SDL Metal interop patch missing from ${STARFOX_SDL3_METAL_SOURCE}")
+            string(FIND "${STARFOX_SDL3_METAL_TEXT}" "SDL_StarfoxMetalDevice" STARFOX_SDL3_METAL_SYMBOL_POS)
+            string(FIND "${STARFOX_SDL3_METAL_TEXT}" "starfox_metal_interop.inc"
+                STARFOX_SDL3_METAL_INCLUDE_POS)
+            file(COPY_FILE
+                "${CMAKE_CURRENT_SOURCE_DIR}/cmake/sdl3-metal-ray-interop.inc"
+                "${SDL3_SOURCE_DIR}/src/gpu/metal/starfox_metal_interop.inc")
+            if(STARFOX_SDL3_METAL_SYMBOL_POS EQUAL -1
+                AND STARFOX_SDL3_METAL_INCLUDE_POS EQUAL -1)
+                set(STARFOX_SDL3_METAL_END "#endif // SDL_GPU_METAL")
+                string(FIND "${STARFOX_SDL3_METAL_TEXT}" "${STARFOX_SDL3_METAL_END}"
+                    STARFOX_SDL3_METAL_END_POS)
+                if(STARFOX_SDL3_METAL_END_POS EQUAL -1)
+                    message(FATAL_ERROR "SDL Metal backend guard changed upstream")
+                endif()
+                string(REPLACE "${STARFOX_SDL3_METAL_END}"
+                    "#include \"starfox_metal_interop.inc\"\n${STARFOX_SDL3_METAL_END}"
+                    STARFOX_SDL3_METAL_TEXT "${STARFOX_SDL3_METAL_TEXT}")
+                file(WRITE "${STARFOX_SDL3_METAL_SOURCE}" "${STARFOX_SDL3_METAL_TEXT}")
             endif()
         endif()
         if(NOT WINDOWS_STORE)
