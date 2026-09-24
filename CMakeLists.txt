@@ -395,7 +395,7 @@ if(STARFOX_BUILD_RUNTIME)
                     "-DSOURCE_DIR=<SOURCE_DIR>"
                     "-DPATCH_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/sdl3-switch-audio-pipeline.patch"
                     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/apply_git_patch_once.cmake")
-        elseif(APPLE OR IOS)
+        elseif(APPLE OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
             # Metal ray tracing must encode on SDL's own GPU command stream and
             # keep its resident geometry/output buffers in SDL's lifetime graph.
             # This narrow pinned-backend hook exposes only those native handles.
@@ -438,7 +438,7 @@ if(STARFOX_BUILD_RUNTIME)
                 ${STARFOX_SDL3_PATCH_COMMAND})
         endif()
         FetchContent_MakeAvailable(SDL3)
-        if(APPLE OR IOS)
+        if(APPLE OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
             # FetchContent's URL patch step is not consistently invoked by
             # Xcode/iOS configurations. Apply idempotently to the populated
             # source and fail configure if the native interop hooks are absent.
