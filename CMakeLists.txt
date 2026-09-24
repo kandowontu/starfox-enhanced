@@ -395,7 +395,7 @@ if(STARFOX_BUILD_RUNTIME)
                     "-DSOURCE_DIR=<SOURCE_DIR>"
                     "-DPATCH_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/sdl3-switch-audio-pipeline.patch"
                     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/apply_git_patch_once.cmake")
-        elseif(APPLE OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        elseif(APPLE OR STARFOX_METAL_INTEROP)
             # Metal ray tracing must encode on SDL's own GPU command stream and
             # keep its resident geometry/output buffers in SDL's lifetime graph.
             # This narrow pinned-backend hook exposes only those native handles.
@@ -438,7 +438,7 @@ if(STARFOX_BUILD_RUNTIME)
                 ${STARFOX_SDL3_PATCH_COMMAND})
         endif()
         FetchContent_MakeAvailable(SDL3)
-        if(APPLE OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        if(APPLE OR STARFOX_METAL_INTEROP)
             # FetchContent's URL patch step is not consistently invoked by
             # Xcode/iOS configurations. Apply idempotently to the populated
             # source and fail configure if the native interop hooks are absent.
@@ -448,6 +448,15 @@ if(STARFOX_BUILD_RUNTIME)
                 "-DPATCH_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/sdl3-metal-ray-interop.patch"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/apply_git_patch_once.cmake"
                 COMMAND_ERROR_IS_FATAL ANY)
+            set(STARFOX_SDL3_METAL_SOURCE
+                "${SDL3_SOURCE_DIR}/src/gpu/metal/SDL_gpu_metal.m")
+            if(NOT EXISTS "${STARFOX_SDL3_METAL_SOURCE}")
+                message(FATAL_ERROR "SDL Metal backend source missing: ${STARFOX_SDL3_METAL_SOURCE}")
+            endif()
+            file(READ "${STARFOX_SDL3_METAL_SOURCE}" STARFOX_SDL3_METAL_TEXT)
+            if(NOT STARFOX_SDL3_METAL_TEXT MATCHES "void \\*SDL_StarfoxMetalDevice")
+                message(FATAL_ERROR "SDL Metal interop patch missing from ${STARFOX_SDL3_METAL_SOURCE}")
+            endif()
         endif()
         if(NOT WINDOWS_STORE)
             execute_process(COMMAND "${CMAKE_COMMAND}"
