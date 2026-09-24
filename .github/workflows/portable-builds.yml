@@ -598,10 +598,9 @@ jobs:
           draft: false
 
   release-checksums:
-    if: inputs.release_tag != '__ios_test__'
     name: Release package checksums
     needs: [windows-x64, windows-x86, xbox-uwp-x64, linux-x64, macos-universal, ios-device, android-arm64, quest-arm64, windows-pcvr, switch-homebrew, vita-homebrew]
-    if: github.event_name == 'push' || inputs.release_tag != ''
+    if: inputs.release_tag != '__ios_test__' && (github.event_name == 'push' || inputs.release_tag != '')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
