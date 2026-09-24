@@ -6,7 +6,54 @@
 #include <vector>
 
 namespace starfox::vr {
+struct BackgroundTileOptions;
 enum class BackgroundLayer { bg1, bg2, bg3 };
+struct PhotographicLandscape {
+    bool operator==(const PhotographicLandscape&) const = default;
+    // Match desktop's source-pixel scale near the forward direction. The
+    // repeated panorama closes at the rear without putting imagery on ground.
+    float horizon_v{1.F},vertical_scale{512.F/160.F},horizontal_offset{.25F};
+    float horizontal_scale{1.F};
+    unsigned repeats{6};
+    bool full_sphere{};
+    bool latitude_uv{}; // All-sky stars: distribute vertically instead of clamping a horizon strip.
+    bool orbital_surface{}; // Local-direction surface continuation; blend to separate stars above the limb.
+    bool preserve_game_over_front{};
+    std::array<float,4> response{1,1,1,1};
+    std::array<float,3> palette_shift{};
+    // Native BGR555 ramps; index zero selects Titania (1) or Sector K (2).
+    // Draw data, not image pixels: weather must never reload the photograph.
+    std::array<uint16_t,16> cloud_palette{};
+};
+struct PhotographicBody {
+    bool operator==(const PhotographicBody&) const = default;
+    // Source-pixel registration before the shared landscape motion matrix.
+    std::array<float,2> center{128,112},diameter{56,56};
+    std::array<float,4> response{1,1,1,1};
+    // Optional two-tone native shading (bright/dark BGR555).
+    std::array<float,3> palette_shift{};
+    bool two_tone{};
+    uint16_t bright{},dark{};
+    // 4: face ramp; 5: cloud limb; 6/7: gray/blue city moons; 8: orbital moon.
+    std::array<uint16_t,16> palette{};
+};
+[[nodiscard]] DrawPacket photographic_body_packet(
+    std::shared_ptr<const std::vector<uint32_t>>,const PhotographicBody&,bool srgb=false);
+[[nodiscard]] Matrix4 photographic_body_motion(std::array<float,2> center);
+// Correct current-tick panorama geometry toward the interpolated scroll. Delta
+// is wrapped source pixels; no texture/vertex upload is needed between ticks.
+[[nodiscard]] Matrix4 photographic_scroll_correction(float dx,float dy,double alpha,
+    float horizontal_scale=1.F,float vertical_scale=512.F/224.F);
+// One indexed landmark over a replaced sky. Only selected native ink runs are
+// geometry; palette fades stay in the original GPU tile sampler.
+[[nodiscard]] DrawPacket landscape_landmark_packet(const simulation::SnesPpuState&,
+    const BackgroundTileOptions&,const std::array<unsigned,4>&,
+    const std::array<bool,256>&,bool srgb=false);
+// Upper hemisphere only. Apply the same landscape_camera_motion as the native
+// ground packet. Palette response is independent of the retained pixel payload.
+[[nodiscard]] DrawPacket photographic_landscape_packet(
+    std::shared_ptr<const std::vector<uint32_t>> texture,
+    const PhotographicLandscape& options={},bool srgb=false);
 // Opaque enclosure with a 256x224 source-window opening. Draw after world
 // geometry with depth disabled, before HUD; caller supplies source placement.
 [[nodiscard]] DrawPacket tunnel_surround_packet(const std::array<float,4>& colour);
@@ -21,6 +68,7 @@ enum class BackgroundLayer { bg1, bg2, bg3 };
 struct BackgroundTileOptions {
     unsigned priority{}; // 0 all, 1 low, 2 high
     unsigned brightness{15}; // source display brightness, 0..15
+    unsigned colour_subtract{}; // BG2-only native HALFFADE, 0..31.
     bool expanded_horizontal{};
     bool transparent_black{}; // Test source palette before brightness fading.
     bool wrap_horizontal{true}; // False: expose only one authored tilemap occurrence.
@@ -48,6 +96,11 @@ struct BackgroundTileOptions {
 [[nodiscard]] DrawPacket intro_star_sphere_packet(const simulation::SnesPpuState&,
     unsigned brightness=15,bool srgb=false,bool full_atlas=false,bool upper_left_only=false,
     bool retain_source_scroll=false);
+[[nodiscard]] DrawPacket game_over_star_sphere_packet(const simulation::SnesPpuState&,
+    unsigned brightness=15,unsigned colour_subtract=0,bool srgb=false);
+// Cut out only exterior black ink; enclosed black facial details stay opaque.
+[[nodiscard]] std::vector<SceneVertex> game_over_foreground_vertices(
+    const simulation::SnesPpuState&,bool srgb=false);
 [[nodiscard]] DrawPacket intro_planet_packet(const simulation::SnesPpuState&,
     unsigned brightness=15,bool srgb=false);
 [[nodiscard]] DrawPacket unique_planet_packet(const simulation::SnesPpuState&,

@@ -1,6 +1,8 @@
 #include "starfox/render/gpu_projection.hpp"
+#include "starfox/render/temporal_jitter.hpp"
 #include "starfox/render/grid_projection.hpp"
 #include <cmath>
+#include <bit>
 #include <algorithm>
 #if defined(STARFOX_SDL_GPU_EFFECTS)
 #include <SDL3/SDL.h>
@@ -235,11 +237,16 @@ void* GpuProjection::enqueue_motion_impl(void* device,void* command,void* curren
 #endif
 }
 void* GpuProjection::enqueue_text(void* device,void* command,const ScaledTextRenderer::ProjectedFrame& frame,
-    std::uint32_t width,std::uint32_t height,std::uint32_t scale,std::uint8_t tag,float eye_x,float convergence) {
+    std::uint32_t width,std::uint32_t height,std::uint32_t scale,std::uint8_t tag,float eye_x,float convergence,
+    std::array<std::uint32_t,2> logical_viewport,std::array<float,2> jitter) {
+    if(!valid_raster_jitter(jitter)) {impl_->status="Invalid text jitter";return nullptr;}
 #if defined(STARFOX_SDL_GPU_EFFECTS)
     try {
+        const bool custom=logical_viewport[0] || logical_viewport[1];
         if(!device || !command || !width || !height || width>8192 || height>8192
-            || !scale || scale>4 || width%scale || height%scale || frame.glyphs.size()>256
+            || !scale || scale>4 || (!custom && (width%scale || height%scale))
+            || (custom && (!logical_viewport[0] || !logical_viewport[1]
+                || logical_viewport[0]>2048 || logical_viewport[1]>2048)) || frame.glyphs.size()>256
             || frame.character_size< -1 || frame.character_size>254
             || !std::isfinite(frame.pose.x) || !std::isfinite(frame.pose.y) || !std::isfinite(frame.pose.z)
             || std::abs(frame.pose.x)>1e6 || std::abs(frame.pose.y)>1e6
@@ -289,9 +296,11 @@ void* GpuProjection::enqueue_text(void* device,void* command,const ScaledTextRen
         struct Settings {
             double x,y,z;Uint32 width,height,scale,count;std::int32_t size;Uint32 colour;
             float eye,convergence;Uint32 stage,tag;
+            Uint32 reference_width,reference_height;std::array<float,2> jitter;
         } settings{frame.pose.x,frame.pose.y,frame.pose.z,width,height,scale,Uint32(frame.glyphs.size()),
-            frame.character_size,frame.colour,eye_x,convergence,0,tag};
-        static_assert(sizeof(Settings)==64);
+            frame.character_size,frame.colour,eye_x,convergence,0,tag,
+            custom?logical_viewport[0]*scale:width,custom?logical_viewport[1]*scale:height,jitter};
+        static_assert(sizeof(Settings)==80);
         for(unsigned stage=0;stage<2;++stage) {
             settings.stage=stage;SDL_PushGPUComputeUniformData(cmd,0,&settings,sizeof(settings));
             SDL_GPUStorageBufferReadWriteBinding binding{};binding.buffer=impl_->text_work;binding.cycle=stage==0;
@@ -495,22 +504,26 @@ void* GpuProjection::enqueue_dust(void* device,void* command,void* points,void* 
 #endif
 }
 void* GpuProjection::enqueue_grid_spans(void* command,std::uint32_t height,
-    std::uint32_t scale,std::uint8_t colour,std::uint8_t tag,const std::int16_t* line_start) {
-    return enqueue_point_spans(command,height,scale,colour,tag,line_start,0);
+    std::uint32_t scale,std::uint8_t colour,std::uint8_t tag,const std::int16_t* line_start,std::array<std::uint32_t,3> raster_mapping,std::array<float,2> jitter) {
+    return enqueue_point_spans(command,height,scale,colour,tag,line_start,0,raster_mapping,jitter);
 }
 void* GpuProjection::enqueue_dust_spans(void* command,std::uint32_t height,std::uint32_t scale,
-    std::uint8_t tag,std::int16_t left,std::int16_t right) {
+    std::uint8_t tag,std::int16_t left,std::int16_t right,std::array<std::uint32_t,3> raster_mapping,std::array<float,2> jitter) {
     const std::int16_t exclusion[]{left,right};
-    return enqueue_point_spans(command,height,scale,0,tag,exclusion,2);
+    return enqueue_point_spans(command,height,scale,0,tag,exclusion,2,raster_mapping,jitter);
 }
 void* GpuProjection::enqueue_particle_spans(void* command,std::uint32_t height,std::uint32_t scale,
-    std::uint8_t tag,std::int16_t left,std::int16_t right) {
+    std::uint8_t tag,std::int16_t left,std::int16_t right,std::array<std::uint32_t,3> raster_mapping,std::array<float,2> jitter) {
     const std::int16_t clip[]{left,right};
-    return enqueue_point_spans(command,height,scale,0,tag,clip,3);
+    return enqueue_point_spans(command,height,scale,0,tag,clip,3,raster_mapping,jitter);
 }
 void* GpuProjection::enqueue_point_spans(void* command,std::uint32_t height,
-    std::uint32_t scale,std::uint8_t colour,std::uint8_t tag,const std::int16_t* line_start,unsigned kind) {
-    if(!command || !height || height>8192 || !scale || scale>32 || height%scale) {
+    std::uint32_t scale,std::uint8_t colour,std::uint8_t tag,const std::int16_t* line_start,unsigned kind,
+    std::array<std::uint32_t,3> raster_mapping,std::array<float,2> jitter) {
+    const bool custom=raster_mapping!=std::array<std::uint32_t,3>{};
+    if(!valid_raster_jitter(jitter) || !command || !height || height>8192 || !scale || scale>32 || (!custom && height%scale)
+        || (custom && (!raster_mapping[0] || !raster_mapping[1] || !raster_mapping[2]
+            || raster_mapping[0]>32767 || raster_mapping[1]>32767 || raster_mapping[2]>8192))) {
         impl_->status="Invalid grid span input";return nullptr;
     }
 #if defined(STARFOX_SDL_GPU_EFFECTS)
@@ -518,7 +531,7 @@ void* GpuProjection::enqueue_point_spans(void* command,std::uint32_t height,
         auto* point_buffer=kind==3?impl_->particle_output:kind==2?impl_->dust_output:impl_->grid_output;
         const auto source_command=kind==3?impl_->particle_command:kind==2?impl_->dust_command:impl_->grid_command;
         const auto source_height=kind==3?impl_->particle_height:kind==2?impl_->dust_height:impl_->grid_height;
-        if(!impl_->device || !point_buffer || source_command!=command || source_height!=height/scale)
+        if(!impl_->device || !point_buffer || source_command!=command || source_height!=(custom?raster_mapping[1]:height/scale))
             throw std::runtime_error("Grid spans require matching projected points on the same command");
         if(!impl_->grid_spans_pipeline) {
             const bool spirv=(SDL_GetGPUShaderFormats(impl_->device)&SDL_GPU_SHADERFORMAT_SPIRV)!=0;
@@ -542,7 +555,9 @@ void* GpuProjection::enqueue_point_spans(void* command,std::uint32_t height,
         }
         auto* cmd=static_cast<SDL_GPUCommandBuffer*>(command);
         const Uint32 settings[]{height,scale,colour,tag,kind?kind:line_start?1U:0U,
-            Uint32(line_start?line_start[0]:0),Uint32(line_start?line_start[1]:0),kind?count:0U};
+            Uint32(line_start?line_start[0]:0),Uint32(line_start?line_start[1]:0),kind?count:0U,
+            raster_mapping[0],raster_mapping[1],raster_mapping[2],0,
+            std::bit_cast<Uint32>(jitter[0]),std::bit_cast<Uint32>(jitter[1]),0,0};
         SDL_PushGPUComputeUniformData(cmd,0,settings,sizeof(settings));
         SDL_GPUStorageBufferReadWriteBinding binding{};binding.buffer=impl_->grid_spans;binding.cycle=true;
         auto* pass=SDL_BeginGPUComputePass(cmd,nullptr,0,&binding,1);Impl::require(pass);

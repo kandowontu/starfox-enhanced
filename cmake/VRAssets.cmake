@@ -1,5 +1,6 @@
 # VR needs companion validation resources even without the SDL desktop runtime.
-# Only patches and symbol tables are embedded, never retail/prepared ROMs.
+# Embed validation patches, symbol tables and authored backdrop artwork, never
+# retail/prepared ROMs. The artwork uses the shared desktop resource identities.
 if(STARFOX_EMBED_RUNTIME_ASSETS)
     set(vr_resource_ids 101 102 108 109 120 121 122 123 124 125 126)
     set(vr_resource_files
@@ -18,6 +19,10 @@ if(STARFOX_EMBED_RUNTIME_ASSETS)
         endif()
         list(APPEND vr_resource_arguments --resource "${identifier}=${resource_file}")
     endforeach()
+    include("${CMAKE_CURRENT_LIST_DIR}/EnhancedBackdropAssets.cmake")
+    starfox_enhanced_backdrop_resources(vr_backdrop_arguments vr_backdrop_files)
+    list(APPEND vr_resource_arguments ${vr_backdrop_arguments})
+    list(APPEND vr_resource_files ${vr_backdrop_files})
     set(vr_generated_assets "${CMAKE_CURRENT_BINARY_DIR}/generated/vr_embedded_assets.cpp")
     add_custom_command(OUTPUT "${vr_generated_assets}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_runtime_assets.py"

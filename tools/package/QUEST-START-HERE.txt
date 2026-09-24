@@ -1,0 +1,21 @@
+STAR FOX ENHANCED - QUEST 3 DEVELOPMENT BUILD
+
+Sideload StarFoxEnhanced-quest-arm64.apk, then launch it from Unknown Sources.
+The APK contains no cartridge dump or prepared Starfox-Assets.BIN.
+Generate your own BIN with starfox_asset_builder from the ordinary desktop
+release and a supported retail cartridge dump. Do not share your ROM/BIN.
+
+Import your BIN through the first-launch picker. If your headset cannot show
+the picker, copy Starfox-Assets.BIN to:
+  /sdcard/Android/data/com.starfox.enhanced.quest/files/Starfox-Assets.BIN
+Then relaunch. ADB example:
+  adb install -r StarFoxEnhanced-quest-arm64.apk
+  adb push Starfox-Assets.BIN /sdcard/Android/data/com.starfox.enhanced.quest/files/Starfox-Assets.BIN
+
+Published builds use a permanent signing certificate. Earlier local/debug APKs
+may use a different certificate and cannot be upgraded in place. Back up your
+files first if an uninstall is required; uninstalling removes application data.
+Do not uninstall merely because launch is slow or an import fails.
+
+This is a development VR build; headset performance/comfort acceptance remains
+ongoing. The package build does not imply that all PC effects exist on Quest.

@@ -1,5 +1,7 @@
 #include "starfox/render/pixel_filter.hpp"
+#include "starfox/render/environment_effects.hpp"
 #include "starfox/simulation/game_simulation.hpp"
+#include "starfox/simulation/irq_palette.hpp"
 
 #include "starfox/assets/decrunch.hpp"
 #include "starfox/input/buttons.hpp"
@@ -12,6 +14,9 @@
 #include <stdexcept>
 
 namespace starfox::simulation {
+void GameSimulation::set_environment(const std::array<std::uint8_t,6>& value) noexcept {
+    environment_=render::valid_environment(value)?value:std::array<std::uint8_t,6>{};
+}
 namespace {
 
 constexpr std::array<std::uint16_t, 8> kPresentationRates{
@@ -445,6 +450,11 @@ GameSimulation::GameSimulation(
         }
         return std::uint32_t{};
     };
+    irq_palette_addresses_={find_optional_ram("FLASHTUNNELON"),find_optional_ram("FLASHBG"),
+        find_optional_ram("RAND"),find_optional_ram("REDTUNNEL"),find_optional_ram("THUNDERCOL")};
+    const auto rng_modes=symbols.find("RNGMODE");
+    irq_palette_advance_random_=find_optional_rom("PLANETSEQ2_L")==0U
+        && (rng_modes.empty() || rng_modes.front()!=2U);
     // PCSTRATS' clear routines disable input just like the launch does, but
     // they are not the heavy launch/tunnel scene. Resolve their real strategy
     // identities so the pacing policy does not confuse those two cases.
@@ -613,6 +623,9 @@ GameSimulation::GameSimulation(
         ex_fps_speed_ = find_optional_ram("FPSSPEED");
         ex_ntsc_pal_swap_ = find_optional_ram("NTSCPALSWAP");
         ex_dark_mode_ = find_optional_ram("DARKMODE");
+        ex_irq_cycles_=ex_irq_palette_cycles([&](const std::string& name){return find_optional_ram(name.c_str());});
+        ex_title_cycle_=ex_title_palette_cycle([&](const std::string& name){return find_optional_ram(name.c_str());});
+        ex_irq_color_trip_=find_optional_ram("COLORTRIP");
         ex_palette_slow_counter_ = find_optional_ram("TEMPVAL5");
         ex_palette_slower_counter_ = find_optional_ram("TEMPVAL6");
         ex_palette_every_transfer_ = {
@@ -1155,7 +1168,7 @@ GameTickResult GameSimulation::tick_pregame_menu(
     pregame_horizontal_blocked_ = (input.held & horizontal) != 0U;
 
     const auto previous_selection = pregame_selection_;
-    const auto order = pregame_menu_order(pregame_page_);
+    const auto order = pregame_menu_order(pregame_page_, neural_filter_available_);
     if (menu_input.pressed & (starfox::input::up | starfox::input::down)) {
         const auto current = std::find(order.begin(), order.end(), pregame_selection_) - order.begin();
         const auto delta = (menu_input.pressed & starfox::input::up) ? order.size() - 1U : 1U;
@@ -1178,15 +1191,38 @@ GameTickResult GameSimulation::tick_pregame_menu(
         && (pregame_selection_ == 20U || pregame_selection_ == 21U)
         && (menu_input.pressed & (starfox::input::a | starfox::input::select))) {
         pregame_page_ = pregame_selection_ == 20U ? PregamePage::two_d : PregamePage::three_d;
-        pregame_selection_ = pregame_menu_order(pregame_page_).front();
+        pregame_selection_ = pregame_menu_order(pregame_page_, neural_filter_available_).front();
         queue_sound_effect(0x11U);
         result.audio_port_writes = map_.take_apu_port_writes();
         return result;
     }
+    if (graphics_page && pregame_selection_ == 31U && neural_filter_available_
+        && (menu_input.pressed & (starfox::input::a | starfox::input::select
+            | starfox::input::left | starfox::input::right))) {
+        neural_filter_requested_=!neural_filter_requested_;
+        queue_sound_effect(0x11U);
+    }
+    if (graphics_page && pregame_selection_ == 30U
+        && (menu_input.pressed & (starfox::input::a | starfox::input::select
+            | starfox::input::left | starfox::input::right))) {
+        const auto mode=fsr1_menu_?fsr1_mode_:dlss_mode_;
+        const auto next=static_cast<std::uint8_t>((mode
+            + ((menu_input.pressed & starfox::input::left) ? 4U : 1U)) % 5U);
+        if(fsr1_menu_) set_fsr1_mode(next); else set_dlss_mode(next);
+        queue_sound_effect(0x11U);
+    }
+    if (graphics_page && pregame_selection_ == 32U && reflections_available()
+        && (menu_input.pressed & (starfox::input::a | starfox::input::select
+            | starfox::input::left | starfox::input::right))) {
+        set_reflective_surfaces(static_cast<std::uint8_t>((reflective_surfaces_
+            + ((menu_input.pressed & starfox::input::left) ? 3U : 1U)) % 4U));
+        queue_sound_effect(0x11U);
+    }
     if (graphics_page && pregame_selection_ == 29U
         && (menu_input.pressed & (starfox::input::a | starfox::input::select
             | starfox::input::left | starfox::input::right))) {
-        set_ray_tracing(!ray_tracing_);
+        if (renderer_mode_ == RendererMode::software) set_enhanced_shadows(!enhanced_shadows_);
+        else set_ray_tracing(!ray_tracing_);
         queue_sound_effect(0x11U);
     }
     if (graphics_page && pregame_selection_ == 27U
@@ -1203,10 +1239,26 @@ GameTickResult GameSimulation::tick_pregame_menu(
             + ((menu_input.pressed & starfox::input::left) ? 3U : 1U)) % 4U));
         queue_sound_effect(0x11U);
     }
-    if (graphics_page && (pregame_selection_ == 22U || pregame_selection_ == 24U)
+    if(graphics_page && pregame_selection_>=36U && pregame_selection_<=41U && (menu_input.pressed
+        & (starfox::input::a|starfox::input::select|starfox::input::left|starfox::input::right))) {
+        const unsigned field=pregame_selection_-36U, count=render::environment_limits[field];
+        environment_[field]=std::uint8_t((environment_[field]+((menu_input.pressed&starfox::input::left)?count-1:1))%count);
+        queue_sound_effect(0x11U);
+    }
+    if(graphics_page && pregame_selection_==35U && (menu_input.pressed
+        & (starfox::input::a|starfox::input::select|starfox::input::left|starfox::input::right))) {
+        material_=render::next_material(material_,(menu_input.pressed&starfox::input::left)!=0);
+        queue_sound_effect(0x11U);
+    }
+    if(graphics_page && pregame_selection_==33U && (menu_input.pressed
+        & (starfox::input::a|starfox::input::select|starfox::input::left|starfox::input::right))) {
+        manipulation_=render::next_manipulation(manipulation_,(menu_input.pressed&starfox::input::left)!=0);
+        queue_sound_effect(0x11U);
+    }
+    if (graphics_page && (pregame_selection_ == 22U || pregame_selection_ == 24U || pregame_selection_==34U)
         && (menu_input.pressed & (starfox::input::a | starfox::input::select
             | starfox::input::left | starfox::input::right))) {
-        auto& intensity = pregame_selection_ == 22U ? effect_intensity_ : world_effect_intensity_;
+        auto& intensity = pregame_selection_==34U ? manipulation_intensity_ : pregame_selection_ == 22U ? effect_intensity_ : world_effect_intensity_;
         const auto delta = (menu_input.pressed & starfox::input::left) ? -10 : 10;
         intensity = static_cast<std::uint8_t>(std::clamp(int(intensity) + delta, 0, 100));
         queue_sound_effect(0x11U);
@@ -1236,6 +1288,7 @@ GameTickResult GameSimulation::tick_pregame_menu(
             case 3U: infinite_bombs_ = !infinite_bombs_; break;
             case 4U: infinite_boost_ = !infinite_boost_; break;
             case 5U: infinite_lives_ = !infinite_lives_; break;
+            case 7U: set_planet_select_cheat(!planet_select_cheat_); break;
             default: break;
             }
             queue_sound_effect(0x11U);
@@ -1843,6 +1896,11 @@ std::uint8_t GameSimulation::game_over_background_subtract() const noexcept {
 }
 
 DialogueState GameSimulation::dialogue_state() const noexcept {
+    // Retail MAIN.ASM's END_LEVEL_SEQ runs TRANSFER_L and the tally drawing,
+    // not FRIENDS_MESSAGES_L. Its latched counters do not represent a face
+    // submitted during this phase. Keep native counters intact, but do not
+    // reconstruct the last pilot over the score/teammate-health composition.
+    if(!starfox_ex_cartridge_ && flow_state_==GameFlowState::stage_results) return {};
     // Presentation snapshots must not update the emulated bus latch.
     const auto byte=[&](std::uint32_t address) {return map_.peek_ram_byte(address).value_or(0);};
     const auto word=[&](std::uint32_t address) {return map_.peek_ram_word(address).value_or(0);};
@@ -1877,11 +1935,13 @@ DialogueState GameSimulation::dialogue_state() const noexcept {
     const auto friend_id = byte(
         alternate ? which_friend_2_ : which_friend_);
     const auto meter=byte(friends_meter_);
-    const bool meter_visible=!alternate && open_count!=0U && animation_count>=5U
+    const bool speaking=animation_count>=5U && map_.dialogue_speaking(alternate)
+        .value_or(open_count!=0U);
+    const bool meter_visible=!alternate && speaking
         && (friend_id&0x7fU)>=1U && (friend_id&0x7fU)<=3U && meter!=0U;
     return {
         active,
-        open_count != 0U && animation_count >= 5U,
+        speaking,
         (friend_id & 0x80U) != 0U || (friend_id & 0x7fU) == 5U || meter_visible,
         alternate,
         portrait_frame,
@@ -2021,16 +2081,14 @@ void GameSimulation::draw_ex_transfer_overlay(GameTickResult& result) {
     map_.submit_superfx_bitmap();
 }
 
-std::uint16_t GameSimulation::native_pointer(ObjectHandle handle) noexcept {
-    return handle == 0 ? 0U
-        : static_cast<std::uint16_t>(0x0338U + (handle - 1U) * 56U);
+std::uint16_t GameSimulation::native_pointer(ObjectHandle handle) const noexcept {
+    return map_.original_object_pointer(handle);
 }
 
 ObjectHandle GameSimulation::handle_from_native_pointer(std::uint16_t pointer) const noexcept {
-    if (pointer < 0x0338U) return 0;
-    const auto displacement = static_cast<std::uint16_t>(pointer - 0x0338U);
-    if (displacement % 56U != 0U) return 0;
-    const auto handle = static_cast<ObjectHandle>(displacement / 56U + 1U);
+    // EX uses ALBLKS=$339 and 57-byte records, not retail's $338/56.
+    // Share the VM's cartridge-aware conversion for every host reference.
+    const auto handle = map_.native_object_handle(pointer);
     return objects_.is_active(handle) ? handle : 0;
 }
 
@@ -2601,6 +2659,7 @@ std::uint32_t GameSimulation::resolve_route_stage(std::uint16_t remaining_stage)
 }
 
 void GameSimulation::reset_scene_transition_state() {
+    planet_cheat_active_=false;
     death_music_cut_latched_ = false;
     pace_debt_ = 0.0;
     paused_ = false;
@@ -3029,6 +3088,20 @@ void GameSimulation::enter_ex_pregame_menu(bool model_test) {
     map_.set_display_brightness(0U);
     frontend_phase_ = FrontendPhase::ex_menu_fade_in;
     flow_state_ = GameFlowState::ex_pregame_menu;
+    // The cartridge's title -> special-menu handoff retains this flat BG3
+    // offset row. Host-directed entry can retain the intro's $4010 instead,
+    // hiding nebulae and shifting every Mode 2 landscape by 257 pixels.
+    // Independent unmodified-ROM menu captures establish $4111; Mode 1
+    // choices ignore this row and retain their own per-choice X/Y scroll.
+    std::array<std::uint8_t,64> menu_offsets{};
+    for(std::size_t column=0;column<32;++column) {
+        menu_offsets[column*2]=0x11;menu_offsets[column*2+1]=0x41;
+    }
+    map_.write_vram(0x5f40,menu_offsets);
+    // Hardware Mode 2 always consults BG3's per-column offset table. The
+    // menu supplies that table itself; it does not run the gameplay-only
+    // CALCBGVOFS path which normally enables it in the host.
+    map_.set_bg2_vertical_offsets_enabled(map_.ppu_state().background_mode == 2U);
     ++scene_revision_;
 }
 
@@ -3120,6 +3193,7 @@ GameTickResult GameSimulation::tick_ex_pregame_menu(
     const std::array frame_stops{ex_foxy_self_, ex_restart_};
     const auto task = map_.resume_native_task(ex_menu_registers_, frame_stops,
         menu_instruction_limit, true);
+    map_.set_bg2_vertical_offsets_enabled(map_.ppu_state().background_mode == 2U);
     result.prelude_instructions += task.instructions;
     map_.write_native_byte(ex_fps_speed_, 0U);
     map_.write_native_byte(ex_ntsc_pal_swap_, 0U);
@@ -3664,7 +3738,24 @@ void GameSimulation::set_planet_route_lines(
     if (complete_route) map_.write_native_word(stage_, 10U);
     map_.call_native_routine(draw_planet_lines_, registers, 5'000'000, true);
     map_.write_native_word(stage_, saved_stage);
-    if (complete_route) map_.write_native_word(current_planet_, 0xffffU);
+    if (complete_route) {
+        map_.write_native_word(current_planet_, 0xffffU);
+        // DRAWPLANETLINES writes the next position before recognizing the
+        // route terminator. After choosing a shorter route, that unused slot
+        // can still contain the previous course's line tile, now at (0,0).
+        // Retire only the unused tail of the 20 route slots with UNDRAW's
+        // offscreen coordinates. Never clip real route ink or the map ship.
+        const auto first = sprite_block_ + 8U * 4U;
+        const auto end = first + 20U * 4U;
+        const auto unused = static_cast<std::uint32_t>(
+            map_.read_native_word(ram_symbol("CURRENTSPRITE")));
+        if (unused >= first && unused <= end && (unused - first) % 4U == 0U) {
+            for (auto sprite = unused; sprite < end; sprite += 4U) {
+                map_.write_native_byte(sprite, 0xf8U);
+                map_.write_native_byte(sprite + 1U, 0xf8U);
+            }
+        }
+    }
     planet_route_lines_visible_ = true;
 }
 
@@ -4429,6 +4520,68 @@ void GameSimulation::launch_pending_stage() {
     flow_state_ = GameFlowState::gameplay;
 }
 
+bool GameSimulation::tick_planet_cheat(const input::TickInput& input) {
+    if(!planet_select_cheat_ || frontend_phase_!=FrontendPhase::planet_route) return false;
+    using namespace starfox::input;
+    const auto held=ButtonMask(input.held|input.pressed);
+    const bool activate=(held&(x|y))==(x|y);
+    if(!planet_cheat_active_ && !activate) return false;
+    if(planet_cheat_active_ && starfox_ex_cartridge_ &&
+        ((second_planet_campaign_active_ && (input.pressed&right_shoulder))
+        || (!second_planet_campaign_active_ && (input.pressed&left_shoulder)))) {
+        const bool second=!second_planet_campaign_active_;
+        map_.write_native_byte(first_download_,1);map_.write_native_byte(once_wipe_,1);
+        map_.write_native_byte(which_route_,second?4:0);
+        Wdc65816Registers registers;registers.status=0x24;
+        map_.call_native_routine(second?initialize_all_:initialize_all_2_,registers,5'000'000,true);
+        select_planet_campaign(second);if(!second) map_.write_native_byte(which_route_,1);
+        route_display_order_=true;enter_planet_map(true);
+        planet_cheat_active_=true;return true;
+    }
+    bool changed=false;
+    if(!planet_cheat_active_) {
+        planet_cheat_active_=true;map_.write_native_word(stage_,0);changed=true;
+        queue_sound_effect(starfox_ex_cartridge_?0xa0U:0x11U);
+    } else if(input.pressed&(a|start)) {
+        const auto selected=map_.read_native_word(stage_);
+        pending_map_=selected_route_stage(selected);
+        redraw_planet_route(false);
+        // DRAWPLANETLINES owns CURRENTPLANET/NEWMAP and source route graphics.
+        pending_map_=selected_route_stage(selected);
+        planet_cheat_active_=false;begin_planet_selection_sequence();return true;
+    } else {
+        auto route=map_.read_native_byte(which_route_);
+        if(input.pressed&(up|select|down)) {
+            constexpr std::array<std::uint8_t,5> original{0,1,2,3,4};
+            constexpr std::array<std::uint8_t,7> first{0,1,2,3,7,8,9};
+            constexpr std::array<std::uint8_t,5> second{4,5,6,10,11};
+            const std::span<const std::uint8_t> routes=!starfox_ex_cartridge_?std::span{original}:
+                second_planet_campaign_active_?std::span{second}:std::span<const std::uint8_t>{first};
+            const auto found=std::find(routes.begin(),routes.end(),route);
+            const auto at=found==routes.end()?0U:unsigned(found-routes.begin());
+            route=routes[(at+((input.pressed&(up|select))?routes.size()-1:1))%routes.size()];
+            map_.write_native_byte(which_route_,route);
+            if(actual_route_) map_.write_native_byte(actual_route_,route);
+            map_.write_native_word(stage_,0);changed=true;
+        } else if(input.pressed&(left|right)) {
+            auto stage=map_.read_native_word(stage_);
+            const unsigned last=route==2?6:route==0 || route==1 || (starfox_ex_cartridge_ && route==5)?5:
+                starfox_ex_cartridge_ && (route==3 || route==4 || route==6)?4:0;
+            if(input.pressed&right) stage=std::min<unsigned>(stage+1,last);
+            else if(stage) --stage;
+            map_.write_native_word(stage_,stage);changed=true;
+        }
+    }
+    if(changed) {
+        redraw_planet_route(false);
+        Wdc65816Registers registers;registers.status=0x24;
+        map_.call_native_near_routine(rom_symbol(second_planet_campaign_active_?"SETSHIPPOS2":"SETSHIPPOS"),registers,5'000'000,true);
+        map_.upload_oam(sprite_block_,544U);queue_sound_effect(0x11U);
+    }
+    // User-requested unified binding: X+Y enters, A/START launches; B is ignored.
+    return true;
+}
+
 GameTickResult GameSimulation::tick_planet_map(const input::TickInput& input) {
     constexpr std::uint32_t spc_clocks_per_tick = 1'024'000U / 20U;
     constexpr std::uint8_t video_phases_per_tick = 3U;
@@ -4440,6 +4593,9 @@ GameTickResult GameSimulation::tick_planet_map(const input::TickInput& input) {
         service_audio_irq(result.sound_effect_commands);
     }
     ++flow_ticks_;
+    if(tick_planet_cheat(input)) {
+        result.audio_port_writes=map_.take_apu_port_writes();return result;
+    }
     if (flow_state_ == GameFlowState::planet_select
         && frontend_phase_ == FrontendPhase::planet_route) {
         const auto switch_to_first = starfox_ex_cartridge_
@@ -4485,7 +4641,7 @@ GameTickResult GameSimulation::tick_planet_map(const input::TickInput& input) {
                 : static_cast<std::uint8_t>(route - 1U);
             changed = true;
         }
-        if ((input.pressed & (starfox::input::right | starfox::input::down)) != 0U) {
+        else if ((input.pressed & (starfox::input::right | starfox::input::down)) != 0U) {
             route = static_cast<std::uint8_t>(first_route
                 + (route + 1U - first_route) % route_count);
             changed = true;
@@ -4523,7 +4679,8 @@ GameTickResult GameSimulation::tick_planet_map(const input::TickInput& input) {
         // and then enter briefing with corrupt planet/path state.
         const auto arrived = planet_travel_complete_;
         const auto confirmed = !planet_arrival_confirmation_required_
-            || (input.pressed & starfox::input::a) != 0U;
+            || (input.pressed & (starfox::input::a|starfox::input::b|starfox::input::start
+                |(starfox_ex_cartridge_?0:(starfox::input::x|starfox::input::y)))) != 0U;
         if (arrived && confirmed) {
             begin_planet_selection_sequence();
         }
@@ -5254,6 +5411,11 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
         pending_end_game_ = false;
         credits_complete_ = false;
         reset_scene_transition_state();
+        // RESTART clears this through INITIALISE_RAM. We hand off without
+        // resetting the host's CPU stack/RAM, so retire CREDITS' fixed-scroll
+        // override explicitly. Otherwise SETBG2VOFS keeps writing zero over
+        // the intro/title scroll and exposes unrelated title tiles (#68).
+        map_.write_native_byte(ram_symbol("BG2VOFSOVERRIDE"), 0U);
         write_input({});
         Wdc65816Registers registers;
         registers.status = 0x24U;
@@ -6024,6 +6186,46 @@ GameTickResult GameSimulation::tick(const input::TickInput& input) {
             ppu_palette_ + static_cast<std::uint32_t>(index) * 2U);
     }
     map_.write_cgram(0U, current_background_palette);
+    // IRQBIT3's transient overlays follow the normal palette upload. The next
+    // source transfer restores PAL0PALETTE, so flashes never alter its buffer.
+    const auto& flash=irq_palette_addresses_;
+    const bool flash_tunnel=flash[0] && flash[3] && map_.read_native_byte(flash[0]);
+    const bool flash_sky=flash[1] && flash[4] && map_.read_native_byte(flash[1]);
+    if(flash[2] && (flash_tunnel || flash_sky)) {
+        std::array<std::uint8_t,4> random{};
+        for(unsigned i=0;i<4;++i) random[i]=map_.read_native_byte(flash[2]+i);
+        const auto selected=irq_palette_flashes(random,flash_tunnel,flash_sky,irq_palette_advance_random_);
+        if(irq_palette_advance_random_)
+            for(unsigned i=0;i<4;++i) map_.write_native_byte(flash[2]+i,random[i]);
+        for(unsigned kind=0;kind<2;++kind) if(selected&(1U<<kind)) {
+            std::array<std::uint16_t,32> colours{};
+            const unsigned count=kind?16:32;
+            for(unsigned i=0;i<count;++i) colours[i]=map_.read_native_word(flash[3+kind]+i*2);
+            map_.write_cgram(kind?80U:0U,std::span<const std::uint16_t>(colours).first(count));
+        }
+    }
+    if(starfox_ex_cartridge_) {
+        apply_ex_irq_palette_cycles(ex_irq_cycles_,
+            ex_irq_color_trip_ && map_.read_native_byte(ex_irq_color_trip_),
+            [&](auto a){return map_.read_native_byte(a);},
+            [&](auto a,auto v){map_.write_native_byte(a,v);},
+            [&](auto table,auto destination){
+                std::array<std::uint16_t,16> colours{};
+                for(unsigned i=0;i<16;++i)colours[i]=map_.read_native_word(table+i*2);
+                map_.write_cgram(destination,colours);
+            });
+    }
+    if(starfox_ex_cartridge_) {
+        apply_ex_title_palette_cycle(ex_title_cycle_,
+            ex_irq_color_trip_ && map_.read_native_byte(ex_irq_color_trip_),
+            [&](auto a){return map_.read_native_byte(a);},
+            [&](auto a,auto v){map_.write_native_byte(a,v);},
+            [&](auto table,auto destination){
+                std::array<std::uint16_t,16> colours{};
+                for(unsigned i=0;i<16;++i)colours[i]=map_.read_native_word(table+i*2);
+                map_.write_cgram(destination,colours);
+            });
+    }
     map_.upload_oam(ram_symbol("SPRITEBLK"), 544U);
     calculate_meters();
 

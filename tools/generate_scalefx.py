@@ -20,6 +20,8 @@ if args.check:
     if not destination.exists() or stamp not in destination.read_text().splitlines()[:3] or any(
             f'unsigned char dxil{i}[]=' not in destination.read_text() for i in range(6)):
         raise SystemExit('ScaleFX shaders are stale.')
+    if any(destination.read_text().count(guard)!=6 for guard in ('#if defined(_WIN32)', '#if defined(__APPLE__)')):
+        raise SystemExit('ScaleFX platform payload guards are stale.')
     raise SystemExit(0)
 if not args.dxc or not args.spirv_cross:
     parser.error('--dxc and --spirv-cross required')
@@ -53,11 +55,14 @@ with tempfile.TemporaryDirectory() as temporary:
                       for i in range(0, len(blob), 32))
         output.append('};')
         native_blob = dxil.read_bytes()
+        output.append('#if defined(_WIN32)')
         output.append(f'inline constexpr unsigned char dxil{index}[]={{')
         output.extend(','.join(str(b) for b in native_blob[i:i+32]) + ','
                       for i in range(0,len(native_blob),32))
         output.append('};')
+        output.extend(['#endif', '#if defined(__APPLE__)'])
         output.append(f'inline constexpr char metal{index}[]=R"SFXMETAL(\n'
                       + metal + ')SFXMETAL";')
+        output.append('#endif')
 output.append('}')
 destination.write_text('\n'.join(output) + '\n', encoding='utf-8', newline='\n')

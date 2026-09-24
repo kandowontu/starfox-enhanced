@@ -7,6 +7,7 @@
 #include <iostream>
 #include <iomanip>
 #include <limits>
+#include "starfox/render/enhanced_terrain.hpp"
 #include <cmath>
 #include <chrono>
 #include <algorithm>
@@ -18,11 +19,15 @@ void require(bool value,const std::source_location where=std::source_location::c
     if(!value) throw std::runtime_error("GPU check line "+std::to_string(where.line())+" "+check_context+": "+SDL_GetError());
 }
 int main(int argc,char** argv)try {
-    if(argc<3 || argc>7) throw std::runtime_error("usage: starfox_gpu_model_check ROM SYMBOLS [model-limit] [--scene|--mixed-scene|--mixed-batch|--submitted-batch|--recorded-batch|--matrix-scene|--polygons-only|--lines-only|--face-scan|--alternate|--alternate-scene|--alternate-layers|--alternate-faces] [model-name] [capture-directory]");
+    if(argc<3 || argc>7) throw std::runtime_error("usage: starfox_gpu_model_check ROM SYMBOLS [model-limit] [--live-ex61|--live-ex61-faces|--terrain|--terrain-batch|--terrain-merged|--scene|--mixed-scene|--mixed-batch|--submitted-batch|--recorded-batch|--matrix-scene|--polygons-only|--lines-only|--face-scan|--alternate|--alternate-scene|--alternate-layers|--alternate-faces] [model-name] [capture-directory]");
     const auto rom=starfox::assets::RomImage::load(argv[1]);const auto symbols=starfox::assets::SymbolMap::load(argv[2]);
     const starfox::assets::ShapeDecoder decoder(rom,symbols);
     const unsigned limit=argc>=4?unsigned(std::stoul(argv[3])):64;
+    const bool terrain_merged=argc>=5 && std::string(argv[4])=="--terrain-merged";
+    const bool terrain_batch=(terrain_merged && !SDL_getenv("STARFOX_TEST_TERRAIN_FACE")) || (argc>=5 && std::string(argv[4])=="--terrain-batch");
+    const bool terrain=terrain_merged || terrain_batch || (argc>=5 && std::string(argv[4])=="--terrain");
     const bool live_wingman=argc>=5 && std::string(argv[4])=="--live-wingman";
+    const bool live_ex61=argc>=5 && (std::string(argv[4])=="--live-ex61" || std::string(argv[4])=="--live-ex61-faces");
     std::vector<double> submission_us;
     const bool destruction_faces=argc>=5 && std::string(argv[4])=="--destruction-faces";
     const bool warp_axis=argc>=5 && std::string(argv[4])=="--warp-axis";
@@ -48,20 +53,28 @@ int main(int argc,char** argv)try {
     const bool native_backface=argc>=5 && std::string(argv[4])=="--native-backface";
     const bool backface=native_backface || backface_faces || (argc>=5 && std::string(argv[4])=="--backface");
     const bool alternate_faces=argc>=5 && std::string(argv[4])=="--alternate-faces";
-    const bool face_scan=wave_control || wave_faces || backface_faces || destruction_faces || alternate_faces || (argc>=5 && std::string(argv[4])=="--face-scan");
+    const bool face_scan=wave_control || wave_faces || backface_faces || destruction_faces || alternate_faces || (argc>=5 && (std::string(argv[4])=="--face-scan" || std::string(argv[4])=="--live-ex61-faces"));
     const bool isolated_layers=alternate_faces || (argc>=5 && std::string(argv[4])=="--alternate-layers");
     const bool alternate_scene=isolated_layers || (argc>=5 && std::string(argv[4])=="--alternate-scene");
     const bool alternate=alternate_scene || (argc>=5 && std::string(argv[4])=="--alternate");
-    const bool scene_mode=wobble_batch || wave_batch || alternate_scene || (argc>=5 && !live_wingman && !colour_warp && !wave && !axis && !destruction && !polygons_only && !lines_only && !face_scan && !alternate && !backface && !wobble_bypass);
+    const bool scene_mode=terrain_batch || wobble_batch || wave_batch || alternate_scene || (argc>=5 && !terrain && !live_wingman && !live_ex61 && !colour_warp && !wave && !axis && !destruction && !polygons_only && !lines_only && !face_scan && !alternate && !backface && !wobble_bypass);
     const bool matrix_only=scene_mode && std::string(argv[4])=="--matrix-scene";
     const bool recorded_batch=argc>=5 && std::string(argv[4])=="--recorded-batch";
     const bool billboard_batch=argc>=5 && std::string(argv[4])=="--billboard-batch";
     const bool queued_batch=wobble_queued || (argc>=5 && std::string(argv[4])=="--queued-batch");
     const bool submitted_batch=wobble_batch || queued_batch || recorded_batch || (argc>=5 && std::string(argv[4])=="--submitted-batch");
-    const bool mixed_batch=wave_batch || billboard_batch || submitted_batch || (argc>=5 && std::string(argv[4])=="--mixed-batch");
+    const bool mixed_batch=terrain_batch || wave_batch || billboard_batch || submitted_batch || (argc>=5 && std::string(argv[4])=="--mixed-batch");
     const bool mixed_scene=mixed_batch || (argc>=5 && std::string(argv[4])=="--mixed-scene");
     require(!scene_mode || matrix_only || alternate_scene || mixed_scene || std::string(argv[4])=="--scene");
-    require(SDL_Init(SDL_INIT_VIDEO));auto* device=SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV|SDL_GPU_SHADERFORMAT_MSL|SDL_GPU_SHADERFORMAT_DXIL,true,nullptr);require(device);
+    require(SDL_Init(SDL_INIT_VIDEO));
+    const auto device_properties=SDL_CreateProperties();require(device_properties!=0);
+    SDL_SetBooleanProperty(device_properties,SDL_PROP_GPU_DEVICE_CREATE_SHADERS_SPIRV_BOOLEAN,true);
+    SDL_SetBooleanProperty(device_properties,SDL_PROP_GPU_DEVICE_CREATE_SHADERS_DXIL_BOOLEAN,true);
+    SDL_SetBooleanProperty(device_properties,SDL_PROP_GPU_DEVICE_CREATE_SHADERS_MSL_BOOLEAN,true);
+    SDL_SetBooleanProperty(device_properties,SDL_PROP_GPU_DEVICE_CREATE_DEBUGMODE_BOOLEAN,true);
+    SDL_SetBooleanProperty(device_properties,SDL_PROP_GPU_DEVICE_CREATE_PREFERLOWPOWER_BOOLEAN,SDL_getenv("STARFOX_TEST_LOW_POWER_GPU")!=nullptr);
+    auto* device=SDL_CreateGPUDeviceWithProperties(device_properties);SDL_DestroyProperties(device_properties);require(device);
+    std::cout<<"GPU adapter: "<<SDL_GetStringProperty(SDL_GetGPUDeviceProperties(device),SDL_PROP_GPU_DEVICE_NAME_STRING,"unknown")<<std::endl;
     starfox::render::GpuModel gpu;
     starfox::render::GpuScene scene;
     starfox::render::GpuRaster legacy;
@@ -80,13 +93,14 @@ int main(int argc,char** argv)try {
         require(SDL_CancelGPUCommandBuffer(rejected));
         std::cout<<"Pending-work and invalid-dimension rejection preserve caller cancellation; subsequent mixed rendering tests recovery\n";
     }
-    const unsigned width=live_wingman?400:224,height=live_wingman?224:192;
-    SDL_GPUTransferBufferCreateInfo ti{SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,width*height*((live_wingman || wobble_bypass || backface || colour_warp || wave || axis || billboard_batch || destruction)?16U:4U)*20+4096,0};
+    const unsigned width=(live_wingman || live_ex61)?400:224,height=(live_wingman || live_ex61)?224:192;
+    SDL_GPUTransferBufferCreateInfo ti{SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,width*height*((terrain || live_wingman || wobble_bypass || backface || colour_warp || wave || axis || billboard_batch || destruction)?16U:4U)*20+4096,0};
     auto* download=SDL_CreateGPUTransferBuffer(device,&ti);require(download);
     if(mixed_batch) {
         auto* command=SDL_AcquireGPUCommandBuffer(device);require(command);
         const auto empty=scene.enqueue_batch(device,command,8,8,{});
         if(!empty.pixels) throw std::runtime_error(scene.status());
+        if(empty.surfaces) throw std::runtime_error("Empty scene retained full-resolution surface metadata");
         auto* copy=SDL_BeginGPUCopyPass(command);require(copy);
         SDL_GPUBufferRegion from{static_cast<SDL_GPUBuffer*>(empty.pixels),0,64*4};
         SDL_GPUTransferBufferLocation to{download,0};SDL_DownloadFromGPUBuffer(copy,&from,&to);
@@ -106,11 +120,35 @@ int main(int argc,char** argv)try {
     }
     std::set<std::uint32_t> seen;unsigned checked=0,skipped=0,images=0;std::uint64_t drawn=0;
     double maximum_normal_error=0,maximum_depth_error=0;
-    for(const auto& [name,addresses]:symbols.entries()) for(auto address:addresses) {
+    auto model_entries=symbols.entries();
+    // The live EX 6-1 frame at tick 1000 exposed a single half-pixel tie on
+    // shape $009205. Keep the exact pose as an isolated coverage regression.
+    if(live_ex61) {model_entries.clear();model_entries["LIVE_EX61"]={37381U};}
+    for(const auto& [name,addresses]:model_entries) for(auto address:addresses) {
         if(argc>=6 && name!=argv[5]) continue;
         if(limit && checked>=limit) break;
         if(!seen.insert(address).second || !decoder.looks_like_shape_header(address)) continue;
         auto shape=decoder.decode(address,name);
+        if(terrain) {
+            shape=starfox::render::EnhancedTerrain::make_shape(int(checked)-3,7,1+checked%4,checked%3);
+            shape.colour_words={0x11,0x22,0x33,0x44};
+            if(terrain_merged) {
+                starfox::render::EnhancedTerrain patches;
+                starfox::render::EnhancedTerrain::Batch batch;
+                for(int n=0;n<10;++n) {
+                    if(!batch.append(patches.patch(n%4,n/4,1+checked%4,0,{1,2,3,4})))
+                        throw std::runtime_error("Merged terrain fixture exceeds byte vertex indices");
+                }
+                shape=std::move(batch.shape);
+                if(const auto* selected=SDL_getenv("STARFOX_TEST_TERRAIN_FACE")) {
+                    const auto index=std::stoul(selected);
+                    if(index>=shape.faces.size()) throw std::runtime_error("Terrain diagnostic face is out of range");
+                    auto face=shape.faces[index];std::vector<starfox::assets::Vec3i> vertices;
+                    for(auto& corner:face.vertex_indices) {vertices.push_back(shape.vertices[corner]);corner=std::uint8_t(vertices.size()-1);}
+                    shape.vertices=std::move(vertices);shape.word_coordinates.assign(shape.vertices.size(),true);shape.faces={face};
+                }
+            }
+        }
         unsigned billboard_colour=0;
         if(billboard_batch) {
             while(billboard_colour<256 && !starfox::render::texture_for_colour(shape,std::uint8_t(billboard_colour),0)) ++billboard_colour;
@@ -135,12 +173,17 @@ int main(int argc,char** argv)try {
         }
         for(unsigned isolated_layer=0;isolated_layer<(isolated_layers?3U:1U);++isolated_layer)
         for(unsigned mode=0;mode<(wobble_combinations?10U:warp_alternate?5U:destruction?5U:alternate?4U:1U);++mode)
-        for(unsigned view:{0U,1U,2U,3U,4U,5U}) for(unsigned scale:{1U,2U,4U}) {
+        for(unsigned view:{0U,1U,2U,3U,4U,5U,6U}) for(unsigned scale:{1U,2U,4U}) {
+            if(view==6 && !billboard_batch) continue;
+            if(const auto* requested=SDL_getenv("STARFOX_TEST_MODEL_VIEW");requested && view!=std::stoul(requested)) continue;
+            if(const auto* requested=SDL_getenv("STARFOX_TEST_MODEL_SCALE");requested && scale!=std::stoul(requested)) continue;
             check_context=name+" mode "+std::to_string(mode)+" view "+std::to_string(view)+" scale "+std::to_string(scale);
+            if(SDL_getenv("STARFOX_TEST_CONTINUOUS_FIRST") && view<3) continue;
             if(native_axis && (view>=3 || scale!=1))continue;
             if(native_backface && (view>=3 || scale!=1))continue;
             if(live_wingman && view!=0) continue;
-            if(scale==4 && !live_wingman && !wobble_bypass && !backface && !colour_warp && !wave && !axis && !billboard_batch && !destruction) continue;
+            if(live_ex61 && (view!=0 || scale!=1)) continue;
+            if(scale==4 && !terrain && !live_wingman && !wobble_bypass && !backface && !colour_warp && !wave && !axis && !billboard_batch && !destruction) continue;
             if(matrix_only && view>=4) continue;
             starfox::render::RenderSettings settings;settings.render_scale=scale;
             settings.backface_culling=backface;
@@ -170,6 +213,7 @@ int main(int argc,char** argv)try {
             if(view==3) {pose.rotation_matrix={23170,0,23170,0,32767,0,-23170,0,23170};pose.z=256;pose.subpixel_projection=true;pose.continuous_geometry=true;}
             if(view>=4) {pose.use_rotation_matrix=false;pose.yaw=16384;pose.pitch=8192;pose.z=512;pose.continuous_geometry=true;}
             if(view==5){pose.x+=11;pose.y-=4;}
+            if(terrain) {pose.terrain_geometry=true;pose.continuous_geometry=pose.subpixel_projection=true;}
             // Keep a stable fractional translation in the high-FPS path.
             if(scale==2){pose.x+=.25;pose.y-=.125;pose.continuous_geometry=true;}
             if(billboard_batch) {
@@ -181,6 +225,14 @@ int main(int argc,char** argv)try {
                 if(view==3){pose.z=128;pose.simple_sprite_world_size=32767;pose.effect_clip_left=70;pose.effect_clip_right=140;}
                 if(view==4){pose.z=256;pose.simple_sprite_world_size=1;pose.vanish_x=112.5;pose.vanish_y=-0.5;}
                 if(view==5){pose.z=200.00000001;pose.simple_sprite_world_size=320;pose.x=-81.999999;pose.effect_clip_left=-5;pose.effect_clip_right=100;}
+                if(view==6) {
+                    // Near an integer projection boundary, the previous
+                    // float-pair billboard shader could choose the adjacent
+                    // row on integrated GPUs. Preserve source binary64 math.
+                    pose.z=907.145;pose.y=std::nextafter(-32.0*pose.z/settings.focal_length,
+                        std::numeric_limits<double>::infinity());
+                    pose.vanish_x=112;pose.vanish_y=96;
+                }
             }
             if(live_wingman) {
                 pose={};pose.use_rotation_matrix=true;pose.continuous_geometry=true;pose.subpixel_projection=true;
@@ -189,13 +241,23 @@ int main(int argc,char** argv)try {
                 pose.rotation_matrix={-26493,-13453,13813,-5660,27865,16282,-18432,10778,-24854};
                 pose.animation_frame=111;pose.colour_frame=111;pose.palette_override=7;
             }
+            if(live_ex61) {
+                settings.colour_index_base=112;
+                pose={};pose.use_rotation_matrix=true;pose.continuous_geometry=true;pose.subpixel_projection=true;
+                pose.x=104.99359130859375;pose.y=-107.79342041015626;pose.z=1326.119055175782;
+                pose.vanish_x=200;pose.vanish_y=112;
+                pose.rotation_matrix={-32766,0,0,0,32764,0,0,0,-32766};
+                pose.animation_frame=103;pose.colour_frame=103;
+                pose.source_depth=1300.9205932617188;
+                pose.use_source_lighting_state=true;pose.source_lighting_matrix=pose.rotation_matrix;
+            }
             starfox::render::Framebuffer cpu(width,height,scale);starfox::render::SoftwareRenderer renderer(settings);
             cpu.enable_layer_tags(true);cpu.begin_write_coverage();
             starfox::render::SurfaceBuffer cpu_surfaces(width*scale,height*scale);
             auto* command=SDL_AcquireGPUCommandBuffer(device);require(command);
             starfox::render::GpuRasterOutput output{};
             starfox::render::GpuModelDiagnostics diagnostics;
-            const bool trace_geometry=argc>=6 &&
+            const bool trace_geometry=SDL_getenv("STARFOX_TEST_TRACE_GEOMETRY") || (argc>=6 &&
                 ((view==5 && mode==0 && ((axis && scale==1) || (destruction_faces && scale==4)))
                  || (destruction_faces && view==1 && mode==3 && (scale==2 || scale==4))
                  || (destruction_faces && view<=1 && mode==0 && scale==4)
@@ -203,7 +265,7 @@ int main(int argc,char** argv)try {
                  || (wave && view==5 && scale==2)
                  || (backface_faces && view>=3 && scale==1)
                  || (backface && view<=2 && scale==4)
-                 || (backface_faces && view==0 && scale==2));
+                 || (backface_faces && view==0 && scale==2)));
             std::array<starfox::render::RasterCommands,5> batches;
             std::vector<starfox::render::GpuSceneDraw> draws;
             starfox::render::GpuSceneRecording recording;
@@ -255,7 +317,9 @@ int main(int argc,char** argv)try {
                         recording.append_model(pending,{&shape,layer_pose,settings,metadata});
                         continue;
                     }
-                    draws.emplace_back(starfox::render::GpuModelDraw{&shape,layer_pose,settings,metadata});
+                    starfox::render::GpuModelDraw model_draw{&shape,layer_pose,settings,metadata};
+                    model_draw.geometry_depth=terrain;
+                    draws.emplace_back(model_draw);
                     continue;
                 } else {
                     const auto started=std::chrono::steady_clock::now();
@@ -440,7 +504,7 @@ int main(int argc,char** argv)try {
     if(!checked) throw std::runtime_error("GPU model fixture selected no models");
     if(!drawn) throw std::runtime_error("GPU model comparisons produced no nonzero pixels; select a visible fixture ("+std::to_string(images)+" images checked)");
     gpu.release_device();scene.release_device();legacy.release_device();SDL_ReleaseGPUTransferBuffer(device,download);SDL_DestroyGPUDevice(device);SDL_Quit();
-    std::cout<<checked<<" real models, "<<images<<" GPU images match SoftwareRenderer; "<<drawn<<" nonzero pixels; "<<skipped<<" filtered/unsupported/empty models deferred\n";
+    std::cout<<checked<<(terrain?" generated terrain patches, ":" real models, ")<<images<<" GPU images match SoftwareRenderer; "<<drawn<<" nonzero pixels; "<<skipped<<" filtered/unsupported/empty models deferred\n";
     std::cout<<"Surface coverage/palettes exact; maximum normal error "<<maximum_normal_error<<", depth error "<<maximum_depth_error<<'\n';
     if(!submission_us.empty()) {
         std::sort(submission_us.begin(),submission_us.end());

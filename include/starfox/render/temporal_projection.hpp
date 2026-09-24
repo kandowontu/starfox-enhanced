@@ -65,19 +65,21 @@ struct TemporalProjection {
 };
 inline std::optional<TemporalProjection> temporal_projection(
     std::uint32_t width,std::uint32_t height,float focal,float cx,float cy,
-    float near_plane,float far_plane) {
+    float near_plane,float far_plane,float focal_y=0) {
+    if(focal_y==0) focal_y=focal;
     if(!width || !height || !std::isfinite(focal) || focal<=0 ||
+        !std::isfinite(focal_y) || focal_y<=0 ||
         !std::isfinite(cx) || !std::isfinite(cy) || !std::isfinite(near_plane) ||
         !std::isfinite(far_plane) || near_plane<=0 || far_plane<=near_plane) return {};
     TemporalProjection p;
-    const double sx=2.*focal/width,sy=-2.*focal/height;
+    const double sx=2.*focal/width,sy=-2.*focal_y/height;
     const double ox=2.*cx/width-1,oy=1-2.*cy/height;
     const double a=double(far_plane)/(double(far_plane)-near_plane),b=-near_plane*a;
     p.view_to_clip={float(sx),0,0,0,0,float(sy),0,0,float(ox),float(oy),float(a),1,0,0,float(b),0};
     p.clip_to_view={float(1/sx),0,0,0,0,float(1/sy),0,0,0,0,0,float(1/b),
         float(-ox/sx),float(-oy/sy),1,float(-a/b)};
-    p.vertical_fov=float(2*std::atan(double(height)/(2*focal)));
-    p.aspect=float(double(width)/height);
+    p.vertical_fov=float(2*std::atan(double(height)/(2*focal_y)));
+    p.aspect=float(double(width)*focal_y/(double(height)*focal));
     for(const auto* m:{&p.view_to_clip,&p.clip_to_view})
         for(float value:*m) if(!std::isfinite(value)) return {};
     return p;

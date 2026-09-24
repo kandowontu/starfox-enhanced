@@ -75,7 +75,7 @@ public:
     // Borrowed packed pixels (including coverage), no CPU projection/readback.
     void* enqueue_text(void* device,void* command,const ScaledTextRenderer::ProjectedFrame&,
         std::uint32_t width,std::uint32_t height,std::uint32_t scale,std::uint8_t tag,
-        float eye_x=0,float convergence=512);
+        float eye_x=0,float convergence=512,std::array<std::uint32_t,2> logical_viewport={},std::array<float,2> raster_jitter={});
     struct ParticleSettings {
         double owner_x{},owner_y{},owner_z{},alpha{};
         std::uint32_t width{},height{},count{},padding{};
@@ -90,7 +90,8 @@ public:
     void* enqueue_particle_frame(void* device,void* command,const ParticleRenderer::OwnerFrame&,
         std::uint32_t width,std::uint32_t height,float eye_x=0,float convergence=512);
     void* enqueue_particle_spans(void* command,std::uint32_t height,std::uint32_t scale,
-        std::uint8_t tag,std::int16_t clip_left=0,std::int16_t clip_right=0);
+        std::uint8_t tag,std::int16_t clip_left=0,std::int16_t clip_right=0,
+        std::array<std::uint32_t,3> raster_mapping={},std::array<float,2> raster_jitter={}); // logical W/H, output W
     struct DustSettings {
         std::int32_t row_x[4]{},row_y[4]{},row_z[4]{};
         std::int32_t viewport[4]{};
@@ -105,7 +106,8 @@ public:
     void* enqueue_dust_frame(void* device,void* command,const DustRenderer::DustFrame&,
         std::uint32_t width,std::uint32_t height,float eye_x=0,float convergence=512);
     void* enqueue_dust_spans(void* command,std::uint32_t height,std::uint32_t scale,
-        std::uint8_t tag,std::int16_t exclude_left=0,std::int16_t exclude_right=0);
+        std::uint8_t tag,std::int16_t exclude_left=0,std::int16_t exclude_right=0,
+        std::array<std::uint32_t,3> raster_mapping={},std::array<float,2> raster_jitter={});
     GpuProjection();
     ~GpuProjection();
     // 225 source-order int4 screen X/Y, depth, visible records. Retains
@@ -119,7 +121,7 @@ public:
     // companion per point), using the source-frame-owned starting endpoint.
     void* enqueue_grid_spans(void* command,std::uint32_t height,
         std::uint32_t scale,std::uint8_t colour,std::uint8_t tag,
-        const std::int16_t* line_start=nullptr);
+        const std::int16_t* line_start=nullptr,std::array<std::uint32_t,3> raster_mapping={},std::array<float,2> raster_jitter={});
     // Existing SDL device/command, storage-readable NativeProjectionPoint
     // array. Output is borrowed int4: source screen X/Y, Z word, front flag.
     // No submission/readback/wait. Consume before next enqueue; caller must
@@ -175,7 +177,8 @@ private:
         void* previous_points,std::uint32_t count,float scale_x,float scale_y,
         bool reset_history,const MotionSurfaceSettings* surface);
     void* enqueue_point_spans(void* command,std::uint32_t height,std::uint32_t scale,
-        std::uint8_t colour,std::uint8_t tag,const std::int16_t* start,unsigned kind);
+        std::uint8_t colour,std::uint8_t tag,const std::int16_t* start,unsigned kind,
+        std::array<std::uint32_t,3> raster_mapping={},std::array<float,2> raster_jitter={});
     void* enqueue_visibility_impl(void* command,void* faces,std::uint32_t count,bool continuous);
     struct Impl;
     std::unique_ptr<Impl> impl_;

@@ -36,7 +36,7 @@ struct SceneVertex {
 // Flat-color triangle/line pass. Input positions are right-handed world coordinates
 // in the same units as EyeCamera. Caller owns vertex buffers and GPU lifetime.
 enum class SceneTopology {triangles,lines};
-enum class SceneBlend {opaque,add,subtract,half_add,half_subtract,shadow};
+enum class SceneBlend {opaque,add,subtract,half_add,half_subtract,shadow,alpha};
 class VulkanScenePipeline {
 public:
     ~VulkanScenePipeline();

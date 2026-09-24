@@ -1,0 +1,23 @@
+STAR FOX ENHANCED - PCVR DEVELOPMENT BUILD
+
+Requires a Vulkan-capable GPU and an active OpenXR runtime. For Valve Index,
+start SteamVR and select it as the active OpenXR runtime. Connect and wake
+your headset/controllers before launching starfox_pcvr.exe.
+
+Prepare Starfox-Assets.BIN locally using starfox_asset_builder and your own
+supported retail cartridge dump. Place the BIN beside starfox_pcvr.exe.
+No ROM, generated BIN or music is included. Do not distribute those files.
+If BUILD-ASSETS.cmd and starfox_asset_builder.exe are bundled, drag your dump
+onto BUILD-ASSETS.cmd. Otherwise use the builder in the ordinary desktop release.
+
+Launch starfox_pcvr.exe, or use:
+  starfox_pcvr --bundle "PATH/Starfox-Assets.BIN"
+Optional arguments: --msu "PATH/Starfox-MSU1.PAK" and --data-dir "PATH"
+Saves, preferences and shader cache are kept in vr-data beside the executable
+unless --data-dir is provided. Extract to a writable folder. Existing flat-game
+settings/saves are not modified. Ctrl+C in its terminal requests a clean exit.
+
+This launches the game, not the 120-frame/30-second runtime diagnostic.
+The VR startup menu selects Original/EX; headset session duration is unlimited.
+Physical Index tracking, controls, comfort and sustained performance still
+require validation. Successful compilation does not prove headset compatibility.

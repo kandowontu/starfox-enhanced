@@ -46,6 +46,7 @@ public:
     DrawPacket assemble_grid_gpu(const GameSceneSnapshot&,bool srgb_target=false,float units_per_metre=256) const;
     DrawPacket assemble_connected_grid(const GameSceneSnapshot&,bool srgb_target=false) const;
     DrawPacket assemble_connected_grid_binned(const GameSceneSnapshot&,bool srgb_target=false) const;
+    DrawPacket assemble_connected_grid_gpu(const GameSceneSnapshot&,bool srgb_target=false) const;
     DrawPacket assemble_connected_grid_interpolated(const GameSceneSnapshot& previous,const GameSceneSnapshot& current,
         double alpha,bool srgb_target=false) const;
     DrawPacket assemble_grid_interpolated(const GameSceneSnapshot& previous,const GameSceneSnapshot& current,
@@ -80,7 +81,7 @@ private:
     bool compute_solids_{};
     bool compute_shadows_{true};
     DrawPacket connected_grid_pose(const GameSceneSnapshot&,const timing::RenderTransform&,
-        const simulation::MatrixQ15&,bool) const;
+        const simulation::MatrixQ15&,bool,bool gpu=false) const;
     DrawPacket grid_pose(const GameSceneSnapshot&,const timing::RenderTransform&,
         const simulation::MatrixQ15&,bool,float,bool gpu=false) const;
     DrawPacket dust_pose(const GameSceneSnapshot&,const timing::RenderTransform&,

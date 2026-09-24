@@ -43,7 +43,23 @@ cbuffer Settings : register(b0) {
     uint filter,highlightFilter,overlayFilter,pad3;
     uint shadowWidth,shadowHeight; int shadowY; uint shadowEnabled;
     uint4 windowRows[48];
+    uint4 environmentClasses[64];
+    uint4 environmentModes;
+    float4 environmentMotion;
+    float4 environmentPlane;
+    float4 backdropProjection;
+    float4 backdropKeep0;
+    float4 backdropKeep1;
+    float4 backdropPaletteSky;
+    float4 backdropPaletteSurface;
+    uint4 backdropRamp[4];
+    float4 scrollFraction;
 };
+#include "environment_material.hlsli"
+#if defined(STARFOX_SDL_GPU)
+uint backdropWord(uint address) {return setupPixels.Load(address);}
+#include "backdrop_sample.hlsli"
+#endif
 void touchBox(inout uint3 rgb,int2 at,int4 bounds,uint3 edgeColour) {
     if(at.x<bounds.x || at.y<bounds.y || at.x>bounds.z || at.y>bounds.w) return;
     bool edge=at.x==bounds.x || at.y==bounds.y || at.x==bounds.z || at.y==bounds.w;
@@ -52,6 +68,22 @@ void touchBox(inout uint3 rgb,int2 at,int4 bounds,uint3 edgeColour) {
     rgb=(rgb*(255-alpha)+colour*alpha+127)/255;
 }
 uint indexOf(uint2 p) { return p.y*width+p.x; }
+// Exact up to 20-bit distances, enforced by the host. Each limb operation
+// fits uint32; no shader int64/float rounding dependency at tangent pixels.
+uint2 diskSquare(uint v) {
+    uint low=v&65535u,high=v>>16;
+    uint base=low*low,cross=low*high;
+    uint result=base+(cross<<17);
+    return uint2(result,high*high+(cross>>15)+(result<base?1u:0u));
+}
+bool insideDisk(int2 delta,uint radius) {
+    uint2 d=uint2(abs(delta));
+    if(any(d>radius)) return false;
+    if(radius<=16383u) return d.x*d.x+d.y*d.y<=radius*radius;
+    uint2 x=diskSquare(d.x),y=diskSquare(d.y),r=diskSquare(radius);
+    uint low=x.x+y.x,high=x.y+y.y+(low<x.x?1u:0u);
+    return high<r.y || (high==r.y && low<=r.x);
+}
 bool hostInk(int2 p) {
     if(any(p<0) || p.x>=int(surfaceWidth) || p.y>=int(surfaceHeight)) return false;
     uint i=uint(p.y)*surfaceWidth+uint(p.x);
@@ -65,11 +97,15 @@ uint tag(uint2 p) {
     return (layerTags.Load(i & ~3u) >> ((i & 3u)*8)) & 255u;
 }
 bool model(uint2 p) { uint t=tag(p); return t==0 || t==4; }
-bool world(uint2 p) { uint t=tag(p); return t==2 || t==3; }
+bool world(uint2 p) { uint t=tag(p); return t==2 || t==3 || t==5; }
 bool art(uint2 p) { uint t=tag(p); return t==1 || t==2 || t==4; }
 uint4 colour(uint2 p) { return uint4(inputImage.Load(int3(p,0))*255+.5); }
 uint luminance(uint4 c) { return (c.r*77+c.g*150+c.b*29)/256; }
 uint2 bounded(int2 p) { return uint2(clamp(p,int2(0,0),int2(width-1,height-1))); }
+uint4 manipulationSample(int2 at,uint2 original) {
+    uint2 n=bounded(at);
+    return tag(n)==1 || world(n)!=world(original)?colour(original):colour(n);
+}
 static const int bayer[16]={0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5};
 bool surfaceAt(int2 p,out float4 sample) {
     sample=0;
@@ -135,7 +171,8 @@ void main(uint3 id : SV_DispatchThreadID) {
     if(stage==28) {
         if(p.x>=width/scale || p.y>=height/scale) return;
         uint i=uint(pad0)+p.y*(width/scale)+p.x;
-        uint index=(setupPixels.Load(i&~3u)>>((i&3u)*8))&255;
+        uint index=pad3!=0?(shadowMask.Load((p.y*(width/scale)+p.x)*4)&255)
+            :(setupPixels.Load(i&~3u)>>((i&3u)*8))&255;
         uint packed=index!=0 && index<lighting?setupPixels.Load(uint(pad1)+index*4):0;
         if(filter!=0 && index!=0 && index<lighting) packed|=0xff000000u;
         filterOutput[p]=float4(packed&255,(packed>>8)&255,(packed>>16)&255,packed>>24)/255.;return;
@@ -183,11 +220,108 @@ void main(uint3 id : SV_DispatchThreadID) {
     }
     if(p.x>=width || p.y>=height) return;
     uint4 c=colour(p), result=c;
-    if(stage==29) {
+    if(stage==31) {
+        if(tag(p)==2 && any(scrollFraction.xy!=0)) {
+            float2 at=clamp(float2(p)+scrollFraction.xy*float(scale),0.f,float2(width-1,height-1));
+            uint2 a=uint2(at);float2 f=frac(at);float3 sum=0;
+            for(uint by=0;by<2;++by) for(uint bx=0;bx<2;++bx) {
+                uint2 n=min(a+uint2(bx,by),uint2(width-1,height-1));
+                sum+=float3(colour(tag(n)==2?n:p).rgb)*(bx?f.x:1-f.x)*(by?f.y:1-f.y);
+            }
+            c.rgb=uint3(sum+.5);result=c;
+        }
+        uint i=indexOf(p);
+        uint index=reserved==1?(indexedPixels.Load(i*4)&255u):(indexedPixels.Load(i&~3u)>>((i&3u)*8))&255u;
+        bool terrain=tag(p)==5;
+        uint kind=terrain?uint(environmentPlane.y):environmentClasses[index/4][index%4];
+        if((tag(p)==2 || terrain) && kind!=0) {
+            float y=(float(p.y)+.5)/float(scale);
+            uint4 modes=environmentModes;float3 base=float3(c.rgb);
+            if(terrain) {modes.x=1;if(kind==4) base*=.84f;}
+            float3 upgraded=environmentColour(base,kind,(float(p.x)+.5)/float(scale)-float(width)/float(scale)*.5,y,modes,environmentMotion,environmentPlane.x);
+            bool water=kind<=5 && (environmentModes.x>=6 || (environmentModes.x==1 && kind==5));
+            float x=(float(p.x)+.5)/float(scale)-float(width)/float(scale)*.5;
+            float d=y-environmentMotion.x-environmentPlane.x*x;
+            if(water && overlayFilter!=0 && d>0) {
+                float offset=(environmentModes.x>=7?2.f:1.55f)*d/(1+environmentPlane.x*environmentPlane.x);
+                float sx=clamp(float(p.x)+offset*environmentPlane.x*float(scale)+(environmentModes.x>=7?0:sin(y*.12f+environmentMotion.w)*(2*float(scale))),0.f,float(width-1));
+                float sy=clamp((y-offset)*float(scale)-.5f,0.f,float(height-1));
+                uint x0=uint(sx),y0=uint(sy);float fx=sx-x0,fy=sy-y0;
+                float3 reflected=0;float weight=0;
+                for(uint dy=0;dy<2;++dy) for(uint dx=0;dx<2;++dx) {
+                    uint2 at=uint2(min(x0+dx,width-1),min(y0+dy,height-1));
+                    if(tag(at)==1) continue;
+                    float w=(dx!=0?fx:1-fx)*(dy!=0?fy:1-fy);weight+=w;
+                    reflected+=float3(colour(at).rgb)*w;
+                }
+                if(weight>0) {
+                    float amount=environmentModes.x>=7?.8f:.15f+.20f*clamp(1-d/200.f,0.f,1.f);
+                    float3 tint=environmentModes.x==8?float3(1,.875f,.58f):float3(1,1,1);
+                    upgraded=upgraded*(1-amount)+(reflected/weight)*tint*amount;
+                }
+            }
+            result.rgb=uint3(upgraded+.5);
+        }
+#if defined(STARFOX_SDL_GPU)
+        if(tag(p)==2 && (kind!=7 || backdropProjection.w==8) && environmentModes.z!=0 && surfaceWidth>0 && surfaceHeight>0) {
+            float x=(float(p.x)+.5)/float(scale)-float(width)/float(scale)*.5;
+            float y=(float(p.y)+.5)/float(scale);
+            float2 uv=backdropMotion(backdropCoordinates(x,y,environmentMotion.x,environmentPlane.x,environmentPlane.z,backdropProjection,backdropKeep0,backdropKeep1),environmentModes.w,environmentMotion.w);
+            bool cityMoon=backdropProjection.w==8 && uv.y>=2;
+            bool landscape=backdropProjection.w==0 || backdropProjection.w==6 || backdropProjection.w==8;
+            bool skyOwned=cityMoon || (kind!=7 && (!landscape || kind==6
+                || (kind==0 && y<environmentMotion.x+environmentPlane.x*x)));
+            float4 coverageProjection=backdropProjection;
+            if(backdropProjection.w==0 && kind==6) coverageProjection.w=1;
+            if(skyOwned && ((backdropProjection.w==6 && kind==6) || backdropCovers(x,y,environmentMotion.x,environmentPlane.x,
+                    coverageProjection,backdropKeep0,backdropKeep1))) {
+                bool moonAtlas=backdropProjection.w>=6 && backdropProjection.w<=8;
+                bool cloudLimb=backdropProjection.w==9 && uv.y>=320/512.f;
+                float4 response=cloudLimb || (moonAtlas && uv.y>=2)?float4(0,0,0,1):
+                    !landscape && y>=environmentMotion.x+environmentPlane.x*x?backdropPaletteSurface:backdropPaletteSky;
+                float3 sky=backdropStyle(backdropSample(uv.x,uv.y,
+                    surfaceWidth,surfaceHeight,uint(surfaceX),backdropProjection.w),uv,environmentModes.z,environmentModes.w!=0?environmentMotion.w:0.f);
+                if(cloudLimb) sky=backdropLimbColour(sky,backdropRamp);
+                if(moonAtlas && uv.y>=2 && (backdropRamp[1].z==1 || backdropRamp[1].z==2)) sky=backdropRampMoonColour(sky,uv,backdropRamp);
+                else if(moonAtlas && uv.y>=2) sky=backdropMoonColour(backdropMoonSurface(sky,uv,backdropKeep1),uv,
+                    backdropRamp[0].y,backdropRamp[0].z,backdropRamp[0].w,backdropRamp[1].x,backdropRamp[1].y);
+                if(backdropRamp[0].x==2) sky=backdropNebulaColour(sky,backdropRamp);
+                else if(backdropRamp[0].x!=0) {
+                    uint limits=backdropRamp[0].x;
+                    float maximum=((limits>>16)&255)!=0?float((limits>>16)&255):245.f;
+                    float minimum=((limits>>16)&255)!=0?float((limits>>8)&255):140.f;
+                    float shade=1.f+14.f*(1.f-saturate((dot(sky,float3(.299,.587,.114))-minimum)/max(1.f,maximum-minimum)));
+                    uint a=uint(shade),b=min(a+1,15u);
+                    uint ca=backdropRamp[a/4][a%4],cb=backdropRamp[b/4][b%4];
+                    sky=lerp(float3(ca&255,(ca>>8)&255,(ca>>16)&255),float3(cb&255,(cb>>8)&255,(cb>>16)&255),shade-float(a));
+                }
+                float3 colour=sky*response.w+255.f*response.rgb;
+                float opacity=moonAtlas && backdropProjection.w!=8?backdropMoonOpacity(uv,backdropKeep1):1;
+                if(opacity<1) {
+                    float2 backgroundUV=backdropMotion(backdropCoordinates(x,y,environmentMotion.x,environmentPlane.x,environmentPlane.z,backdropProjection),environmentModes.w,environmentMotion.w);
+                    float3 behind=backdropStyle(backdropSample(backgroundUV.x,backgroundUV.y,surfaceWidth,surfaceHeight,uint(surfaceX),6.f),backgroundUV,environmentModes.z,environmentModes.w!=0?environmentMotion.w:0.f);
+                    colour=lerp(behind*backdropPaletteSky.w+255.f*backdropPaletteSky.rgb,colour,opacity);
+                }
+                result.rgb=uint3(clamp(colour*environmentPlane.w,0.f,255.f)+.5);
+            }
+        }
+#endif
+    } else if(stage==32) {
+        bool scenery=world(p),models=(chromatic&1u)!=0,selected=scenery?(chromatic&2u)!=0:models;
+        float3 memory=(chromatic&4u)!=0?float3(0,0,0):bloomInput.Load(int3(p,0)).rgb*asfloat(pad0);
+        if(tag(p)==1 || (!scenery && !models)) memory=0;
+        else {
+            memory=max(selected?float3(c.rgb):float3(0,0,0),memory);
+            result.rgb=uint3(clamp(float3(c.rgb)+(max(float3(c.rgb),memory)-float3(c.rgb))*float(pad1)/100+.5,0,255));
+        }
+        bloomOutput[p]=float4(memory,0);
+        outputImage[p]=float4(result)/255;return;
+    } else if(stage==29) {
 #if defined(STARFOX_SDL_GPU)
         uint4 ink=uint4((filter!=0?bloomInput.Load(int3(p,0)):filterSource.Load(int3(p/scale,0)))*255+.5);
         uint i=uint(pad0)+(p.y/scale)*(width/scale)+p.x/scale;
-        uint index=(setupPixels.Load(i&~3u)>>((i&3u)*8))&255;
+        uint index=pad3!=0?(shadowMask.Load(((p.y/scale)*(width/scale)+p.x/scale)*4)&255)
+            :(setupPixels.Load(i&~3u)>>((i&3u)*8))&255;
         bool visible=filter!=0?ink.a!=0:index!=0 && index<lighting;
         if(visible) {
             int3 five=max(int3(0,0,0),int3((ink.rgb*31+127)/255)-int(hdr));
@@ -199,6 +333,10 @@ void main(uint3 id : SV_DispatchThreadID) {
     } else if(stage==27) {
         int2 at=int2(p/scale);
         bool inside=at.x>=minimumX && at.x<=maximumX && at.y>=minimumY && at.y<=maximumY;
+        if(inside && (pad0&4)!=0) {
+            uint2 local=uint2(at-int2(minimumX,minimumY));
+            inside=local.x<32 && local.y<32 && (windowRows[local.y/4][local.y%4]&(1u<<local.x))!=0;
+        }
         if((pad0&1)!=0 && !inside) {
             int3 five=max(int3(0,0,0),int3((result.rgb*31+127)/255)-int(hdr));
             result.rgb=uint3((five<<3)|(five>>2));
@@ -295,7 +433,7 @@ void main(uint3 id : SV_DispatchThreadID) {
             : (indexedPixels.Load(i&~3u)>>((i&3u)*8))&255u;
         if(int(p.x)>=minimumX && int(p.x)<maximumX
             && int(p.y)>=minimumY && int(p.y)<maximumY
-            && delta.x*delta.x+delta.y*delta.y<=pad0*pad0
+            && insideDisk(delta,uint(pad0))
             && (palette<128 || (pad1&4)!=0)) {
             int3 main=int3((c.rgb*31u+127u)/255u);
             int3 fixed=int3(hdr,chromatic,smoothing);
@@ -334,10 +472,26 @@ void main(uint3 id : SV_DispatchThreadID) {
         uint3 contribution=unchanged?uint3(max(int3(glow.rgb)-int3(base.rgb),0)):uint3(0,0,0);
         result=uint4(unchanged?base.rgb:c.rgb,c.a);
         splitOutput[p]=float4(contribution,255)/255.;
+    } else if(stage==30) {
+        int sy=int(p.y)-shadowY;float4 surface;
+        bool receiver=false;
+        if(pad1!=0 && tag(p)==2) {
+            uint i=indexOf(p);
+            uint index=reserved==1?(indexedPixels.Load(i*4)&255u):(indexedPixels.Load(i&~3u)>>((i&3u)*8))&255u;
+            uint kind=environmentClasses[index/4][index%4];
+            receiver=kind>=1 && kind<=5 && (environmentModes.x>=6 || (environmentModes.x==1 && kind==5));
+        } else if(pad1==0) receiver=model(p) && surfaceAt(int2(p),surface);
+        if(receiver && p.x<shadowWidth && sy>=0 && sy<int(shadowHeight)) {
+            uint packed=shadowMask.Load((uint(sy)*shadowWidth+p.x)*4);
+            uint marker=packed>>24;
+            uint alpha=pad1!=0?(marker==254?255:0):(marker==255?uint(pad0)*255/100:0);
+            uint3 reflected=uint3(packed&255u,(packed>>8)&255u,(packed>>16)&255u);
+            result.rgb=(reflected*alpha+c.rgb*(255-alpha)+127)/255;
+        }
     } else if(stage==15) {
         int sy=int(p.y)-shadowY;
         uint layer=tag(p);
-        if(p.x<shadowWidth && sy>=0 && sy<int(shadowHeight) && (layer==0 || layer==2 || layer==4)) {
+        if(p.x<shadowWidth && sy>=0 && sy<int(shadowHeight) && (layer==0 || layer==2 || layer==4 || layer==5)) {
             uint i=uint(sy)*(shadowEnabled==3?((shadowWidth+3u)&~3u):shadowWidth)+p.x;
             uint shade=shadowEnabled==2 ? shadowMask.Load(i*4)
                 : (shadowMask.Load(i&~3u)>>((i&3u)*8))&255u;
@@ -424,11 +578,81 @@ void main(uint3 id : SV_DispatchThreadID) {
         bool background=world(p);
         uint effect=background?worldEffect:modelEffect;
         uint intensity=min(background?worldIntensity:modelIntensity,100u);
+        if((effect>=43 && effect<=45) || (effect>=48 && effect<=53) || (effect>=58 && effect<=60)) {
+            uint order[8]={0,1,2,3,4,5,6,7};
+            int block=int(p.x/(scale*8)*scale*8);
+            if(effect==45) {
+                for(uint a=1;a<8;++a) {
+                    uint key=order[a],b=a;
+                    uint light=luminance(manipulationSample(int2(block+int(key*scale),p.y),p));
+                    while(b>0) {
+                        if(luminance(manipulationSample(int2(block+int(order[b-1]*scale),p.y),p))<=light) break;
+                        order[b]=order[b-1];--b;
+                    }
+                    order[b]=key;
+                }
+            }
+            for(uint channel=0;channel<3;++channel) {
+                int2 at=int2(p);
+                if(effect==43) at=abs(int2(p)*2-int2(width,height)+1);
+                else if(effect==44) at.x+=(int(channel)-1)*int(scale)*6;
+                else if(effect==45) at.x=block+int(order[(p.x/scale)%8]*scale)+int(p.x%scale);
+                else if(effect==48) {
+                    int size=int(scale)*16;
+                    int2 tile=int2(p)/size,local=int2(p)%size;
+                    int rotation=(tile.x*3+tile.y*5)%4;
+                    if(rotation==0) at=tile*size+int2(local.y,size-1-local.x);
+                    else if(rotation==1) at=tile*size+size-1-local;
+                    else if(rotation==2) at=tile*size+int2(size-1-local.y,local.x);
+                } else if(effect==49) {
+                    uint column=p.x/(scale*3);
+                    int drip=int(((column*13)^(column>>1))%32)*int(scale);
+                    at.y-=drip*int(p.y)/max(1,int(height)-1);
+                } else if(effect==50) {
+                    int2 ramp=16-abs(int2(p.y/scale,p.x/scale)%64-32);
+                    int2 wave=ramp*(32-abs(ramp))/16;
+                    at+=int2(wave.x*int(scale),wave.y*int(scale)/4);
+                } else if(effect==51) {
+                    int2 d=int2(p)-int2(width,height)/2;
+                    int2 n=d*128/max(int2(1,1),int2(width,height));
+                    int lens=192+(n.x*n.x+n.y*n.y)/64;
+                    at=int2(width,height)/2+d*lens/256;
+                } else if(effect==52) {
+                    int size=int(scale)*12;
+                    at.y=int(p.y)/size*size+(int(p.y)%size)/2+size/4;
+                    at.x+=(int(p.y)/size%2?1:-1)*int(scale)*6;
+                } else if(effect==53) {
+                    int size=int(scale)*24;int2 tile=int2(p)/size;
+                    if((tile.x+tile.y)%2) at.x=tile.x*size+size-1-int(p.x)%size;
+                    else at.y=tile.y*size+size-1-int(p.y)%size;
+                } else if(effect==58) {
+                    int2 d=int2(p)-int2(width,height)/2;
+                    int turn=clamp(96-(abs(d.x)+abs(d.y))/int(scale),0,96);
+                    at+=int2(-d.y*turn/128,d.x*turn/128);
+                } else if(effect==59) {
+                    int2 d=int2(p)-int2(width,height)/2;
+                    int radius=max(abs(d.x),abs(d.y))+min(abs(d.x),abs(d.y))*3/8;
+                    int wave=16-abs((radius/int(scale))%64-32);
+                    at+=d*wave*int(scale)/max(int(scale),radius);
+                } else if(effect==60) {
+                    int size=int(scale)*32;
+                    int side=(int(p.x)%size+int(p.y)%size<size)?1:-1;
+                    at+=side*int(scale)*int2(12,-8);
+                }
+                result[channel]=(c[channel]*(100-intensity)+manipulationSample(at,p)[channel]*intensity+50)/100;
+            }
+            outputImage[p]=float4(result)/255;return;
+        }
         int light=luminance(c);
         bool edge=abs(light-int(luminance(colour(min(p+uint2(scale,0),uint2(width-1,height-1))))))>28
             || abs(light-int(luminance(colour(min(p+uint2(0,scale),uint2(width-1,height-1))))))>28;
         int3 value=int3(c.rgb);
-        if(effect==1) value=edge?value/6:min(255,((value+21)/43)*43);
+        if(effect==1 || effect==12) {
+            edge=false;int2 offsets[4]={int2(-1,0),int2(1,0),int2(0,-1),int2(0,1)};
+            for(uint e=0;e<4;++e) {uint2 n=bounded(int2(p)+offsets[e]*int(scale));if(tag(n)!=1) edge=edge || light-int(luminance(colour(n)))>40;}
+        }
+        int peak=max(1,max(value.r,max(value.g,value.b)));
+        if(effect==1) value=edge?value/4:(value*min(255,((peak+25)/51)*51)+peak/2)/peak;
         else if(effect==2) value=edge?16:light<30?24:235;
         else if(effect==3) value=edge?int3(35,255,255):value/5;
         else if(effect==4) value=light;
@@ -449,8 +673,74 @@ void main(uint3 id : SV_DispatchThreadID) {
             value=(palette[band]*(64-fraction)+palette[band+1]*fraction)/64;
         } else if(effect==10) { value=int3(light/7,min(255,24+light*6/5),light/4); if((p.y/scale)%2) value=value*4/5; }
         else if(effect==11) value=96+value*5/8;
-        else if(effect==12) value=(edge || ((p.x/scale)%3==1 && (p.y/scale)%3==1 && light<180))?18:min(255,((value+31)/64)*64);
+        else if(effect==12) value=edge?value/5:(value*min(255,((peak+31)/64)*64)+peak/2)/peak;
         else if(effect==13) { value=(int3(55,8,100)*(255-light)+int3(70,250,245)*light)/255; if(edge) value=int3(255,75,255); }
+        else if(effect==14) value=min(255,((value+25)/51)*51);
+        else if(effect==15) value=(int3(8,24,65)*(255-light)+int3(224,250,246)*light)/255;
+        else if(effect==16) value=min(255,(value*value*(765-2*value)/65025)*int3(106,100,87)/100+int3(9,4,6));
+        else if(effect==17) value=255-value;
+        else if(effect==18) value=int3(value.r<128?value.r*2:(255-value.r)*2,value.g<128?value.g*2:(255-value.g)*2,value.b<128?value.b*2:(255-value.b)*2);
+        else if(effect==19) value=light*int3(255,176,32)/255;
+        else if(effect==20) value=light*int3(55,255,130)/255;
+        else if(effect==21) value=(int3(8,22,70)*(255-light)+int3(224,246,240)*light)/255;
+        else if(effect==22) value=(int3(30,10,8)*(255-light)+int3(255,190,120)*light)/255;
+        else if(effect==23) value=(int3(35,12,65)*(255-light)+int3(250,215,255)*light)/255;
+        else if(effect==24) {int3 palette[4]={int3(0,0,0),int3(0,170,170),int3(170,0,170),int3(255,255,255)};value=palette[min(3,light/64)];}
+        else if(effect==25) {if((p.y/scale)%2) value=value*3/5;}
+        else if(effect==31) {int3 tone=(int3(0,64,80)*(255-light)+int3(255,180,92)*light)/255;value=(value+tone*2)/3;}
+        else if(effect==32) {int3 palette[4]={int3(15,56,15),int3(48,98,48),int3(139,172,15),int3(155,188,15)};value=palette[min(3,light/64)];}
+        else if(effect==33) {
+            int3 wash=0;int weight=0;
+            for(int dy=-1;dy<=1;++dy) for(int dx=-1;dx<=1;++dx) {
+                uint2 n=bounded(int2(p)+int2(dx,dy)*int(scale));
+                if(tag(n)==1 || world(n)!=background || abs(light-int(luminance(colour(n))))>32) continue;
+                int w=dx==0 && dy==0?4:1;weight+=w;wash+=int3(colour(n).rgb)*w;
+            }
+            wash/=max(1,weight);value=24+min(255,((wash+15)/32)*32)*7/8;
+        }
+        else if(effect==34) value=edge?235:12+light/10;
+        else if(effect==35) {uint2 n=uint2(p.x>=scale?p.x-scale:0,p.y);int neighbour=tag(n)==1?light:int(luminance(colour(n)));value=clamp(128+2*(light-neighbour),0,255);}
+        else if(effect==36) {
+            int3 overlay=light<128?2*value*light/255:255-2*(255-value)*(255-light)/255;
+            int3 silver=(overlay+3*light)/4;value=clamp((silver-112)*7/4+112,0,255);
+        }
+        else if(effect==37) value=edge?8:clamp(((value*5/4-24+31)/64)*64+16,0,255);
+        else if(effect==38) {
+            int red=max(0,int(c.r)-int(c.b)),ink=(255-light)*3/4;
+            value=clamp(int3(250,237,208)-ink*int3(205,155,65)/255-red*int3(0,110,120)/255,0,255);
+        }
+        else if(effect==39) {value=(edge?255:24+light*3/4)*int3(32,210,255)/255;if((p.y/scale)%4==3)value=value*2/5;}
+        else if(effect==41) value=edge?32:clamp(246-(255-light)*(255-light)/510,0,255);
+        else if(effect==40 || effect==42) {
+            int counts[4]={0,0,0,0};int3 sums[4]={int3(0,0,0),int3(0,0,0),int3(0,0,0),int3(0,0,0)};
+            for(int dy=-1;dy<=1;++dy) for(int dx=-1;dx<=1;++dx) {
+                int2 centre=effect==40?int2(p/(scale*3)*(scale*3)+scale):int2(p);
+                uint2 n=bounded(centre+int2(dx,dy)*int(scale));
+                if(tag(n)==1 || world(n)!=background)continue;
+                int bin=effect==40?0:int(luminance(colour(n)))/64;
+                ++counts[bin];sums[bin]+=int3(colour(n).rgb);
+            }
+            int best=0;for(int b=1;b<4;++b)if(counts[b]>counts[best])best=b;
+            int3 wash=counts[best]>0?sums[best]/max(1,counts[best]):value;
+            if(effect==40)value=((p.x/scale)%3==0 || (p.y/scale)%3==0)?wash*2/3:min(255,wash+10);
+            else value=clamp((wash-128)*6/5+128,0,255);
+        }
+        if(effect>=54 && effect<=57) {
+            int3 phase=(light*2+int3(0,128,256))%384;
+            int3 spectrum=clamp(255-abs(phase-192)*4,0,255);
+            int shine=max(0,light-128),specular=shine*shine/64;
+            if(effect==54) value=min(255,24+spectrum*3/4+specular/2+(edge?48:0));
+            else if(effect==55) value=min(255,int3(c.rgb)/8+light/4+int3(30,65,85)+specular/2+(edge?75:0));
+            else if(effect==56) value=min(255,int3(9,7,18)+light/16+specular*3/4+(edge?36:0));
+            else value=min(255,125+light/4+spectrum/5+specular/4+(edge?18:0));
+        }
+        if(effect>=61 && effect<=63) {
+            int shine=max(0,light-128),specular=shine*shine/64;
+            if(effect==61) value=int3(40,3,12)+light*int3(180,12,42)/255+specular*int3(255,115,145)/255+(edge?int3(50,15,22):int3(0,0,0));
+            else if(effect==62) value=int3(6,30,20)+light*int3(65,145,90)/255+specular*int3(120,230,170)/255+(edge?int3(20,35,25):int3(0,0,0));
+            else value=25+light*int3(200,190,166)/255+specular/3+(edge?18:0);
+            value=min(255,value);
+        }
         result.rgb=(c.rgb*(100-intensity)+uint3(value)*intensity+50)/100;
     } else if(stage==5 && aa>0 && p.x>0 && p.y>0 && p.x+1<width && p.y+1<height) {
         uint4 left=colour(p-uint2(1,0)),right=colour(p+uint2(1,0)),up=colour(p-uint2(0,1)),down=colour(p+uint2(0,1));

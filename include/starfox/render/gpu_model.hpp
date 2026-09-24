@@ -1,5 +1,6 @@
 #pragma once
 #include "starfox/render/gpu_raster.hpp"
+#include "starfox/render/ray_materials.hpp"
 #include <array>
 #include <vector>
 namespace starfox::render {
@@ -12,6 +13,16 @@ struct GpuModelRaySource {
     void* points{};void* residuals{};
     std::uint32_t point_count{},mode{};
     std::vector<std::array<std::uint32_t,4>> triangles;
+    bool request_materials{};
+    bool reference_materials{}; // Diagnostic CPU packing; never needed for GPU transport.
+    bool materials_complete{};
+    bool reflection_excluded{}; // Axis-line raster has no polygon reflection surface; retains shadow casters.
+    RayMaterials materials;
+    void *material_corners{},*material_polygons{},*material_commands{};
+    std::uint32_t material_corner_count{},material_count{};
+    void* material_lookup{};
+    std::uint32_t material_lookup_count{};
+    std::vector<std::array<std::uint32_t,4>> material_topology;
 };
 // Optional diagnostic handles only; enqueue never submits or reads them back.
 // Borrowed through the next enqueue/release, with the same command lifetime.
@@ -45,11 +56,15 @@ public:
     // raster_jitter is a current-frame displacement in output raster pixels;
     // both supplied poses remain unjittered. Requires continuous subpixel
     // projection. Motion removes this displacement, depth follows the raster.
+    // Optional raster_size decouples logical viewport/projection from output
+    // dimensions. Continuous subpixel geometry is required; whole-object
+    // billboards and wave distortion currently require the normal path.
     GpuRasterOutput enqueue(void* device,void* command,const assets::Shape&,const RenderPose&,
         const RenderSettings&,std::uint32_t width,std::uint32_t height,bool surface_metadata=false,
         const GpuRasterOutput* background=nullptr,GpuModelDiagnostics* diagnostics=nullptr,
         bool geometry_depth=false,GpuModelRaySource* ray_source=nullptr,
-        const RenderPose* previous_pose=nullptr,std::array<float,2> raster_jitter={});
+        const RenderPose* previous_pose=nullptr,std::array<float,2> raster_jitter={},
+        std::array<std::uint32_t,2> raster_size={});
     void release_device() noexcept;
     const std::string& status()const noexcept;
 private:

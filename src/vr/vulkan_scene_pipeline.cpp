@@ -107,6 +107,11 @@ bool VulkanScenePipeline::initialize(VkDevice device,PFN_vkGetDeviceProcAddr get
                 ?VK_BLEND_OP_REVERSE_SUBTRACT:VK_BLEND_OP_ADD;
             attachment.srcAlphaBlendFactor=VK_BLEND_FACTOR_ZERO;
             attachment.dstAlphaBlendFactor=VK_BLEND_FACTOR_ONE;attachment.alphaBlendOp=VK_BLEND_OP_ADD;
+            if(mode==SceneBlend::alpha) {
+                attachment.dstColorBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+                attachment.srcAlphaBlendFactor=VK_BLEND_FACTOR_ONE;
+                attachment.dstAlphaBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            }
             if(mode==SceneBlend::shadow) {
                 // Coverage darkens the existing scene proportionally, retaining
                 // destination alpha. Source RGB is deliberately irrelevant.

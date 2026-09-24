@@ -1506,7 +1506,7 @@ void SoftwareRenderer::draw_impl(
     // them as cartridge art and hand them to the 2D filter. Declaring the
     // layer once at the entry point makes the classification independent of
     // which path a shape takes.
-    const ScopedLayer layer{target, PixelLayer::three_d};
+    const ScopedLayer layer{target, pose.terrain_geometry?PixelLayer::terrain_geometry:pose.world_geometry?PixelLayer::world_geometry:PixelLayer::three_d};
     if (clear_target) {
         target.clear(settings_.background_colour);
         if (surfaces != nullptr) surfaces->clear();
@@ -1580,6 +1580,27 @@ void SoftwareRenderer::draw_impl(
         // flattened shadow model or an interpolated object-slot history.
         for (const auto& face : shape.faces) {
             if (face.sprite || face.vertex_indices.size() < 3U) continue;
+            shadows::Triangle material_triangle;
+            if (shadow_scene->reflection_materials() && !pose.collapse_to_axis_line) {
+                // CPU reflections intentionally use flat representative
+                // materials, not per-hit UV/alpha/colour-warp evaluation.
+                // The actual raster material and its PRNG stay untouched.
+                const auto material=face_material(shape,face,pose.colour_frame,
+                    depth_band,light,pose,std::nullopt,settings_.colour_index_base);
+                auto even=material.colour.even, odd=material.colour.dither?material.colour.odd:even;
+                bool valid=true;
+                if (material.texture) {
+                    std::array<unsigned,256> counts{};
+                    const auto& texels=material.texture->texels;
+                    const auto stride=std::max<std::size_t>(1,texels.size()/32);
+                    for(std::size_t i=0;i<texels.size();i+=stride) if(texels[i]) ++counts[texels[i]];
+                    const auto most=std::max_element(counts.begin(),counts.end());
+                    valid=*most!=0; even=odd=static_cast<std::uint8_t>(most-counts.begin());
+                }
+                material_triangle.reflection_even=static_cast<std::uint8_t>(settings_.colour_index_base+even);
+                material_triangle.reflection_odd=static_cast<std::uint8_t>(settings_.colour_index_base+odd);
+                material_triangle.reflection_valid=valid;
+            }
             const auto offset = explosion_offset(face, pose);
             const auto point = [&](std::size_t index) {
                 const auto& p = transformed_vertices[index];
@@ -1589,8 +1610,11 @@ void SoftwareRenderer::draw_impl(
             if (first >= transformed_vertices.size()) continue;
             for (std::size_t vertex = 1; vertex + 1 < face.vertex_indices.size(); ++vertex) {
                 const auto b = face.vertex_indices[vertex], c = face.vertex_indices[vertex + 1];
-                if (b < transformed_vertices.size() && c < transformed_vertices.size())
-                    shadow_scene->add({point(first), point(b), point(c)});
+                if (b < transformed_vertices.size() && c < transformed_vertices.size()) {
+                    auto triangle=material_triangle;
+                    triangle.a=point(first);triangle.b=point(b);triangle.c=point(c);
+                    shadow_scene->add(triangle);
+                }
             }
         }
     }

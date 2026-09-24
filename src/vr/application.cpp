@@ -1,4 +1,5 @@
 #include "starfox/vr/application.hpp"
+#include "starfox/vr/enhanced_landscape.hpp"
 #include "starfox/render/background_renderer.hpp"
 #include "starfox/vr/frame_wait.hpp"
 #include "starfox/vr/scene_interpolation.hpp"
@@ -16,6 +17,7 @@
 #include "starfox/vr/game_model_pose.hpp"
 #include "starfox/vr/vulkan_draw_packets.hpp"
 #include "starfox/vr/source_models.hpp"
+#include "starfox/vr/packet_route.hpp"
 #include "starfox/vr/pause_sandbox.hpp"
 #include "starfox/vr/vulkan_source_scene.hpp"
 #include "starfox/vr/vulkan_dxr_frame.hpp"
@@ -49,6 +51,16 @@
 #include <cmath>
 #include <charconv>
 namespace {
+auto load_vr_backdrop(unsigned resource,std::string_view path) {
+#if defined(STARFOX_VR_BUNDLE_ASSETS)
+    (void)path;return starfox::assets::embedded_asset(int(resource));
+#else
+    (void)resource;
+    std::ifstream stream(std::filesystem::path(path),std::ios::binary);
+    if(!stream) throw std::runtime_error("Missing VR backdrop artwork");
+    return std::vector<uint8_t>{std::istreambuf_iterator<char>(stream),std::istreambuf_iterator<char>()};
+#endif
+}
 struct LiveGame {
     starfox::assets::RomImage rom;
     starfox::assets::SymbolMap symbols;
@@ -61,6 +73,7 @@ struct LiveGame {
     starfox::vr::PcmOutput output;
     starfox::vr::SourceModels models;
     starfox::render::ScaledTextRenderer dialogue_layout;
+    starfox::vr::EnhancedLandscape enhanced_landscape;
     std::unique_ptr<starfox::vr::GameSceneHistory> history;
     std::unique_ptr<starfox::vr::GameFrameDriver> driver;
     unsigned logic_ticks{};
@@ -76,7 +89,7 @@ struct LiveGame {
         :rom(std::move(image)),symbols(std::move(table)),
          cartridge_save(discard || symbols.find("PLANETSEQ2_L").empty()?std::filesystem::path{}:host.cartridge_save_path),
          game(rom,symbols,level,cartridge_save.initial(),true),models(rom,symbols,true,!discard),
-         dialogue_layout(rom,symbols),discard_audio(discard) {
+         dialogue_layout(rom,symbols),enhanced_landscape(symbols),discard_audio(discard) {
         game.set_timing_mode(starfox::simulation::TimingMode::unlocked_20_fps);
         if(msu_path) {
             pack=std::make_shared<starfox::audio::Msu1Pack>(msu_path);
@@ -122,6 +135,7 @@ int starfox::vr::run_application(int argc,char** argv,const ApplicationHost& hos
     bool ray_audit=false;
     bool preflight_invulnerable=false;
     bool ray_tracing=false; // Opt-in while completing material coverage and headset validation.
+    bool enhanced_sky=false; // Optional launch override; the menu preference defaults to off.
     for(int i=1;i<argc;++i) {
         const std::string_view arg=argv[i];
         if(arg=="--bundle" && i+1<argc) {bundle_path=argv[++i];render_game=true;graphics=true;preflight_level="INTROMAP";}
@@ -152,6 +166,7 @@ int starfox::vr::run_application(int argc,char** argv,const ApplicationHost& hos
         else if(arg=="--verify-geometry-cache") verify_geometry_cache=true;
         else if(arg=="--background-audit") background_audit=true;
         else if(arg=="--ray-tracing") ray_tracing=true;
+        else if(arg=="--enhanced-sky") enhanced_sky=true;
         else if(arg=="--ray-audit") ray_audit=true;
         else if(arg=="--preflight-invulnerable") preflight_invulnerable=true;
         else if(arg=="--msu" && i+1<argc && !msu_path) msu_path=argv[++i];
@@ -204,7 +219,8 @@ int starfox::vr::run_application(int argc,char** argv,const ApplicationHost& hos
         starfox::vr::SourceModels reference(live->rom,live->symbols,false);
         starfox::vr::SourceModels ray_models(live->rom,live->symbols,true,true);
         SourceRayPolicy ray_policy(live->symbols);
-        std::array<uint64_t,4> ray_counts{};
+        std::array<uint64_t,5> ray_counts{};
+        std::array<uint64_t,static_cast<size_t>(PacketRoute::count)> route_counts{};
         std::unordered_map<std::string,bool> ray_reported;
         std::size_t packets=0;unsigned ticks=0;
         std::array<unsigned,15> flow_samples{};
@@ -221,7 +237,6 @@ int starfox::vr::run_application(int argc,char** argv,const ApplicationHost& hos
             ++flow_samples.at(static_cast<unsigned>(live->history->current()->flow));
             if(ray_audit) {
                 auto assembled=ray_models.assemble_world_interpolated(*live->history->previous(),*live->history->current(),.5,false,true);
-                ray_policy.apply(assembled,*live->history->current());
                 if(!assembled.pending.empty()) throw std::runtime_error("Ray audit model assembly incomplete");
                 const auto report=[&](uint32_t key,const char* reason,uint32_t flags=0,uint32_t mode=0) {
                     uint32_t strategy=0,shape=0;
@@ -239,6 +254,21 @@ int starfox::vr::run_application(int argc,char** argv,const ApplicationHost& hos
                         std::cout<<'\n';
                     }
                 };
+                // Inventory before the shadow policy removes nonphysical visual
+                // layers (dust/grid/indicators). Otherwise their CPU producers
+                // disappear from the migration audit even though they still draw.
+                for(size_t i=0;i<assembled.packets.size();++i) {
+                    const auto key=assembled.handles[i];
+                    if(is_source_shadow_pass(key)) continue;
+                    const auto vertices=assembled.packets[i].geometry.vertex_view();
+                    const auto lines=assembled.packets[i].geometry.line_view();
+                    const auto route=packet_route(vertices,lines);
+                    if(route==PacketRoute::empty) continue;
+                    ++route_counts[static_cast<size_t>(route)];
+                    const auto& first=vertices.empty()?lines.front():vertices.front();
+                    report(key,packet_route_name(route),first.texture[3],first.visibility_enabled);
+                }
+                ray_policy.apply(assembled,*live->history->current());
                 for(const auto& fallback:assembled.compute_fallbacks)
                     report(fallback.key,fallback.reason.c_str());
                 for(const auto& model:assembled.compute_models) {
@@ -251,12 +281,19 @@ int starfox::vr::run_application(int argc,char** argv,const ApplicationHost& hos
                 }
                 for(size_t i=0;i<assembled.packets.size();++i) {
                     const auto key=assembled.handles[i];
-                    if(is_source_shadow_pass(key) || key==0x20000 || key==0x30000) continue;
+                    if(is_source_shadow_pass(key)) continue;
                     const auto vertices=assembled.packets[i].geometry.vertex_view();
-                    if(vertices.empty()) continue;
-                    const bool ordinary=std::all_of(vertices.begin(),vertices.end(),[](const auto& v){return v.visibility_enabled!=2 && !(v.texture[3]&~0x28000007U);});
-                    ++ray_counts[ordinary?2:3];
-                    report(key,ordinary?"ordinary-legacy":"procedural-legacy",vertices.front().texture[3],vertices.front().visibility_enabled);
+                    const auto lines=assembled.packets[i].geometry.line_view();
+                    const auto route=packet_route(vertices,lines);
+                    if(route==PacketRoute::empty) continue;
+                    if(key==0x20000 || key==0x30000) continue;
+                    const bool ordinary=route==PacketRoute::ordinary;
+                    // Whole-object sprites intentionally bypass native face/BSP
+                    // producers. Their corners are expanded by the GPU vertex
+                    // shader; do not report them as unmigrated ordinary meshes.
+                    const bool sprite=route==PacketRoute::sprite;
+                    if(route==PacketRoute::particle || route==PacketRoute::text) continue;
+                    ++ray_counts[sprite?4:ordinary?2:3];
                 }
                 continue;
             }
@@ -301,8 +338,11 @@ int starfox::vr::run_application(int argc,char** argv,const ApplicationHost& hos
         if(background_audit) std::cout<<"Background inventory: "<<ticks<<" ticks, level "<<preflight_level<<". No model/GPU verification.\n";
         else if(!ray_audit) std::cout<<"VR world preflight (models, dust, grid): "<<ticks<<" logic ticks, "<<packets<<" packets, 3 interpolation samples/frame, level "<<preflight_level<<". No GPU rendering or headset verification.\n";
         if(ray_audit) {
+            for(size_t i=1;i<route_counts.size();++i)
+                std::cout<<"Producer inventory: "<<packet_route_name(static_cast<PacketRoute>(i))<<"="<<route_counts[i]<<'\n';
             std::cout<<"Ray input audit: compute accepted="<<ray_counts[0]<<" rejected="<<ray_counts[1]
-                <<" legacy ordinary="<<ray_counts[2]<<" procedural="<<ray_counts[3]<<"; object/frame counts, no GPU verification.\n";
+                <<" legacy ordinary="<<ray_counts[2]<<" procedural="<<ray_counts[3]
+                <<" whole-object sprites="<<ray_counts[4]<<"; object/frame counts, no GPU verification.\n";
             return 0;
         }
         if(background_audit) return 0;
@@ -490,6 +530,7 @@ int starfox::vr::run_application(int argc,char** argv,const ApplicationHost& hos
     unsigned scene_uploads=0,model_only_updates=0;
     std::size_t gpu_uploads=0,gpu_reuses=0;
     std::optional<uint64_t> sprite_revision;
+    std::optional<bool> uploaded_enhanced_sky;
     std::vector<starfox::vr::DrawPacket> uploaded_sprites;
     std::vector<starfox::vr::DrawPacket> uploaded_backgrounds;
     unsigned sprite_uploads=0,sprite_reuses=0;
@@ -548,6 +589,7 @@ int starfox::vr::run_application(int argc,char** argv,const ApplicationHost& hos
     // Explicit launch request takes precedence over a saved OFF preference.
     // Hardware availability still gates use; no flag keeps the saved/default value.
     if(ray_tracing) startup.ray_tracing=true;
+    if(enhanced_sky) startup.enhanced_sky=true;
     auto saved_preferences=startup.preferences();
     bool startup_release=startup.open;
     std::unique_ptr<LiveGame> preview_game,parked_game;
@@ -832,7 +874,8 @@ int starfox::vr::run_application(int argc,char** argv,const ApplicationHost& hos
                         circle_model=starfox::vr::source_layer_matrix(float(snapshot->source_vanishing_point[0])+16.F,
                             float(snapshot->source_vanishing_point[1])+16.F).value();
                     }
-                    if(!sprite_revision || *sprite_revision!=snapshot->revision) {
+                    if(!sprite_revision || *sprite_revision!=snapshot->revision
+                        || uploaded_enhanced_sky!=startup.enhanced_sky) {
                         if(!snapshot->ppu) throw std::runtime_error("Live sprite pass has no PPU snapshot");
                         auto packet=starfox::vr::source_sprite_packet(*snapshot->ppu,snapshot->display_brightness,{},srgb,&snapshot->meters);
                         // Initial diagnostic HUD plane in LOCAL space, matching
@@ -852,6 +895,7 @@ int starfox::vr::run_application(int argc,char** argv,const ApplicationHost& hos
                             float(snapshot->source_vanishing_point[0]),
                             float(snapshot->source_vanishing_point[1]),fixed_menu,true).value();
                         starfox::vr::BackgroundTileOptions background_options;
+                        background_options.colour_subtract=snapshot->background_colour_subtract;
                         background_options.brightness=snapshot->display_brightness;
                         background_options.scroll_override=snapshot->background_scroll_override;
                         background_options.single_occurrence_top_rows=snapshot->background_unique_top_rows;
@@ -921,14 +965,28 @@ int starfox::vr::run_application(int argc,char** argv,const ApplicationHost& hos
                                 bg2=starfox::vr::water_surface_packet(*snapshot->ppu,background_options,
                                     std::clamp(std::abs(float(snapshot->camera.y-snapshot->shadow_height))/256.F,.01F,8.F),srgb);
                             else bg2.model=packet.model;
+                            auto photograph=startup.enhanced_sky?live->enhanced_landscape.prepare(*snapshot,live->game,load_vr_backdrop,srgb)
+                                :std::optional<starfox::vr::DrawPacket>{};
+                            if(photograph) live->enhanced_landscape.retain_native_ground(bg2,*snapshot->ppu);
+                            if(!photograph && snapshot->flow==starfox::simulation::GameFlowState::game_over)
+                                next_backgrounds.push_back(starfox::vr::game_over_star_sphere_packet(*snapshot->ppu,
+                                    snapshot->display_brightness,snapshot->background_colour_subtract,srgb));
+                            if(photograph && snapshot->flow==starfox::simulation::GameFlowState::game_over) {
+                                next_backgrounds.push_back(std::move(*photograph));photograph.reset();
+                            }
                             next_backgrounds.push_back(std::move(bg2));
-                            if(!snapshot->ppu->tunnel_scene && snapshot->background_ex_city_planets) {
+                            if(photograph) {
+                                next_backgrounds.push_back(std::move(*photograph));
+                                const auto& bodies=live->enhanced_landscape.bodies();
+                                next_backgrounds.insert(next_backgrounds.end(),bodies.begin(),bodies.end());
+                            }
+                            if(!photograph && !snapshot->ppu->tunnel_scene && snapshot->background_ex_city_planets) {
                                 auto planet_options=background_options;
                                 planet_options.scroll_override=std::array<int16_t,2>{0,248};
                                 next_backgrounds.push_back(starfox::vr::unique_planet_packet(
                                     *snapshot->ppu,planet_options,{384,208,56,48},srgb));
                             }
-                            if(!snapshot->ppu->tunnel_scene && snapshot->background_orbital_entry) {
+                            if(!photograph && !snapshot->ppu->tunnel_scene && snapshot->background_orbital_entry) {
                                 auto planet_options=background_options;
                                 planet_options.scroll_override=std::array<int16_t,2>{0,312};
                                 next_backgrounds.push_back(starfox::vr::unique_planet_packet(
@@ -1023,6 +1081,7 @@ int starfox::vr::run_application(int argc,char** argv,const ApplicationHost& hos
                             uploaded_sprites.assign(next_sprites.begin(),next_sprites.end());++sprite_uploads;
                         }
                         sprite_revision=snapshot->revision;
+                        uploaded_enhanced_sky=startup.enhanced_sky;
                     }
                     if(snapshot->background_orbital_planet && !snapshot->ppu->tunnel_scene) {
                         const auto before=live->history->previous();
@@ -1035,11 +1094,14 @@ int starfox::vr::run_application(int argc,char** argv,const ApplicationHost& hos
                         const auto motion=orbital_horizon_motion(scroll(continuous?*before:*snapshot),scroll(*snapshot),
                             continuous?alpha:1.,snapshot->background_orbital_thin,snapshot->background_orbital_entry,
                             snapshot->flow==simulation::GameFlowState::gameplay && live->game.experience()==simulation::Experience::starfox_ex);
+                        const auto photographic_motion=orbital_horizon_motion(scroll(continuous?*before:*snapshot),scroll(*snapshot),
+                            continuous?alpha:1.,snapshot->background_orbital_thin,snapshot->background_orbital_entry,false);
                         model_updates.clear();
                         for(std::size_t i=0;i<uploaded_backgrounds.size();++i) {
                             const auto& background=uploaded_backgrounds[i];
                             if(!background.geometry.vertex_view().empty() || !background.geometry.line_view().empty())
-                                model_updates.push_back(i==0?motion:background.model);
+                                model_updates.push_back(startup.enhanced_sky && live->enhanced_landscape.orbital_body(background)
+                                    ?photographic_motion:i==0?motion:background.model);
                         }
                         if(!backgrounds.update_models(model_updates)) throw std::runtime_error("Orbital horizon update failed");
                     }
@@ -1055,7 +1117,8 @@ int starfox::vr::run_application(int argc,char** argv,const ApplicationHost& hos
                         model_updates.clear();
                         for(const auto& background:uploaded_backgrounds) {
                             if(background.geometry.vertex_view().empty() && background.geometry.line_view().empty()) continue;
-                            const bool receiver=background.geometry.texels.size()>15 && (background.geometry.texels[15]&32U)!=0;
+                            const auto payload=background.geometry.texel_view();
+                            const bool receiver=payload.size()>15 && (payload[15]&32U)!=0;
                             model_updates.push_back(receiver?motion:background.model);
                         }
                         if(!backgrounds.update_models(model_updates)) throw std::runtime_error("Water height motion update failed");
@@ -1069,9 +1132,32 @@ int starfox::vr::run_application(int argc,char** argv,const ApplicationHost& hos
                         for(std::size_t i=0;i<uploaded_backgrounds.size();++i) {
                             const auto& background=uploaded_backgrounds[i];
                             if(!background.geometry.vertex_view().empty() || !background.geometry.line_view().empty())
-                                model_updates.push_back((i==0 || snapshot->background_ex_city_planets)?motion:background.model);
+                                model_updates.push_back((i==0 || snapshot->background_ex_city_planets
+                                    || (startup.enhanced_sky && live->enhanced_landscape.landscape_body(background))
+                                    || (background.geometry.shared_texels && !background.geometry.vertex_view().empty()
+                                        && (background.geometry.vertex_view().front().texture[3]&starfox::vr::backdrop_texture_flag)==starfox::vr::backdrop_texture_flag))
+                                    ?motion:background.model);
                         }
                         if(!backgrounds.update_models(model_updates)) throw std::runtime_error("Landscape pitch update failed");
+                    }
+                    if(startup.enhanced_sky && live->enhanced_landscape.scrolling_pattern()) {
+                        const auto motion=live->enhanced_landscape.pattern_motion(*live->history->previous(),*snapshot,alpha);
+                        model_updates.clear();
+                        for(const auto& background:uploaded_backgrounds) {
+                            if(background.geometry.vertex_view().empty() && background.geometry.line_view().empty()) continue;
+                            model_updates.push_back(live->enhanced_landscape.pattern_panorama(background)?motion:background.model);
+                        }
+                        if(!backgrounds.update_models(model_updates)) throw std::runtime_error("Photographic panorama interpolation failed");
+                    }
+                    if(startup.enhanced_sky && live->enhanced_landscape.moving_body()) {
+                        model_updates.clear();
+                        for(const auto& background:uploaded_backgrounds) {
+                            const auto vertices=background.geometry.vertex_view();
+                            if(vertices.empty() && background.geometry.line_view().empty()) continue;
+                            const auto body=live->enhanced_landscape.tracked_body(background);
+                            model_updates.push_back(body?live->enhanced_landscape.body_motion(*live->history->previous(),*snapshot,alpha,*body):background.model);
+                        }
+                        if(!backgrounds.update_models(model_updates)) throw std::runtime_error("Celestial motion update failed");
                     }
                     if(snapshot->flow==starfox::simulation::GameFlowState::intro && !snapshot->meters.extended
                         && snapshot->background_unique_top_rows==224) {
@@ -1223,6 +1309,8 @@ int starfox::vr::run_application(int argc,char** argv,const ApplicationHost& hos
                     throw std::runtime_error("Preview menu recording failed");
             },[&](VkCommandBuffer command,VkExtent2D,const auto&,XrTime) {
                 if(ray_ready && !ray_frames[eye]->record_acquire(command)) throw std::runtime_error("Ray shadow acquire failed");
+                if(eye==0 && render_game && !compute_scene_active && (!startup.open || startup.preview) && !scene.record_compute(command))
+                    throw std::runtime_error("Live grid compute recording failed");
                 if(!ray_ready && eye==0 && render_game && compute_scene_active && (!startup.open || startup.preview) && !compute_scene.record_compute(command))
                     throw std::runtime_error("Live model compute recording failed");
             },[&](VkCommandBuffer command,VkExtent2D,const auto&,XrTime) {

@@ -25,6 +25,15 @@ namespace starfox::app {
 // or environment overrides retain priority over these application defaults.
 void configure_native_gamepad_support() noexcept;
 
+// Steam can substitute physical-controller metadata in SDL's public IDs.
+// Either those IDs or the underlying transport GUID can identify its stream.
+[[nodiscard]] constexpr bool steam_virtual_gamepad_ids(
+    std::uint16_t reported_vendor, std::uint16_t reported_product,
+    std::uint16_t transport_vendor, std::uint16_t transport_product) noexcept {
+    return (reported_vendor == 0x28deU && reported_product == 0x11ffU)
+        || (transport_vendor == 0x28deU && transport_product == 0x11ffU);
+}
+
 // Opens the most useful player controller when more than one mapped device is
 // present (Steam virtual/Deck first, then XInput/Xbox, then generic gamepads).
 [[nodiscard]] SDL_Gamepad* open_preferred_gamepad() noexcept;
@@ -67,7 +76,9 @@ public:
     [[nodiscard]] input::ButtonMask sample_gamepad_only(
         SDL_Gamepad* gamepad) const noexcept;
     [[nodiscard]] input::ButtonMask sample_fixed_menu_navigation(
-        SDL_Gamepad* gamepad) const noexcept;
+        SDL_Gamepad* gamepad, bool setup_confirm = false) const noexcept;
+    [[nodiscard]] input::ButtonMask sample_fixed_gamepad_navigation(
+        SDL_Gamepad* gamepad, bool setup_confirm = false) const noexcept;
 
     void bind_keyboard(std::size_t action, SDL_Scancode scancode) noexcept;
     void bind_gamepad_button(
@@ -126,7 +137,7 @@ struct PregameSettings {
     // 0=English, 1=Japanese, 2=German, 3=French, 4=Spanish, 5=English (Europe).
     std::uint8_t language{};
     std::uint8_t wireframe_thickness{1U}; // Legacy aggregate slot; no longer saved or applied.
-    bool enhanced_shadows{}; // Legacy file compatibility only; ignored by renderer.
+    bool enhanced_shadows{}; // Software renderer only; saved as SOFTWARE_SHADOWS.
     std::uint8_t chromatic_aberration{};
     std::uint8_t hdr_effect{};
     bool ray_tracing{};
@@ -136,6 +147,16 @@ struct PregameSettings {
     std::uint8_t selected_level{};
     std::uint8_t stereo_output{}; // 0=OFF, 1=HALF SBS, 2=FULL SBS.
     bool infinite_lives{};
+    // Requested quality, independent of hardware/runtime availability.
+    // 0=OFF, 1=QUALITY, 2=BALANCED, 3=PERFORMANCE, 4=DLAA.
+    std::uint8_t dlss_mode{};
+    std::uint8_t reflective_surfaces{}; // OFF/LOW/MEDIUM/HIGH; GPU requires ray tracing.
+    std::uint8_t fsr1_mode{}; // Independent of DLSS: OFF/UQ/QUALITY/BALANCED/PERFORMANCE.
+    std::uint8_t manipulation{};
+    std::uint8_t manipulation_intensity{100};
+    std::uint8_t material{};
+    std::array<std::uint8_t,6> environment{};
+    bool planet_select_cheat{};
 
     [[nodiscard]] bool operator==(const PregameSettings&) const = default;
 };

@@ -16,6 +16,7 @@ permissions:
 
 jobs:
   windows-x64:
+    if: inputs.release_tag != '__ios_test__'
     name: Windows x64 runtime and standalone asset builder
     runs-on: windows-latest
     steps:
@@ -45,11 +46,31 @@ jobs:
             throw 'asset builder did not launch and print its usage'
           }
           $global:LASTEXITCODE = 0
+      - name: Prepare pinned NVIDIA DLSS runtime
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'streamline-sdk-v2.14.1.zip'
+          Invoke-WebRequest 'https://github.com/NVIDIA-RTX/Streamline/releases/download/v2.14.1/streamline-sdk-v2.14.1.zip' -OutFile $archive
+          if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne '92C4D954631A1710DA86CA3FA8D5034F2B9503838C95FC4AE977AE149319781B') {
+            throw 'Streamline SDK archive checksum mismatch'
+          }
+          $expanded = Join-Path $env:RUNNER_TEMP 'starfox-streamline-sdk'
+          Expand-Archive -LiteralPath $archive -DestinationPath $expanded
+          $headers = @(Get-ChildItem -LiteralPath $expanded -Recurse -Filter sl_security.h)
+          if ($headers.Count -ne 1) { throw 'Unexpected Streamline SDK layout' }
+          $sdk = $headers[0].Directory.Parent.FullName
+          "STARFOX_RELEASE_DLSS_SDK=$sdk" >> $env:GITHUB_ENV
+          cmake -S tools/streamline_probe -B build/dlss-release -G 'Visual Studio 17 2022' -A x64 "-DSTREAMLINE_SDK=$sdk"
+          if ($LASTEXITCODE -ne 0) { throw 'DLSS adapter configure failed' }
+          cmake --build build/dlss-release --config Release --target starfox_dlss_native
+          if ($LASTEXITCODE -ne 0) { throw 'DLSS adapter build failed' }
       - name: Package runtime and builder
         shell: pwsh
         run: |
           $runtime = 'StarFoxEnhanced-0.0.6.7-windows-x64'
           cmake --install build/asset-builder --prefix $runtime
+          ./tools/package_dlss.ps1 -SdkDirectory $env:STARFOX_RELEASE_DLSS_SDK `
+            -Adapter build/dlss-release/Release/starfox_dlss_native.dll -Destination $runtime
           Compress-Archive -Path "$runtime/*" -DestinationPath "$runtime.zip"
           $builder = 'StarFoxAssetBuilder-0.0.6.7-windows-x64'
           New-Item -ItemType Directory -Force $builder | Out-Null
@@ -80,6 +101,7 @@ jobs:
             StarFoxAssetBuilder-0.0.6.7-windows-x64.zip --clobber
 
   windows-x86:
+    if: inputs.release_tag != '__ios_test__'
     name: Windows x86 runtime
     runs-on: windows-latest
     steps:
@@ -135,6 +157,7 @@ jobs:
             StarFoxEnhanced-0.0.6.7-windows-x86.zip --clobber
 
   xbox-uwp-x64:
+    if: inputs.release_tag != '__ios_test__'
     name: Xbox UWP x64 (Developer Mode)
     # Keep the legacy UWP/C++ packaging workload and its redistributable
     # Microsoft.VCLibs framework package available. windows-latest moved to
@@ -199,6 +222,7 @@ jobs:
             StarFoxEnhanced-0.0.6.7-xbox-uwp-x64.zip --clobber
 
   linux-x64:
+    if: inputs.release_tag != '__ios_test__'
     name: Linux x64 native runtime
     runs-on: ubuntu-24.04
     steps:
@@ -255,6 +279,7 @@ jobs:
             StarFoxEnhanced-0.0.6.7-linux-x64.zip --clobber
 
   macos-universal:
+    if: inputs.release_tag != '__ios_test__'
     name: macOS universal (unsigned)
     runs-on: macos-15
     steps:
@@ -316,19 +341,23 @@ jobs:
           test -d "${app}"
           test -f "${binary}"
           plutil -lint "${app}/Info.plist"
+          # SDL's iOS display link requests the device's maximum refresh rate,
+          # but iPhone ProMotion stays capped at 60 Hz without this bundle key.
+          plutil -convert json -o - "${app}/Info.plist" \
+            | jq -e '.CADisableMinimumFrameDurationOnPhone == true' >/dev/null
           [[ " $(lipo -archs "${binary}") " == *" arm64 "* ]]
-          package="StarFoxEnhanced-0.0.6.7-ios-arm64-unsigned"
+          package="StarFoxEnhanced-ios-metal-test-unsigned"
           mkdir -p "${package}/Payload"
           cp -R "${app}" "${package}/Payload/"
           cp platform/apple/IOS_INSTALL.md "${package}/README.md"
           ditto -c -k --sequesterRsrc --keepParent "${package}" "${package}.zip"
       - uses: actions/upload-artifact@v4
         with:
-          name: StarFoxEnhanced-0.0.6.7-ios-arm64-unsigned
-          path: StarFoxEnhanced-0.0.6.7-ios-arm64-unsigned.zip
+          name: StarFoxEnhanced-ios-metal-test-unsigned
+          path: StarFoxEnhanced-ios-metal-test-unsigned.zip
           if-no-files-found: error
       - name: Add to GitHub release
-        if: github.event_name == 'push' || inputs.release_tag != ''
+        if: github.event_name == 'push' || (inputs.release_tag != '' && inputs.release_tag != '__ios_test__')
         env:
           GH_TOKEN: ${{ github.token }}
           REQUESTED_TAG: ${{ inputs.release_tag }}
@@ -336,9 +365,10 @@ jobs:
         run: |
           tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
           gh release upload "${tag}" \
-            StarFoxEnhanced-0.0.6.7-ios-arm64-unsigned.zip --clobber
+            StarFoxEnhanced-ios-metal-test-unsigned.zip --clobber
 
   android-arm64:
+    if: inputs.release_tag != '__ios_test__'
     name: Android arm64 development APK
     runs-on: ubuntu-latest
     steps:
@@ -372,6 +402,7 @@ jobs:
         run: |
           apk="dist/StarFoxEnhanced-android-arm64.apk"
           test -f "${apk}"
+          python3 tools/check_android_package.py "$apk" --source-root "$GITHUB_WORKSPACE"
           "${ANDROID_HOME}/build-tools/35.0.0/aapt" dump badging "${apk}"
           "${ANDROID_HOME}/build-tools/35.0.0/apksigner" verify --print-certs "${apk}" > "$RUNNER_TEMP/signing-certificate.txt"
           grep -Fqi '50bcb41f7a02c2e9bb0f68a74b1f6e14f7317fedc69d2c6fd70a165f87800fc0' "$RUNNER_TEMP/signing-certificate.txt"
@@ -394,7 +425,106 @@ jobs:
           gh release upload "${tag}" \
             StarFoxEnhanced-0.0.6.7-android-arm64.apk --clobber
 
+  quest-arm64:
+    if: inputs.release_tag != '__ios_test__'
+    name: Quest 3 arm64 signed VR development APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: >-
+            platform-tools platforms;android-35 build-tools;35.0.0
+            ndk;28.2.13676358
+          log-accepted-android-sdk-licenses: 'false'
+      - name: Build signed Quest release variant
+        shell: bash
+        env:
+          ANDROID_RELEASE_KEYSTORE: ${{ secrets.ANDROID_RELEASE_KEYSTORE }}
+          ANDROID_RELEASE_PASSWORD: ${{ secrets.ANDROID_RELEASE_PASSWORD }}
+        run: |
+          test -n "$ANDROID_RELEASE_KEYSTORE"
+          test -n "$ANDROID_RELEASE_PASSWORD"
+          export ANDROID_RELEASE_KEYSTORE_PATH="$RUNNER_TEMP/starfox-quest-release.p12"
+          umask 077
+          printf '%s' "$ANDROID_RELEASE_KEYSTORE" | base64 --decode > "$ANDROID_RELEASE_KEYSTORE_PATH"
+          chmod +x tools/build_android.sh platform/android/gradlew
+          tools/build_android.sh "$GITHUB_WORKSPACE" release quest
+      - name: Verify and package Quest APK
+        shell: bash
+        run: |
+          apk="dist/StarFoxEnhanced-quest-arm64.apk"
+          python3 tools/check_quest_package.py "$apk" --source-root .
+          "${ANDROID_HOME}/build-tools/35.0.0/aapt" dump badging "$apk" > "$RUNNER_TEMP/quest-badging.txt"
+          grep -Fq "package: name='com.starfox.enhanced.quest'" "$RUNNER_TEMP/quest-badging.txt"
+          "${ANDROID_HOME}/build-tools/35.0.0/apksigner" verify --print-certs "$apk" > "$RUNNER_TEMP/quest-certificate.txt"
+          grep -Fqi '50bcb41f7a02c2e9bb0f68a74b1f6e14f7317fedc69d2c6fd70a165f87800fc0' "$RUNNER_TEMP/quest-certificate.txt"
+          mkdir -p quest-package
+          cp "$apk" quest-package/
+          cp tools/package/QUEST-START-HERE.txt quest-package/START-HERE.txt
+          cp THIRD_PARTY_NOTICES.md CREDITS.md LICENSE-XBRZ.txt quest-package/
+          mkdir -p quest-package/licenses/fonts
+          cp assets/fonts/README.md assets/fonts/misaki.txt quest-package/licenses/fonts/
+          cd quest-package
+          zip -9 -r ../StarFoxEnhanced-0.0.6.7-quest-arm64.zip .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StarFoxEnhanced-0.0.6.7-quest-arm64
+          path: StarFoxEnhanced-0.0.6.7-quest-arm64.zip
+          if-no-files-found: error
+      - name: Add to GitHub release
+        if: github.event_name == 'push' || inputs.release_tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          files: StarFoxEnhanced-0.0.6.7-quest-arm64.zip
+          draft: false
+
+  windows-pcvr:
+    if: inputs.release_tag != '__ios_test__'
+    name: Windows x64 OpenXR PCVR development build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and package PCVR player
+        shell: pwsh
+        run: |
+          cmake -S . -B build/pcvr -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release -DSTARFOX_BUILD_VR=ON `
+            -DSTARFOX_BUILD_TESTS=OFF -DBUILD_TESTING=OFF `
+            -DSTARFOX_PACKAGE_MSU1_MUSIC=OFF
+          if ($LASTEXITCODE -ne 0) { throw 'PCVR configure failed' }
+          cmake --build build/pcvr --target starfox_pcvr
+          if ($LASTEXITCODE -ne 0) { throw 'PCVR build failed' }
+          & build/pcvr/starfox_pcvr.exe --help
+          if ($LASTEXITCODE -ne 0) { throw 'PCVR executable did not start' }
+          $imports = (& objdump -p build/pcvr/starfox_pcvr.exe | Out-String)
+          if ($LASTEXITCODE -ne 0 -or $imports -match 'libgcc_s_|libstdc\+\+|libwinpthread|SDL3.dll|openxr_loader.dll') {
+            throw 'PCVR retains an unpackaged runtime dependency'
+          }
+          cmake --install build/pcvr --prefix pcvr-package --component pcvr
+          if ($LASTEXITCODE -ne 0) { throw 'PCVR packaging failed' }
+          Copy-Item THIRD_PARTY_NOTICES.md,CREDITS.md -Destination pcvr-package
+          Compress-Archive -Path pcvr-package/* -DestinationPath StarFoxEnhanced-0.0.6.7-windows-pcvr.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StarFoxEnhanced-0.0.6.7-windows-pcvr
+          path: StarFoxEnhanced-0.0.6.7-windows-pcvr.zip
+          if-no-files-found: error
+      - name: Add to GitHub release
+        if: github.event_name == 'push' || inputs.release_tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          files: StarFoxEnhanced-0.0.6.7-windows-pcvr.zip
+          draft: false
+
   switch-homebrew:
+    if: inputs.release_tag != '__ios_test__'
     name: Nintendo Switch homebrew NRO
     runs-on: ubuntu-latest
     container:
@@ -429,6 +559,7 @@ jobs:
           draft: false
 
   vita-homebrew:
+    if: inputs.release_tag != '__ios_test__'
     name: PS Vita native VPK
     runs-on: ubuntu-latest
     container:
@@ -467,8 +598,9 @@ jobs:
           draft: false
 
   release-checksums:
+    if: inputs.release_tag != '__ios_test__'
     name: Release package checksums
-    needs: [windows-x64, windows-x86, xbox-uwp-x64, linux-x64, macos-universal, ios-device, android-arm64, switch-homebrew, vita-homebrew]
+    needs: [windows-x64, windows-x86, xbox-uwp-x64, linux-x64, macos-universal, ios-device, android-arm64, quest-arm64, windows-pcvr, switch-homebrew, vita-homebrew]
     if: github.event_name == 'push' || inputs.release_tag != ''
     runs-on: ubuntu-latest
     steps:

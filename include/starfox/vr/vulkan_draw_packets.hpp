@@ -30,6 +30,11 @@ public:
     // reuse candidates: exact geometry comparison is still required,
     // so recycled object slots cannot inherit stale GPU data.
     bool record(VkCommandBuffer,VkExtent2D,const EyeCamera&) const;
+    // Prepare shader-generated grid storage before entering the render pass.
+    // Other immutable packet types need no work. No allocations or CPU waits.
+    bool record_compute(VkCommandBuffer) const;
+    // Diagnostic readback only, after all prior GPU use completes.
+    bool readback_connected_grid(std::size_t,std::span<uint32_t>) const;
     // Draw a contiguous range of nonempty uploaded items, allowing resident
     // compute models to be interleaved without changing painter/pass order.
     // Bounds and transforms are checked before recording any commands.
@@ -44,6 +49,8 @@ public:
     std::size_t uploaded_packets() const noexcept;
     std::size_t uploaded_vertex_buffers() const noexcept;
     std::size_t uploaded_texture_buffers() const noexcept;
+    std::size_t allocated_grid_outputs() const noexcept;
+    std::size_t reused_grid_outputs() const noexcept;
     const std::string& status() const noexcept {return status_;}
 private:
     VulkanPipelineCache* cache_{};

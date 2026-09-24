@@ -33,6 +33,22 @@ void composite_transparent_layer(const Framebuffer& source,
         && (settings.mosaic & settings.mosaic_layer_mask) != 0U;
     const auto mosaic_size = static_cast<std::int32_t>(
         (settings.mosaic >> 4U) + 1U);
+    if(auto* commands=destination.command_buffer()) {
+        RasterCommand c;const int scale=destination.draw_scale();
+        c.left=std::max({0,settings.offset_x,settings.clip_left})*scale;
+        c.top=std::max({0,settings.offset_y,settings.clip_top})*scale;
+        c.right=std::min({int(destination.width()),settings.offset_x+int(source.width()),settings.clip_right})*scale;
+        c.bottom=std::min({int(destination.height()),settings.offset_y+int(source.height()),settings.clip_bottom})*scale;
+        if(c.left>=c.right || c.top>=c.bottom) return;
+        c.textured=5;c.texture_offset=commands->snapshot(source.pixels());
+        c.u_mask=source.stored_width();c.v_mask=source.stored_height();
+        c.u=settings.offset_x;c.v=settings.offset_y;c.du=source.draw_scale();c.dv=scale;
+        c.even=std::uint32_t(settings.mosaic_origin_x);c.odd=std::uint32_t(settings.mosaic_origin_y);
+        c.reserved0=mosaic_enabled?mosaic_size:1;c.tag=std::uint32_t(PixelLayer::three_d);
+        c.dither=source.layer_tags_enabled();
+        if(c.dither) c.reserved1=commands->snapshot(source.layer_tags());
+        commands->add(c);return;
+    }
     if (!mosaic_enabled
         && source.draw_scale() == destination.draw_scale()) {
         // Equal-scale layers are already aligned pixel-for-pixel in stored

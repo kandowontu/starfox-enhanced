@@ -1,6 +1,7 @@
 #pragma once
 #include "starfox/render/gpu_raster.hpp"
 #include "starfox/render/gpu_background.hpp"
+#include "starfox/render/ray_materials.hpp"
 #include "starfox/render/grid_projection.hpp"
 #include "starfox/render/dust_renderer.hpp"
 #include "starfox/render/particle_renderer.hpp"
@@ -34,11 +35,18 @@ struct GpuModelDraw {
     std::optional<RenderPose> previous_pose; // Validated presentation history only.
     // Current raster-pixel displacement. History poses remain unjittered.
     std::array<float,2> raster_jitter{};
+    // Optional projection viewport in logical pixels. Scene dimensions then
+    // specify an independent raster size (temporal upscaling).
+    std::array<std::uint32_t,2> logical_viewport{};
+    bool emissive{}; // Clear hidden receiver metadata; overrides ray_geometry for light beams.
+    bool ray_materials{}; // Optional reflection data; shadows do not pay its packing cost.
+    bool ray_material_reference{}; // Explicit diagnostic only.
 };
 struct GpuRasterDraw {
     RasterCommands* commands{};
     bool surface_metadata{};
     bool gpu_binning{};
+    bool independent_raster_size{}; // Commands retain their original canvas.
 };
 struct GpuGridDraw {
     timing::RenderTransform camera{};
@@ -48,28 +56,46 @@ struct GpuGridDraw {
     float eye_x{},convergence{512};
     bool lines{};
     std::array<std::int16_t,2> line_start{};
+    std::array<std::uint32_t,2> logical_viewport{};
 };
 struct GpuDustDraw {
     DustRenderer::DustFrame frame;
     std::uint32_t scale{1};
     float eye_x{},convergence{512};
+    std::array<std::uint32_t,2> logical_viewport{};
 };
 struct GpuParticleDraw {
     ParticleRenderer::OwnerFrame frame;
     std::uint32_t scale{1};
     float eye_x{},convergence{512};
+    std::array<std::uint32_t,2> logical_viewport{};
 };
 struct GpuTextDraw {
     ScaledTextRenderer::ProjectedFrame frame;
     std::uint32_t scale{1};
     float eye_x{},convergence{512};
+    std::array<std::uint32_t,2> logical_viewport{};
 };
 struct GpuBackgroundDraw {
     std::shared_ptr<const simulation::SnesPpuState> ppu;
     GpuBackgroundSettings settings;
     std::uint32_t scale{1};
 };
-using GpuSceneDraw = std::variant<GpuModelDraw, GpuRasterDraw, GpuGridDraw, GpuDustDraw, GpuParticleDraw, GpuTextDraw, GpuBackgroundDraw>;
+struct GpuIndexedLayerDraw {
+    // A separate palette-zero-transparent source. Replay/render its commands
+    // before remapping, so a zero write erases earlier source ink without
+    // painting black into the destination. All pointers outlive submission.
+    RasterCommands* commands{};
+    LayerCompositeSettings settings;
+    std::uint32_t source_scale{1},scale{1};
+    std::array<std::uint32_t,2> reference_size{};
+};
+using GpuSceneDraw = std::variant<GpuModelDraw, GpuRasterDraw, GpuGridDraw, GpuDustDraw, GpuParticleDraw, GpuTextDraw, GpuBackgroundDraw, GpuIndexedLayerDraw>;
+// Copy an original-resolution recording for independent rasterization. Keeps
+// original projection coordinates and source references; never mutates the
+// fallback recording. Unsupported geometry rejects the entire conversion.
+std::optional<std::vector<GpuSceneDraw>> resize_scene_raster(
+    std::span<const GpuSceneDraw>,std::uint32_t source_width,std::uint32_t source_height);
 // Copies one ordered frame into an eye view. Raster chunks remain shared at
 // the convergence plane; model transforms are eye-specific. Source references
 // must outlive submission. Source lighting/animation state is never advanced.
@@ -91,6 +117,8 @@ public:
     void append_particles(RasterCommands& pending,GpuParticleDraw draw);
     void append_text(RasterCommands& pending,GpuTextDraw draw);
     void append_background(RasterCommands& pending,GpuBackgroundDraw draw);
+    void append_indexed_layer(RasterCommands& pending,RasterCommands source,
+        const LayerCompositeSettings&,std::uint32_t source_scale,std::uint32_t destination_scale);
     void finish(RasterCommands& pending);
     [[nodiscard]] std::span<const GpuSceneDraw> draws() const noexcept {return draws_;}
     // Full ordered fallback, including models not supported by GPU packing.
@@ -109,13 +137,20 @@ public:
         void* device{};void* buffer{};
         std::uint32_t vertex_count{};
         bool complete{}; // False means use the full fallback, not partial casters.
+        const RayMaterials* materials{}; // Borrowed until next enqueue/release; null if incomplete.
+        std::uint32_t material_offset{}; // Optional 64-byte records in buffer after geometry.
     };
     GpuScene();~GpuScene();
     // Same-size/device inputs. Null background starts a cleared scene. Ping-pong
     // storage allows output from the preceding call as the next background.
     // No upload/submit/readback; caller owns command, cancels it on failure.
     // Consume borrowed outputs before their ping-pong slot is reused.
-    GpuRasterOutput enqueue(void* command,const GpuRasterOutput& front,const GpuRasterOutput* back=nullptr);
+    // front_world preserves sprite styling while excluding world objects from
+    // temporal HUD protection (packed bit 28 follows colour ownership).
+    // Optional layer maps an independently rasterized source into output_width/
+    // output_height with source-style clipping/mosaic and palette transparency.
+    GpuRasterOutput enqueue(void* command,const GpuRasterOutput& front,const GpuRasterOutput* back=nullptr,bool front_world=false,bool emissive=false,
+        const GpuIndexedLayerDraw* layer=nullptr,std::uint32_t output_width=0,std::uint32_t output_height=0);
     // Ordered mixed model/legacy batch. Width/height are final pixel dimensions;
     // model logical dimensions are divided by its render_scale. Referenced
     // shapes/commands need only survive this call. No CPU geometry conversion,
@@ -123,18 +158,22 @@ public:
     // caller-owned command on failure (including partially encoded batches).
     // Consume the result before another operation on this scene instance.
     GpuRasterOutput enqueue_batch(void* device,void* command,std::uint32_t width,
-        std::uint32_t height,std::span<const GpuSceneDraw> draws);
+        std::uint32_t height,std::span<const GpuSceneDraw> draws,std::array<float,2> raster_jitter={});
     // Owned submission for presentation. No readback; retains at most two older
     // submissions, cycling buffer storage on reuse. Borrowed enqueue calls reject
     // pending owned work until wait_for_completion succeeds.
     bool render_resident(void* device,std::uint32_t width,std::uint32_t height,
-        std::span<const GpuSceneDraw> draws);
+        std::span<const GpuSceneDraw> draws,std::array<float,2> raster_jitter={});
     [[nodiscard]] GpuRasterOutput resident_output() const noexcept;
     // Triangle float4s, concatenated in draw order, borrowed through the next
     // batch/release. Submission ownership/fence rules match the colour output.
     // No requested casters or unsupported caster paths return an empty output.
     [[nodiscard]] RayGeometryOutput ray_geometry_output() const noexcept;
     bool wait_for_completion();
+    // Optional diagnostic timing: retire, encode, submit microseconds, draws.
+    // Populated only with scene/slow-frame tracing; never logs on the hot path
+    // for slow-frame-only tracing.
+    [[nodiscard]] std::array<std::uint64_t,4> submission_cost() const noexcept;
     // Compatibility composition only. Downloads the completed scene without
     // running model transforms/rasterization again on the CPU.
     bool readback(Framebuffer&,SurfaceBuffer*);

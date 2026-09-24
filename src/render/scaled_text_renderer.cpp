@@ -14,6 +14,12 @@
 namespace starfox::render {
 namespace {
 struct MenuLatinGlyph { char32_t base; char32_t accent; };
+void draw_cartridge_glyph(const assets::RomImage& rom,std::uint32_t address,
+    Framebuffer& target,int x,int y,unsigned width,std::uint8_t ink,unsigned height=12) {
+    std::array<std::uint8_t,24> rows;
+    for(unsigned i=0;i<rows.size();++i) rows[i]=rom.read8(address+i);
+    target.glyph12(x,y,width,rows,ink,height);
+}
 void draw_host_colon(int x,int y,Framebuffer& target,uint8_t ink,bool compact=false) {
     for(const int top:{compact?2:3,compact?5:8})
         for(int row=0;row<2;++row) for(int column=1;column<=2;++column)
@@ -69,11 +75,7 @@ void ScaledTextRenderer::draw_unicode(std::u32string_view text,
                 draw_host_colon(x,y,target,ink);
             } else if (latin.base != U' ') {
                 const auto index = rom_->read8(game_font_translation_ + latin.base - 32U);
-                for (int row = 0; row < 12; ++row) {
-                    const auto bits = rom_->read16(game_font_glyphs_ + index * 24U + row * 2U);
-                    for (int column = 0; column < advance; ++column)
-                        if (bits & (0x8000U >> column)) target.set(x + column, y + row, ink);
-                }
+                draw_cartridge_glyph(*rom_,game_font_glyphs_+index*24U,target,x,y,advance,ink);
                 const auto centre = x + std::max(1, (advance - 1) / 2);
                 switch (latin.accent) {
                 case U'\u0301': target.set(centre + 1,y - 2,ink); target.set(centre,y - 1,ink); break;
@@ -93,11 +95,7 @@ void ScaledTextRenderer::draw_unicode(std::u32string_view text,
         if (glyph == nullptr) glyph = localization::glyph(U'?');
         if (glyph == nullptr) continue;
         const auto edge = menu_size ? 12 : 8;
-        for (int row = 0; row < edge; ++row)
-            for (int column = 0; column < edge; ++column)
-                if ((glyph->rows[row * 8 / edge] & (0x80U >> (column * 8 / edge))) != 0U)
-                    target.set(x + column, y + row,
-                        static_cast<std::uint8_t>(colour_index_base + colour));
+        target.glyph8(x,y,glyph->rows,static_cast<std::uint8_t>(colour_index_base+colour),edge);
         x += menu_size ? menu_glyph_advance(code) : glyph->advance;
     }
 }
@@ -329,14 +327,7 @@ void ScaledTextRenderer::draw_game_text(
             game_font_translation_ + static_cast<std::uint32_t>(ascii - 32U));
         const auto glyph = game_font_glyphs_
             + static_cast<std::uint32_t>(translated) * 24U;
-        for (std::int32_t row = 0; row < 12; ++row) {
-            const auto bits = rom_->read16(glyph + static_cast<std::uint32_t>(row * 2));
-            for (std::int32_t column = 0; column < width; ++column) {
-                if ((bits & (0x8000U >> column)) != 0U) {
-                    target.set(draw_x + column, draw_y + row, output_colour);
-                }
-            }
-        }
+        draw_cartridge_glyph(*rom_,glyph,target,draw_x,draw_y,width,output_colour);
     };
 
     std::size_t line_start = 0U;
@@ -381,9 +372,24 @@ void ScaledTextRenderer::draw_face(
     std::uint8_t colour_index_base,
     bool alternate_portraits,
     bool correct_pixel_aspect) const {
+    // Aspect correction uses stored-resolution writes, but portraits remain
+    // HUD artwork, not model pixels. Preserve this classification in both
+    // immediate drawing and recorded GPU commands.
+    const ScopedLayer portrait_layer{target,PixelLayer::two_d};
     const auto data = alternate_portraits && face_data_2_ != 0U
         ? face_data_2_ : face_data_;
     const auto frame_address = data + static_cast<std::uint32_t>(frame) * 640U;
+    if(auto* commands=target.command_buffer()) {
+        std::array<std::uint8_t,640> bytes;
+        for(unsigned i=0;i<bytes.size();++i) bytes[i]=rom_->read8(frame_address+i);
+        const int scale=target.draw_scale();
+        RasterCommand c;
+        c.right=(x+32)*scale;c.left=c.u=correct_pixel_aspect?c.right-(32*scale*7+3)/6:x*scale;
+        c.top=c.v=y*scale;c.bottom=c.top+40*scale;
+        c.du=scale;c.dv=correct_pixel_aspect?1:0;c.textured=8;c.colour_base=colour_index_base;
+        c.tag=std::uint32_t(PixelLayer::two_d);
+        c.texture_offset=commands->snapshot(bytes);commands->add(c);return;
+    }
     for (std::int32_t tile_x = 0; tile_x < 4; ++tile_x) {
         for (std::int32_t tile_y = 0; tile_y < 5; ++tile_y) {
             const auto tile = frame_address
@@ -470,15 +476,7 @@ void ScaledTextRenderer::draw_ascii(
         if (ascii != 32U && width != 0U) {
             const auto glyph = game_font_glyphs_
                 + static_cast<std::uint32_t>(translated) * 24U;
-            for (std::int32_t row = 0; row < 12; ++row) {
-                const auto bits = rom_->read16(
-                    glyph + static_cast<std::uint32_t>(row * 2));
-                for (std::int32_t column = 0; column < width; ++column) {
-                    if ((bits & (0x8000U >> column)) != 0U) {
-                        target.set(x + column, y + row, output_colour);
-                    }
-                }
-            }
+            draw_cartridge_glyph(*rom_,glyph,target,x,y,width,output_colour);
         }
         x += width;
     }
@@ -531,16 +529,7 @@ void ScaledTextRenderer::draw_ascii_compact(
         if (ascii != 32U && width != 0U) {
             const auto glyph = game_font_glyphs_
                 + static_cast<std::uint32_t>(translated) * 24U;
-            for (std::int32_t row = 0; row < output_height; ++row) {
-                const auto source_row = row * 11 / (output_height - 1);
-                const auto bits = rom_->read16(
-                    glyph + static_cast<std::uint32_t>(source_row * 2));
-                for (std::int32_t column = 0; column < width; ++column) {
-                    if ((bits & (0x8000U >> column)) != 0U) {
-                        target.set(x + column, y + row, output_colour);
-                    }
-                }
-            }
+            draw_cartridge_glyph(*rom_,glyph,target,x,y,width,output_colour,output_height);
         }
         x += width;
     }

@@ -4,6 +4,7 @@
 #include "starfox/render/effect_types.hpp"
 #include "starfox/input/input_latch.hpp"
 #include "starfox/simulation/map_vm.hpp"
+#include "starfox/simulation/irq_palette.hpp"
 #include "starfox/simulation/math.hpp"
 #include "starfox/simulation/dust_system.hpp"
 #include "starfox/simulation/object_pool.hpp"
@@ -91,14 +92,15 @@ enum class PregamePage {
 
 inline constexpr std::array<std::uint8_t, 12> main_menu_order{
     0,1,2,3,4,5,6,20,21,14,15,16};
-inline constexpr std::array<std::uint8_t, 5> two_d_menu_order{8,18,13,24,23};
-inline constexpr std::array<std::uint8_t, 12> three_d_menu_order{7,11,9,17,19,10,28,29,27,12,22,23};
+inline constexpr std::array<std::uint8_t, 11> two_d_menu_order{8,18,36,37,38,39,40,41,13,24,23};
+inline constexpr std::array<std::uint8_t, 17> three_d_menu_order{7,11,9,30,17,19,10,28,29,32,27,12,22,35,33,34,23};
+inline constexpr std::array<std::uint8_t, 18> neural_three_d_menu_order{7,11,9,30,31,17,19,10,28,29,32,27,12,22,35,33,34,23};
 inline constexpr std::array<std::uint8_t, 12> options_menu_order{9,0,1,2,3,4,5,6,7,8,12,11};
-inline constexpr std::array<std::uint8_t, 7> cheats_menu_order{0,1,2,3,4,5,6};
-inline std::span<const std::uint8_t> pregame_menu_order(PregamePage page) {
+inline constexpr std::array<std::uint8_t, 8> cheats_menu_order{0,1,2,3,4,5,7,6};
+inline std::span<const std::uint8_t> pregame_menu_order(PregamePage page, bool neural_available=false) {
     switch (page) {
     case PregamePage::two_d: return two_d_menu_order;
-    case PregamePage::three_d: return three_d_menu_order;
+    case PregamePage::three_d: return neural_available ? std::span<const std::uint8_t>{neural_three_d_menu_order} : std::span<const std::uint8_t>{three_d_menu_order};
     case PregamePage::options: return options_menu_order;
     case PregamePage::cheats: return cheats_menu_order;
     default: return main_menu_order;
@@ -234,6 +236,13 @@ struct PlanetPresentationState {
     std::int16_t isolate_top{};
     std::int16_t isolate_right{};
     std::int16_t isolate_bottom{};
+    bool isolate_coverage{};
+    std::array<std::uint32_t,32> isolate_rows{};
+    [[nodiscard]] bool preserves(int x,int y) const noexcept {
+        if(x<isolate_left || x>isolate_right || y<isolate_top || y>isolate_bottom) return false;
+        return !isolate_coverage || (y-isolate_top<32 && x-isolate_left<32
+            && (isolate_rows[y-isolate_top]&(1u<<(x-isolate_left)))!=0);
+    }
     bool briefing_layers{};
     std::uint8_t portrait_brightness{};
     bool level_fade{};
@@ -352,6 +361,8 @@ public:
     [[nodiscard]] bool infinite_bombs() const noexcept { return infinite_bombs_; }
     [[nodiscard]] bool infinite_lives() const noexcept { return infinite_lives_; }
     void set_infinite_lives(bool value) noexcept { infinite_lives_ = value; }
+    [[nodiscard]] bool planet_select_cheat() const noexcept { return planet_select_cheat_; }
+    void set_planet_select_cheat(bool value) noexcept { planet_select_cheat_=value;if(!value) planet_cheat_active_=false; }
     [[nodiscard]] bool infinite_boost() const noexcept { return infinite_boost_; }
     void set_infinite_bombs(bool value) noexcept { infinite_bombs_ = value; }
     void set_infinite_boost(bool value) noexcept { infinite_boost_ = value; }
@@ -419,10 +430,10 @@ public:
     }
     [[nodiscard]] std::uint8_t effect() const noexcept { return effect_; }
     [[nodiscard]] std::uint8_t world_effect() const noexcept { return world_effect_; }
-    void set_world_effect(std::uint8_t value) noexcept { world_effect_ = render::selectable_effect(value, true) ? value : 0U; }
+    void set_world_effect(std::uint8_t value) noexcept { value=render::canonical_effect(value); world_effect_ = render::selectable_effect(value, true) ? value : 0U; }
     [[nodiscard]] std::uint8_t world_effect_intensity() const noexcept { return world_effect_intensity_; }
     void set_world_effect_intensity(std::uint8_t value) noexcept { world_effect_intensity_ = value <= 100U ? value : 100U; }
-    void set_effect(std::uint8_t effect) noexcept { effect_ = render::selectable_effect(effect, false) ? effect : 0U; }
+    void set_effect(std::uint8_t effect) noexcept { effect=render::canonical_effect(effect); effect_ = render::selectable_effect(effect, false) ? effect : 0U; }
     [[nodiscard]] std::uint8_t bloom() const noexcept { return bloom_; }
     void set_bloom(std::uint8_t value) noexcept { bloom_ = value < 4U ? value : 0U; }
     [[nodiscard]] std::uint8_t bloom_2d() const noexcept { return bloom_2d_; }
@@ -430,7 +441,26 @@ public:
     [[nodiscard]] std::uint8_t model_smoothing() const noexcept { return model_smoothing_; }
     [[nodiscard]] std::uint8_t language() const noexcept { return language_; }
     [[nodiscard]] bool ray_tracing() const noexcept { return ray_tracing_; }
-    void set_ray_tracing(bool value) noexcept { ray_tracing_ = value; }
+    [[nodiscard]] bool enhanced_shadows() const noexcept { return enhanced_shadows_; }
+    void set_enhanced_shadows(bool value) noexcept { enhanced_shadows_ = value; }
+    [[nodiscard]] bool reflections_available() const noexcept { return renderer_mode_ == RendererMode::software || ray_tracing_; }
+    [[nodiscard]] std::uint8_t reflective_surfaces_setting() const noexcept { return reflective_surfaces_; }
+    [[nodiscard]] std::uint8_t reflective_surfaces() const noexcept { return reflections_available() ? reflective_surfaces_ : 0; }
+    void set_reflective_surfaces(std::uint8_t value) noexcept {
+        reflective_surfaces_ = std::min<std::uint8_t>(value,3U);
+    }
+    [[nodiscard]] std::uint8_t dlss_mode() const noexcept { return dlss_mode_; }
+    [[nodiscard]] std::uint8_t fsr1_mode() const noexcept { return fsr1_mode_; }
+    [[nodiscard]] bool fsr1_menu() const noexcept { return fsr1_menu_; }
+    void set_fsr1_menu(bool enabled) noexcept { fsr1_menu_ = enabled; }
+    void set_fsr1_mode(std::uint8_t value) noexcept { fsr1_mode_ = value <= 4 ? value : 0; }
+    void set_dlss_mode(std::uint8_t value) noexcept { dlss_mode_ = value <= 4 ? value : 0; }
+    bool neural_filter_available() const noexcept {return neural_filter_available_;}
+    bool neural_filter_requested() const noexcept {return neural_filter_requested_;}
+    void configure_neural_filter(bool available, bool requested) noexcept {
+        neural_filter_available_=available;neural_filter_requested_=available && requested;
+    }
+    void set_ray_tracing(bool value) noexcept { ray_tracing_ = value; if(!value && renderer_mode_ == RendererMode::gpu) reflective_surfaces_=0; }
     [[nodiscard]] std::uint8_t chromatic_aberration() const noexcept { return chromatic_aberration_; }
     void set_chromatic_aberration(std::uint8_t value) noexcept { chromatic_aberration_ = value <= 3 ? value : 0; }
     [[nodiscard]] std::uint8_t hdr_effect() const noexcept { return hdr_effect_; }
@@ -438,6 +468,17 @@ public:
     void set_language(std::uint8_t value);
     void set_model_smoothing(std::uint8_t value) noexcept { model_smoothing_ = value < 4U ? value : 0U; }
     [[nodiscard]] std::uint8_t effect_intensity() const noexcept { return effect_intensity_; }
+    [[nodiscard]] std::uint8_t manipulation() const noexcept { return manipulation_; }
+    [[nodiscard]] std::uint8_t material() const noexcept { return material_; }
+    [[nodiscard]] const std::array<std::uint8_t,6>& environment() const noexcept { return environment_; }
+    void set_environment(const std::array<std::uint8_t,6>& value) noexcept;
+    [[nodiscard]] std::uint8_t active_material() const noexcept {
+        return renderer_mode_==RendererMode::gpu && ray_tracing_ && reflective_surfaces_ ? material_ : 0;
+    }
+    void set_material(std::uint8_t value) noexcept { material_=render::valid_material(value)?value:0; }
+    void set_manipulation(std::uint8_t value) noexcept { manipulation_=render::valid_manipulation(value)?value:0; }
+    [[nodiscard]] std::uint8_t manipulation_intensity() const noexcept { return manipulation_intensity_; }
+    void set_manipulation_intensity(std::uint8_t value) noexcept { manipulation_intensity_=std::min<std::uint8_t>(100,value); }
     void set_effect_intensity(std::uint8_t value) noexcept { effect_intensity_ = value <= 100U ? value : 100U; }
     [[nodiscard]] TwoDFilterMode two_d_filter() const noexcept {
         return two_d_filter_;
@@ -571,7 +612,7 @@ private:
 
     [[nodiscard]] std::uint32_t rom_symbol(const std::string& name) const;
     [[nodiscard]] std::uint32_t ram_symbol(const std::string& name) const;
-    [[nodiscard]] static std::uint16_t native_pointer(ObjectHandle handle) noexcept;
+    [[nodiscard]] std::uint16_t native_pointer(ObjectHandle handle) const noexcept;
     [[nodiscard]] ObjectHandle handle_from_native_pointer(std::uint16_t pointer) const noexcept;
     void refresh_player_reference();
     void write_input(const input::TickInput& input);
@@ -611,6 +652,7 @@ private:
     void launch_pending_stage();
     [[nodiscard]] std::uint32_t selected_route_stage(std::uint16_t stage);
     [[nodiscard]] GameTickResult tick_planet_map(const input::TickInput& input);
+    bool tick_planet_cheat(const input::TickInput& input);
     [[nodiscard]] GameTickResult tick_pregame_menu(const input::TickInput& input);
     [[nodiscard]] GameTickResult tick_ex_pregame_menu(
         const input::TickInput& input);
@@ -740,6 +782,11 @@ private:
     std::uint32_t update_objects_{};
     std::uint32_t palette_goto_{};
     std::uint32_t fade_palette_{};
+    std::array<std::uint32_t,5> irq_palette_addresses_{}; // tunnel flag, sky flag, RAND, two source palettes
+    std::array<IrqPaletteCycle,3> ex_irq_cycles_{};
+    TitlePaletteCycle ex_title_cycle_{};
+    std::uint32_t ex_irq_color_trip_{};
+    bool irq_palette_advance_random_{};
     std::uint32_t do_sprites_{};
     std::uint32_t do_circle_explosion_{};
     std::uint32_t do_window_wipe_{};
@@ -1112,15 +1159,25 @@ private:
     TwoDFilterMode two_d_filter_{TwoDFilterMode::off};
     std::uint8_t effect_{};
     std::uint8_t effect_intensity_{100U};
+    std::uint8_t manipulation_{};
+    std::uint8_t manipulation_intensity_{100};
+    std::uint8_t material_{};
+    std::array<std::uint8_t,6> environment_{};
     std::uint8_t world_effect_{};
     std::uint8_t bloom_{};
     std::uint8_t bloom_2d_{};
     std::uint8_t model_smoothing_{};
     std::uint8_t language_{};
-    bool enhanced_shadows_{}; // Reserved archive byte; no longer controls rendering.
+    bool enhanced_shadows_{}; // Software renderer only; GPU uses ray_tracing_.
     bool ray_tracing_{};
+    std::uint8_t reflective_surfaces_{};
+    std::uint8_t dlss_mode_{}; // Host quality preference, not emulated game state.
+    std::uint8_t fsr1_mode_{}; // Host quality preference; preserve across state loads.
+    bool fsr1_menu_{}; // Current adapter selection, never serialized into cartridge state.
+    bool neural_filter_available_{}, neural_filter_requested_{}; // Optional PC add-on; host owns persistence.
     bool infinite_bombs_{};
     bool infinite_lives_{};
+    bool planet_select_cheat_{},planet_cheat_active_{};
     bool host_god_mode_override_{};
     bool infinite_boost_{};
     std::uint8_t default_laser_{};

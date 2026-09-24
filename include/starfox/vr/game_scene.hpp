@@ -36,6 +36,7 @@ struct GameSceneSnapshot {
     std::shared_ptr<const simulation::SnesPpuState> ppu;
     std::optional<std::array<int16_t,2>> background_scroll_override;
     uint8_t display_brightness{};
+    uint8_t background_colour_subtract{};
     std::array<int16_t,2> source_vanishing_point{};
     simulation::MeterState meters;
     simulation::BriefingState briefing;
@@ -119,6 +120,7 @@ private:
     uint16_t ex_face_planet_background_{};
     uint16_t dimension_background_{};
     uint16_t blackhole_background_{};
+    std::array<uint16_t,4> final_vortex_backgrounds_{};
     uint16_t comet_background_{};
     uint16_t ex_intro_star_background_{};
     uint16_t sector_y_star_background_{};

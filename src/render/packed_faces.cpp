@@ -113,7 +113,7 @@ static PackedFaces pack_faces_impl(const assets::Shape& shape,const PackedBsp& b
         command.even=std::uint8_t(settings.colour_index_base+material.colour.even);
         command.odd=std::uint8_t(settings.colour_index_base+material.colour.odd);
         command.dither=material.colour.dither;
-        command.tag=std::uint32_t(PixelLayer::three_d);
+        command.tag=std::uint32_t(pose.terrain_geometry?PixelLayer::terrain_geometry:pose.world_geometry?PixelLayer::world_geometry:PixelLayer::three_d);
         if(primitive==PackedPrimitive::polygon) command.reserved1=(pose.cel_mode?1U:0U)|(std::uint32_t(pose.wireframe_mode)<<1)|((pose.wobble_mode&2U)!=0?65536U:0U);
         if(primitive==PackedPrimitive::polygon && (pose.wobble_mode&1U)!=0) command.reserved1|=262144U;
         if(primitive==PackedPrimitive::polygon && pose.wave_mode && !pose.cel_mode

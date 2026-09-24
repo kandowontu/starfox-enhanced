@@ -7,6 +7,7 @@
 #include <cstring>
 #include <bit>
 #include <stdexcept>
+#include <iostream>
 #endif
 namespace starfox::render {
 struct GpuClip::Impl {
@@ -38,25 +39,56 @@ struct GpuClip::Impl {
         release();device=next;
         const bool spirv=(SDL_GetGPUShaderFormats(device)&SDL_GPU_SHADERFORMAT_SPIRV)!=0;
         const bool dxil=(SDL_GetGPUShaderFormats(device)&SDL_GPU_SHADERFORMAT_DXIL)!=0;
+        const bool intel_dxil=dxil && SDL_GetNumberProperty(SDL_GetGPUDeviceProperties(device),
+            "starfox.gpu.vendor_id",0)==0x8086;
         if(!spirv && !dxil && !(SDL_GetGPUShaderFormats(device)&SDL_GPU_SHADERFORMAT_MSL))
             throw std::runtime_error("Native clipping requires Vulkan, Metal or D3D12");
         SDL_GPUComputePipelineCreateInfo info{};
         info.format=spirv?SDL_GPU_SHADERFORMAT_SPIRV:dxil?SDL_GPU_SHADERFORMAT_DXIL:SDL_GPU_SHADERFORMAT_MSL;
-        info.code=spirv?clip_shader::spirv:dxil?clip_shader::dxil:reinterpret_cast<const Uint8*>(clip_shader::metal);
-        info.code_size=spirv?sizeof(clip_shader::spirv):dxil?sizeof(clip_shader::dxil):std::strlen(clip_shader::metal);
+        if(spirv) {info.code=clip_shader::spirv;info.code_size=sizeof(clip_shader::spirv);}
+#if defined(_WIN32)
+        else if(dxil) {info.code=clip_shader::dxil;info.code_size=sizeof(clip_shader::dxil);}
+#endif
+#if defined(__APPLE__)
+        else {info.code=reinterpret_cast<const Uint8*>(clip_shader::metal);info.code_size=std::strlen(clip_shader::metal);}
+#else
+        else throw std::runtime_error("Native clipping shader unavailable for this platform");
+#endif
         info.entrypoint=(spirv||dxil)?"main":"main0";
         info.num_readonly_storage_buffers=5;info.num_readwrite_storage_buffers=1;
         info.num_uniform_buffers=1;info.threadcount_x=32;info.threadcount_y=info.threadcount_z=1;
+        const bool trace=SDL_getenv("STARFOX_TRACE_GPU_MODEL_DISPATCH")!=nullptr;
+        if(trace) std::cerr<<"clip-pipeline: creating native\n";
         pipeline=SDL_CreateGPUComputePipeline(device,&info);require(pipeline);
-        info.code=spirv?clip_continuous_shader::spirv:dxil?clip_continuous_shader::dxil:reinterpret_cast<const Uint8*>(clip_continuous_shader::metal);
-        info.code_size=spirv?sizeof(clip_continuous_shader::spirv):dxil?sizeof(clip_continuous_shader::dxil):std::strlen(clip_continuous_shader::metal);
+        if(spirv) {info.code=clip_continuous_shader::spirv;info.code_size=sizeof(clip_continuous_shader::spirv);}
+#if defined(_WIN32)
+        else if(dxil) {
+            info.code=intel_dxil?clip_continuous_shader::intel_dxil:clip_continuous_shader::dxil;
+            info.code_size=intel_dxil?sizeof(clip_continuous_shader::intel_dxil):sizeof(clip_continuous_shader::dxil);
+        }
+#endif
+#if defined(__APPLE__)
+        else {info.code=reinterpret_cast<const Uint8*>(clip_continuous_shader::metal);info.code_size=std::strlen(clip_continuous_shader::metal);}
+#else
+        else throw std::runtime_error("Continuous clipping shader unavailable for this platform");
+#endif
         info.num_readonly_storage_buffers=6;
+        if(trace) std::cerr<<"clip-pipeline: creating continuous"<<(intel_dxil?" intel-compact":"")<<'\n';
         continuous_pipeline=SDL_CreateGPUComputePipeline(device,&info);require(continuous_pipeline);
-        info.code=spirv?spans_shader::spirv:dxil?spans_shader::dxil:reinterpret_cast<const Uint8*>(spans_shader::metal);
-        info.code_size=spirv?sizeof(spans_shader::spirv):dxil?sizeof(spans_shader::dxil):std::strlen(spans_shader::metal);
+        if(spirv) {info.code=spans_shader::spirv;info.code_size=sizeof(spans_shader::spirv);}
+#if defined(_WIN32)
+        else if(dxil) {info.code=spans_shader::dxil;info.code_size=sizeof(spans_shader::dxil);}
+#endif
+#if defined(__APPLE__)
+        else {info.code=reinterpret_cast<const Uint8*>(spans_shader::metal);info.code_size=std::strlen(spans_shader::metal);}
+#else
+        else throw std::runtime_error("Span shader unavailable for this platform");
+#endif
         info.num_readonly_storage_buffers=4;
         info.num_readwrite_storage_buffers=2;
+        if(trace) std::cerr<<"clip-pipeline: creating spans\n";
         spans_pipeline=SDL_CreateGPUComputePipeline(device,&info);require(spans_pipeline);
+        if(trace) std::cerr<<"clip-pipeline: ready\n";
     }
 #endif
 };
@@ -97,18 +129,29 @@ void* GpuClip::enqueue(void* device,void* command,void* points,void* corners,
             impl_->output=replacement;impl_->capacity=settings.polygon_count;
         }
         auto* cmd=static_cast<SDL_GPUCommandBuffer*>(command);
+        const bool trace=SDL_getenv("STARFOX_TRACE_GPU_MODEL_DISPATCH")!=nullptr;
+        if(trace) std::cerr<<"clip-enqueue: uniforms continuous="<<continuous
+            <<" polygons="<<settings.polygon_count<<" points="<<settings.point_count
+            <<" corners="<<settings.corner_count<<" residuals="<<residual_count<<'\n';
         auto uniforms=settings;uniforms.reserved[0]=projection_params?projection_count:0;
         uniforms.reserved[1]=continuous && point_residuals?residual_count:0;
         SDL_PushGPUComputeUniformData(cmd,0,&uniforms,sizeof(uniforms));
         SDL_GPUStorageBufferReadWriteBinding binding{};binding.buffer=impl_->output;binding.cycle=true;
+        if(trace) std::cerr<<"clip-enqueue: begin\n";
         auto* pass=SDL_BeginGPUComputePass(cmd,nullptr,0,&binding,1);Impl::require(pass);
+        if(trace) std::cerr<<"clip-enqueue: bind pipeline\n";
         SDL_BindGPUComputePipeline(pass,continuous?impl_->continuous_pipeline:impl_->pipeline);
         SDL_GPUBuffer* inputs[]{static_cast<SDL_GPUBuffer*>(points),static_cast<SDL_GPUBuffer*>(corners),
             static_cast<SDL_GPUBuffer*>(polygons),static_cast<SDL_GPUBuffer*>(visibility),
             static_cast<SDL_GPUBuffer*>(projection_params?projection_params:points),
             static_cast<SDL_GPUBuffer*>(point_residuals?point_residuals:points)};
+        if(trace) std::cerr<<"clip-enqueue: bind buffers\n";
         SDL_BindGPUComputeStorageBuffers(pass,0,inputs,continuous?6:5);
-        SDL_DispatchGPUCompute(pass,(settings.polygon_count+31)/32,1,1);SDL_EndGPUComputePass(pass);
+        if(trace) std::cerr<<"clip-enqueue: dispatch\n";
+        SDL_DispatchGPUCompute(pass,(settings.polygon_count+31)/32,1,1);
+        if(trace) std::cerr<<"clip-enqueue: end pass\n";
+        SDL_EndGPUComputePass(pass);
+        if(trace) std::cerr<<"clip-enqueue: done\n";
         impl_->settings=settings;
         impl_->continuous=continuous;
         impl_->status=continuous?"Continuous screen clipping GPU resident":"Native screen clipping GPU resident";return impl_->output;
@@ -117,7 +160,7 @@ void* GpuClip::enqueue(void* device,void* command,void* points,void* corners,
     return nullptr;
 #endif
 }
-void* GpuClip::enqueue_spans(void* command,void* materials,bool winding_independent,std::uint32_t render_scale,const GpuSpanOrder* order,std::uint32_t line_thickness,void* source_texels,std::uint32_t source_texel_bytes,void** masked_texels,std::array<std::uint32_t,2> raster_size) {
+void* GpuClip::enqueue_spans(void* command,void* materials,bool winding_independent,std::uint32_t render_scale,const GpuSpanOrder* order,std::uint32_t line_thickness,void* source_texels,std::uint32_t source_texel_bytes,void** masked_texels,std::array<std::uint32_t,2> raster_size,bool reuse_span_scratch) {
     if(masked_texels) *masked_texels=nullptr;
 #if defined(STARFOX_SDL_GPU_EFFECTS)
     try {
@@ -172,7 +215,10 @@ void* GpuClip::enqueue_spans(void* command,void* materials,bool winding_independ
             std::bit_cast<Uint32>(float(width)/s.width),std::bit_cast<Uint32>(float(height)/s.height),0,0};
         SDL_PushGPUComputeUniformData(cmd,0,settings,sizeof(settings));
         SDL_GPUStorageBufferReadWriteBinding bindings[2]{};
-        bindings[0].buffer=impl_->spans;bindings[0].cycle=true;
+        // Ordered model batches rasterize these rows before the next model
+        // overwrites them. Cycling would retain a full polygon*height buffer
+        // per terrain tile until submission completes (several GiB at 4x).
+        bindings[0].buffer=impl_->spans;bindings[0].cycle=!reuse_span_scratch;
         bindings[1].buffer=impl_->masks;bindings[1].cycle=!copied;
         auto* pass=SDL_BeginGPUComputePass(cmd,nullptr,0,bindings,2);Impl::require(pass);
         SDL_BindGPUComputePipeline(pass,impl_->spans_pipeline);

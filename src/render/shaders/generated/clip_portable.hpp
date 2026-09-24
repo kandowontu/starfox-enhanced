@@ -811,6 +811,8 @@ inline constexpr unsigned char spirv[]={
 23,0,0,0,23,0,0,0,62,0,3,0,111,0,0,0,75,4,0,0,249,0,2,0,102,0,0,0,248,0,2,0,
 102,0,0,0,253,0,1,0,56,0,1,0
 };
+#if defined(_WIN32)
+
 inline constexpr unsigned char dxil[]={
 68,88,66,67,209,196,56,192,244,140,165,54,246,213,117,66,159,128,214,23,1,0,0,0,140,42,0,0,7,0,0,0,
 60,0,0,0,76,0,0,0,92,0,0,0,108,0,0,0,108,1,0,0,108,11,0,0,136,11,0,0,83,70,73,48,
@@ -1154,6 +1156,9 @@ inline constexpr unsigned char dxil[]={
 204,193,150,193,220,130,57,216,50,160,91,48,7,91,134,144,11,230,96,203,32,114,193,28,108,25,230,47,152,131,45,3,
 253,5,115,0,0,0,0,0,0,0,0,0
 };
+#endif
+
+#if defined(__APPLE__)
 
 inline constexpr char metal[]=R"SFXMETAL(
 #pragma clang diagnostic ignored "-Wmissing-prototypes"
@@ -2288,4 +2293,5 @@ kernel void main0(device type_StructuredBuffer_v4int& points [[buffer(1)]], devi
 }
 
 )SFXMETAL";
+#endif
 }

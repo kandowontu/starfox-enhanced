@@ -35,6 +35,10 @@ struct Fragment {
     [[vk::location(9)]] float3 surface_position : TEXCOORD7;
     [[vk::location(10)]] nointerpolation float3 orbital_low : TEXCOORD8;
     [[vk::location(11)]] nointerpolation float3 orbital_high : TEXCOORD9;
+    [[vk::location(12)]] nointerpolation uint4 cloud0 : TEXCOORD10;
+    [[vk::location(13)]] nointerpolation uint4 cloud1 : TEXCOORD11;
+    [[vk::location(14)]] nointerpolation uint4 cloud2 : TEXCOORD12;
+    [[vk::location(15)]] nointerpolation uint4 cloud3 : TEXCOORD13;
 };
 float4 tile_background_sample(Fragment input);
 uint source_visible(float3 point_a,float3 point_b,float3 point_c) {
@@ -60,6 +64,17 @@ float3 explosion_rotate(Vertex input,float3 value) {
 }
 Fragment vertex_main(Vertex input) {
     Fragment output;
+    bool particle_visible=true;
+    if((input.texture.w&0x80000000U)!=0) {
+        int3 delta=int3(input.group_b)-int3(input.group_a);
+        delta=(delta<<16)>>16;
+        float3 current=input.group_a+float3(delta)*input.group_c.x;
+        float depth=input.group_c.y+current.z;
+        particle_visible=depth>=256 && (input.group_c.z==0 || input.group_c.y+input.group_a.z>=256);
+        input.position=input.group_c.z==1?input.group_a:current;
+        input.billboard*=depth/128.;
+        input.texture.w&=~0x80000000U;
+    }
     bool exploding=input.visibility_enabled==2;
     float3 position=input.position;
     if(exploding) {
@@ -104,9 +119,16 @@ Fragment vertex_main(Vertex input) {
     output.texture=input.texture;
     output.horizon=0;
     output.border_index=0;
-    output.visible=1;
+    output.visible=particle_visible?1:0;
     output.orbital_low=1;
     output.orbital_high=0;
+    output.cloud0=output.cloud1=output.cloud2=output.cloud3=0;
+    if((input.texture.w&8193U)==8193U) {
+        output.cloud0=uint4(input.visibility_a,input.visibility_b.x);
+        output.cloud1=uint4(input.visibility_b.yz,input.visibility_c.xy);
+        output.cloud2=uint4(input.visibility_c.z,input.group_a);
+        output.cloud3=uint4(input.group_b,input.group_c.x);
+    }
     if(input.visibility_enabled==1) {
         output.visible=source_visible(input.visibility_a,input.visibility_b,input.visibility_c);
     }
@@ -119,7 +141,11 @@ float4 styled_colour(float4 colour) {
     if(style==0 || camera.effects.y==0) return colour;
     float3 rgb=colour.rgb,result=rgb;
     float light=dot(rgb,float3(77,150,29))/256;
-    if(style==1) result=floor(rgb*4+.5)/4;
+    // Quantize brightness, not individual channels: retain material hue.
+    if(style==1) {
+        float peak=max(max(rgb.r,rgb.g),max(rgb.b,1./255));
+        result=rgb*(min(1.,floor(peak*5.+.5)/5.)/peak);
+    }
     else if(style==4) result=light.xxx;
     else if(style==8) result=saturate(float3(dot(rgb,float3(101,197,48)),
         dot(rgb,float3(89,176,43)),dot(rgb,float3(70,137,34)))/256);
@@ -149,6 +175,7 @@ float4 fragment_main(Fragment input) : SV_Target0 {
     return styled_colour(input.color);
 }
 [[vk::binding(0,0)]] StructuredBuffer<uint> texels;
+#include "connected_grid.hlsli"
 // Tile payload: 16 control words, 256 RGBA palette words, then packed 64KiB
 // VRAM. Controls: character/screen bases (words), screen size, signed scroll
 // X/Y, bpp, palette base, priority (0/all,1/low,2/high), 16px tile flag,
@@ -196,9 +223,18 @@ Fragment vertex_textured_main(Vertex input) {
     [branch] if((input.texture.w&134217728U)!=0) {
         float size=input.group_a.x,depth=input.group_a.y;
         bool valid=isfinite(size) && isfinite(depth) && size>0 && depth>=128;
-        float dimension=valid?clamp(trunc(size*256./depth),0.,240.):0;
-        input.billboard*=dimension*depth/512.;
-        if(input.group_b.z==1) {
+        bool glyph=(input.texture.w&1024U)!=0;
+        float dimension=valid?trunc(size*256./depth):0;
+        if(glyph) {
+            // Scaled source text has no whole-object sprite's 240px cap.
+            precise float side=dimension*depth/256.;
+            precise float left=input.group_b.x*side;
+            input.billboard=float2(left+input.billboard.x*side,input.billboard.y*side);
+        } else {
+            dimension=clamp(dimension,0.,240.);
+            input.billboard*=dimension*depth/512.;
+        }
+        if(!glyph && input.group_b.z==1) {
             // EX aiming stations retain the game-plane basis under head roll.
             input.position.xy+=input.billboard;
             input.billboard=0;
@@ -542,6 +578,19 @@ float4 tile_colour(uint start,uint index,uint flags) {
         colour.rgb=select(colour.rgb<=.04045,colour.rgb/12.92,pow((colour.rgb+.055)/1.055,2.4));
     return colour;
 }
+bool game_over_front_window(Fragment input) {
+    // Intersect the actual eye ray with the existing 256x224 panel at z=-2.
+    // Both eyes/head translations retain exactly the same foreground window.
+    float3 t=float3(camera.view_rows[0].w,camera.view_rows[1].w,camera.view_rows[2].w);
+    float3 eye=-float3(dot(float3(camera.view_rows[0].x,camera.view_rows[1].x,camera.view_rows[2].x),t),
+        dot(float3(camera.view_rows[0].y,camera.view_rows[1].y,camera.view_rows[2].y),t),
+        dot(float3(camera.view_rows[0].z,camera.view_rows[1].z,camera.view_rows[2].z),t));
+    float3 ray=input.surface_position-eye;
+    if(ray.z>=0) return false;
+    float distance=(-2.-eye.z)/ray.z;
+    float2 hit=eye.xy+ray.xy*distance;
+    return distance>0 && abs(hit.x)<1. && abs(hit.y)<.875;
+}
 float4 tile_background_sample(Fragment input) {
     uint start=input.texture.x;
     uint screen_size=texels[start+2],bpp=texels[start+5];
@@ -588,6 +637,13 @@ float4 tile_background_sample(Fragment input) {
         scroll.y=tile_vertical_offset(start,coordinate,scroll.y,input.horizon);
     }
     int2 source=logical+scroll;
+    if((texels[start+7]&512U)!=0) {
+        if(game_over_front_window(input)) return 0;
+        uint seed=(uint(source.x)>>5)*0x9e3779b9U^(uint(source.y)>>5)*0x85ebca6bU;
+        seed^=seed>>16;seed*=0x7feb352dU;seed^=seed>>15;
+        uint patch=(seed>>3)%3;
+        source=int2((seed&7)*32+uint(source.x&31),(patch==0?0:128+patch*32)+uint(source.y&31));
+    }
     if((texels[start+15]&0x20000000U)!=0)
         source.y=clamp(source.y,0,int(((screen_size&2)!=0?64:32)*edge)-1);
     if((texels[start+15]&2)!=0 && (source.x<0 || source.x>=int(((screen_size&1)!=0?64:32)*edge))) return 0;
@@ -772,8 +828,110 @@ float4 object_sprite(Fragment input) {
     if(index==0) discard;
     return tile_colour(start,128+((attributes>>1)&7)*16+index,input.texture.w);
 }
+float4 backdrop_pixel(uint level,int2 coordinate) {
+    uint record=4+3*level;
+    int2 size=int2(texels[record+1],texels[record+2]);
+    coordinate.x=texels[2]!=0?((coordinate.x%size.x)+size.x)%size.x:clamp(coordinate.x,0,size.x-1);
+    coordinate.y=clamp(coordinate.y,0,size.y-1);
+    uint packed=texels[texels[record]+uint(coordinate.y*size.x+coordinate.x)];
+    return float4(packed&255,(packed>>8)&255,(packed>>16)&255,packed>>24)/255.;
+}
+float4 backdrop_level(uint level,float2 uv) {
+    uint record=4+3*level;
+    float2 position=uv*float2(texels[record+1],texels[record+2])-.5;
+    int2 origin=int2(floor(position));float2 fraction=frac(position);
+    return lerp(lerp(backdrop_pixel(level,origin),backdrop_pixel(level,origin+int2(1,0)),fraction.x),
+                lerp(backdrop_pixel(level,origin+int2(0,1)),backdrop_pixel(level,origin+1),fraction.x),fraction.y);
+}
+float3 cloud_shade(Fragment input,uint shade) {
+    uint4 group=shade<4?input.cloud0:shade<8?input.cloud1:shade<12?input.cloud2:input.cloud3;
+    uint packed=group[shade&3];
+    uint3 colour=(packed>>uint3(0,5,10))&31;
+    return float3((colour<<3)|(colour>>2))/255.;
+}
+float3 nebula_shade(Fragment input,uint bank,uint shade) {
+    return shade>=7?float3(0,0,0):cloud_shade(input,1+bank*7+shade);
+}
+float4 backdrop_filtered(float2 uv,float2 size) {
+    // Perspective-correct derivatives select an immutable mip pyramid. Native
+    // source textures retain their original affine, nearest-sampled path.
+    float footprint=max(length(ddx(uv)*size),length(ddy(uv)*size));
+    float level=clamp(log2(max(footprint,1.)),0.,float(texels[1]-1));
+    uint low=uint(floor(level)),high=min(low+1,texels[1]-1);
+    return lerp(backdrop_level(low,uv),backdrop_level(high,uv),frac(level));
+}
+float4 backdrop_colour(Fragment input) {
+    float2 uv=input.perspective_uv,size=float2(input.texture.yz+1);
+    float4 colour;
+    if(uint(input.odd_color.w)==4) {
+        float3 direction=normalize(input.surface_position);
+        float latitude=atan2(direction.y,max(length(direction.xz),.00001));
+        if(latitude>=.08) discard;
+        float2 limb_uv=float2(uv.x,clamp(.633-latitude*(512./224.),.002,.998)/3.);
+        // Blend sampled colours, not UVs: longitude collapses at the nadir,
+        // but this Cartesian continuation has no seam or radial tile fan.
+        // Stereographic disk is conformal (unlike x/z on a sphere, which
+        // collapses radial detail near its equator). Equal source-pixel scale
+        // in both axes also prevents the wide panorama stretching its rows.
+        float2 disk=direction.xz/max(1.-direction.y,.001);
+        float2 cap_uv=.5+disk*.46;
+        cap_uv.y=(1.+2.*cap_uv.y)/3.;
+        float cap=smoothstep(.08,.18,-latitude);
+        colour=lerp(backdrop_filtered(limb_uv,size),backdrop_filtered(cap_uv,size),cap);
+        colour*=1.-smoothstep(.025,.08,latitude);
+    }
+    else colour=backdrop_filtered(uv,size);
+    // A 1x1 mip cannot retain two different pole radiances. Clamped poles use
+    // their prepared, uniform master row independently of the footprint.
+    if((uint(input.odd_color.w)&1)!=0 && uv.y<=0) colour=backdrop_pixel(0,int2(0,0));
+    else if((uint(input.odd_color.w)&2)!=0 && uv.y>=1) colour=backdrop_pixel(0,int2(0,int(texels[6])-1));
+    if(colour.a<=0) discard;
+    colour.rgb/=colour.a; // Pyramid is premultiplied: no coloured alpha fringes.
+    if(input.cloud0.x==1) {
+        float light=dot(colour.rgb,float3(.299,.587,.114))*255.;
+        float shade=1.+14.*(1.-saturate((light-140.)/105.));
+        uint a=uint(shade),b=min(a+1,15U);
+        colour.rgb=lerp(cloud_shade(input,a),cloud_shade(input,b),frac(shade));
+    }
+    else if(input.cloud0.x==2) {
+        float peak=max(colour.r,max(colour.g,colour.b));
+        float chroma=(peak-min(colour.r,min(colour.g,colour.b)))/max(1./255.,peak);
+        float cool=saturate(.5+2.*(colour.b-colour.r)/max(1./255.,peak));
+        float shade=7.*(1.-saturate(peak*255./180.));
+        uint a=min(uint(shade),6U),b=a+1;
+        float3 warm=lerp(nebula_shade(input,0,a),nebula_shade(input,0,b),shade-a);
+        float3 cold=lerp(nebula_shade(input,1,a),nebula_shade(input,1,b),shade-a);
+        colour.rgb=lerp(colour.rgb,lerp(warm,cold,cool),saturate(chroma*4.));
+    }
+    else if(input.cloud0.x==3) {
+        float light=smoothstep(0.,1.,(uv.x*2.-1.+.05)/.4);
+        colour.rgb=lerp(cloud_shade(input,2),cloud_shade(input,1),light)*(.8+.2*colour.r);
+    }
+    else if(input.cloud0.x==4) {
+        float shade=1.+13.*(1.-saturate(colour.r*255./240.));
+        uint a=uint(shade),b=min(a+1,14U);
+        colour.rgb=lerp(cloud_shade(input,a),cloud_shade(input,b),frac(shade));
+    }
+    else if(input.cloud0.x==5) {
+        float shade=1.+14.*(1.-saturate(colour.r));
+        uint a=uint(shade),b=min(a+1,15U);
+        colour.rgb=lerp(cloud_shade(input,a),cloud_shade(input,b),frac(shade));
+    }
+    else if(input.cloud0.x==6 || input.cloud0.x==7 || input.cloud0.x==8) {
+        uint count=input.cloud0.x==8?7U:input.cloud0.x==6?2U:1U;
+        float shade=1.+float(count)*(1.-saturate(colour.r));
+        uint a=uint(shade),b=min(a+1,count+1);
+        colour.rgb=lerp(cloud_shade(input,a),cloud_shade(input,b),frac(shade));
+    }
+    colour*=input.color;
+    colour.rgb=saturate(colour.rgb+input.odd_color.rgb);
+    if((input.texture.w&2)!=0)
+        colour.rgb=select(colour.rgb<=.04045,colour.rgb/12.92,pow((colour.rgb+.055)/1.055,2.4));
+    return colour;
+}
 float4 fragment_textured_raw(Fragment input) {
     if(input.visible==0) discard;
+    if((input.texture.w&8193U)==8193U) return backdrop_colour(input);
     if((input.texture.w&8388608U)!=0) {
         // Resident source textures retain byte indices, not expanded RGBA.
         // UV interpolation remains affine, matching the existing model path.

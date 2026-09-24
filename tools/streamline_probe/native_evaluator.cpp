@@ -85,6 +85,7 @@ int starfox_dlss_evaluate_v1(void* module,const StarfoxDlssFrameV1* f,char* erro
         c.jitterOffset={f->jitter[0],f->jitter[1]};c.cameraPinholeOffset={f->pinhole[0],f->pinhole[1]};
         c.mvecScale={1.f/f->width,1.f/f->height};c.reset=f->reset?sl::Boolean::eTrue:sl::Boolean::eFalse;
         c.depthInverted=sl::Boolean::eFalse;c.cameraMotionIncluded=sl::Boolean::eTrue;c.motionVectors3D=sl::Boolean::eFalse;c.motionVectorsInvalidValue=-FLT_MAX;
+        c.motionVectorsJittered=sl::Boolean::eFalse;
         sl::FrameToken* token{};auto index=f->frame_index;
         check(api<PFun_slGetNewFrameToken>(module,"slGetNewFrameToken")(token,&index),"DLSS frame token");check(token!=nullptr,"Null DLSS token");
         sl::ViewportHandle viewport{f->viewport};check(api<PFun_slSetConstants>(module,"slSetConstants")(c,*token,viewport),"DLSS constants");

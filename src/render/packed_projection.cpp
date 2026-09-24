@@ -64,7 +64,7 @@ std::optional<GpuProjection::MotionSurfaceSettings> pack_motion_surface(
                 matrices[which][r][0]=double(p.row0[r])+lo.row0[r];
                 matrices[which][r][1]=double(p.row1[r])+lo.row1[r];
                 matrices[which][r][2]=double(p.row2[r])+lo.row2[r];
-                matrices[which][r][3]=double(p.translation[r])+lo.translation[r];
+                matrices[which][r][3]=(double(p.translation[r])+lo.translation[r])+lo.vanish[r];
             }
         }
         const auto& a=matrices[0];const auto& b=matrices[1];
@@ -170,9 +170,15 @@ PackedProjection pack_projection(const assets::Shape& shape,const RenderPose& po
             low.row1[c]=finite_float(matrix[1][c]*scale-double(p.row1[c]));
             low.row2[c]=finite_float(matrix[2][c]*scale-double(p.row2[c]));
         }
-        low.translation[0]=finite_float(pose.x-double(p.translation[0]));
-        low.translation[1]=finite_float(pose.y-double(p.translation[1]));
-        low.translation[2]=finite_float(pose.z-double(p.translation[2]));
+        const double translation[]{pose.x,pose.y,pose.z};
+        for(unsigned c=0;c<3;++c) {
+            const double tail=translation[c]-double(p.translation[c]);
+            low.translation[c]=finite_float(tail);
+            // A second tail keeps sub-ULP source positions when a translated
+            // model meets a raster half-pixel. The low pose's vanish XYZ is
+            // otherwise unused by ordinary matrix projection.
+            low.vanish[c]=finite_float(tail-double(low.translation[c]));
+        }
     }
     result.continuous_vertices.reserve(vertices.size());
     if(!pose.use_rotation_matrix) {

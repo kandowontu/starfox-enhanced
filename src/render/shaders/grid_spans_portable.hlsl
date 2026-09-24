@@ -1,3 +1,4 @@
+#include "raster_jitter.hlsli"
 // Source grid dots, emitted directly into the resident row-span raster format.
 struct Command {
     int left,top,right,bottom;
@@ -41,6 +42,8 @@ uint trailFirst(uint major,uint minor,int offset) {
 [[vk::binding(0,2)]] cbuffer Settings : register(b0,space2) {
     uint height,scale,colour,tag;
     uint lines; int startX,startY; uint padding;
+    uint logicalWidth,logicalHeight,rasterWidth,reserved;
+    float2 rasterJitter;uint2 jitterPadding;
 };
 [numthreads(64,1,1)]
 void main(uint3 id:SV_DispatchThreadID) {
@@ -52,7 +55,8 @@ void main(uint3 id:SV_DispatchThreadID) {
     int4 p=points[lines==3?index*2:index];
     Command c=(Command)0;
     if(p.w!=0) {
-        int logicalRow=int(row/scale);
+        int logicalRow=int(logicalHeight!=0?row*logicalHeight/height:row/scale);
+        if(any(rasterJitter!=0)) logicalRow=jitterFloor(row,logicalHeight!=0?logicalHeight:height/scale,height,rasterJitter.y,true);
         int x=p.x;
         int right=x+1;
         bool visible=logicalRow==p.y;
@@ -99,6 +103,16 @@ void main(uint3 id:SV_DispatchThreadID) {
         }
         if(visible) {
             c.left=x*int(scale);c.right=right*int(scale);
+            if(logicalWidth!=0) {
+                // ceil signed division: a logical cell owns exactly the output
+                // samples whose floor-mapped coordinate falls inside it.
+                int a=x*int(rasterWidth),b=right*int(rasterWidth),d=int(logicalWidth);
+                c.left=a/d+((a%d)>0?1:0);c.right=b/d+((b%d)>0?1:0);
+            }
+            if(rasterJitter.x!=0) {
+                c.left=jitterCeil(x,logicalWidth!=0?rasterWidth:scale,logicalWidth!=0?logicalWidth:1,rasterJitter.x,true);
+                c.right=jitterCeil(right,logicalWidth!=0?rasterWidth:scale,logicalWidth!=0?logicalWidth:1,rasterJitter.x,true);
+            }
             c.top=int(row);c.bottom=c.top+1;
             c.even=lines>=2?uint(p.z):colour;c.odd=c.even;c.tag=tag;
         }

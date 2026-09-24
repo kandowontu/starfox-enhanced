@@ -48,7 +48,8 @@ bool VulkanSourceScene::initialize(VkDevice device,PFN_vkGetDeviceProcAddr get,
             if(request.model.warp_expanded!=bool(request.warp))
                 throw std::runtime_error("Missing or unexpected scene warp inputs");
             const auto& mesh=source.packets[request.packet_index].geometry;
-            if(!mesh.vertex_view().empty() || !mesh.line_view().empty() || !mesh.texels.empty())
+            if(!mesh.vertex_view().empty() || !mesh.line_view().empty() || !mesh.texel_view().empty()
+                || (mesh.shared_texels && !mesh.texels.empty()))
                 throw std::runtime_error("Compute placeholder contains duplicate geometry");
         }
         bool compatible=state_ && state_->device==device && state_->get==get && state_->pass==pass
@@ -212,6 +213,7 @@ bool VulkanSourceScene::legacy_ray_source(uint32_t key,LegacyRaySource& output) 
 }
 bool VulkanSourceScene::record_compute(VkCommandBuffer command) const {
     if(!state_ || !command) return false;
+    if(!state_->packets->record_compute(command)) return false;
     for(const auto& draw:state_->draws) if(draw.model && !draw.model->record(command)) return false;
     return true;
 }

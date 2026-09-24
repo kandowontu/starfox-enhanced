@@ -5,6 +5,7 @@
 #include "starfox/render/grid_projection.hpp"
 #include "starfox/render/grid_line_sample.hpp"
 #include "starfox/vr/background_tiles.hpp"
+#include "starfox/vr/vulkan_connected_grid.hpp"
 namespace starfox::vr {
 SourceModelPackets SourceModels::assemble_world_interpolated(const GameSceneSnapshot& previous,
     const GameSceneSnapshot& current,double alpha,bool srgb,bool surround_stars) {
@@ -52,17 +53,13 @@ bool text_packet(const assets::RomImage& rom,uint32_t font,uint32_t messages,
     const auto model=game_model_matrix(placement,units);
     if(!model) {error="Invalid scaled text transform";return false;}
     packet.model=*model;
-    if(pose.z<128 || object.colour_table<0x8000) return true;
+    if(object.colour_table<0x8000) return true;
     const int size=127+std::bit_cast<int8_t>(object.texture_scroll_x);
-    if(size<=0) return true;
-    const double dimension=std::trunc(size*256./pose.z);
-    if(dimension<=0) return true;
     std::vector<uint8_t> tokens;
     for(uint32_t i=0;i<256;++i) {
         const auto token=rom.read8((messages&0xff0000U)+object.colour_table+i);
         if(!token) break;tokens.push_back(token);
     }
-    const float side=float(dimension*pose.z/256.);
     const auto index=uint8_t(112+object.extended[21]);
     if(index>=palette.size()) {error="Invalid scaled text palette";return false;}
     const auto colour=palette[index];
@@ -80,11 +77,12 @@ bool text_packet(const assets::RomImage& rom,uint32_t font,uint32_t messages,
                 packet.geometry.texels.push_back(uint32_t(rom.read16(font+uint32_t(token-1)*32+y*2))
                     |(uint32_t(rom.read16(font+uint32_t(token-1)*32+(y+1)*2))<<16));
         }
-        const float left=(float(i)-float(tokens.size())*.5F)*side;
+        const float left=float(i)-float(tokens.size())*.5F;
         const float corners[4][2]{{0,0},{1,0},{1,1},{0,1}};
         for(unsigned corner:{0U,1U,2U,0U,2U,3U}) {
-            SceneVertex v{};v.texture[0]=offset;v.texture[1]=v.texture[2]=15;v.texture[3]=1028U|(srgb?2U:0U);
-            v.billboard[0]=left+corners[corner][0]*side;v.billboard[1]=(.5F-corners[corner][1])*side;
+            SceneVertex v{};v.texture[0]=offset;v.texture[1]=v.texture[2]=15;v.texture[3]=134217728U|1028U|(srgb?2U:0U);
+            v.group_a[0]=float(size);v.group_a[1]=float(pose.z);v.group_b[0]=left;
+            v.billboard[0]=corners[corner][0];v.billboard[1]=.5F-corners[corner][1];
             v.uv[0]=corners[corner][0]*16;v.uv[1]=corners[corner][1]*16;
             packet.geometry.vertices.push_back(v);
         }
@@ -101,32 +99,28 @@ bool particle_packet(const GameSceneSnapshot& scene,simulation::ObjectHandle own
     const auto model=game_model_matrix(placement,units);
     if(!model) {error="Invalid particle owner transform";return false;}
     packet.model=*model;
-    const auto interpolate=[alpha](int16_t previous,int16_t current) {
-        int delta=int(current)-previous;
-        if(delta>32767) delta-=65536;else if(delta<-32768) delta+=65536;
-        return float(previous+delta*alpha);
-    };
     for(const auto& p:scene.particles) {
         if(!p.life || p.owner!=owner) continue;
         SceneVertex v{};
-        v.position[0]=interpolate(p.previous_x,p.x);v.position[1]=interpolate(p.previous_y,p.y);
-        v.position[2]=interpolate(p.previous_z,p.z);
-        const double depth=pose.z+v.position[2];
-        if(depth<256) continue;
+        v.group_a[0]=p.previous_x;v.group_a[1]=p.previous_y;v.group_a[2]=p.previous_z;
+        v.group_b[0]=p.x;v.group_b[1]=p.y;v.group_b[2]=p.z;
+        // Raw source endpoints; signed-word interpolation, depth rejection
+        // and angular dot sizing happen once per GPU vertex, in both eyes.
+        v.group_c[0]=float(alpha);v.group_c[1]=float(pose.z);
         render::FaceMaterial material{{p.colour,p.colour,false},nullptr};
         if(!apply_scene_material(v,material,palette,112,1,srgb)) {error="Invalid particle palette";return false;}
+        v.texture[3]|=0x80000000U;
         if(p.flags&4U) {
-            if(pose.z+p.previous_z<256) continue;
-            auto previous=v;previous.position[0]=p.previous_x;previous.position[1]=p.previous_y;previous.position[2]=p.previous_z;
+            v.group_c[2]=2; // Trail: reject both ends if either depth is invalid.
+            auto previous=v;previous.group_c[2]=1;
             packet.geometry.line_vertices.push_back(previous);packet.geometry.line_vertices.push_back(v);
         } else {
             // A source dot is two pixels wide at focal length 256. Keep its
             // centre in 3D and let each eye project an untextured billboard.
-            const float size=float(depth/128.);
             const float corners[4][2]{{0,0},{1,0},{1,-1},{0,-1}};
-            v.texture[3]=4;
+            v.texture[3]|=4;
             for(unsigned corner:{0U,1U,2U,0U,2U,3U}) {
-                auto point=v;point.billboard[0]=corners[corner][0]*size;point.billboard[1]=corners[corner][1]*size;
+                auto point=v;point.billboard[0]=corners[corner][0];point.billboard[1]=corners[corner][1];
                 packet.geometry.vertices.push_back(point);
             }
         }
@@ -199,6 +193,9 @@ DrawPacket SourceModels::assemble_connected_grid(const GameSceneSnapshot& scene,
 DrawPacket SourceModels::assemble_connected_grid_binned(const GameSceneSnapshot& scene,bool srgb) const {
     return connected_grid_pose(scene,timing::interpolate(scene.camera,scene.camera,1.),scene.view_matrix,srgb);
 }
+DrawPacket SourceModels::assemble_connected_grid_gpu(const GameSceneSnapshot& scene,bool srgb) const {
+    return connected_grid_pose(scene,timing::interpolate(scene.camera,scene.camera,1.),scene.view_matrix,srgb,true);
+}
 DrawPacket SourceModels::assemble_connected_grid_interpolated(const GameSceneSnapshot& previous,
     const GameSceneSnapshot& scene,double alpha,bool srgb) const {
     if(!std::isfinite(alpha)) throw std::invalid_argument("Invalid connected grid interpolation fraction");
@@ -207,10 +204,10 @@ DrawPacket SourceModels::assemble_connected_grid_interpolated(const GameSceneSna
         || timing::camera_transform_is_discontinuous(previous.camera,scene.camera)) alpha=1.;
     // Current source frame owns the start endpoint for all presentations/eyes.
     return connected_grid_pose(scene,timing::interpolate(previous.camera,scene.camera,alpha),
-        simulation::interpolate_rotation_matrix_q15(previous.view_matrix,scene.view_matrix,alpha),srgb);
+        simulation::interpolate_rotation_matrix_q15(previous.view_matrix,scene.view_matrix,alpha),srgb,true);
 }
 DrawPacket SourceModels::connected_grid_pose(const GameSceneSnapshot& scene,const timing::RenderTransform& camera,
-    const simulation::MatrixQ15& matrix,bool srgb) const {
+    const simulation::MatrixQ15& matrix,bool srgb,bool gpu) const {
     DrawPacket packet;
     packet.model=source_layer_matrix(float(scene.source_vanishing_point[0])+16.F,
         float(scene.source_vanishing_point[1])+16.F).value();
@@ -221,6 +218,19 @@ DrawPacket SourceModels::connected_grid_pose(const GameSceneSnapshot& scene,cons
     const auto palette=render::apply_snes_brightness(render::decode_bgr555_palette(words),scene.display_brightness);
     SceneVertex colour{};render::FaceMaterial material{{14,14,false},nullptr};
     if(!apply_scene_material(colour,material,palette,112,1,srgb)) throw std::runtime_error("Invalid connected grid palette");
+    if(gpu) {
+        for(double value:{camera.x,camera.y,camera.z})
+            packet.geometry.texels.push_back(uint32_t(int32_t(simulation::wrap16(int64_t(std::trunc(value))))));
+        for(auto value:matrix) packet.geometry.texels.push_back(uint32_t(int32_t(value)));
+        for(auto value:scene.grid_line_start) packet.geometry.texels.push_back(uint32_t(int32_t(value)));
+        const unsigned corners[6][2]{{0,0},{224,0},{224,192},{0,0},{224,192},{0,192}};
+        for(const auto& corner:corners) {
+            auto v=colour;v.position[0]=float(corner[0]+16);v.position[1]=float(corner[1]+16);
+            v.uv[0]=float(corner[0]);v.uv[1]=float(corner[1]);v.texture[3]=gpu_connected_grid_flag;
+            packet.geometry.vertices.push_back(v);
+        }
+        return packet;
+    }
     std::array<std::vector<uint32_t>,192> rows;
     std::vector<uint32_t> payload(384);
     const auto marker=[&](int x,int y) {

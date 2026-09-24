@@ -1,4 +1,7 @@
 #include "starfox/render/dxr_shadows.hpp"
+#include "starfox/render/environment_effects.hpp"
+#include "starfox/render/gpu_scene.hpp"
+#include <bit>
 #if defined(STARFOX_DXR)
 #define WIN32_LEAN_AND_MEAN
 #ifndef NOMINMAX
@@ -48,7 +51,9 @@ struct DxrShadows::Impl {
     ComPtr<ID3D12PipelineState> pipeline;
     HANDLE event{};
     UINT64 serial{};
-    Buffer vertices,instances,constants,blas,tlas,scratch,output,readback,shared_geometry,coverage_buffer;
+    Buffer vertices,instances,constants,blas,tlas,scratch,output,readback,shared_geometry,coverage_buffer,backdrop_buffer;
+    BackdropUploadCache uploaded_backdrop;
+    std::size_t backdrop_upload_bytes{};
     std::vector<float> built_positions;
     std::vector<float> position_scratch;
     std::vector<std::uint8_t> uploaded_coverage;
@@ -65,7 +70,7 @@ struct DxrShadows::Impl {
                 && SUCCEEDED(fence->SetEventOnCompletion(value,event)))
                 WaitForSingleObject(event,5000);
         }
-        coverage_buffer.resource.Reset();shared_geometry.resource.Reset();readback.resource.Reset(); output.resource.Reset(); scratch.resource.Reset();
+        backdrop_buffer.resource.Reset();coverage_buffer.resource.Reset();shared_geometry.resource.Reset();readback.resource.Reset(); output.resource.Reset(); scratch.resource.Reset();
         tlas.resource.Reset(); blas.resource.Reset(); constants.resource.Reset();
         instances.resource.Reset(); vertices.resource.Reset(); pipeline.Reset(); root.Reset();
         list.Reset(); allocator.Reset(); queue.Reset(); geometry_fence.Reset(); fence.Reset(); device.Reset();
@@ -119,15 +124,21 @@ struct DxrShadows::Impl {
         check(device->CreateFence(0,D3D12_FENCE_FLAG_SHARED,IID_ID3D12Fence, reinterpret_cast<void**>(fence.GetAddressOf())),"DXR fence");
         event=CreateEventW(nullptr,FALSE,FALSE,nullptr);
         if (!event) throw std::runtime_error("DXR fence event unavailable");
-        D3D12_ROOT_PARAMETER parameters[4]{};
+        D3D12_ROOT_PARAMETER parameters[7]{};
         parameters[0].ParameterType=D3D12_ROOT_PARAMETER_TYPE_SRV;
         parameters[1].ParameterType=D3D12_ROOT_PARAMETER_TYPE_UAV;
         parameters[2].ParameterType=D3D12_ROOT_PARAMETER_TYPE_CBV;
         parameters[3].ParameterType=D3D12_ROOT_PARAMETER_TYPE_SRV;
         parameters[3].Descriptor.ShaderRegister=1;
+        parameters[4].ParameterType=D3D12_ROOT_PARAMETER_TYPE_SRV;
+        parameters[4].Descriptor.ShaderRegister=2;
+        parameters[5].ParameterType=D3D12_ROOT_PARAMETER_TYPE_SRV;
+        parameters[5].Descriptor.ShaderRegister=3;
+        parameters[6].ParameterType=D3D12_ROOT_PARAMETER_TYPE_SRV;
+        parameters[6].Descriptor.ShaderRegister=4;
         for (auto& p:parameters) p.ShaderVisibility=D3D12_SHADER_VISIBILITY_ALL;
         D3D12_ROOT_SIGNATURE_DESC rootDesc{};
-        rootDesc.NumParameters=4; rootDesc.pParameters=parameters;
+        rootDesc.NumParameters=7; rootDesc.pParameters=parameters;
         ComPtr<ID3DBlob> blob,error;
         check(serialize(&rootDesc,D3D_ROOT_SIGNATURE_VERSION_1,blob.GetAddressOf(),error.GetAddressOf()),"DXR root serialization");
         check(device->CreateRootSignature(0,blob->GetBufferPointer(),blob->GetBufferSize(),
@@ -174,13 +185,19 @@ struct DxrShadows::Impl {
         check(device->GetDeviceRemovedReason(),"DXR completed device");
     }
     void render(const Scene& scene,Camera camera,Vec3 light,std::optional<ReceiverPlane> ground,
-        std::vector<std::uint8_t>& mask,bool download=true,ID3D12Resource* external=nullptr,UINT external_count=0,UINT stride=16,const Coverage* coverage=nullptr,bool release_for_external=false,bool defer_completion=false) {
+        std::vector<std::uint8_t>& mask,bool download=true,ID3D12Resource* external=nullptr,UINT external_count=0,UINT stride=16,const Coverage* coverage=nullptr,bool release_for_external=false,bool defer_completion=false,
+        const render::RayMaterials* reflection=nullptr,const std::uint32_t* palette=nullptr,std::uint32_t environment=0,float roughness=0,std::uint32_t metallic=0,
+        std::span<const std::uint32_t> environment_cube={},std::uint32_t face_size=0,
+        const std::array<float,9>& environment_rotation={1,0,0,0,1,0,0,0,1},
+        const render::GpuBackgroundDraw* background=nullptr,float background_eye_x=0,
+        ID3D12Resource* resident_materials=nullptr,std::uint32_t material_offset=0,const RayWater* water=nullptr) {
         // Upload buffers and the command allocator belong to the previous
         // producer submission until its fence completes.
         await_producer();
+        backdrop_upload_bytes=0;
         const auto count=external?external_count/3:scene.triangle_count();
         const auto pixels=std::size_t(camera.width)*camera.height;
-        const auto row_bytes=(std::size_t(camera.width)+3U)&~std::size_t(3U);
+        const auto row_bytes=reflection?std::size_t(camera.width)*4:(std::size_t(camera.width)+3U)&~std::size_t(3U);
         const auto transfer_bytes=row_bytes*camera.height;
         if (!pixels || !count) { mask.assign(pixels,0); return; }
         if (count>UINT_MAX/3 || camera.width>16384 || camera.height>16384)
@@ -194,6 +211,120 @@ struct DxrShadows::Impl {
         if(coverage) {
             std::memcpy(coverage_bytes.data()+16,coverage->triangles.data(),count*40);
             if(!coverage->texels.empty()) std::memcpy(coverage_bytes.data()+16+count*40,coverage->texels.data(),coverage->texels.size()*4);
+        }
+        if(reflection) {
+            const std::uint32_t texels_at=16+(resident_materials?0:std::uint32_t(count)*64);
+            const std::uint32_t palette_at=texels_at+std::uint32_t(reflection->texels.size())*4;
+            coverage_bytes.resize(palette_at+1152+environment_cube.size_bytes());
+            const std::uint32_t reflection_header[4]={std::uint32_t(count),palette_at,texels_at,resident_materials?3U:1U};
+            std::memcpy(coverage_bytes.data(),reflection_header,16);
+            if(!resident_materials) std::memcpy(coverage_bytes.data()+16,reflection->triangles.data(),count*64);
+            for(std::size_t i=0;i<reflection->texels.size();++i) {
+                const std::uint32_t index=reflection->texels[i];
+                std::memcpy(coverage_bytes.data()+texels_at+i*4,&index,4);
+            }
+            std::memcpy(coverage_bytes.data()+palette_at,palette,1024);
+            const std::uint32_t material_settings[4]={std::bit_cast<std::uint32_t>(roughness),metallic,face_size,palette_at+1152};
+            std::memcpy(coverage_bytes.data()+palette_at+1024,material_settings,16);
+            for(unsigned row=0;row<3;++row) {
+                const float values[4]={environment_rotation[row*3],environment_rotation[row*3+1],environment_rotation[row*3+2],0};
+                std::memcpy(coverage_bytes.data()+palette_at+1040+row*16,values,16);
+            }
+            const auto texel_count=std::uint32_t(reflection->texels.size());
+            std::memcpy(coverage_bytes.data()+palette_at+1068,&texel_count,4);
+            std::memset(coverage_bytes.data()+palette_at+1088,0,64);
+            if(water) {
+                const float values[16]={water->time,water->reflection_strength,1,float(water->material),
+                    water->world_to_view[0],water->world_to_view[1],water->world_to_view[2],water->camera_position[0],
+                    water->world_to_view[3],water->world_to_view[4],water->world_to_view[5],water->camera_position[1],
+                    water->world_to_view[6],water->world_to_view[7],water->world_to_view[8],water->camera_position[2]};
+                std::memcpy(coverage_bytes.data()+palette_at+1088,values,64);
+            }
+            if(!environment_cube.empty()) std::memcpy(coverage_bytes.data()+palette_at+1152,
+                environment_cube.data(),environment_cube.size_bytes());
+            if(background) {
+                const auto& p=*background->ppu;const auto& s=background->settings;
+                const auto at=std::uint32_t(coverage_bytes.size());
+                const auto cgram_at=at+67392+std::uint32_t(s.unique_regions.size())*32;
+                coverage_bytes.resize(cgram_at+1024);
+                std::memcpy(coverage_bytes.data()+palette_at+1052,&at,4);
+                std::memcpy(coverage_bytes.data()+palette_at+1084,&background_eye_x,4);
+                unsigned black=0,darkest=~0U;
+                for(unsigned i=0;i<256;++i) {
+                    const auto c=p.cgram[i];const unsigned l=77*(c&31)+150*((c>>5)&31)+29*((c>>10)&31);
+                    if(l<darkest){darkest=l;black=i;}
+                }
+                // Fit the cartridge's quantised roll table once per upload.
+                // Reflection rays extend beyond its 32 columns, just as the
+                // widescreen background does; clamping would flatten the sky.
+                double sx=0,sy=0,sxx=0,sxy=0;int samples=0,previous=0,unwrapped=0;
+                if(p.background_mode==2 && p.bg2_vertical_offsets_enabled && s.extend_horizontal && !p.tunnel_scene)
+                    for(unsigned col=0;col<32;++col) {
+                        const unsigned address=(0x2fa0+col)*2;
+                        const unsigned word=p.vram[address]|(unsigned(p.vram[address+1])<<8);
+                        if(!(word&0x4000)) continue;
+                        const int raw=word&8191;int delta=(raw-previous)&8191;if(delta>4095) delta-=8192;
+                        unwrapped=samples?unwrapped+delta:raw;previous=raw;
+                        const double x=col+1;sx+=x;sy+=unwrapped;sxx+=x*x;sxy+=x*unwrapped;++samples;
+                    }
+                const double denominator=samples*sxx-sx*sx;
+                const float slope=samples>1 && denominator!=0?float((samples*sxy-sx*sy)/denominator):0;
+                const float intercept=samples?float((sy-double(slope)*sx)/samples):0;
+                const unsigned flags=(s.wrap_horizontal?1U:0U)|(p.bg2_horizontal_offsets_enabled?2U:0U)
+                    |(p.bg2_scanline_scroll_enabled?4U:0U)
+                    |(p.background_mode==2 && p.bg2_vertical_offsets_enabled?8U:0U)
+                    |(p.tunnel_scene?16U:0U)|(s.transparent_cgram_black?32U:0U)|(samples?64U:0U);
+                const std::int32_t header[16]={p.bg2_screen_base,p.bg2_character_base,
+                    (p.bg2_screen_size&1)?64:32,(p.bg2_screen_size&2)?64:32,p.bg2_tile_size_16?16:8,
+                    s.scroll_x,s.scroll_y,int(flags),int(s.unique_regions.size()),int(s.single_occurrence_top_rows),
+                    int(black),int(s.sky_source_min),std::bit_cast<std::int32_t>(intercept),std::bit_cast<std::int32_t>(slope),int(cgram_at),0};
+                std::memcpy(coverage_bytes.data()+at,header,64);
+                std::memcpy(coverage_bytes.data()+at+64,p.vram.data(),65536);
+                for(unsigned row=0;row<224;++row) {
+                    const std::int32_t x=p.bg2_horizontal_offsets[row],y=p.bg2_scanline_scroll_y[row];
+                    std::memcpy(coverage_bytes.data()+at+65600+row*4,&x,4);
+                    std::memcpy(coverage_bytes.data()+at+66496+row*4,&y,4);
+                }
+                for(unsigned i=0;i<s.unique_regions.size();++i) {
+                    const auto& r=s.unique_regions[i];const std::int32_t region[8]={r.left,r.top,r.right,r.bottom,
+                        r.first_colour,r.last_colour,r.replacement_colour,r.replacement_x_offset};
+                    std::memcpy(coverage_bytes.data()+at+67392+i*32,region,32);
+                }
+                for(unsigned i=0;i<256;++i) {
+                    const std::uint32_t colour=p.cgram[i];
+                    std::memcpy(coverage_bytes.data()+cgram_at+i*4,&colour,4);
+                }
+                if(s.reflection_environment && s.reflection_environment->active()) {
+                    const auto& e=*s.reflection_environment;
+                    const auto address=std::uint32_t(coverage_bytes.size());
+                    coverage_bytes.resize(address+1232);
+                    std::memcpy(coverage_bytes.data()+at+60,&address,4);
+                    std::memcpy(coverage_bytes.data()+address,e.classes.data(),1024);
+                    std::memcpy(coverage_bytes.data()+address+1024,e.modes.data(),16);
+                    std::memcpy(coverage_bytes.data()+address+1040,e.motion.data(),16);
+                    std::memcpy(coverage_bytes.data()+address+1056,e.plane.data(),16);
+                    std::memset(coverage_bytes.data()+address+1072,0,16);
+                    std::memcpy(coverage_bytes.data()+address+1088,e.backdrop_projection.data(),16);
+                    std::memcpy(coverage_bytes.data()+address+1104,e.backdrop_keep.data(),32);
+                    std::memcpy(coverage_bytes.data()+address+1136,e.backdrop_palette.data(),32);
+                    std::memcpy(coverage_bytes.data()+address+1168,e.backdrop_ramp.data(),64);
+                    if(e.backdrop && e.modes[2]) {
+                        const auto& sky=*e.backdrop;
+                        if(!sky.width || !sky.height || sky.width>8192 || sky.height>8192 || sky.pixels.size()!=std::size_t(sky.width)*sky.height)
+                            throw std::runtime_error("Invalid reflected backdrop");
+                        // Keep the immutable image separate from moving camera,
+                        // palette and material metadata. Sealed asset keys
+                        // avoid full scans; mutable images still compare pixels.
+                        if(!uploaded_backdrop.matches(sky)) {
+                            upload(backdrop_buffer,sky.pixels.data(),sky.pixels.size()*4);
+                            uploaded_backdrop.remember(sky);
+                            backdrop_upload_bytes=sky.pixels.size()*4;
+                        }
+                        const std::uint32_t image[4]{sky.width,sky.height,0,0};
+                        std::memcpy(coverage_bytes.data()+address+1072,image,16);
+                    }
+                }
+            }
         }
         // Compare complete bytes, not source identities: UV scroll, palettes,
         // transparency and recycled models must all invalidate retained data.
@@ -254,6 +385,7 @@ struct DxrShadows::Impl {
         settings.camera={float(camera.width),float(camera.height),float(camera.focal_length),float(camera.center_x)};
         settings.options={float(camera.center_y),ground?1.f:0.f,float(camera.vertical_focal_length()),coverage?1.f:0.f};
         if (ground) { settings.point=floats(ground->point); settings.normal=floats(ground->normal); }
+        if(reflection) {settings.point.w=std::bit_cast<float>(environment);settings.normal.w=float(external?stride:12);}
         light=light*(1.0/std::sqrt(dot(light,light)));
         const auto reference=std::abs(light.y)<.9?Vec3{0,1,0}:Vec3{1,0,0};
         auto tangent=cross(light,reference); tangent=tangent*(1.0/std::sqrt(dot(tangent,tangent)));
@@ -268,6 +400,12 @@ struct DxrShadows::Impl {
         check(allocator->Reset(),"DXR allocator reset");
         check(list->Reset(allocator.Get(),pipeline.Get()),"DXR command reset");
         D3D12_RESOURCE_BARRIER vertex_access{};
+        D3D12_RESOURCE_BARRIER material_access{};
+        if(resident_materials && resident_materials!=external) {
+            material_access.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            material_access.Transition={resident_materials,D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,D3D12_RESOURCE_STATE_COMMON,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE};
+            list->ResourceBarrier(1,&material_access);
+        }
         if(external) {
             vertex_access.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
             vertex_access.Transition={external,D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,D3D12_RESOURCE_STATE_COMMON,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE};
@@ -294,6 +432,10 @@ struct DxrShadows::Impl {
         list->SetComputeRootUnorderedAccessView(1,output.resource->GetGPUVirtualAddress());
         list->SetComputeRootConstantBufferView(2,constants.resource->GetGPUVirtualAddress());
         list->SetComputeRootShaderResourceView(3,coverage_buffer.resource->GetGPUVirtualAddress());
+        list->SetComputeRootShaderResourceView(4,(external?external:vertices.resource.Get())->GetGPUVirtualAddress());
+        list->SetComputeRootShaderResourceView(5,(resident_materials?resident_materials:coverage_buffer.resource.Get())->GetGPUVirtualAddress()
+            +(resident_materials?material_offset:0));
+        list->SetComputeRootShaderResourceView(6,(backdrop_buffer.resource?backdrop_buffer.resource.Get():coverage_buffer.resource.Get())->GetGPUVirtualAddress());
         list->Dispatch((camera.width+7)/8,(camera.height+7)/8,1);
         if(download) {
         D3D12_RESOURCE_BARRIER transition{};
@@ -308,6 +450,10 @@ struct DxrShadows::Impl {
         if(external) {
             std::swap(vertex_access.Transition.StateBefore,vertex_access.Transition.StateAfter);
             list->ResourceBarrier(1,&vertex_access);
+        }
+        if(resident_materials && resident_materials!=external) {
+            std::swap(material_access.Transition.StateBefore,material_access.Transition.StateAfter);
+            list->ResourceBarrier(1,&material_access);
         }
         if(release_for_external && !download) {
             D3D12_RESOURCE_BARRIER release{};
@@ -330,9 +476,9 @@ struct DxrShadows::Impl {
         if(!download) return;
         void* data{}; const D3D12_RANGE range{0,transfer_bytes};
         check(readback.resource->Map(0,&range,&data),"DXR readback map");
-        mask.resize(pixels);
+        mask.resize(reflection?pixels*4:pixels);
         const auto* values=static_cast<const std::uint8_t*>(data);
-        if(row_bytes==camera.width) std::memcpy(mask.data(),values,pixels);
+        if(reflection || row_bytes==camera.width) std::memcpy(mask.data(),values,mask.size());
         else for(std::size_t y=0;y<camera.height;++y)
             std::memcpy(mask.data()+y*camera.width,values+y*row_bytes,camera.width);
         const D3D12_RANGE empty{0,0}; readback.resource->Unmap(0,&empty);
@@ -349,6 +495,31 @@ DxrShadows::DxrShadows(std::optional<std::array<std::uint8_t,8>> adapter_luid):i
 #endif
 }
 DxrShadows::~DxrShadows()=default;
+bool DxrShadows::render_reflections(const Scene& scene,Camera camera,
+    const render::RayMaterials& materials,std::span<const std::uint32_t,256> palette,
+    std::uint32_t environment,std::vector<std::uint8_t>& rgba) {
+    resident_={};rgba.clear();
+#if defined(STARFOX_DXR)
+    if(!scene.triangle_count() || materials.triangles.size()!=scene.triangle_count()
+        || materials.triangles.size()>4'000'000 || materials.texels.size()>16'000'000
+        || !camera.width || !camera.height || camera.width>16384 || camera.height>16384
+        || !(camera.focal_length>0) || !(camera.vertical_focal_length()>0)) return false;
+    for(const auto& m:materials.triangles) {
+        if(m.textured>1 || m.even>255 || m.odd>255 || m.colour_base>255) return false;
+        for(auto uv:m.uv) if(!std::isfinite(uv) || std::abs(uv)>1e8) return false;
+        if(m.textured && (m.u_mask>4095 || m.v_mask>4095 || (m.u_mask&(m.u_mask+1))
+            || (m.v_mask&(m.v_mask+1)) || std::uint64_t(m.offset)+std::uint64_t(m.u_mask+1)*(m.v_mask+1)>materials.texels.size())) return false;
+    }
+    if(!available()) return false;
+    try {
+        impl_->render(scene,camera,{0,1,0},{},rgba,true,nullptr,0,16,nullptr,false,false,&materials,palette.data(),environment);
+        return true;
+    }catch(const std::exception& error){impl_->status=std::string("DXR reflection failure: ")+error.what();rgba.clear();}
+#else
+    (void)scene;(void)camera;(void)materials;(void)palette;(void)environment;
+#endif
+    return false;
+}
 void* DxrShadows::export_geometry_completion_handle() {
 #if defined(STARFOX_DXR)
     if(!available()) return nullptr;
@@ -444,6 +615,13 @@ void* DxrShadows::export_resident_handle() {
 #endif
 }
 const std::string& DxrShadows::status() const { return impl_->status; }
+std::size_t DxrShadows::last_backdrop_upload_bytes() const noexcept {
+#if defined(STARFOX_DXR)
+    return impl_->backdrop_upload_bytes;
+#else
+    return 0;
+#endif
+}
 bool DxrShadows::available() {
 #if defined(STARFOX_DXR)
     if(impl_->failed) return false;
@@ -500,13 +678,14 @@ bool DxrShadows::readback_resident(std::vector<std::uint8_t>& mask) {
         check(p.fence->SetEventOnCompletion(value,p.event),"DXR download completion");
         if(WaitForSingleObject(p.event,5000)!=WAIT_OBJECT_0) throw std::runtime_error("DXR download timeout");
         check(p.device->GetDeviceRemovedReason(),"DXR download device");
-        mask.resize(std::size_t(resident_.width)*resident_.height);
+        const auto pixel_row=std::size_t(resident_.width)*resident_.bytes_per_pixel;
+        mask.resize(pixel_row*resident_.height);
         void* data{};const D3D12_RANGE range{0,bytes};
         check(p.readback.resource->Map(0,&range,&data),"DXR resident map");
-        if(resident_.row_bytes==resident_.width)
+        if(resident_.row_bytes==pixel_row)
             std::memcpy(mask.data(),data,mask.size());
         else for(std::size_t y=0;y<resident_.height;++y)
-            std::memcpy(mask.data()+y*resident_.width,static_cast<const std::uint8_t*>(data)+y*resident_.row_bytes,resident_.width);
+            std::memcpy(mask.data()+y*pixel_row,static_cast<const std::uint8_t*>(data)+y*resident_.row_bytes,pixel_row);
         const D3D12_RANGE empty{0,0};p.readback.resource->Unmap(0,&empty);
         return true;
     } catch(const std::exception& error) {
@@ -516,13 +695,48 @@ bool DxrShadows::readback_resident(std::vector<std::uint8_t>& mask) {
     return false;
 }
 bool DxrShadows::render_resident(const Scene& scene,Camera camera,Vec3 light,
-    std::optional<ReceiverPlane> ground,const ResidentGeometry* geometry,const Coverage* coverage,bool release_for_external,bool defer_completion) {
+    std::optional<ReceiverPlane> ground,const ResidentGeometry* geometry,const Coverage* coverage,bool release_for_external,bool defer_completion,const ReflectionInput* reflection) {
     resident_={};
 #if defined(STARFOX_DXR)
     if(impl_->failed || (defer_completion && !release_for_external) || (!geometry && !scene.triangle_count()) || !camera.width || !camera.height
         || !std::isfinite(dot(light,light)) || dot(light,light)<1e-20 || camera.focal_length<=0
         || camera.vertical_focal_length()<=0 || !std::isfinite(camera.vertical_focal_length())) return false;
     try {
+        if(reflection) {
+            if(!std::isfinite(reflection->background_eye_x)) return false;
+            if(reflection->water) {
+                const auto& water=*reflection->water;
+                if(!reflection->ground || !std::isfinite(water.time) || !std::isfinite(water.reflection_strength)
+                    || water.reflection_strength<0 || water.reflection_strength>1 || water.material>2) return false;
+                for(auto value:water.world_to_view) if(!std::isfinite(value)) return false;
+                for(auto value:water.camera_position) if(!std::isfinite(value)) return false;
+            }
+            if(reflection->ground && (!std::isfinite(dot(reflection->ground->point,reflection->ground->point))
+                || !std::isfinite(dot(reflection->ground->normal,reflection->ground->normal))
+                || dot(reflection->ground->normal,reflection->ground->normal)<1e-20)) return false;
+            if(reflection->background && (!reflection->background->ppu || reflection->background->settings.layer!=2
+                || reflection->background->settings.unique_regions.size()>1024 || reflection->face_size)) return false;
+            if(coverage || ground || !reflection->materials || reflection->palette.size()!=256
+                || !std::isfinite(reflection->roughness) || reflection->roughness<0 || reflection->roughness>1
+                || reflection->metallic>3) return false;
+            if(reflection->face_size>1024 || reflection->environment_cube.size()!=
+                std::size_t(reflection->face_size)*reflection->face_size*6) return false;
+            for(unsigned row=0;row<3;++row) for(unsigned other=0;other<3;++other) {
+                float product=0;
+                for(unsigned axis=0;axis<3;++axis) product+=reflection->environment_rotation[row*3+axis]
+                    *reflection->environment_rotation[other*3+axis];
+                if(!std::isfinite(product) || std::abs(product-(row==other?1.f:0.f))>.01f) return false;
+            }
+            const auto& m=*reflection->materials;
+            const auto count=geometry?geometry->vertex_count/3:scene.triangle_count();
+            if((!reflection->resident_materials && m.triangles.size()!=count) || count>4'000'000 || m.texels.size()>16'000'000) return false;
+            for(const auto& t:m.triangles) {
+                if(t.textured>1 || t.even>255 || t.odd>255 || t.colour_base>255) return false;
+                for(auto uv:t.uv) if(!std::isfinite(uv) || std::abs(uv)>1e8f) return false;
+                if(t.textured && (t.u_mask>4095 || t.v_mask>4095 || (t.u_mask&(t.u_mask+1))
+                    || (t.v_mask&(t.v_mask+1)) || std::uint64_t(t.offset)+std::uint64_t(t.u_mask+1)*(t.v_mask+1)>m.texels.size())) return false;
+            }
+        }
         if(coverage) {
             const auto count=geometry?geometry->vertex_count/3:scene.triangle_count();
             if(coverage->triangles.size()!=count || count>4000000 || coverage->texels.size()>16000000) return false;
@@ -535,6 +749,22 @@ bool DxrShadows::render_resident(const Scene& scene,Camera camera,Vec3 light,
         }
         if(!impl_->attempted) impl_->initialize();
         auto* external=geometry?static_cast<ID3D12Resource*>(geometry->resource):nullptr;
+        auto* external_materials=reflection?static_cast<ID3D12Resource*>(reflection->resident_materials):nullptr;
+        if(external_materials) {
+            const auto offset=reflection->resident_material_offset;
+            if(offset%16 || (external_materials==external && std::uint64_t(offset)<std::uint64_t(geometry->vertex_count)*geometry->stride)) return false;
+            D3D12_RESOURCE_DESC desc{};
+#if defined(_MSC_VER)
+            desc=external_materials->GetDesc();
+#else
+            external_materials->GetDesc(&desc);
+#endif
+            ComPtr<ID3D12Device5> owner;
+            const auto count=geometry?geometry->vertex_count/3:scene.triangle_count();
+            if(desc.Dimension!=D3D12_RESOURCE_DIMENSION_BUFFER || desc.Width<std::uint64_t(offset)+std::uint64_t(count)*64
+                || FAILED(external_materials->GetDevice(IID_ID3D12Device5,reinterpret_cast<void**>(owner.GetAddressOf())))
+                || owner.Get()!=impl_->device.Get()) return false;
+        }
         if(geometry) {
             if(!external || !geometry->vertex_count || geometry->vertex_count%3 || geometry->stride<12 || geometry->stride>256 || geometry->stride%4) return false;
             D3D12_RESOURCE_DESC desc{};
@@ -549,8 +779,15 @@ bool DxrShadows::render_resident(const Scene& scene,Camera camera,Vec3 light,
                 || FAILED(external->GetDevice(IID_ID3D12Device5,reinterpret_cast<void**>(owner.GetAddressOf()))) || owner.Get()!=impl_->device.Get()) return false;
         }
         std::vector<std::uint8_t> unused;
-        impl_->render(scene,camera,light,ground,unused,false,external,geometry?geometry->vertex_count:0,geometry?geometry->stride:16,coverage,release_for_external,defer_completion);
-        resident_={impl_->device.Get(),impl_->output.resource.Get(),camera.width,camera.height,(camera.width+3U)&~3U};
+        impl_->render(scene,camera,light,reflection?reflection->ground:ground,unused,false,external,geometry?geometry->vertex_count:0,geometry?geometry->stride:16,coverage,release_for_external,defer_completion,
+            reflection?reflection->materials:nullptr,reflection?reflection->palette.data():nullptr,reflection?reflection->environment:0,
+            reflection?reflection->roughness:0,reflection?reflection->metallic:0,
+            reflection?reflection->environment_cube:std::span<const std::uint32_t>{},reflection?reflection->face_size:0,
+            reflection?reflection->environment_rotation:std::array<float,9>{1,0,0,0,1,0,0,0,1},
+            reflection?reflection->background:nullptr,reflection?reflection->background_eye_x:0,external_materials,
+            reflection?reflection->resident_material_offset:0,reflection?reflection->water:nullptr);
+        resident_={impl_->device.Get(),impl_->output.resource.Get(),camera.width,camera.height,reflection?camera.width*4:(camera.width+3U)&~3U};
+        resident_.bytes_per_pixel=reflection?4:1;
         LUID luid{};
 #if defined(_MSC_VER)
         luid=impl_->device->GetAdapterLuid();
@@ -566,7 +803,7 @@ bool DxrShadows::render_resident(const Scene& scene,Camera camera,Vec3 light,
     }
 #else
     (void)scene;(void)camera;(void)light;(void)ground;
-    (void)geometry;(void)coverage;(void)release_for_external;(void)defer_completion;
+    (void)geometry;(void)coverage;(void)release_for_external;(void)defer_completion;(void)reflection;
 #endif
     return false;
 }

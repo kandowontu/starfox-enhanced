@@ -1,5 +1,11 @@
 #include "starfox/render/gpu_composite.hpp"
+#include "starfox/render/temporal_jitter.hpp"
+#include <algorithm>
+#include <array>
+#include <bit>
+#include <cstdlib>
 #include <cstring>
+#include <iostream>
 #include <stdexcept>
 #if defined(STARFOX_SDL_GPU_EFFECTS)
 #include <SDL3/SDL.h>
@@ -15,6 +21,10 @@ struct GpuComposite::Impl {
     SDL_GPUTexture* rgba{};SDL_GPUCommandBuffer* command{};SDL_GPUFence* fence{};
     Uint32 width{},height{};bool valid{},has_depth{},has_motion{};
     std::vector<Uint32> packed;
+    std::vector<std::pair<Uint32,Uint32>> dirtySpans;
+    std::array<Uint32,256> cachedPalette{};
+    Uint32 cachedUniformValue{},cachedUniformBytes{},lastCpuUploadBytes{},lastPaletteUploadBytes{};
+    bool cachedUniformValid{},cachedPackedValid{},cachedPaletteValid{};
     std::string status{"GPU composition not initialized"};
     ~Impl() {
         if(!device) return;
@@ -49,6 +59,7 @@ struct GpuComposite::Impl {
         if(buffers[i] && capacities[i]>=bytes) return;
         if(buffers[i]) SDL_ReleaseGPUBuffer(device,buffers[i]);
         buffers[i]=nullptr;
+        if(i==1) cachedPaletteValid=false;
         SDL_GPUBufferCreateInfo info{SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ
             |((i>=2 && i<=3) || i>=5?SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE:0U),bytes,0};
         buffers[i]=SDL_CreateGPUBuffer(device,&info);checked(buffers[i]);capacities[i]=bytes;
@@ -62,20 +73,30 @@ struct GpuComposite::Impl {
     }
     void compose(const GpuRasterOutput& source,Uint32 sourceScale,const Framebuffer& cpu,
         std::span<const Uint8> foreground,const LayerCompositeSettings& settings,std::span<const Rgba8> palette,
-        const GpuRasterOutput* late,const GpuCompositeBackground* background,std::span<const Uint8> afterLate,bool worldOnly) {
+        const GpuRasterOutput* late,const GpuCompositeBackground* background,std::span<const Uint8> afterLate,bool worldOnly,
+        std::array<std::uint32_t,4> mapping,std::array<float,2> jitter) {
         finish();valid=false;
+        if(!valid_raster_jitter(jitter)) throw std::runtime_error("Invalid composition jitter");
         const auto count=cpu.pixels().size();
+        const bool custom=std::any_of(mapping.begin(),mapping.end(),[](auto value){return value!=0;});
+        if(custom && std::any_of(mapping.begin(),mapping.end(),[](auto value){return !value || value>8192;}))
+            throw std::runtime_error("Invalid independent compositor dimensions");
+        const auto sourceReferenceWidth=custom?mapping[0]:source.width;
+        const auto sourceReferenceHeight=custom?mapping[1]:source.height;
+        const auto outputWidth=custom?mapping[2]:cpu.stored_width();
+        const auto outputHeight=custom?mapping[3]:cpu.stored_height();
         if(!count || count>UINT32_MAX/24 || palette.empty() || palette.size()>256
             || (!foreground.empty() && foreground.size()!=count)
             || (!afterLate.empty() && afterLate.size()!=count) || !sourceScale
-            || !source.width || !source.height || source.width%sourceScale || source.height%sourceScale)
+            || !source.width || !source.height || sourceReferenceWidth%sourceScale || sourceReferenceHeight%sourceScale)
             throw std::runtime_error("Invalid GPU composition inputs");
-        if(late && (late->device!=device || !late->pixels || late->width!=cpu.stored_width()
-            || late->height!=cpu.stored_height() || late->pixels==buffers[2]
+        if(late && (late->device!=device || !late->pixels || !late->width || !late->height
+            || (!custom && (late->width!=cpu.stored_width() || late->height!=cpu.stored_height())) || late->pixels==buffers[2]
             || late->pixels==buffers[3])) throw std::runtime_error("Invalid late GPU overlay");
         if(background) {
             const auto& b=background->raster;
-            if(b.device!=device || !b.pixels || b.width!=cpu.stored_width() || b.height!=cpu.stored_height()
+            if(b.device!=device || !b.pixels || !b.width || !b.height
+                || (!custom && (b.width!=cpu.stored_width() || b.height!=cpu.stored_height()))
                 || b.pixels==buffers[2] || b.pixels==buffers[3]
                 || (!background->cpu_coverage.empty() && background->cpu_coverage.size()!=count))
                 throw std::runtime_error("Invalid resident GPU background");
@@ -85,52 +106,219 @@ struct GpuComposite::Impl {
                 throw std::runtime_error("Invalid GPU background margins");
         }
         const Uint32 bytes=Uint32(count*4);
-        if(width!=cpu.stored_width() || height!=cpu.stored_height()) {
+        const Uint32 outputBytes=outputWidth*outputHeight*4;
+        if(width!=outputWidth || height!=outputHeight) {
             if(rgba) SDL_ReleaseGPUTexture(device,rgba);
             rgba=nullptr;width=height=0;
             SDL_GPUTextureCreateInfo info{};info.type=SDL_GPU_TEXTURETYPE_2D;
             info.format=SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
             info.usage=SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_READ|SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE|SDL_GPU_TEXTUREUSAGE_SAMPLER;
-            info.width=cpu.stored_width();info.height=cpu.stored_height();info.layer_count_or_depth=1;info.num_levels=1;
+            info.width=outputWidth;info.height=outputHeight;info.layer_count_or_depth=1;info.num_levels=1;
             rgba=SDL_CreateGPUTexture(device,&info);checked(rgba);width=info.width;height=info.height;
         }
-        buffer(0,bytes);buffer(1,1024);buffer(2,bytes);buffer(3,bytes*4);buffer(4,16);buffer(5,8);
+        const auto same_mask=[](std::span<const Uint8> mask,bool expected) {
+            return mask.empty()? !expected : std::all_of(mask.begin(),mask.end(),
+                [expected](Uint8 value){return bool(value)==expected;});
+        };
+        const auto backgroundCoverage=background?background->cpu_coverage:std::span<const Uint8>{};
+        const auto packedAt=[&](std::size_t i) {
+            return Uint32(cpu.pixels()[i])
+                |(cpu.layer_tags_enabled()?Uint32(cpu.layer_tags()[i])<<8:0U)
+                |(!foreground.empty() && foreground[i]?0x80000000U:0U)
+                |(!backgroundCoverage.empty() && backgroundCoverage[i]?0x40000000U:0U)
+                |(!afterLate.empty() && afterLate[i]?0x20000000U:0U);
+        };
+        const auto cached=cachedUniformValue;
+        const bool allowCpuCache=!std::getenv("STARFOX_DISABLE_UNIFORM_CPU_CACHE")
+            && !std::getenv("STARFOX_DISABLE_CPU_UPLOAD_CACHE");
+        const bool reuseCpu=allowCpuCache
+            && cachedUniformValid && cachedUniformBytes==bytes
+            && std::all_of(cpu.pixels().begin(),cpu.pixels().end(),
+                [cached](Uint8 value){return value==Uint8(cached);})
+            && (cpu.layer_tags_enabled()
+                ?std::all_of(cpu.layer_tags().begin(),cpu.layer_tags().end(),
+                    [cached](Uint8 value){return value==Uint8(cached>>8);})
+                : Uint8(cached>>8)==0)
+            && same_mask(foreground,(cached&0x80000000U)!=0)
+            && same_mask(backgroundCoverage,(cached&0x40000000U)!=0)
+            && same_mask(afterLate,(cached&0x20000000U)!=0);
+        bool uniform=reuseCpu;
+        Uint32 uniformValue=reuseCpu?cached:0U;
+        if(!uniform && allowCpuCache && (cachedUniformValid || !cachedPackedValid)) {
+            const Uint8 colour=cpu.pixels()[0];
+            const Uint8 tag=cpu.layer_tags_enabled()?cpu.layer_tags()[0]:0U;
+            const bool front=!foreground.empty() && foreground[0];
+            const bool back=!backgroundCoverage.empty() && backgroundCoverage[0];
+            const bool last=!afterLate.empty() && afterLate[0];
+            uniform=std::all_of(cpu.pixels().begin(),cpu.pixels().end(),
+                    [colour](Uint8 value){return value==colour;})
+                && (!cpu.layer_tags_enabled() || std::all_of(cpu.layer_tags().begin(),cpu.layer_tags().end(),
+                    [tag](Uint8 value){return value==tag;}))
+                && same_mask(foreground,front) && same_mask(backgroundCoverage,back)
+                && same_mask(afterLate,last);
+            if(uniform) uniformValue=Uint32(colour)|(Uint32(tag)<<8)
+                |(front?0x80000000U:0U)|(back?0x40000000U:0U)|(last?0x20000000U:0U);
+        }
+        // A full-height cartridge border is often two constant vertical
+        // strips over an otherwise uniform CPU backing. Describe that exact
+        // pattern in constants instead of packing/uploading the whole image.
+        std::array<std::pair<Uint32,Uint32>,2> stripes{};
+        Uint32 stripeValue=0;
+        bool striped=false;
+        if(!uniform && allowCpuCache && cpu.stored_width()>1) {
+            const Uint32 rowWidth=cpu.stored_width();
+            const auto base=packedAt(0);
+            bool candidate=true;
+            unsigned stripeCount=0;
+            for(Uint32 x=0;x<rowWidth && candidate;) {
+                const auto value=packedAt(x);
+                if(value==base) {++x;continue;}
+                if(stripeCount>=stripes.size() || (stripeCount && value!=stripeValue)) {
+                    candidate=false;break;
+                }
+                stripeValue=value;
+                const auto left=x;
+                while(x<rowWidth && packedAt(x)==stripeValue) ++x;
+                stripes[stripeCount++]={left,x};
+            }
+            if(candidate && stripeCount) {
+                for(Uint32 y=1;y<cpu.stored_height() && candidate;++y)
+                    for(Uint32 x=0;x<rowWidth;++x) {
+                        const bool inside=(x>=stripes[0].first && x<stripes[0].second)
+                            || (x>=stripes[1].first && x<stripes[1].second);
+                        if(packedAt(std::size_t(y)*rowWidth+x)!=(inside?stripeValue:base)) {
+                            candidate=false;break;
+                        }
+                    }
+                if(candidate) {striped=true;uniformValue=base;}
+            }
+        }
+        dirtySpans.clear();
+        if(!uniform && !striped) {
+            const bool comparePrevious=allowCpuCache && cachedPackedValid && capacities[0]>=bytes
+                && cachedUniformBytes==bytes && packed.size()==count;
+            packed.resize(count);
+            uniform=true;
+            for(Uint32 y=0;y<cpu.stored_height();++y) {
+                const auto rowStart=std::size_t(y)*cpu.stored_width();
+                Uint32 firstChanged=cpu.stored_width(),lastChanged=0;
+                for(Uint32 x=0;x<cpu.stored_width();++x) {
+                    const auto i=rowStart+x;
+                    const Uint32 value=packedAt(i);
+                    if(comparePrevious && packed[i]!=value) {
+                        firstChanged=std::min(firstChanged,x);lastChanged=x;
+                    }
+                    packed[i]=value;
+                    if(i==0) uniformValue=value;
+                    else if(value!=uniformValue) uniform=false;
+                }
+                if(comparePrevious && firstChanged<cpu.stored_width()) {
+                    const auto start=Uint32(rowStart+firstChanged),end=Uint32(rowStart+lastChanged+1);
+                    if(!dirtySpans.empty() && (dirtySpans.back().second-1)/cpu.stored_width()==y-1
+                        && start-dirtySpans.back().second<=64U)
+                        dirtySpans.back().second=end;
+                    else dirtySpans.emplace_back(start,end);
+                }
+            }
+            if(!comparePrevious) dirtySpans.emplace_back(0,Uint32(count));
+        }
+        const bool gpuUniform=allowCpuCache && uniform;
+        const bool gpuStriped=allowCpuCache && striped;
+        if(gpuUniform || gpuStriped) dirtySpans.clear();
+        // Many tiny copy commands cost more than a contiguous upload. Keep
+        // sparse updates for local overlays, but cap command fan-out.
+        if(dirtySpans.size()>64) {
+            dirtySpans.clear();dirtySpans.emplace_back(0,Uint32(count));
+        }
+        Uint32 cpuUploadBytes=0;
+        for(const auto& [start,end]:dirtySpans) cpuUploadBytes+=(end-start)*4;
+        buffer(0,(gpuUniform || gpuStriped)?4U:bytes);buffer(1,1024);buffer(2,outputBytes);
+        buffer(3,outputBytes*4);buffer(4,16);buffer(5,8);
         for(unsigned i=2;i<8;++i)
             if((source.geometry_depth==buffers[i] && source.geometry_depth)
                 || (source.motion==buffers[i] && source.motion))
                 throw std::runtime_error("Temporal inputs alias compositor output");
         has_depth=source.geometry_depth!=nullptr;has_motion=source.motion!=nullptr;
-        buffer(6,has_depth?bytes:4);buffer(7,has_motion?bytes*4:16);
-        transfer(upload,uploadSize,bytes+1024,SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD);
-        packed.resize(count);
-        for(std::size_t i=0;i<count;++i) packed[i]=cpu.pixels()[i]
-            |(cpu.layer_tags_enabled()?Uint32(cpu.layer_tags()[i])<<8:0)
-            |(!foreground.empty() && foreground[i]?0x80000000U:0)
-            |(background && !background->cpu_coverage.empty() && background->cpu_coverage[i]?0x40000000U:0)
-            |(!afterLate.empty() && afterLate[i]?0x20000000U:0);
-        auto* mapped=static_cast<Uint8*>(SDL_MapGPUTransferBuffer(device,upload,true));checked(mapped);
-        std::memcpy(mapped,packed.data(),bytes);
-        for(unsigned i=0;i<256;++i) {
+        buffer(6,has_depth?outputBytes:4);buffer(7,has_motion?outputBytes*4:16);
+        std::array<Uint32,256> paletteWords{};
+        for(unsigned i=0;i<paletteWords.size();++i) {
             const auto c=palette[std::min<std::size_t>(i,palette.size()-1)];
-            const Uint32 p=c.r|(Uint32(c.g)<<8)|(Uint32(c.b)<<16)|(Uint32(c.a)<<24);
-            std::memcpy(mapped+bytes+i*4,&p,4);
+            paletteWords[i]=c.r|(Uint32(c.g)<<8)|(Uint32(c.b)<<16)|(Uint32(c.a)<<24);
         }
-        SDL_UnmapGPUTransferBuffer(device,upload);
+        const bool paletteChanged=!cachedPaletteValid || paletteWords!=cachedPalette;
+        const Uint32 paletteOffset=dirtySpans.empty()?0U:bytes;
+        if(cpuUploadBytes || paletteChanged)
+            transfer(upload,uploadSize,paletteOffset+(paletteChanged?1024U:0U),SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD);
+        // The resident storage buffer survives submissions. Reuse uniform
+        // backings without repacking, and upload only changed row runs for
+        // nonuniform CPU overlays. The palette remains independent.
+        if(std::getenv("STARFOX_TRACE_GPU_CPU_UPLOAD")) {
+            const auto stripePixels=std::size_t(stripes[0].second-stripes[0].first
+                +stripes[1].second-stripes[1].first)*cpu.stored_height();
+            const auto tally=[&](auto predicate) {
+                if(gpuUniform) return predicate(uniformValue)?count:std::size_t{0};
+                if(gpuStriped) return (predicate(uniformValue)?count-stripePixels:std::size_t{0})
+                    +(predicate(stripeValue)?stripePixels:std::size_t{0});
+                return std::size_t(std::count_if(packed.begin(),packed.end(),predicate));
+            };
+            const auto meaningful=tally([](Uint32 value){return value!=0;});
+            const auto ink=tally([](Uint32 value){return (value&255U)!=0;});
+            const auto covered=tally([](Uint32 value){return (value&0xe0000000U)!=0;});
+            const auto [least,greatest]=gpuUniform?std::pair{uniformValue,uniformValue}:gpuStriped?
+                std::pair{std::min(uniformValue,stripeValue),std::max(uniformValue,stripeValue)}:
+                [&]{const auto [lo,hi]=std::minmax_element(packed.begin(),packed.end());return std::pair{*lo,*hi};}();
+            std::cerr<<"gpu-cpu-upload: pixels="<<count<<" meaningful="<<meaningful
+                <<" ink="<<ink<<" coverage="<<covered<<" min="<<least
+                <<" max="<<greatest<<" bytes="<<cpuUploadBytes<<'\n';
+            std::cerr<<"gpu-palette-upload: bytes="<<(paletteChanged?1024U:0U)<<'\n';
+            if(gpuStriped) std::cerr<<"gpu-cpu-stripes: "<<stripes[0].first<<'-'<<stripes[0].second
+                <<' '<<stripes[1].first<<'-'<<stripes[1].second<<" value="<<stripeValue<<'\n';
+            if(!gpuUniform && cpuUploadBytes && ink) {
+                Uint32 minX=cpu.stored_width(),minY=cpu.stored_height(),maxX=0,maxY=0;
+                for(std::size_t i=0;i<packed.size();++i) if(packed[i]&255U) {
+                    const auto x=Uint32(i%cpu.stored_width()),y=Uint32(i/cpu.stored_width());
+                    minX=std::min(minX,x);minY=std::min(minY,y);
+                    maxX=std::max(maxX,x);maxY=std::max(maxY,y);
+                }
+                std::cerr<<"gpu-cpu-content-bounds: "<<minX<<','<<minY<<".."<<maxX<<','<<maxY<<'\n';
+            }
+        }
+        if(cpuUploadBytes || paletteChanged) {
+            auto* mapped=static_cast<Uint8*>(SDL_MapGPUTransferBuffer(device,upload,true));checked(mapped);
+            for(const auto& [start,end]:dirtySpans)
+                std::memcpy(mapped+std::size_t(start)*4,packed.data()+start,std::size_t(end-start)*4);
+            if(paletteChanged)
+                std::memcpy(mapped+paletteOffset,paletteWords.data(),1024);
+            SDL_UnmapGPUTransferBuffer(device,upload);
+        }
         command=SDL_AcquireGPUCommandBuffer(device);checked(command);
-        auto* copy=SDL_BeginGPUCopyPass(command);checked(copy);
-        for(unsigned i=0;i<2;++i) {
-            SDL_GPUTransferBufferLocation from{upload,i?bytes:0};SDL_GPUBufferRegion to{buffers[i],0,i?1024U:bytes};
-            SDL_UploadToGPUBuffer(copy,&from,&to,false);
+        if(cpuUploadBytes || paletteChanged) {
+            auto* copy=SDL_BeginGPUCopyPass(command);checked(copy);
+            for(const auto& [start,end]:dirtySpans) {
+                SDL_GPUTransferBufferLocation from{upload,start*4};
+                SDL_GPUBufferRegion to{buffers[0],start*4,(end-start)*4};
+                SDL_UploadToGPUBuffer(copy,&from,&to,false);
+            }
+            if(paletteChanged) {
+                SDL_GPUTransferBufferLocation paletteFrom{upload,paletteOffset};
+                SDL_GPUBufferRegion paletteTo{buffers[1],0,1024};
+                SDL_UploadToGPUBuffer(copy,&paletteFrom,&paletteTo,false);
+            }
+            SDL_EndGPUCopyPass(copy);
         }
-        SDL_EndGPUCopyPass(copy);
-        Sint32 constants[]{Sint32(width),Sint32(height),Sint32(source.width),Sint32(source.height),
+        Sint32 constants[]{Sint32(cpu.stored_width()),Sint32(cpu.stored_height()),Sint32(source.width),Sint32(source.height),
             Sint32(cpu.draw_scale()),Sint32(sourceScale),
             (settings.mosaic & settings.mosaic_layer_mask)?Sint32((settings.mosaic>>4)+1):1,source.surfaces?1:0,
             settings.offset_x,settings.offset_y,settings.clip_left,settings.clip_top,
             settings.clip_right,settings.clip_bottom,settings.mosaic_origin_x,settings.mosaic_origin_y,
             late?1:0,background?1:0,1,background?Sint32(background->margin_origin):0,
             background?Sint32(background->margin_width):0,background && background->repair_transparent_margins?1:0,has_depth?1:0,has_motion?1:0,
-            worldOnly?1:0,0,0,0};
+            worldOnly?1:0,std::bit_cast<Sint32>(jitter[0]),std::bit_cast<Sint32>(jitter[1]),0,Sint32(sourceReferenceWidth),Sint32(sourceReferenceHeight),Sint32(width),Sint32(height),
+            late?Sint32(late->width):0,late?Sint32(late->height):0,
+            background?Sint32(background->raster.width):0,background?Sint32(background->raster.height):0,
+            gpuUniform?1:0,std::bit_cast<Sint32>(uniformValue),gpuStriped?1:0,
+            std::bit_cast<Sint32>(stripeValue),Sint32(stripes[0].first),Sint32(stripes[0].second),
+            Sint32(stripes[1].first),Sint32(stripes[1].second)};
         SDL_GPUStorageTextureReadWriteBinding texture{};texture.texture=rgba;
         SDL_GPUStorageBufferReadWriteBinding outputs[5]{};outputs[0].buffer=buffers[2];outputs[1].buffer=buffers[3];outputs[2].buffer=buffers[5];outputs[3].buffer=buffers[6];outputs[4].buffer=buffers[7];
         SDL_GPUBuffer* inputs[]{buffers[0],static_cast<SDL_GPUBuffer*>(source.pixels),
@@ -146,8 +334,15 @@ struct GpuComposite::Impl {
             SDL_DispatchGPUCompute(pass,phase?(width+7)/8:1,phase?(height+7)/8:1,1);SDL_EndGPUComputePass(pass);
         }
         fence=SDL_SubmitGPUCommandBufferAndAcquireFence(command);command=nullptr;checked(fence);valid=true;
+        if(paletteChanged) {cachedPalette=paletteWords;cachedPaletteValid=true;}
+        cachedPackedValid=!(gpuUniform || gpuStriped);cachedUniformValid=uniform;
+        cachedUniformValue=uniformValue;cachedUniformBytes=bytes;
+        lastCpuUploadBytes=cpuUploadBytes;
+        lastPaletteUploadBytes=paletteChanged?1024U:0U;
     }
     void read(Framebuffer& target,std::vector<Uint8>& colours,SurfaceBuffer* surfaces) {
+        if(!device || !rgba || !buffers[2] || (surfaces && !buffers[3]))
+            throw std::runtime_error("GPU composition readback source is missing");
         if(!valid || target.stored_width()!=width || target.stored_height()!=height
             || (surfaces && (surfaces->width()!=width || surfaces->height()!=height)))
             throw std::runtime_error("Invalid composition readback dimensions");
@@ -189,17 +384,33 @@ GpuCompositeOutput GpuComposite::output() const {
 #endif
     return {};
 }
+std::size_t GpuComposite::last_cpu_upload_bytes() const noexcept {
+#if defined(STARFOX_SDL_GPU_EFFECTS)
+    return impl_ && impl_->valid ? impl_->lastCpuUploadBytes : 0U;
+#else
+    return 0U;
+#endif
+}
+std::size_t GpuComposite::last_palette_upload_bytes() const noexcept {
+#if defined(STARFOX_SDL_GPU_EFFECTS)
+    return impl_ && impl_->valid ? impl_->lastPaletteUploadBytes : 0U;
+#else
+    return 0U;
+#endif
+}
 bool GpuComposite::compose(const GpuRasterOutput& source,std::uint32_t scale,const Framebuffer& cpu,
     std::span<const std::uint8_t> foreground,const LayerCompositeSettings& settings,std::span<const Rgba8> palette,
-    const GpuRasterOutput* late,const GpuCompositeBackground* background,std::span<const std::uint8_t> afterLate,bool worldOnly) {
+    const GpuRasterOutput* late,const GpuCompositeBackground* background,std::span<const std::uint8_t> afterLate,bool worldOnly,
+    std::array<std::uint32_t,4> mapping,std::array<float,2> jitter) {
 #if defined(STARFOX_SDL_GPU_EFFECTS)
     if(!source.device || !source.pixels) return false;
     if(!impl_ || impl_->device!=source.device) impl_=std::make_unique<Impl>();
-    try {if(!impl_->device) impl_->initialize(static_cast<SDL_GPUDevice*>(source.device));impl_->compose(source,scale,cpu,foreground,settings,palette,late,background,afterLate,worldOnly);return true;}
+    try {if(!impl_->device) impl_->initialize(static_cast<SDL_GPUDevice*>(source.device));impl_->compose(source,scale,cpu,foreground,settings,palette,late,background,afterLate,worldOnly,mapping,jitter);return true;}
     catch(const std::exception& e) {if(impl_->command) {SDL_CancelGPUCommandBuffer(impl_->command);impl_->command=nullptr;}
-        impl_->valid=false;impl_->status=e.what();return false;}
+        impl_->valid=false;impl_->cachedUniformValid=impl_->cachedPackedValid=impl_->cachedPaletteValid=false;
+        impl_->status=e.what();return false;}
 #else
-    (void)source;(void)scale;(void)cpu;(void)foreground;(void)settings;(void)palette;(void)late;(void)background;(void)afterLate;(void)worldOnly;return false;
+    (void)source;(void)scale;(void)cpu;(void)foreground;(void)settings;(void)palette;(void)late;(void)background;(void)afterLate;(void)worldOnly;(void)mapping;return false;
 #endif
 }
 bool GpuComposite::readback(Framebuffer& target,std::vector<std::uint8_t>& rgba,SurfaceBuffer* surfaces) {

@@ -1,6 +1,9 @@
 // Fractional screen clipping. Near-plane intersections must be processed
 // before this stage: status 3 explicitly requests that path, never projects
 // a behind-camera polygon as though it were entirely in front.
+#ifndef STARFOX_CLIP_CAPACITY
+#define STARFOX_CLIP_CAPACITY 128
+#endif
 #include "geometry_fp64.hlsli"
 Sf64 exact_pair(float hi,float lo) {
     return sf_add(sf_from_float_bits(asuint(hi)),sf_from_float_bits(asuint(lo)));
@@ -79,7 +82,7 @@ void main(uint3 id:SV_DispatchThreadID) {
         return;
     }
     if(visibility[descriptor.z]==0 || (descriptor.y<3 && !isLine)) return;
-    Accurate work[128],scratch[128];uint size=descriptor.y;
+    Accurate work[STARFOX_CLIP_CAPACITY],scratch[STARFOX_CLIP_CAPACITY];uint size=descriptor.y;
     // Fully interior polygons already carry the producer's source-rounded
     // screen coordinates. Re-projecting their narrowed camera values can
     // cross a raster rounding boundary without any clipping being necessary.
@@ -207,10 +210,22 @@ void main(uint3 id:SV_DispatchThreadID) {
             }
         }
     }
-    if((descriptor.w&8U)!=0 && !isLine) {
+    // Two floats do not retain all 53 source bits. At a clipped half-pixel,
+    // narrowing to that pair before intersecting can choose the opposite
+    // scanline even when both input camera coordinates were exact. Reuse the
+    // binary64 polygon path for boundary intersections, not just backfaces.
+    bool rawPolygon=residualCount!=0 && pointResiduals[corners[descriptor.x].x].camera.w==3;
+    bool exactProjection=residualCount!=0 || (id.x<projectionCount && projectionParams[id.x].w!=0);
+    bool screenClip=behind;
+    if(exactProjection && !isLine) for(uint i=0;i<size;++i)
+        screenClip=screenClip || !inside(work[i],0,0,false) || !inside(work[i],0,float(width),true)
+            || !inside(work[i],1,0,false) || !inside(work[i],1,float(height),true);
+    if(!isLine && ((descriptor.w&8U)!=0 || (exactProjection && screenClip))) {
         Sf64 area=sf_make(0,0);
-        Sf64 ax[128],ay[128];
-        bool rawPolygon=residualCount!=0 && pointResiduals[corners[descriptor.x].x].camera.w==3;
+        // Near-plane clipping emits at most two vertices per input corner.
+        // The descriptor is capped at 32 corners, so these pre-screen arrays
+        // need only 64 entries.
+        Sf64 ax[64],ay[64];
         if(rawPolygon) {
             uint produced=0;
             [loop] for(uint i=0;i<descriptor.y;++i) {
@@ -257,13 +272,13 @@ void main(uint3 id:SV_DispatchThreadID) {
                 ax[i]=sf_make(raw.x,raw.y);ay[i]=sf_make(raw.z,raw.w);
             }
         }
-        for(uint i=0;i<size;++i) {
+        if((descriptor.w&8U)!=0) for(uint i=0;i<size;++i) {
             uint j=(i+1)%size;
             area=sf_add(area,sf_sub(sf_mul(ax[i],ay[j]),sf_mul(ax[j],ay[i])));
         }
-        if(!sf_valid(area) || sf_zero(area) || (area.hi&0x80000000U)==0)return;
-        if(rawPolygon) {
-            ExactVertex vertices64[128],scratch64[128];
+        if((descriptor.w&8U)!=0 && (!sf_valid(area) || sf_zero(area) || (area.hi&0x80000000U)==0))return;
+        if(rawPolygon || (exactProjection && screenClip)) {
+            ExactVertex vertices64[STARFOX_CLIP_CAPACITY],scratch64[STARFOX_CLIP_CAPACITY];
             [loop] for(uint i=0;i<size;++i) {
                 vertices64[i].v[0]=ax[i];vertices64[i].v[1]=ay[i];
                 vertices64[i].v[2]=exact_pair(work[i].hi.z,work[i].lo.z);
@@ -284,11 +299,11 @@ void main(uint3 id:SV_DispatchThreadID) {
                         ExactVertex intersection;
                         [loop] for(uint c=0;c<4;++c)
                             intersection.v[c]=sf_add(previous.v[c],sf_mul(sf_sub(current.v[c],previous.v[c]),amount));
-                        if(nextSize>=128) {clipped[base]=asfloat(int4(0,2,0,0));return;}
+                        if(nextSize>=STARFOX_CLIP_CAPACITY) {clipped[base]=asfloat(int4(0,2,0,0));return;}
                         scratch64[nextSize++]=intersection;
                     }
                     if(currentInside) {
-                        if(nextSize>=128) {clipped[base]=asfloat(int4(0,2,0,0));return;}
+                        if(nextSize>=STARFOX_CLIP_CAPACITY) {clipped[base]=asfloat(int4(0,2,0,0));return;}
                         scratch64[nextSize++]=current;
                     }
                     previous=current;previousInside=currentInside;
@@ -432,11 +447,11 @@ void main(uint3 id:SV_DispatchThreadID) {
                 // cancellation residual here can amplify UV error when the
                 // next plane clips a very short edge at a viewport corner.
                 intersection.hi[axis]=boundary;intersection.lo[axis]=0;
-                if(nextSize>=128) {clipped[base]=asfloat(int4(0,2,0,0));return;}
+                if(nextSize>=STARFOX_CLIP_CAPACITY) {clipped[base]=asfloat(int4(0,2,0,0));return;}
                 scratch[nextSize++]=intersection;
             }
             if(currentInside) {
-                if(nextSize>=128) {clipped[base]=asfloat(int4(0,2,0,0));return;}
+                if(nextSize>=STARFOX_CLIP_CAPACITY) {clipped[base]=asfloat(int4(0,2,0,0));return;}
                 scratch[nextSize++]=current;
             }
             previous=current;previousInside=currentInside;

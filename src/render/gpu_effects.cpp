@@ -22,8 +22,17 @@ struct Parameters {
     std::uint32_t filter,highlight_filter,pad2,pad3;
     std::uint32_t shadow_width,shadow_height; std::int32_t shadow_y; std::uint32_t shadow_enabled;
     std::array<std::uint32_t,192> window_rows{};
+    std::array<std::uint32_t,256> environment_classes{};
+    std::array<std::uint32_t,4> environment_modes{};
+    std::array<float,4> environment_motion{};
+    std::array<float,4> environment_plane{};
+    std::array<float,4> backdrop_projection{};
+    std::array<std::array<float,4>,2> backdrop_keep{};
+    std::array<std::array<float,4>,2> backdrop_palette{};
+    std::array<std::uint32_t,16> backdrop_ramp{};
+    std::array<float,4> scroll_fraction{};
 };
-static_assert(sizeof(Parameters)==912);
+static_assert(sizeof(Parameters)==2144);
 static_assert(sizeof(SurfaceSample)==20 && offsetof(SurfaceSample,valid)==17);
 }
 struct GpuEffects::Impl {
@@ -169,6 +178,15 @@ struct GpuEffects::Impl {
             (width+2*frame.draw_scale()-1)/(2*frame.draw_scale()),(height+2*frame.draw_scale()-1)/(2*frame.draw_scale()),
             settings.filter,settings.highlight_filter,settings.overlay_filter?1U:0U,0,
             settings.shadow_width,settings.shadow_height,settings.shadow_offset_y,0};
+        p.environment_classes=settings.environment.classes;p.environment_modes=settings.environment.modes;p.environment_motion=settings.environment.motion;p.environment_plane=settings.environment.plane;p.scroll_fraction=settings.environment.scroll_fraction;
+        p.backdrop_projection=settings.environment.backdrop_projection;p.backdrop_keep=settings.environment.backdrop_keep;
+        p.backdrop_palette=settings.environment.backdrop_palette;
+        p.backdrop_ramp=settings.environment.backdrop_ramp;
+        if(settings.environment.active()) {
+            std::copy(frame.pixels().begin(),frame.pixels().end(),padded.begin());
+            if(!indexed || indexed_bytes!=padded.size()) {raw_buffer(indexed,indexed_view,unsigned(padded.size()),nullptr);indexed_bytes=unsigned(padded.size());}
+            context->UpdateSubresource(indexed.Get(),0,nullptr,padded.data(),0,0);
+        }
         if(!settings.shadow_mask.empty()) {
             if(!p.shadow_width || !p.shadow_height || settings.shadow_mask.size()!=std::size_t(p.shadow_width)*p.shadow_height)
                 throw std::runtime_error("Invalid GPU shadow dimensions");
@@ -204,9 +222,9 @@ struct GpuEffects::Impl {
         auto* cb=parameters.Get(); context->CSSetConstantBuffers(0,1,&cb);
         unsigned current=0;
         const bool enabled[]{false,p.hdr!=0,p.chromatic!=0,p.smoothing!=0,
-            p.model_effect!=0 || p.world_effect!=0,p.aa!=0};
-        for(int sequence=-1;sequence<=6;++sequence) {
-            const auto stage=sequence<0?14:sequence==0?6:sequence==6?15:sequence;
+            p.model_effect!=0 || p.world_effect!=0 || decorative_material(static_cast<Effect>(settings.material)) || spatial_manipulation(static_cast<Effect>(settings.manipulation)),p.aa!=0};
+        for(const auto stage:std::array<unsigned,9>{14,6,1,2,31,3,4,5,15}) {
+            p.pad2=stage==31?(settings.environment.water_reflections && !settings.environment.ray_water?1:0):(settings.overlay_filter?1:0);
             if(stage==5 && (p.bloom_model || p.bloom_world)) {
                 if(glow_presentation) {
                     for(unsigned i=0;i<2;++i) if(!split_snapshots[i]) {
@@ -241,7 +259,7 @@ struct GpuEffects::Impl {
                 else if(settings.bloom_base || settings.bloom_glow)
                     context->CopyResource(bloom_snapshots[1].Get(),images[current].Get());
             }
-            if(stage==15?!p.shadow_enabled:stage==14?!p.filter:stage==6?!p.lighting:!enabled[stage]) continue;
+            if(stage==31?!settings.environment.active():stage==15?!p.shadow_enabled:stage==14?!p.filter:stage==6?!p.lighting:!enabled[stage]) continue;
             if(stage==14) {
                 resize_filter(width/p.scale,height/p.scale);
                 p.stage=13;context->UpdateSubresource(parameters.Get(),0,nullptr,&p,0,0);
@@ -252,6 +270,7 @@ struct GpuEffects::Impl {
                 ID3D11UnorderedAccessView* noOut{};context->CSSetUnorderedAccessViews(2,1,&noOut,nullptr);
                 ID3D11ShaderResourceView* noIn[2]{};context->CSSetShaderResources(0,2,noIn);
             }
+            const auto dispatch_style = [&] {
             p.stage=stage; context->UpdateSubresource(parameters.Get(),0,nullptr,&p,0,0);
             ID3D11ShaderResourceView* views[]{inputs[current].Get(),tag_view.Get(),indexed_view.Get(),surface_view.Get(),nullptr,nullptr,
                 stage==14?filter_input.Get():nullptr,stage==15?shadow_view.Get():nullptr};
@@ -261,6 +280,20 @@ struct GpuEffects::Impl {
             ID3D11UnorderedAccessView* noOutput{}; context->CSSetUnorderedAccessViews(0,1,&noOutput,nullptr);
             ID3D11ShaderResourceView* noInputs[8]{}; context->CSSetShaderResources(0,8,noInputs);
             current=1-current;
+            };
+            if(stage==4 && decorative_material(static_cast<Effect>(settings.material))) {
+                const auto model=p.model_effect,world=p.world_effect,intensity=p.model_intensity;
+                p.model_effect=settings.material;p.world_effect=0;p.model_intensity=100;
+                dispatch_style();
+                p.model_effect=model;p.world_effect=world;p.model_intensity=intensity;
+            }
+            dispatch_style();
+            if(stage==4 && spatial_manipulation(static_cast<Effect>(settings.manipulation)) && settings.manipulation_intensity) {
+                const auto model=p.model_effect,world=p.world_effect,intensity=p.model_intensity;
+                p.model_effect=settings.manipulation;p.world_effect=0;p.model_intensity=settings.manipulation_intensity;
+                dispatch_style();
+                p.model_effect=model;p.world_effect=world;p.model_intensity=intensity;
+            }
         }
         context->CSSetShader(nullptr,nullptr,0);
         if(presentation) {
@@ -349,8 +382,9 @@ bool GpuEffects::readback(std::vector<std::uint8_t>& rgba) {
 }
 bool GpuEffects::apply(void* source,const Framebuffer& frame,std::vector<std::uint8_t>& rgba,
     const GpuEffectSettings& settings) {
-    if(settings.resident_shadow.buffer) return false; // SDL GPU buffers are not D3D11 resources.
+    if(settings.resident_shadow.buffer || settings.resident_reflection.buffer) return false; // SDL GPU buffers are not D3D11 resources.
     if(settings.planet_fade) return false; // SDL GPU or matching CPU fallback.
+    if(settings.environment.backdrop) return false; // SDL GPU or the same CPU backdrop sampler.
     if(settings.subtractive_overlays[0] || settings.subtractive_overlays[1]) return false;
     if(settings.filter==5 || settings.horizontal_wipe || settings.circle || settings.background_subtract || settings.colour_math || settings.window_mask || settings.host_overlay || settings.confirmation_overlay || settings.setup_overlay || settings.touch_controls) return false; // SDL GPU or matching CPU fallback.
     if(!impl_) impl_=std::make_unique<Impl>();

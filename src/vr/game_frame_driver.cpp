@@ -19,7 +19,8 @@ GameFrameAdvance GameFrameDriver::advance(XrTime time,const VrControls& controls
     // headset pause into a burst of movement or buffered button presses.
     if(!focused) {previous_.reset();clock_.reset();input_.reset();fraction_=0;if(scenes_) scenes_->reset_interpolation();return result;}
     if(previous_ && time==*previous_) {result.duplicate=true;result.raster_fraction=fraction_;return result;}
-    input_.sample(controls);
+    input_.sample(controls,game_.in_setup_menu()
+        || game_.flow_state()==simulation::GameFlowState::ex_pregame_menu);
     if(!previous_ || time<*previous_) {previous_=time;clock_.reset();fraction_=0;if(scenes_) scenes_->reset_interpolation();return result;}
     const auto elapsed=std::chrono::nanoseconds(time-*previous_);previous_=time;
     const auto batch=clock_.advance(elapsed);

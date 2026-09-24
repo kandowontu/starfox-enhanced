@@ -20,7 +20,7 @@ struct Camera {
 // One entry per requested render pixel, independent of palette darkness.
 inline void render_mask(const Scene& scene, Camera camera, Vec3 toward_light,
     std::optional<ReceiverPlane> ground, std::vector<std::uint8_t>& mask,
-    RowWorkers* workers = nullptr) {
+    RowWorkers* workers = nullptr, bool diagnostic_float_light_samples = false) {
     mask.assign(static_cast<std::size_t>(camera.width)*camera.height, 0);
     const auto length=std::sqrt(dot(toward_light,toward_light));
     if (camera.focal_length<=0 || camera.vertical_focal_length()<=0 || !std::isfinite(camera.vertical_focal_length()) || !std::isfinite(length) || length<=1e-10) return;
@@ -38,6 +38,12 @@ inline void render_mask(const Scene& scene, Camera camera, Vec3 toward_light,
         auto direction=toward_light+tangent*(radius*std::cos(angle))
             +bitangent*(radius*std::sin(angle));
         light_samples[i]=direction*(1.0/std::sqrt(dot(direction,direction)));
+        // Diagnostic-only: DXR uploads the final normalized samples as float.
+        // Ordinary software shadows retain their original double precision.
+        if(diagnostic_float_light_samples) {
+            auto& sample=light_samples[i];
+            sample={float(sample.x),float(sample.y),float(sample.z)};
+        }
     }
     // Keep all eight samples and full resolution, but prepare their constant
     // triangle terms once per mask rather than for every receiver pixel.
