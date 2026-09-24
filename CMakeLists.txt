@@ -444,7 +444,7 @@ if(STARFOX_BUILD_RUNTIME)
             # source and fail configure if the native interop hooks are absent.
             execute_process(COMMAND "${CMAKE_COMMAND}"
                 "-DGIT_EXECUTABLE=${GIT_EXECUTABLE}"
-                "-DSOURCE_DIR=${sdl3_SOURCE_DIR}"
+                "-DSOURCE_DIR=${SDL3_SOURCE_DIR}"
                 "-DPATCH_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/sdl3-metal-ray-interop.patch"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/apply_git_patch_once.cmake"
                 COMMAND_ERROR_IS_FATAL ANY)
@@ -454,7 +454,9 @@ if(STARFOX_BUILD_RUNTIME)
                 message(FATAL_ERROR "SDL Metal backend source missing: ${STARFOX_SDL3_METAL_SOURCE}")
             endif()
             file(READ "${STARFOX_SDL3_METAL_SOURCE}" STARFOX_SDL3_METAL_TEXT)
-            if(NOT STARFOX_SDL3_METAL_TEXT MATCHES "void \\*SDL_StarfoxMetalDevice")
+            string(FIND "${STARFOX_SDL3_METAL_TEXT}" "SDL_StarfoxMetalDevice"
+                STARFOX_SDL3_METAL_SYMBOL_POS)
+            if(STARFOX_SDL3_METAL_SYMBOL_POS EQUAL -1)
                 message(FATAL_ERROR "SDL Metal interop patch missing from ${STARFOX_SDL3_METAL_SOURCE}")
             endif()
         endif()
