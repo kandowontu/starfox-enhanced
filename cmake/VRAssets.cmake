@@ -23,12 +23,34 @@ if(STARFOX_EMBED_RUNTIME_ASSETS)
     starfox_enhanced_backdrop_resources(vr_backdrop_arguments vr_backdrop_files)
     list(APPEND vr_resource_arguments ${vr_backdrop_arguments})
     list(APPEND vr_resource_files ${vr_backdrop_files})
-    set(vr_generated_assets "${CMAKE_CURRENT_BINARY_DIR}/generated/vr_embedded_assets.cpp")
-    add_custom_command(OUTPUT "${vr_generated_assets}"
+    set(vr_generated_dir "${CMAKE_CURRENT_BINARY_DIR}/generated")
+    set(vr_generated_assets "${vr_generated_dir}/vr_embedded_assets.cpp")
+    set(vr_split_outputs)
+    set(vr_embed_options)
+    if(ANDROID)
+        # Quest has the same limited CI/compiler memory as the Android build.
+        # A single translation unit containing all backdrop BMPs can exhaust
+        # the hosted runner before it can report a compiler error.
+        list(APPEND vr_embed_options --chunk-bytes 8192 --split-dir
+            "${vr_generated_dir}")
+        foreach(identifier IN LISTS vr_resource_ids)
+            list(APPEND vr_split_outputs
+                "${vr_generated_dir}/embedded_resource_${identifier}.cpp")
+        endforeach()
+        list(LENGTH vr_backdrop_files vr_backdrop_count)
+        math(EXPR vr_backdrop_last_id "199 + ${vr_backdrop_count}")
+        foreach(identifier RANGE 200 ${vr_backdrop_last_id})
+            list(APPEND vr_split_outputs
+                "${vr_generated_dir}/embedded_resource_${identifier}.cpp")
+        endforeach()
+    endif()
+    add_custom_command(OUTPUT "${vr_generated_assets}" ${vr_split_outputs}
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_runtime_assets.py"
-            --output "${vr_generated_assets}" ${vr_resource_arguments}
+            --output "${vr_generated_assets}" ${vr_embed_options}
+            ${vr_resource_arguments}
         DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_runtime_assets.py" ${vr_resource_files}
         VERBATIM)
-    target_sources(starfox_vr_game PRIVATE "${vr_generated_assets}")
+    target_sources(starfox_vr_game PRIVATE "${vr_generated_assets}"
+        ${vr_split_outputs})
     target_compile_definitions(starfox_vr_game PRIVATE STARFOX_VR_BUNDLE_ASSETS=1)
 endif()
