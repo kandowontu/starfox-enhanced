@@ -6525,11 +6525,14 @@ int main(int argc, char** argv) {
         const auto intro_laser_shape = static_cast<std::uint16_t>(
             symbols.find("ELASER2A").front());
         // Resolve shape headers, not similarly named vertex/face symbols in
-        // other banks. Light beams neither receive lighting nor cast shadows.
+        // other banks. Light beams and the nucleus's small BOSS_8_0 core
+        // neither receive lighting nor cast shadows; its separate cover and
+        // beam-launcher shapes retain their ordinary materials.
         const auto emissive_beam_shapes = [&] {
             std::unordered_set<std::uint16_t> result;
             for (const auto* name : {"LASERLINE", "LASER_0", "ELASER2",
-                    "ELASER2_S2", "ELASER2A", "PLAYERBEAM", "RINGLASER", "OVALBEAM"})
+                    "ELASER2_S2", "ELASER2A", "PLAYERBEAM", "RINGLASER", "OVALBEAM",
+                    "BOSS_8_0"})
                 for (const auto address : symbols.find(name))
                     if (address >= 0x8000U && address <= 0xffffU)
                         result.insert(static_cast<std::uint16_t>(address));
