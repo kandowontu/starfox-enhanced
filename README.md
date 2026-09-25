@@ -166,3 +166,23 @@ interpolated. Visual parity remains an ongoing effort.
 See [Credits](CREDITS.md) for Nintendo/Argonaut, EX, UltraStarFox and port
 contributors, and [Third-party notices](THIRD_PARTY_NOTICES.md) for dependencies
 and licenses.
+
+## FAQ
+
+Q) The speed on "ORIGINAL" is not lining up exactly with an snes reply.
+A) Thats because the speed on the SNES is variable depending on how many models on are screen. The "ORIGINAL" pace is an average speed without overload, as close to original as possible. An "ACCURATE" option may come in the future.
+
+Q) THERES XXXXX BUG (AND IVE BEEN REPORTING IT FOR WEEKS)
+A) There's a lot to do. A lot. With your patience, it WILL be perfect in time. See the version number? It's accurate.
+
+Q) Will you add Starfox 2/SF Contest/Starglider?
+A) Starfox 2: yes. SF Contest: maybe. Starglider: maybe.
+
+Q) Is AI used in this??
+A) Yep. I, however, am not personally installing it on your pc or forcing you to play it.
+
+Q) How do I reset settings to default?
+A) Hold L+R on the pre-game menu until it resets the settings.
+
+Q) What have you personally tested this on?
+A) Retroid Pocket Flip (60fps with no upscaling effects, less with any), iPhone 17 Pro Max (120fps with 2x upscaling and raytracing), Steam Deck, Quest 3, PC.
