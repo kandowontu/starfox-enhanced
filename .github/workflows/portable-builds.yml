@@ -612,7 +612,6 @@ jobs:
           draft: false
 
   release-checksums:
-    if: false
     name: Release package checksums
     needs: [windows-x64, windows-x86, xbox-uwp-x64, linux-x64, macos-universal, ios-device, android-arm64, quest-arm64, windows-pcvr, switch-homebrew, vita-homebrew]
     if: github.event_name == 'push' || inputs.release_tag != ''
