@@ -217,7 +217,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Xbox UWP package verification failed' }
     [xml]$verifiedManifest = Get-Content -LiteralPath (Join-Path $verification 'AppxManifest.xml') -Raw
     if ($verifiedManifest.Package.Identity.ProcessorArchitecture -ne 'x64' `
-        -or $verifiedManifest.Package.Identity.Version -ne "0.0.6.$BuildRevision") {
+        -or $verifiedManifest.Package.Identity.Version -ne "0.0.8.$BuildRevision") {
         throw 'Xbox UWP package has the wrong architecture or build revision'
     }
     if ((Get-FileHash -LiteralPath (Join-Path $verification 'starfox_pc.exe')).Hash `

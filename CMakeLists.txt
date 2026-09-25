@@ -867,14 +867,29 @@ if(STARFOX_BUILD_RUNTIME)
         set(STARFOX_GENERATED_EMBEDDED_ASSETS
             "${CMAKE_CURRENT_BINARY_DIR}/generated/embedded_assets.cpp")
         set(STARFOX_EMBED_CHUNK_ARGS)
-        if(WINDOWS_STORE)
-            # MSVC runs out of heap when concatenating a multi-megabyte BMP
-            # into one string literal. Preserve the bytes but assemble them
-            # lazily from bounded literals on UWP.
+        set(STARFOX_EMBED_SPLIT_OUTPUTS)
+        if(ANDROID OR WINDOWS_STORE)
+            # MSVC's compiler heap cannot concatenate a multi-megabyte BMP
+            # literal; mobile compilers also need bounded literal sizes.
             list(APPEND STARFOX_EMBED_CHUNK_ARGS --chunk-bytes 8192)
+        endif()
+        if(ANDROID)
+            # A single source file containing every backdrop exhausts mobile
+            # runner RAM. Compile each resource in a bounded translation unit.
+            list(APPEND STARFOX_EMBED_CHUNK_ARGS --split-dir
+                "${CMAKE_CURRENT_BINARY_DIR}/generated")
+            foreach(resource_id IN ITEMS 101 102 108 109 120 121 122 123 124 125 126)
+                list(APPEND STARFOX_EMBED_SPLIT_OUTPUTS
+                    "${CMAKE_CURRENT_BINARY_DIR}/generated/embedded_resource_${resource_id}.cpp")
+            endforeach()
+            foreach(resource_id RANGE 200 236)
+                list(APPEND STARFOX_EMBED_SPLIT_OUTPUTS
+                    "${CMAKE_CURRENT_BINARY_DIR}/generated/embedded_resource_${resource_id}.cpp")
+            endforeach()
         endif()
         add_custom_command(
             OUTPUT "${STARFOX_GENERATED_EMBEDDED_ASSETS}"
+                ${STARFOX_EMBED_SPLIT_OUTPUTS}
             COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_runtime_assets.py"
                 --output "${STARFOX_GENERATED_EMBEDDED_ASSETS}"
@@ -980,9 +995,15 @@ if(STARFOX_BUILD_RUNTIME)
             COMMENT "Embedding portable runtime patch resources"
             VERBATIM)
         add_library(starfox_embedded_assets STATIC
-            "${STARFOX_GENERATED_EMBEDDED_ASSETS}")
+            "${STARFOX_GENERATED_EMBEDDED_ASSETS}"
+            ${STARFOX_EMBED_SPLIT_OUTPUTS})
         target_include_directories(starfox_embedded_assets PRIVATE include)
         target_compile_features(starfox_embedded_assets PRIVATE cxx_std_20)
+        if(STARFOX_EMBED_SPLIT_OUTPUTS AND CMAKE_GENERATOR MATCHES "Ninja")
+            set_property(GLOBAL APPEND PROPERTY JOB_POOLS starfox_embed_compile=2)
+            set_property(TARGET starfox_embedded_assets PROPERTY
+                JOB_POOL_COMPILE starfox_embed_compile)
+        endif()
 
         if(NOT ANDROID AND NOT IOS AND NOT WINDOWS_STORE
            AND NOT SWITCH AND NOT VITA)

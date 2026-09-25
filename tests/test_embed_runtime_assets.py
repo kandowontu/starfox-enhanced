@@ -35,23 +35,30 @@ int main() {
     return std::fwrite(data.data(), 1, data.size(), stdout) == data.size() ? 0 : 3;
 }
 ''', encoding='utf-8')
-        for chunk_bytes in (0, 257):
+        for mode, chunk_bytes, split in (
+                ('normal', 0, False), ('chunked', 257, False),
+                ('split', 257, True)):
             command = [sys.executable, str(root / 'tools/embed_runtime_assets.py'),
                        '--output', str(work / 'assets.cpp'),
                        '--resource', f'101={work / "bytes.bin"}',
                        '--resource', f'232={work / "empty.bin"}']
             if chunk_bytes:
                 command.extend(['--chunk-bytes', str(chunk_bytes)])
+            if split:
+                command.extend(['--split-dir', str(work / 'split')])
             subprocess.run(command, check=True)
             binary = work / 'check'
+            sources = [str(work / 'assets.cpp')]
+            if split:
+                sources.extend(str(path) for path in sorted((work / 'split').glob('*.cpp')))
             subprocess.run([args.compiler, '-std=c++20', '-O2', '-I', str(root / 'include'),
-                            str(work / 'assets.cpp'), str(work / 'check.cpp'),
+                            *sources, str(work / 'check.cpp'),
                             '-o', str(binary)], check=True)
             result = subprocess.run([str(binary)], check=True, capture_output=True)
             assert result.stdout == payload, (
-                f'Embedded binary bytes or length changed for chunk_bytes={chunk_bytes}: '
+                f'Embedded binary bytes or length changed for mode={mode}: '
                 f'{len(result.stdout)} != {len(payload)}')
-    print('Portable resources: normal/chunked bytes, NULs, empty and missing IDs pass')
+    print('Portable resources: normal/chunked/split bytes, NULs, empty and missing IDs pass')
 
 
 if __name__ == '__main__':
