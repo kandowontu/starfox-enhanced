@@ -63,6 +63,15 @@ android {
         }
         release {
             minifyEnabled false
+            // Clang's -O3 pass over the large native simulation can exhaust
+            // the hosted arm64 build runner. -O2 retains optimized gameplay
+            // without terminating the release build mid-compile.
+            externalNativeBuild {
+                cmake {
+                    arguments '-DCMAKE_C_FLAGS_RELEASE=-O2 -DNDEBUG',
+                        '-DCMAKE_CXX_FLAGS_RELEASE=-O2 -DNDEBUG'
+                }
+            }
             if (System.getenv('ANDROID_RELEASE_KEYSTORE_PATH')) {
                 signingConfig signingConfigs.permanent
             }
