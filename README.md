@@ -4,8 +4,8 @@ A native C++/SDL3 port of [UltraStarFox](https://github.com/Sunlitspace542/ultra
 with **Original Star Fox** and **Star Fox EX** experiences, high-frame-rate
 presentation, widescreen support, and optional visual enhancements.
 
-**[Download 0.0.6.7](https://github.com/kandowontu/starfox-enhanced/releases/tag/v0.0.6.7)** ·
-[Changelog](https://github.com/kandowontu/starfox-enhanced/blob/main/docs/RELEASE-0.0.6.7.md) ·
+**[Download 0.0.8](https://github.com/kandowontu/starfox-enhanced/releases/tag/v0.0.8)** ·
+[Changelog](https://github.com/kandowontu/starfox-enhanced/blob/main/docs/RELEASE-0.0.8.md) ·
 [Settings and controls](https://github.com/kandowontu/starfox-enhanced/blob/main/docs/SETTINGS-AND-CONTROLS.md) ·
 [Build guide](https://github.com/kandowontu/starfox-enhanced/blob/main/docs/BUILDING.md) ·
 [Report a bug](https://github.com/kandowontu/starfox-enhanced/issues)
@@ -55,9 +55,10 @@ competition cartridges, Star Fox 2 and unknown revisions are not supported.
 | Nintendo Switch | Homebrew NRO; [setup and optional forwarder](https://github.com/kandowontu/starfox-enhanced/blob/main/platform/switch/README.md). |
 | PS Vita | Homebrew VPK; [setup](https://github.com/kandowontu/starfox-enhanced/blob/main/platform/vita/README.md). |
 | Xbox UWP x64 | Developer Mode required; [setup](https://github.com/kandowontu/starfox-enhanced/blob/main/platform/uwp/README.md). |
+| Windows PCVR / Quest 3 | Experimental OpenXR packages; [VR setup](https://github.com/kandowontu/starfox-enhanced/blob/main/docs/VR-BUILD.md). |
 
 Build success does not guarantee identical behavior on every device.
-See the [release notes](https://github.com/kandowontu/starfox-enhanced/blob/main/docs/RELEASE-0.0.6.7.md) for verification limits.
+See the [release notes](https://github.com/kandowontu/starfox-enhanced/blob/main/docs/RELEASE-0.0.8.md) for verification limits.
 
 **Android upgrades:** 0.0.6 uses a permanent signing key. Older APKs used
 temporary keys, so upgrading from those builds requires a one-time reinstall.
