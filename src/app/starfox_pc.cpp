@@ -432,7 +432,11 @@ std::string_view display_profile_name(
     case starfox::simulation::DisplayMode::ultrawide_21_9:
         return "21 BY 9";
     case starfox::simulation::DisplayMode::super_ultrawide_32_9:
+#if defined(SDL_PLATFORM_IOS)
+        return "FIT DEVICE";
+#else
         return "32 BY 9";
+#endif
     case starfox::simulation::DisplayMode::standard_4_3:
     default:
         return "4 BY 3";
@@ -1565,8 +1569,17 @@ public:
     [[nodiscard]] static SDL_RendererLogicalPresentation presentation_mode(
         std::uint32_t width,std::uint32_t height) noexcept {
 #if defined(SDL_PLATFORM_IOS)
-        if (std::uint64_t(width)*3U>std::uint64_t(height)*4U)
-            return SDL_LOGICAL_PRESENTATION_STRETCH;
+        if(const auto* display=SDL_GetCurrentDisplayMode(SDL_GetPrimaryDisplay())) {
+            const auto wide=std::uint64_t(std::max(display->w,display->h));
+            const auto tall=std::uint64_t(std::min(display->w,display->h));
+            if(wide && tall && height && width>height) {
+                const auto canvas=std::uint64_t(width)*tall;
+                const auto panel=std::uint64_t(height)*wide;
+                const auto difference=canvas>panel?canvas-panel:panel-canvas;
+                if(difference*200U<=panel)
+                    return SDL_LOGICAL_PRESENTATION_STRETCH;
+            }
+        }
 #else
         (void)width;(void)height;
 #endif
@@ -1576,13 +1589,18 @@ public:
         starfox::simulation::DisplayMode mode) const noexcept {
         const auto preset=display_width_for(mode);
 #if defined(SDL_PLATFORM_IOS)
-        if (mode!=starfox::simulation::DisplayMode::standard_4_3) {
+        if (mode==starfox::simulation::DisplayMode::super_ultrawide_32_9) {
             int pixels_w=0,pixels_h=0;
-            if (SDL_GetWindowSizeInPixels(window_,&pixels_w,&pixels_h)
-                && pixels_w>pixels_h && pixels_h>0)
+            if(const auto* display=SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window_))) {
+                pixels_w=std::max(display->w,display->h);
+                pixels_h=std::min(display->w,display->h);
+            } else if(SDL_GetWindowSizeInPixels(window_,&pixels_w,&pixels_h)
+                && pixels_h>pixels_w) std::swap(pixels_w,pixels_h);
+            if(pixels_w>pixels_h && pixels_h>0)
                 return starfox::render::device_fitted_width(snes_height,
                     std::uint32_t(pixels_w),std::uint32_t(pixels_h),
                     snes_width,super_ultrawide_width);
+            return ultrawide_width;
         }
 #endif
         return preset;
@@ -11783,7 +11801,11 @@ int main(int argc, char** argv) {
                             case starfox::simulation::DisplayMode::ultrawide_21_9:
                                 return "21 BY 9 ULTRA";
                             case starfox::simulation::DisplayMode::super_ultrawide_32_9:
+#if defined(SDL_PLATFORM_IOS)
+                                return "FIT DEVICE";
+#else
                                 return "32 BY 9 SUPER";
+#endif
                             case starfox::simulation::DisplayMode::standard_4_3:
                             default:
                                 return "4 BY 3 STANDARD";

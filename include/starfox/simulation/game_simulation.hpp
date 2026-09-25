@@ -542,6 +542,9 @@ public:
         return render_scale_;
     }
     void set_render_scale(RenderScale scale) noexcept {
+#if defined(STARFOX_IOS_RUNTIME)
+        if (scale > RenderScale::scale_2x) scale = RenderScale::scale_2x;
+#endif
         render_scale_ = scale;
     }
     void set_secondary_inputs(

@@ -28,12 +28,19 @@ constexpr std::array<DisplayMode, 5> kDisplayModes{
     DisplayMode::ultrawide_21_9,
     DisplayMode::super_ultrawide_32_9,
 };
+#if defined(STARFOX_IOS_RUNTIME)
+constexpr std::array<RenderScale, 2> kRenderScales{
+    RenderScale::scale_1x,
+    RenderScale::scale_2x,
+};
+#else
 constexpr std::array<RenderScale, render_scale_count> kRenderScales{
     RenderScale::scale_1x,
     RenderScale::scale_2x,
     RenderScale::scale_3x,
     RenderScale::scale_4x,
 };
+#endif
 constexpr std::array<CrosshairColour, 8> kCrosshairColours{
     CrosshairColour::green,
     CrosshairColour::white,

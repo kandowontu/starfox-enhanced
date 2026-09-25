@@ -254,6 +254,9 @@ add_library(starfox_core
 )
 
 target_include_directories(starfox_core PUBLIC include)
+if(IOS)
+    target_compile_definitions(starfox_core PUBLIC STARFOX_IOS_RUNTIME)
+endif()
 target_include_directories(starfox_core SYSTEM PRIVATE "${dr_libs_SOURCE_DIR}")
 target_compile_features(starfox_core PUBLIC cxx_std_20)
 find_package(Threads REQUIRED)
