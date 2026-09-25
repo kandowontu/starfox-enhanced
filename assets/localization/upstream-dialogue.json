@@ -72,7 +72,7 @@
           "id": 1,
           "colour": "white",
           "speaker": "fox",
-          "text": "c'est ok les mecs?!",
+          "text": "Tout est ok, les mecs ?",
           "kind": "other",
           "line": 1
         },
@@ -118,7 +118,7 @@
           "id": 2,
           "colour": "white",
           "speaker": "fox",
-          "text": "youhouuu!!",
+          "text": "Youhouuu !!",
           "kind": "other",
           "line": 2
         },
@@ -164,7 +164,7 @@
           "id": 3,
           "colour": "white",
           "speaker": "fox",
-          "text": "slippy slippy!",
+          "text": "Slippy, Slippy !",
           "kind": "other",
           "line": 3
         },
@@ -210,7 +210,7 @@
           "id": 4,
           "colour": "white",
           "speaker": "fox",
-          "text": "retourne a la base! ",
+          "text": "Retourne a la base ! ",
           "kind": "other",
           "line": 4
         },
@@ -256,7 +256,7 @@
           "id": 5,
           "colour": "white",
           "speaker": "falcon",
-          "text": "pret, fox! ",
+          "text": "Prêt, Fox ! ",
           "kind": "other",
           "line": 5
         },
@@ -302,7 +302,7 @@
           "id": 6,
           "colour": "white",
           "speaker": "falcon",
-          "text": "je suis avec toi! ",
+          "text": "Je suis avec toi ! ",
           "kind": "other",
           "line": 6
         },
@@ -348,7 +348,7 @@
           "id": 7,
           "colour": "white",
           "speaker": "falcon",
-          "text": "lache moi, co##!",
+          "text": "lâche moi, co##!",
           "kind": "help",
           "line": 7
         },
@@ -394,7 +394,7 @@
           "id": 8,
           "colour": "white",
           "speaker": "falcon",
-          "text": "regarde ce que tu fait, fox!",
+          "text": "Mêle-toi de tes affaires, Fox !",
           "kind": "other",
           "line": 8
         },
@@ -440,7 +440,7 @@
           "id": 9,
           "colour": "white",
           "speaker": "falcon",
-          "text": "haa! je suis touche!!!!",
+          "text": "Haa ! Ils m'ont eu !!!!",
           "kind": "down",
           "line": 9
         },
@@ -486,7 +486,7 @@
           "id": 10,
           "colour": "white",
           "speaker": "falcon",
-          "text": "j'vais les eclater!",
+          "text": "j'vais me les faire !",
           "kind": "other",
           "line": 10
         },
@@ -532,7 +532,7 @@
           "id": 11,
           "colour": "white",
           "speaker": "falcon",
-          "text": "il y en a plus en route!",
+          "text": "Il y en a d'autres plus loin !",
           "kind": "other",
           "line": 11
         },
@@ -578,7 +578,7 @@
           "id": 12,
           "colour": "white",
           "speaker": "falcon",
-          "text": "laches, ne vous cachez pas!",
+          "text": "Lâches, arrêtez de vous cacher !",
           "kind": "other",
           "line": 12
         },
@@ -624,7 +624,7 @@
           "id": 13,
           "colour": "white",
           "speaker": "falcon",
-          "text": "il est a moi!",
+          "text": "Celui-là est pour moi !",
           "kind": "other",
           "line": 13
         },
@@ -670,7 +670,7 @@
           "id": 14,
           "colour": "white",
           "speaker": "falcon",
-          "text": "regarde ca!",
+          "text": "Fais gaffe, Fox !",
           "kind": "help",
           "line": 14
         },
@@ -716,7 +716,7 @@
           "id": 15,
           "colour": "white",
           "speaker": "falcon",
-          "text": "ouille!!!",
+          "text": "Je suis touché !!!",
           "kind": "other",
           "line": 15
         },
@@ -762,7 +762,7 @@
           "id": 16,
           "colour": "white",
           "speaker": "falcon",
-          "text": "ils viennent!",
+          "text": "Ils arrivent !",
           "kind": "other",
           "line": 16
         },
@@ -808,7 +808,7 @@
           "id": 17,
           "colour": "white",
           "speaker": "falcon3",
-          "text": "coupe son cou et sa queue, fox!!!",
+          "text": "Vise son cou et sa queue, Fox !!!",
           "kind": "other",
           "line": 17
         },
@@ -854,7 +854,7 @@
           "id": 18,
           "colour": "white",
           "speaker": "falcon3",
-          "text": "detruit ses bras puis vise le corps!",
+          "text": "Détruis ses bras puis vise le corps !",
           "kind": "other",
           "line": 18
         },
@@ -900,7 +900,7 @@
           "id": 19,
           "colour": "white",
           "speaker": "falcon",
-          "text": "ralentit le, fox!",
+          "text": "Freine, Fox !",
           "kind": "other",
           "line": 19
         },
@@ -946,7 +946,7 @@
           "id": 20,
           "colour": "white",
           "speaker": "falcon3",
-          "text": "roule baby! rock 'n roll!",
+          "text": "Roule, bébé ! Rock 'n roll !",
           "kind": "other",
           "line": 20
         },
@@ -992,7 +992,7 @@
           "id": 21,
           "colour": "white",
           "speaker": "falcon",
-          "text": "mon vaisseau, merde###",
+          "text": "Mon vaisseau, merde###",
           "kind": "other",
           "line": 21
         },
@@ -1038,7 +1038,7 @@
           "id": 22,
           "colour": "white",
           "speaker": "falcon",
-          "text": "he! c'est le mien!",
+          "text": "Hé ! C'était le mien !",
           "kind": "other",
           "line": 22
         },
@@ -1084,7 +1084,7 @@
           "id": 23,
           "colour": "white",
           "speaker": "falcon",
-          "text": "les mecs, j'arrive!!!!!!",
+          "text": "Les mecs, j'arrive !!!!!!",
           "kind": "other",
           "line": 23
         },
@@ -1130,7 +1130,7 @@
           "id": 24,
           "colour": "white",
           "speaker": "falcon",
-          "text": "je te couvre!",
+          "text": "Je te couvre !",
           "kind": "other",
           "line": 24
         },
@@ -1176,7 +1176,7 @@
           "id": 25,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "on y vas! ouais!",
+          "text": "On y va ! Ouais !",
           "kind": "other",
           "line": 25
         },
@@ -1222,7 +1222,7 @@
           "id": 26,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "je te suis, fox!",
+          "text": "Je te suis, Fox !",
           "kind": "other",
           "line": 26
         },
@@ -1268,7 +1268,7 @@
           "id": 27,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "crevez, enfoires!!!!",
+          "text": "Crevez, enfoirés !!!!",
           "kind": "help",
           "line": 27
         },
@@ -1314,7 +1314,7 @@
           "id": 28,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "tranquille!",
+          "text": "Tranquille ! Merci !",
           "kind": "other",
           "line": 28
         },
@@ -1360,7 +1360,7 @@
           "id": 29,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "aargh!! j'ai perdu!!",
+          "text": "Aargh !! J'ai perdu !!",
           "kind": "down",
           "line": 29
         },
@@ -1406,7 +1406,7 @@
           "id": 30,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "detruit les!!",
+          "text": "Ecrasons-les !!",
           "kind": "other",
           "line": 30
         },
@@ -1452,7 +1452,7 @@
           "id": 31,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "j'en ai eu un !!!",
+          "text": "J'en ai eu un !!!",
           "kind": "other",
           "line": 31
         },
@@ -1498,7 +1498,7 @@
           "id": 32,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "prend ca, salopard!!",
+          "text": "Prends ça, salopard !!",
           "kind": "other",
           "line": 32
         },
@@ -1544,7 +1544,7 @@
           "id": 33,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "pas de chance, mon pote!",
+          "text": "Pas de chance, mon pote !",
           "kind": "other",
           "line": 33
         },
@@ -1590,7 +1590,7 @@
           "id": 34,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "vise mieux, fox!",
+          "text": "Attention où tu vises, Fox!",
           "kind": "help",
           "line": 34
         },
@@ -1636,7 +1636,7 @@
           "id": 35,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "ouch! ouch!",
+          "text": "Ayaye !!",
           "kind": "other",
           "line": 35
         },
@@ -1682,7 +1682,7 @@
           "id": 36,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "he! un boss arrive!",
+          "text": "Hé ! Un boss arrive !",
           "kind": "other",
           "line": 36
         },
@@ -1728,7 +1728,7 @@
           "id": 37,
           "colour": "white",
           "speaker": "rabbit3",
-          "text": "racourcit son cou et sa queue, fox!",
+          "text": "Racourcis son cou et sa queue, Fox !",
           "kind": "other",
           "line": 37
         },
@@ -1774,7 +1774,7 @@
           "id": 38,
           "colour": "white",
           "speaker": "rabbit3",
-          "text": "detruit ses bras puis vise le corps!",
+          "text": "Détruis ses bras puis vise le corps !",
           "kind": "other",
           "line": 38
         },
@@ -1820,7 +1820,7 @@
           "id": 39,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "relentit! ralentit!!!",
+          "text": "Freine ! Ralentis !!!",
           "kind": "other",
           "line": 39
         },
@@ -1866,7 +1866,7 @@
           "id": 40,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "he! fox! evite ca!",
+          "text": "Hé ! Fox ! Evite ça !",
           "kind": "other",
           "line": 40
         },
@@ -1912,7 +1912,7 @@
           "id": 41,
           "colour": "white",
           "speaker": "rabbit3",
-          "text": "recupere moi a ton retour!",
+          "text": "Récupere-moi à ton retour !",
           "kind": "other",
           "line": 41
         },
@@ -1958,7 +1958,7 @@
           "id": 42,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "c'etait le mien!",
+          "text": "Hé, c'était le mien !",
           "kind": "other",
           "line": 42
         },
@@ -2004,7 +2004,7 @@
           "id": 43,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "degage!!",
+          "text": "Dégage !!",
           "kind": "other",
           "line": 43
         },
@@ -2050,7 +2050,7 @@
           "id": 44,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "je te suis de pres!",
+          "text": "Je te suis de près !",
           "kind": "other",
           "line": 44
         },
@@ -2096,7 +2096,7 @@
           "id": 45,
           "colour": "white",
           "speaker": "frog",
-          "text": "ok!!",
+          "text": "ok !!",
           "kind": "other",
           "line": 45
         },
@@ -2142,7 +2142,7 @@
           "id": 46,
           "colour": "white",
           "speaker": "frog",
-          "text": "flippe pas, je m'ocupe de la queue!",
+          "text": "Croa, je suis juste derrière !",
           "kind": "other",
           "line": 46
         },
@@ -2188,7 +2188,7 @@
           "id": 47,
           "colour": "white",
           "speaker": "frog",
-          "text": "au secours, fox!",
+          "text": "Croa ! A l'aide, Fox !",
           "kind": "help",
           "line": 47
         },
@@ -2234,7 +2234,7 @@
           "id": 48,
           "colour": "white",
           "speaker": "frog",
-          "text": "merci, a charge de revanche!",
+          "text": "Merci, à charge de revanche !",
           "kind": "other",
           "line": 48
         },
@@ -2280,7 +2280,7 @@
           "id": 49,
           "colour": "white",
           "speaker": "frog",
-          "text": "non! non! crroaa!",
+          "text": "Non ! Non ! Crroaa !",
           "kind": "down",
           "line": 49
         },
@@ -2326,7 +2326,7 @@
           "id": 50,
           "colour": "white",
           "speaker": "frog",
-          "text": "je l'aurais, c'est sur!",
+          "text": "je l'aurai - ccroa !",
           "kind": "other",
           "line": 50
         },
@@ -2372,7 +2372,7 @@
           "id": 51,
           "colour": "white",
           "speaker": "frog",
-          "text": "fils de pute!!",
+          "text": "Du gâteau !!",
           "kind": "other",
           "line": 51
         },
@@ -2418,7 +2418,7 @@
           "id": 52,
           "colour": "white",
           "speaker": "frog3",
-          "text": "prend ca, salopard!!",
+          "text": "Prends ça, salopard !!",
           "kind": "other",
           "line": 52
         },
@@ -2464,7 +2464,7 @@
           "id": 53,
           "colour": "white",
           "speaker": "frog3",
-          "text": "je l'aurais celui la!!",
+          "text": "Je l'aurai, celui-là !!",
           "kind": "other",
           "line": 53
         },
@@ -2510,7 +2510,7 @@
           "id": 54,
           "colour": "white",
           "speaker": "frog",
-          "text": "he, c'est moi, slippy!",
+          "text": "Hé, c'est moi, Slippy !",
           "kind": "help",
           "line": 54
         },
@@ -2556,7 +2556,7 @@
           "id": 55,
           "colour": "white",
           "speaker": "frog",
-          "text": "je suis touche!!",
+          "text": "Ccroa, je suis touché !!",
           "kind": "other",
           "line": 55
         },
@@ -2602,7 +2602,7 @@
           "id": 56,
           "colour": "white",
           "speaker": "frog",
-          "text": "merde! il y en a trop!!",
+          "text": "Ils sont trop nombreux !!",
           "kind": "other",
           "line": 56
         },
@@ -2648,7 +2648,7 @@
           "id": 57,
           "colour": "white",
           "speaker": "frog",
-          "text": "on le contourne, okay?!",
+          "text": "On fait demi-tour, ok ?!",
           "kind": "other",
           "line": 57
         },
@@ -2694,7 +2694,7 @@
           "id": 58,
           "colour": "white",
           "speaker": "frog",
-          "text": "fait attention!!",
+          "text": "Soyons prudents !!",
           "kind": "other",
           "line": 58
         },
@@ -2740,7 +2740,7 @@
           "id": 59,
           "colour": "white",
           "speaker": "frog",
-          "text": "un truc me colle de pres!!",
+          "text": "Un truc me colle aux fesses !!",
           "kind": "other",
           "line": 59
         },
@@ -2786,7 +2786,7 @@
           "id": 60,
           "colour": "white",
           "speaker": "frog3",
-          "text": "je pourrait pas, fox!!",
+          "text": "je p-p-p-pourrais pas, Fox !!",
           "kind": "other",
           "line": 60
         },
@@ -2832,7 +2832,7 @@
           "id": 61,
           "colour": "white",
           "speaker": "frog3",
-          "text": "he! soit pas si gourmant!!",
+          "text": "Hé! Laisses-en aux autres un peu !!",
           "kind": "other",
           "line": 61
         },
@@ -2878,7 +2878,7 @@
           "id": 62,
           "colour": "white",
           "speaker": "frog",
-          "text": "degagez, bande de cons!!",
+          "text": "Dégagez, bande de cons !!",
           "kind": "other",
           "line": 62
         },
@@ -2924,7 +2924,7 @@
           "id": 63,
           "colour": "white",
           "speaker": "frog",
-          "text": "he! trop c'est trop!!",
+          "text": "J'espère qu'il n'y en a plus !!",
           "kind": "other",
           "line": 63
         },
@@ -2970,7 +2970,7 @@
           "id": 64,
           "colour": "white",
           "speaker": "frog",
-          "text": "tu m'a pas vu?",
+          "text": "Tu m'as vu ?",
           "kind": "other",
           "line": 64
         },
@@ -3016,7 +3016,7 @@
           "id": 65,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "j'arrive pas a le croire!!",
+          "text": "J'arrive pas à distinguer le vrai !!",
           "kind": "other",
           "line": 65
         },
@@ -3062,7 +3062,7 @@
           "id": 66,
           "colour": "white",
           "speaker": "falcon",
-          "text": "on rentre!!",
+          "text": "On entre !!",
           "kind": "other",
           "line": 66
         },
@@ -3108,7 +3108,7 @@
           "id": 67,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "j'te suis la dans!!",
+          "text": "J'te suis là-dedans!!",
           "kind": "other",
           "line": 67
         },
@@ -3154,7 +3154,7 @@
           "id": 68,
           "colour": "white",
           "speaker": "frog",
-          "text": "on peut entrer?!",
+          "text": "On y entre ?!",
           "kind": "other",
           "line": 68
         },
@@ -3200,7 +3200,7 @@
           "id": 69,
           "colour": "white",
           "speaker": "falcon",
-          "text": "###il doit pas etre bien###",
+          "text": "###Il sent les ennuis, celui-là###",
           "kind": "help",
           "line": 69
         },
@@ -3246,7 +3246,7 @@
           "id": 70,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "allez!",
+          "text": "Allez !",
           "kind": "help",
           "line": 70
         },
@@ -3292,7 +3292,7 @@
           "id": 71,
           "colour": "white",
           "speaker": "frog",
-          "text": "allez, fox! croaa!!",
+          "text": "Allez, Fox ! Croaa !!",
           "kind": "help",
           "line": 71
         },
@@ -3338,7 +3338,7 @@
           "id": 72,
           "colour": "white",
           "speaker": "falcon",
-          "text": "derriere toi, fox!",
+          "text": "Droit devant, Fox !",
           "kind": "other",
           "line": 72
         },
@@ -3384,7 +3384,7 @@
           "id": 73,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "attention, fox!",
+          "text": "Sois prudent, Fox !",
           "kind": "other",
           "line": 73
         },
@@ -3430,7 +3430,7 @@
           "id": 74,
           "colour": "white",
           "speaker": "frog3",
-          "text": "on est quitte, fox!!",
+          "text": "On est quittes, Fox !!",
           "kind": "other",
           "line": 74
         },
@@ -3476,7 +3476,7 @@
           "id": 75,
           "colour": "white",
           "speaker": "falcon",
-          "text": "cool, fox!",
+          "text": "Impec, Fox !",
           "kind": "other",
           "line": 75
         },
@@ -3522,7 +3522,7 @@
           "id": 76,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "ou est le prochain?!",
+          "text": "J'suis ok ! On va où ?!",
           "kind": "other",
           "line": 76
         },
@@ -3568,7 +3568,7 @@
           "id": 77,
           "colour": "white",
           "speaker": "frog",
-          "text": "c'est ca, fuit!!",
+          "text": "Tout va bien ici !!",
           "kind": "other",
           "line": 77
         },
@@ -3614,7 +3614,7 @@
           "id": 78,
           "colour": "white",
           "speaker": "frog",
-          "text": "regarde!!",
+          "text": "Regardez !!",
           "kind": "other",
           "line": 78
         },
@@ -3660,7 +3660,7 @@
           "id": 79,
           "colour": "white",
           "speaker": "falcon",
-          "text": "ca a l'air cool, fox!!",
+          "text": "Ca a l'air cool, Fox !!",
           "kind": "other",
           "line": 79
         },
@@ -3706,7 +3706,7 @@
           "id": 80,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "c'est fait, allez!!",
+          "text": "C'est bon, allons-y !!",
           "kind": "other",
           "line": 80
         },
@@ -3752,7 +3752,7 @@
           "id": 81,
           "colour": "white",
           "speaker": "frog",
-          "text": "super!!",
+          "text": "Super !!",
           "kind": "other",
           "line": 81
         },
@@ -3798,7 +3798,7 @@
           "id": 82,
           "colour": "white",
           "speaker": "falcon",
-          "text": "fait plus attention, fox!",
+          "text": "Fais plus attention, Fox !",
           "kind": "other",
           "line": 82
         },
@@ -3844,7 +3844,7 @@
           "id": 83,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "plus doucement, fox!!",
+          "text": "Plus doucement, Fox !!",
           "kind": "other",
           "line": 83
         },
@@ -3890,7 +3890,7 @@
           "id": 84,
           "colour": "white",
           "speaker": "frog",
-          "text": "rappelle toi de pas me tuer!!",
+          "text": "Essaie de pas me tuer !!",
           "kind": "help",
           "line": 84
         },
@@ -3936,7 +3936,7 @@
           "id": 85,
           "colour": "white",
           "speaker": "falcon",
-          "text": "ca sent pas bon ici!!",
+          "text": "Ca sent pas bon, ici !!",
           "kind": "help",
           "line": 85
         },
@@ -3982,7 +3982,7 @@
           "id": 86,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "je le crois pas! je l'ai fait!!",
+          "text": "Je sais pas si j'peux encore tenir !!",
           "kind": "help",
           "line": 86
         },
@@ -4028,7 +4028,7 @@
           "id": 87,
           "colour": "white",
           "speaker": "frog",
-          "text": "mon vaisseau est abime###!",
+          "text": "Mon vaisseau est en miettes###!",
           "kind": "help",
           "line": 87
         },
@@ -4074,7 +4074,7 @@
           "id": 88,
           "colour": "white",
           "speaker": "fox",
-          "text": "equipe star fox, il ne reste plus qu'a contrer l'attaque! bonne chance!",
+          "text": "Equipe star fox, il ne reste plus qu'à contre-attaquer Venom ! Bonne chance !",
           "kind": "other",
           "line": 88
         },
@@ -4120,7 +4120,7 @@
           "id": 89,
           "colour": "white",
           "speaker": "fox",
-          "text": "andross veut construire une base dans cette zone! detruisez son concasseur!!",
+          "text": "Andross veut construire une base dans cette zone ! Détruisez son concasseur !!",
           "kind": "other",
           "line": 89
         },
@@ -4166,7 +4166,7 @@
           "id": 90,
           "colour": "white",
           "speaker": "fox",
-          "text": "l'armada spatiale est constitue de vaisseaux puissants! detruisez leur coeur!",
+          "text": "L'armada spatiale est constituée de vaisseaux puissants ! Détruisez leur coeur énergétique!",
           "kind": "other",
           "line": 90
         },
@@ -4212,7 +4212,7 @@
           "id": 91,
           "colour": "white",
           "speaker": "fox",
-          "text": "utilisez vos freins si vous allez trop vite! faites attention a mes arwings!",
+          "text": "Utilisez vos freins si vous allez trop vite ! Faites attention à mes Arwings !",
           "kind": "other",
           "line": 91
         },
@@ -4258,7 +4258,7 @@
           "id": 92,
           "colour": "white",
           "speaker": "fox",
-          "text": "andross se cache sur venom! fox, tu doit trouver et detruire ce fou dangereux!",
+          "text": "Andross se cache sur Venom ! Fox, tu dois trouver et détruire ce fou dangereux !",
           "kind": "other",
           "line": 92
         },
@@ -4350,7 +4350,7 @@
           "id": 94,
           "colour": "white",
           "speaker": "fox",
-          "text": "        CHAMP D'ASTEROIDES",
+          "text": "      CHAMP D'ASTEROIDES",
           "kind": "other",
           "line": 94
         },
@@ -4902,7 +4902,7 @@
           "id": 106,
           "colour": "white",
           "speaker": "fox",
-          "text": "les ressources de corneria sont taries! vous devez re-attaquer le controle du temps!",
+          "text": "Les ressources de Corneria sont taries ! Vous devez reprendre le controle de la météo !",
           "kind": "other",
           "line": 106
         },
@@ -4948,7 +4948,7 @@
           "id": 107,
           "colour": "white",
           "speaker": "fox",
-          "text": "faites gaffe en volant! Si un amoeba grimpe sur votre arwing, utilisez l & r pour l'eliminer#",
+          "text": "Faites gaffe en volant ! Si un amoeba grimpe sur votre arwing, utilisez L & R pour l'éliminer#",
           "kind": "other",
           "line": 107
         },
@@ -4994,7 +4994,7 @@
           "id": 108,
           "colour": "white",
           "speaker": "fox",
-          "text": "vous avez choisi la route 3### un bon choix pour surprendre venom!",
+          "text": "Vous avez choisi la route 3### Un bon choix pour surprendre Venom !",
           "kind": "other",
           "line": 108
         },
@@ -5040,7 +5040,7 @@
           "id": 109,
           "colour": "white",
           "speaker": "fox",
-          "text": "utilise le bouton l ou r pour fuir le rayon attracteur de l'ennemi! tu peut le faire, fox!!",
+          "text": "Utilise L ou R pour fuir le rayon attracteur de l'ennemi ! Tu peux y arriver, Fox !!",
           "kind": "other",
           "line": 109
         },
@@ -5086,7 +5086,7 @@
           "id": 110,
           "colour": "white",
           "speaker": "fox",
-          "text": "andross a pris le controle des creatures enormes vivant sur fortuna!  attention, fox!",
+          "text": "Andross a pris contrôle des énormes créatures vivant sur Fortuna !  Sois prudent, Fox !",
           "kind": "other",
           "line": 110
         },
@@ -5132,7 +5132,7 @@
           "id": 111,
           "colour": "white",
           "speaker": "fox",
-          "text": "votre equipe fonctionne, fox!  j'espere que tu prend soin de mes arwings! direction macbeth!!",
+          "text": "Ton équipe se porte bien, Fox !  J'espere que tu prends soin de mes Arwings ! Direction Macbeth !!",
           "kind": "other",
           "line": 111
         },
@@ -5178,7 +5178,7 @@
           "id": 112,
           "colour": "white",
           "speaker": "fox",
-          "text": "l'interieur de macbeth est ideal pour une base! empechons andross d'en construire une!",
+          "text": "L'intérieur creux de Macbeth est idéal pour une base ! Empechons Andross d'en construire une !",
           "kind": "other",
           "line": 112
         },
@@ -5224,7 +5224,7 @@
           "id": 113,
           "colour": "white",
           "speaker": "fox",
-          "text": "c'est dans le cimetiere ou ton pere est entere que andross fait ces experiences! aller, fox!",
+          "text": "Ce cimetiere spatial est rempli d'expériences d'Andross et c'est là où ton père a disparu, Fox !",
           "kind": "other",
           "line": 113
         },
@@ -5270,7 +5270,7 @@
           "id": 114,
           "colour": "white",
           "speaker": "fox",
-          "text": "tout le monde est ok, fox?!  vous allez vous infiltrer discretement dans venom!",
+          "text": "Tout le monde va bien, Fox ?!  Vous allez infiltrer discretement Venom par derrière !",
           "kind": "other",
           "line": 114
         },
@@ -5316,7 +5316,7 @@
           "id": 115,
           "colour": "white",
           "speaker": "fox",
-          "text": "venez, arwings!  ou est fox?!  on a besoin de lui pour proteger corneria!",
+          "text": "Arwings, répondez !  Où est Fox ?!  On a besoin de lui pour protéger Corneria !",
           "kind": "other",
           "line": 115
         },
@@ -5362,7 +5362,7 @@
           "id": 116,
           "colour": "white",
           "speaker": "fox",
-          "text": "fox, c'est tn destin de detruire andross!  nous comptons sur toi, fox!",
+          "text": "Fox, c'est ton destin de détruire Andross !  Nous comptons sur toi, Fox !",
           "kind": "other",
           "line": 116
         },
@@ -5408,7 +5408,7 @@
           "id": 117,
           "colour": "white",
           "speaker": "falcon3",
-          "text": "ce bombardier est a moi!",
+          "text": "Ce bombardier est à moi !",
           "kind": "other",
           "line": 117
         },
@@ -5454,7 +5454,7 @@
           "id": 118,
           "colour": "white",
           "speaker": "pepper3",
-          "text": "ok, fox! montre moi ce que tu vaut!",
+          "text": "Ok, Fox ! Montre-moi ce que tu vaux !",
           "kind": "other",
           "line": 118
         },
@@ -5500,7 +5500,7 @@
           "id": 119,
           "colour": "white",
           "speaker": "rabbit3",
-          "text": "nous devons traverser tous les anneaux!",
+          "text": "On doit traverser tous les anneaux !",
           "kind": "other",
           "line": 119
         },
@@ -5546,7 +5546,7 @@
           "id": 120,
           "colour": "white",
           "speaker": "pepper3",
-          "text": "je te conseille les controles a ou b!",
+          "text": "Je te conseille les contrôles A ou B !",
           "kind": "other",
           "line": 120
         },
@@ -5592,7 +5592,7 @@
           "id": 121,
           "colour": "white",
           "speaker": "pepper3",
-          "text": "ahhh### tu est assez adroit, fox!",
+          "text": "ahhh### tu es plutôt adroit, Fox !",
           "kind": "other",
           "line": 121
         },
@@ -5638,7 +5638,7 @@
           "id": 122,
           "colour": "white",
           "speaker": "pepper3",
-          "text": "ok, c'est bon! vas vers de vrais enemis!",
+          "text": "Ok, c'est bon ! Va affronter de vrais enemis !",
           "kind": "other",
           "line": 122
         },
@@ -5684,7 +5684,7 @@
           "id": 123,
           "colour": "white",
           "speaker": "frog3",
-          "text": "appuie start pour retourner au jeu, ribbit!",
+          "text": "Appuie sur START pour retourner au jeu, croa !",
           "kind": "other",
           "line": 123
         },
@@ -5730,7 +5730,7 @@
           "id": 124,
           "colour": "white",
           "speaker": "falcon3",
-          "text": "je crois pas que pepper nous teste!",
+          "text": "J'arrive pas à croire que pepper nous fasse tester !",
           "kind": "other",
           "line": 124
         },
@@ -5776,7 +5776,7 @@
           "id": 125,
           "colour": "white",
           "speaker": "pepper3",
-          "text": "je suis desole d'avoir doute! presse start!",
+          "text": "Je suis desolé d'avoir douté ! Appuie sur START !",
           "kind": "other",
           "line": 125
         },
@@ -5822,7 +5822,7 @@
           "id": 126,
           "colour": "white",
           "speaker": "andross3",
-          "text": "fox,           tu est un ennemi valable!  ###",
+          "text": "Fox,           tu es un adversaire valable !  ###",
           "kind": "other",
           "line": 126
         },
@@ -5868,7 +5868,7 @@
           "id": 127,
           "colour": "white",
           "speaker": "andross3",
-          "text": "mais vos efforts seronts vains!",
+          "text": "Mais vos efforts seront vains !",
           "kind": "other",
           "line": 127
         },
@@ -5914,7 +5914,7 @@
           "id": 128,
           "colour": "white",
           "speaker": "andross3",
-          "text": "vous n'avez aucune chance contre moi!",
+          "text": "Vos Arwings n'ont aucune chance contre moi !",
           "kind": "other",
           "line": 128
         },
@@ -5960,7 +5960,7 @@
           "id": 129,
           "colour": "white",
           "speaker": "andross3",
-          "text": "je pensait que vous y arriveriez      ###",
+          "text": "Je me doutais que vous y arriveriez      ###",
           "kind": "other",
           "line": 129
         },
@@ -6006,7 +6006,7 @@
           "id": 130,
           "colour": "white",
           "speaker": "andross3",
-          "text": "le general pepper vous a bien mene!",
+          "text": "Le général Pepper vous a bien guidés !",
           "kind": "other",
           "line": 130
         },
@@ -6052,7 +6052,7 @@
           "id": 131,
           "colour": "white",
           "speaker": "andross3",
-          "text": "cependant, vous allez mourrir ici!",
+          "text": "cependant, vous ne partirez pas d'ici vivants !",
           "kind": "other",
           "line": 131
         },
@@ -6098,7 +6098,7 @@
           "id": 132,
           "colour": "white",
           "speaker": "andross3",
-          "text": "ah## votre choix de route m'a surpris!",
+          "text": "ah## votre choix de route m'a surpris !",
           "kind": "other",
           "line": 132
         },
@@ -6144,7 +6144,7 @@
           "id": 133,
           "colour": "white",
           "speaker": "andross3",
-          "text": "ton pere etait aussi imprudent        ###",
+          "text": "Ton père était tout aussi imprudent        ###",
           "kind": "other",
           "line": 133
         },
@@ -6190,7 +6190,7 @@
           "id": 134,
           "colour": "white",
           "speaker": "andross3",
-          "text": "mais ce sera la derniere bataille mccloud!!",
+          "text": "Mais ce sera la dernière bataille d'un McCloud !!",
           "kind": "other",
           "line": 134
         },
@@ -6236,7 +6236,7 @@
           "id": 135,
           "colour": "white",
           "speaker": "falcon",
-          "text": "suis moi, fox!!",
+          "text": "Suis moi, Fox !!",
           "kind": "other",
           "line": 135
         },
@@ -6282,7 +6282,7 @@
           "id": 136,
           "colour": "white",
           "speaker": "falcon",
-          "text": "roll, fox! rock'n roll!",
+          "text": "Rock'n roll, Fox !",
           "kind": "other",
           "line": 136
         },
@@ -6328,7 +6328,7 @@
           "id": 137,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "reste en groupe!",
+          "text": "Maintenez la formation !",
           "kind": "other",
           "line": 137
         },
@@ -6374,7 +6374,7 @@
           "id": 138,
           "colour": "white",
           "speaker": "falcon3",
-          "text": "qu'est ce qui ne vas pas, fox?!",
+          "text": "Qu'est ce qui t'arrive, Fox ?!",
           "kind": "other",
           "line": 138
         },
@@ -6420,7 +6420,7 @@
           "id": 139,
           "colour": "white",
           "speaker": "frog",
-          "text": "s-s-s-super, fox! ribbit!",
+          "text": "T'es s-s-s-super, fox! Croa !",
           "kind": "other",
           "line": 139
         },
@@ -6466,7 +6466,7 @@
           "id": 140,
           "colour": "white",
           "speaker": "falcon",
-          "text": "attention a la piqure!",
+          "text": "Attention à la grosse raie !",
           "kind": "other",
           "line": 140
         },
@@ -6512,7 +6512,7 @@
           "id": 141,
           "colour": "white",
           "speaker": "rabbit",
-          "text": "attention a la piqure!",
+          "text": "Attention à la grosse raie !",
           "kind": "other",
           "line": 141
         },
@@ -6558,7 +6558,7 @@
           "id": 142,
           "colour": "white",
           "speaker": "frog",
-          "text": "attention a la piqure!",
+          "text": "Attention à la grosse raie !",
           "kind": "other",
           "line": 142
         },
