@@ -1500,7 +1500,7 @@ public:
                 presentation_workers_.set_worker_count(
                     static_cast<std::size_t>(count));
         }
-#if defined(STARFOX_UWP) || defined(__ANDROID__)
+#if defined(STARFOX_UWP) || defined(__ANDROID__) || defined(SDL_PLATFORM_IOS)
         auto window_flags = SDL_WINDOW_FULLSCREEN;
 #else
         auto window_flags = SDL_WINDOW_RESIZABLE;
@@ -1562,6 +1562,31 @@ public:
     Window& operator=(const Window&) = delete;
 
     [[nodiscard]] SDL_Renderer* renderer() const noexcept { return renderer_; }
+    [[nodiscard]] static SDL_RendererLogicalPresentation presentation_mode(
+        std::uint32_t width,std::uint32_t height) noexcept {
+#if defined(SDL_PLATFORM_IOS)
+        if (std::uint64_t(width)*3U>std::uint64_t(height)*4U)
+            return SDL_LOGICAL_PRESENTATION_STRETCH;
+#else
+        (void)width;(void)height;
+#endif
+        return SDL_LOGICAL_PRESENTATION_LETTERBOX;
+    }
+    [[nodiscard]] std::uint32_t canvas_width(
+        starfox::simulation::DisplayMode mode) const noexcept {
+        const auto preset=display_width_for(mode);
+#if defined(SDL_PLATFORM_IOS)
+        if (mode!=starfox::simulation::DisplayMode::standard_4_3) {
+            int pixels_w=0,pixels_h=0;
+            if (SDL_GetWindowSizeInPixels(window_,&pixels_w,&pixels_h)
+                && pixels_w>pixels_h && pixels_h>0)
+                return starfox::render::device_fitted_width(snes_height,
+                    std::uint32_t(pixels_w),std::uint32_t(pixels_h),
+                    snes_width,super_ultrawide_width);
+        }
+#endif
+        return preset;
+    }
     [[nodiscard]] starfox::app::TouchOverlayLayout touch_layout() const noexcept {
         int width=0,height=0;
         SDL_GetWindowSize(window_,&width,&height);
@@ -2353,9 +2378,13 @@ public:
         // Restore every later foreground write, including same-colour writes.
         starfox::render::Framebuffer native(commands.width()/source_scale,commands.height()/source_scale,source_scale);
         native.enable_layer_tags(true);
-        starfox::render::SurfaceBuffer surfaces(commands.width(),commands.height());
+        // Do not allocate a full-resolution temporary normal/depth plane for
+        // ordinary intro transitions that have no surface effect.
+        starfox::render::SurfaceBuffer surfaces(0U,0U);
+        auto* surface_data=effects.model_surfaces ? &surfaces : nullptr;
+        if(surface_data) surfaces.resize(commands.width(),commands.height());
         if(recorded_scene_) {
-            if(!force_replay && temporal_raster_jitter_==std::array<float,2>{} && native_scene_.readback(native,&surfaces)) {
+            if(!force_replay && temporal_raster_jitter_==std::array<float,2>{} && native_scene_.readback(native,surface_data)) {
                 if(std::getenv("STARFOX_TRACE_GPU") && !native_readback_reported_) {
                     std::cerr<<"native-pipeline: GPU scene readback for transition/overlay composition\n";
                     native_readback_reported_=true;
@@ -2364,11 +2393,11 @@ public:
             if(std::getenv("STARFOX_TRACE_GPU")) {
                 std::cerr<<"native-pipeline: CPU scene replay for transition/overlay composition\n";
             }
-            recorded_scene_->replay(native,&surfaces);
+            recorded_scene_->replay(native,surface_data);
             }
         } else if(!native_raster_.readback(native,
-                native_raster_.resident_output().surfaces ? &surfaces : nullptr)) {
-            starfox::render::replay_raster_commands(commands,native,&surfaces);
+                native_raster_.resident_output().surfaces ? surface_data : nullptr)) {
+            starfox::render::replay_raster_commands(commands,native,surface_data);
         } else if(std::getenv("STARFOX_TRACE_GPU") && !native_readback_reported_) {
             std::cerr<<"native-pipeline: GPU raster readback for CPU transition/overlay composition\n";
             native_readback_reported_=true;
@@ -2380,7 +2409,7 @@ public:
             composed.pixels()[i]=frame.pixels()[i];
             if(frame.layer_tags_enabled()) composed.layer_tags()[i]=frame.layer_tags()[i];
         }
-        auto fallback=effects;fallback.model_surfaces=&surfaces;
+        auto fallback=effects;fallback.model_surfaces=surface_data;
         if(effects.late_cartridge) apply_late_cartridge(*effects.late_cartridge,composed);
         fallback.late_cartridge=nullptr;
         if(effects.background && effects.background->margin_origin && !effects.background->repair_margins) fill_frontend_margins(composed,effects.background->margin_origin);
@@ -3585,7 +3614,7 @@ private:
         if (!SDL_SetRenderLogicalPresentation(renderer_,
                 static_cast<int>(starfox::render::presentation_width(texture_width_,texture_height_)),
                 static_cast<int>(texture_height_),
-                SDL_LOGICAL_PRESENTATION_LETTERBOX)) {
+                presentation_mode(texture_width_,texture_height_))) {
             throw std::runtime_error{
                 std::string{"SDL_SetRenderLogicalPresentation: "}
                 + SDL_GetError()};
@@ -4247,7 +4276,7 @@ private:
         if(stereo_display_active_) {
             if(!SDL_SetRenderLogicalPresentation(renderer_,
                 int(starfox::render::presentation_width(width,height)),int(height),
-                SDL_LOGICAL_PRESENTATION_LETTERBOX)) throw std::runtime_error(SDL_GetError());
+                presentation_mode(width,height))) throw std::runtime_error(SDL_GetError());
             stereo_display_active_=false;
         }
         update_temporary_status();
@@ -4302,7 +4331,7 @@ private:
             draw_touch_overlay(renderer_,layout);
             if(!SDL_SetRenderLogicalPresentation(renderer_,
                 int(starfox::render::presentation_width(width,height)),int(height),
-                SDL_LOGICAL_PRESENTATION_LETTERBOX))
+                presentation_mode(width,height)))
                 throw std::runtime_error(SDL_GetError());
         }
         const auto draw_done=trace_present_cost?std::chrono::steady_clock::now():upload_done;
@@ -4387,7 +4416,7 @@ private:
             ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST);
         if (!SDL_SetRenderLogicalPresentation(renderer_,
                 static_cast<int>(starfox::render::presentation_width(width,height)), static_cast<int>(height),
-                SDL_LOGICAL_PRESENTATION_LETTERBOX)) {
+                presentation_mode(width,height))) {
             throw std::runtime_error{
                 std::string{"SDL_SetRenderLogicalPresentation: "}
                 + SDL_GetError()};
@@ -5402,7 +5431,14 @@ int main(int argc, char** argv) {
         bool neural_filter_initialized=false;
         startup_trace->mark("initializing SDL");
         sdl.emplace();
-#if defined(__APPLE__) && !defined(SDL_PLATFORM_IOS)
+#if defined(SDL_PLATFORM_IOS)
+        // Keep crash breadcrumbs beside the BIN in File Sharing.
+        if (const auto* documents=SDL_GetUserFolder(SDL_FOLDER_DOCUMENTS);
+            documents && *documents)
+            startup_trace.emplace(std::filesystem::path{documents});
+        else
+            startup_trace.emplace(writable_runtime_directory(executable_directory));
+#elif defined(__APPLE__)
         startup_trace.emplace(writable_runtime_directory(executable_directory));
 #endif
         startup_trace->mark("SDL ready; loading settings");
@@ -6683,6 +6719,10 @@ int main(int argc, char** argv) {
         // dialogue retain their original 224x192 coordinates in a centred
         // inset layer.
         auto render_scale = render_scale_factor(game.render_scale());
+#if defined(SDL_PLATFORM_IOS)
+        auto ios_logged_scale=render_scale;
+        auto ios_logged_flow=game.flow_state();
+#endif
         starfox::render::Framebuffer framebuffer{
             snes_width, snes_height, render_scale};
         starfox::render::Framebuffer superfx_frame{
@@ -7340,7 +7380,7 @@ int main(int argc, char** argv) {
                         if (!window.window_to_logical(window_x, window_y,
                                 logical_x, logical_y)) return;
                         const auto viewport = static_cast<float>((
-                            display_width_for(game.display_mode())
+                            window.canvas_width(game.display_mode())
                             - snes_width) / 2U);
                         const auto local_x = logical_x - viewport;
                         if (begin_drag) {
@@ -7390,7 +7430,7 @@ int main(int argc, char** argv) {
                     volume_slider_drag_music.reset();
                 }
                 if (hud_editor.active) {
-                    const auto editor_width = display_width_for(
+                    const auto editor_width = window.canvas_width(
                         game.display_mode());
                     auto& editor_layout = hud_layouts[
                         hud_profile_index(
@@ -8044,7 +8084,7 @@ int main(int argc, char** argv) {
                             hud_profile_index(
                                 game.display_mode(), game.experience())];
                         clamp_hud_layout(editor_layout,
-                            display_width_for(game.display_mode()),
+                            window.canvas_width(game.display_mode()),
                             game.experience());
                         launch_hud_editor_preview = true;
                         initial_map = "LEVEL1_1";
@@ -8224,7 +8264,7 @@ int main(int argc, char** argv) {
             }
             if (restart_runtime) break;
             const auto profile_frame_start = std::chrono::steady_clock::now();
-            const auto display_width = display_width_for(game.display_mode());
+            const auto display_width = window.canvas_width(game.display_mode());
             auto active_hud_layout = hud_layouts[
                 hud_profile_index(game.display_mode(), game.experience())];
             clamp_hud_layout(
@@ -8273,6 +8313,16 @@ int main(int argc, char** argv) {
             const auto scene_offset_y = extend_scene_vertical
                 ? 0 : superfx_offset_y;
             render_scale = render_scale_factor(game.render_scale());
+#if defined(SDL_PLATFORM_IOS)
+            if (render_scale!=ios_logged_scale || game.flow_state()!=ios_logged_flow) {
+                ios_logged_scale=render_scale;
+                ios_logged_flow=game.flow_state();
+                startup_trace->mark("scene flow="+std::to_string(
+                    static_cast<unsigned>(ios_logged_flow))
+                    +" render-scale="+std::to_string(render_scale)
+                    +" canvas="+std::to_string(display_width));
+            }
+#endif
             if (render_settings.render_scale != render_scale
                 || render_settings.wireframe_thickness != 1U) {
                 render_settings.render_scale = render_scale;

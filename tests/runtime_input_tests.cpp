@@ -107,6 +107,11 @@ int main() {
                 "native aspect correction changed a wide canvas");
         }
     }
+    require(starfox::render::device_fitted_width(224,2400,1080,256,800)==498,
+        "mobile canvas did not fill the display aspect");
+    require(starfox::render::device_fitted_width(224,0,1080,256,800)==256
+        && starfox::render::device_fitted_width(224,8000,1080,256,800)==800,
+        "mobile canvas did not handle missing or extreme dimensions");
     {
         starfox::input::InputLatch menu_input;
         menu_input.sample(starfox::input::a);
