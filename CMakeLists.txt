@@ -52,6 +52,14 @@ if(ANDROID AND STARFOX_BUILD_VR AND CMAKE_GENERATOR MATCHES "Ninja")
     # translation units at once makes the hosted runner terminate mid-build.
     set_property(GLOBAL APPEND PROPERTY JOB_POOLS starfox_quest_compile=1)
     set(CMAKE_JOB_POOL_COMPILE starfox_quest_compile)
+    # These two translation units are unusually large. Clang's O2/O3
+    # optimizer has repeatedly made the hosted Quest runner terminate while
+    # compiling them, even with a single Ninja worker. Keep the rest of the
+    # headset renderer at O2 and use the bounded O1 pass only for simulation.
+    set_source_files_properties(
+        src/simulation/game_simulation.cpp
+        src/simulation/wdc65816.cpp
+        PROPERTIES COMPILE_OPTIONS "-O1")
 endif()
 set(STARFOX_UWP_PACKAGE_CERTIFICATE "" CACHE FILEPATH
     "Development PFX used to sign the Xbox UWP package")
