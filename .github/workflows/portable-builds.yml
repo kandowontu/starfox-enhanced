@@ -501,7 +501,7 @@ jobs:
         with:
           tag_name: ${{ inputs.release_tag || github.ref_name }}
           files: StarFoxEnhanced-0.0.8-quest-arm64.zip
-          draft: false
+          draft: true
 
   windows-pcvr:
     name: Windows x64 OpenXR PCVR development build
@@ -553,7 +553,7 @@ jobs:
         with:
           tag_name: ${{ inputs.release_tag || github.ref_name }}
           files: StarFoxEnhanced-0.0.8-windows-pcvr.zip
-          draft: false
+          draft: true
 
   switch-homebrew:
     name: Nintendo Switch homebrew NRO
@@ -587,7 +587,7 @@ jobs:
         with:
           tag_name: ${{ inputs.release_tag || github.ref_name }}
           files: StarFoxEnhanced-0.0.8-switch-homebrew.zip
-          draft: false
+          draft: true
 
   vita-homebrew:
     name: PS Vita native VPK
@@ -625,7 +625,7 @@ jobs:
         with:
           tag_name: ${{ inputs.release_tag || github.ref_name }}
           files: StarFoxEnhanced-0.0.8-vita.zip
-          draft: false
+          draft: true
 
   release-checksums:
     name: Release package checksums
@@ -648,3 +648,4 @@ jobs:
           sha256sum *.zip *.apk > SHA256SUMS.txt
           tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
           gh release upload "${tag}" SHA256SUMS.txt --clobber
+          gh release edit "${tag}" --draft=false

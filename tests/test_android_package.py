@@ -1,5 +1,6 @@
 """Negative package fixtures: success must require actual embedded artwork."""
 import importlib.util
+import hashlib
 from pathlib import Path
 import struct
 import tempfile
@@ -71,6 +72,24 @@ class AndroidPackageTest(unittest.TestCase):
                 source.write_text(content)
                 with self.subTest(content=content), self.assertRaises(ValueError):
                     module.source_backdrops(root)
+
+    def test_split_embedded_backdrop(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            backdrop_bytes = b'BM' + b''.join(
+                hashlib.sha256(str(index).encode()).digest()
+                for index in range(600))
+            parts = [backdrop_bytes[offset:offset + 8192]
+                     for offset in range(0, len(backdrop_bytes), 8192)]
+            path, backdrops = self.fixture(
+                root, payload=b'\0'.join(parts))
+            backdrops[0].write_bytes(backdrop_bytes)
+            self.assertEqual(module.check(path, backdrops), 1)
+            missing_path, backdrops = self.fixture(
+                root, payload=b'\0'.join(parts[:-1]))
+            backdrops[0].write_bytes(backdrop_bytes)
+            with self.assertRaises(ValueError):
+                module.check(missing_path, backdrops)
 
 
 if __name__ == '__main__':

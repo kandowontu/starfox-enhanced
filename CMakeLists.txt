@@ -47,6 +47,12 @@ option(STARFOX_PACKAGE_MSU1_MUSIC
 option(STARFOX_ENABLE_XBRZ
     "Fetch and compile the GPLv3 xBRZ backend for the 2D presentation filter"
     ON)
+if(ANDROID AND STARFOX_BUILD_VR AND CMAKE_GENERATOR MATCHES "Ninja")
+    # The Quest runner has limited RAM; compiling several large simulation/VR
+    # translation units at once makes the hosted runner terminate mid-build.
+    set_property(GLOBAL APPEND PROPERTY JOB_POOLS starfox_quest_compile=1)
+    set(CMAKE_JOB_POOL_COMPILE starfox_quest_compile)
+endif()
 set(STARFOX_UWP_PACKAGE_CERTIFICATE "" CACHE FILEPATH
     "Development PFX used to sign the Xbox UWP package")
 set(STARFOX_ROM_FILE
@@ -999,7 +1005,8 @@ if(STARFOX_BUILD_RUNTIME)
             ${STARFOX_EMBED_SPLIT_OUTPUTS})
         target_include_directories(starfox_embedded_assets PRIVATE include)
         target_compile_features(starfox_embedded_assets PRIVATE cxx_std_20)
-        if(STARFOX_EMBED_SPLIT_OUTPUTS AND CMAKE_GENERATOR MATCHES "Ninja")
+        if(STARFOX_EMBED_SPLIT_OUTPUTS AND CMAKE_GENERATOR MATCHES "Ninja"
+           AND NOT STARFOX_BUILD_VR)
             set_property(GLOBAL APPEND PROPERTY JOB_POOLS starfox_embed_compile=2)
             set_property(TARGET starfox_embedded_assets PROPERTY
                 JOB_POOL_COMPILE starfox_embed_compile)
