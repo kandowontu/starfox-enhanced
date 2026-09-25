@@ -55,6 +55,16 @@ class QuestPackageTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 module.check(self.fixture(root,art=b'BM'),[backdrop])
 
+    def test_split_backdrop_chunks(self):
+        with tempfile.TemporaryDirectory() as root:
+            backdrop=Path(root)/'split.bmp'
+            data=b'BM'+b'A'*(8192-2)+b'B'*8192+b'C'*1234
+            backdrop.write_bytes(data)
+            parts=[data[offset:offset+8192] for offset in range(0,len(data),8192)]
+            module.check(self.fixture(root,art=b'\x00gap\x00'.join(parts)),[backdrop])
+            with self.assertRaises(ValueError):
+                module.check(self.fixture(root,art=b'\x00gap\x00'.join(parts[:1]+parts[2:])),[backdrop])
+
     def test_catalogue(self):
         paths=module.source_backdrops(Path(__file__).resolve().parents[1])
         # The catalogue is shared with the desktop build and may grow. The
