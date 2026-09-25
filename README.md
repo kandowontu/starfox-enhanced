@@ -159,4 +159,9 @@ interpolated. Visual parity remains an ongoing effort.
 
 See [Credits](CREDITS.md) for Nintendo/Argonaut, EX, UltraStarFox and port
 contributors, and [Third-party notices](THIRD_PARTY_NOTICES.md) for dependencies
-and licenses. Development uses Codex.
+and licenses.
+
+**AI-assisted development:** OpenAI Codex and other AI tools have been used to
+assist with programming, debugging, tests, documentation and some visual asset
+creation. The project maintainer directs and reviews the work; generated asset
+sources are identified in their accompanying notes where applicable.
