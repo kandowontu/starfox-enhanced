@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 $source = [System.IO.Path]::GetFullPath($SourceRoot)
 $build = [System.IO.Path]::GetFullPath((Join-Path $source $BuildDirectory))
 $install = [System.IO.Path]::GetFullPath((Join-Path $source $InstallDirectory))
-$packageName = 'StarFoxEnhanced-0.0.6.7-xbox-uwp-x64.appx'
+$packageName = 'StarFoxEnhanced-0.0.8-xbox-uwp-x64.appx'
 $sourcePrefix = $source.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
 if (-not $build.StartsWith($sourcePrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "BuildDirectory must remain inside SourceRoot"

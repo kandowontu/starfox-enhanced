@@ -111,7 +111,8 @@ bool build_draw_packet(const assets::Shape& shape,const render::RenderPose& pose
                 v.visibility_c[axis]=-(*source_matrix)[axis*4+2];
             }
             v.group_a[0]=float(pose.x);v.group_a[1]=float(pose.y);v.group_a[2]=float(pose.z);
-            v.group_c[0]=pose.explosion_progress;v.group_c[1]=units;
+            v.group_c[0]=float(pose.explosion_phase.value_or(
+                double(pose.explosion_progress)));v.group_c[1]=units;
             v.group_c[2]=pose.use_rotation_matrix && !pose.subpixel_projection?1.F:0.F;
         }
         next.model={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};

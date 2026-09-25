@@ -9,6 +9,7 @@
 #include "starfox/simulation/wdc65816.hpp"
 #include "starfox/simulation/game_simulation.hpp"
 #include "starfox/audio/spc700_audio.hpp"
+#include "starfox/render/environment_effects.hpp"
 #include <iostream>
 #include <cstdlib>
 #include <chrono>
@@ -304,26 +305,82 @@ int main(int argc,char** argv) {
         for(unsigned tick=0;tick<600;++tick) static_cast<void>(game.tick({}));
         const auto full_saved = game.save_state();
         {
+            // Exercise real cartridge archives, not just effect enum helpers.
+            // New IDs are appended; existing state layouts must stay readable.
+            const auto crc=assets::crc32(cartridge.bytes());
+            auto styled=game.restored_state(full_saved);
+            for(bool world:{false,true}) for(auto effect:render::effect_order) {
+                const auto id=static_cast<std::uint8_t>(effect);
+                if(!render::selectable_effect(id,world)) continue;
+                styled->set_effect(world?0:id);
+                styled->set_world_effect(world?id:0);
+                const auto saved=styled->save_state();
+                auto restored=game.restored_state(saved);
+                require(restored->effect()==(world?0:id)
+                    && restored->world_effect()==(world?id:0)
+                    && restored->save_state()==saved,"selectable style state changed during restore");
+            }
+            for(bool world:{false,true}) {
+                const auto set=[&](render::Effect effect) {
+                    if(world) styled->set_world_effect(static_cast<std::uint8_t>(effect));
+                    else styled->set_effect(static_cast<std::uint8_t>(effect));
+                };
+                set(render::Effect::off);const auto off=styled->save_state();
+                set(render::Effect::cyanotype);const auto cyan=styled->save_state();
+                const auto before=state::unpack(off,0x47414d01U,crc);
+                const auto after=state::unpack(cyan,0x47414d01U,crc);
+                require(before.size()==after.size(),"style selection changed archive layout");
+                std::size_t changed=0,offset=0;
+                for(std::size_t i=0;i<before.size();++i) if(before[i]!=after[i]) {++changed;offset=i;}
+                require(changed==1,"could not isolate serialized effect byte");
+                auto payload=std::vector<std::uint8_t>(after.begin(),after.end());
+                payload[offset]=static_cast<std::uint8_t>(render::Effect::ice);
+                auto migrated=game.restored_state(state::pack(0x47414d01U,crc,payload));
+                require((world?migrated->world_effect():migrated->effect())==static_cast<std::uint8_t>(render::Effect::cyanotype),
+                    "legacy Ice archive did not migrate to Cyanotype");
+                require(migrated->save_state()==cyan,"legacy style migration altered unrelated state");
+                payload[offset]=static_cast<std::uint8_t>(render::Effect::crosshatch);
+                auto removed=game.restored_state(state::pack(0x47414d01U,crc,payload));
+                require(removed->save_state()==off,"removed Crosshatch state did not migrate cleanly to Off");
+                for(auto invalid:{std::uint8_t{255},render::effect_count,
+                        static_cast<std::uint8_t>(world?render::Effect::gold_metal:render::Effect::blueprint)}) {
+                    payload[offset]=invalid;
+                    rejects([&] {static_cast<void>(game.restored_state(state::pack(0x47414d01U,crc,payload)));});
+                }
+                if(world) for(auto temporal:{render::Effect::trails,render::Effect::long_exposure}) {
+                    payload[offset]=static_cast<std::uint8_t>(temporal);
+                    rejects([&] {static_cast<void>(game.restored_state(state::pack(0x47414d01U,crc,payload)));});
+                }
+            }
+            require(game.save_state()==full_saved,"style archive tests mutated the running game");
+        }
+        {
             // New optional cheat fields must not invalidate pre-extension
             // archives. Repack genuine payloads so checksum failures cannot
             // accidentally stand in for schema/boolean validation here.
             const auto crc=assets::crc32(cartridge.bytes());
             const auto payload=state::unpack(full_saved,0x47414d01U,crc);
             for(unsigned tail=0;tail<2;++tail) {
-                auto legacy=std::vector<std::uint8_t>(payload.begin(),payload.end()-2+tail);
+                auto legacy=std::vector<std::uint8_t>(payload.begin(),payload.end()-13+tail);
                 if(tail) legacy.back()=1;
                 auto migrated=game.restored_state(state::pack(0x47414d01U,crc,legacy));
                 require(migrated->god_mode(),"Legacy state lost active God Mode");
                 require(migrated->infinite_lives()==bool(tail),"Optional lives state migration failed");
             }
             auto cheat=game.restored_state(full_saved);
+            cheat->set_effect(1);
+            cheat->set_manipulation(static_cast<std::uint8_t>(render::Effect::checker_fold));
+            cheat->set_manipulation_intensity(60);
+            cheat->set_material(static_cast<std::uint8_t>(render::Effect::pearl));
             cheat->set_infinite_lives(true);
             auto restored_cheat=game.restored_state(cheat->save_state());
+            require(restored_cheat->effect()==1 && restored_cheat->manipulation()==static_cast<std::uint8_t>(render::Effect::checker_fold)
+                && restored_cheat->manipulation_intensity()==60 && restored_cheat->material()==static_cast<std::uint8_t>(render::Effect::pearl),"independent manipulation/material state lost");
             require(restored_cheat->infinite_lives() && restored_cheat->god_mode(),
                 "Cheat state roundtrip lost enabled settings");
             for(unsigned index=0;index<2;++index) {
                 auto invalid=std::vector<std::uint8_t>(payload.begin(),payload.end());
-                invalid[invalid.size()-2+index]=2;
+                invalid[invalid.size()-13+index]=2;
                 rejects([&] {static_cast<void>(game.restored_state(state::pack(0x47414d01U,crc,invalid)));});
             }
             auto trailing=std::vector<std::uint8_t>(payload.begin(),payload.end());
@@ -344,13 +401,60 @@ int main(int argc,char** argv) {
             const auto menu_saved=menu->save_state();
             const auto menu_payload=state::unpack(menu_saved,0x47414d01U,crc);
             auto migrated_menu=game.restored_state(state::pack(0x47414d01U,crc,
-                menu_payload.first(menu_payload.size()-2)));
+                menu_payload.first(menu_payload.size()-13)));
             require(migrated_menu->pregame_selection()==6 && !migrated_menu->infinite_lives(),
                 "Legacy Cheats Back became Infinite Lives after restore");
         }
+        {
+            auto environment_game=game.restored_state(full_saved);
+            const auto crc=assets::crc32(cartridge.bytes());
+            environment_game->set_environment({});
+            const auto base=environment_game->save_state();
+            const auto raw=state::unpack(base,0x47414d01U,crc);
+            std::size_t first_environment=raw.size();
+            for(unsigned field=0;field<render::environment_limits.size();++field) {
+                std::array<std::uint8_t,6> options{};options[field]=1;
+                environment_game->set_environment(options);
+                const auto marked=environment_game->save_state();
+                const auto marked_raw=state::unpack(marked,0x47414d01U,crc);
+                require(raw.size()==marked_raw.size(),"environment archive layout changed size");
+                std::size_t offset=raw.size();unsigned differences=0;
+                for(std::size_t i=0;i<raw.size();++i) if(raw[i]!=marked_raw[i]) {offset=i;++differences;}
+                require(differences==1,"environment option did not isolate one archive byte");
+                first_environment=std::min(first_environment,offset);
+                for(unsigned value=0;value<render::environment_limits[field];++value) {
+                    options[field]=std::uint8_t(value);environment_game->set_environment(options);
+                    const auto saved=environment_game->save_state();
+                    const auto restored=game.restored_state(saved);
+                    require(restored->environment()==options && restored->save_state()==saved,
+                        "environment selection changed during state roundtrip");
+                }
+                for(unsigned invalid:{render::environment_limits[field],255u}) {
+                    std::vector<std::uint8_t> damaged(raw.begin(),raw.end());
+                    damaged[offset]=std::uint8_t(invalid);
+                    rejects([&]{static_cast<void>(game.restored_state(state::pack(0x47414d01U,crc,damaged)));});
+                }
+            }
+            const std::array<std::uint8_t,6> combined{1,7,3,1,3,2};
+            environment_game->set_environment(combined);
+            const auto saved=environment_game->save_state();
+            require(game.restored_state(saved)->environment()==combined,"combined environment settings lost");
+            const auto legacy=game.restored_state(state::pack(0x47414d01U,crc,raw.first(first_environment)));
+            require(legacy->environment()==std::array<std::uint8_t,6>{},"legacy state enabled environment enhancements");
+            for(std::size_t count=1;count<6;++count)
+                rejects([&]{static_cast<void>(game.restored_state(state::pack(0x47414d01U,crc,raw.first(first_environment+count))));});
+            require(game.save_state()==full_saved,"environment archive validation mutated live state");
+        }
         game.set_stereo_output(2);
+        game.set_reflective_surfaces(3);
+        game.set_dlss_mode(1);
+        game.set_fsr1_mode(4);
+        game.set_fsr1_menu(true);
         auto full_restore = game.restored_state(full_saved);
         require(full_restore->stereo_output()==2,"state restore reset current stereo output");
+        require(full_restore->reflective_surfaces_setting()==3,"state restore reset reflection preference");
+        require(full_restore->dlss_mode()==1 && full_restore->fsr1_mode()==4 && full_restore->fsr1_menu(),
+            "state restore changed independent host upscaler preferences");
         require(game.save_state()==full_saved,"stereo output changed cartridge save-state bytes");
         require(full_restore->save_state() == full_saved, "Full game restore changed initial state");
         for (unsigned tick = 0; tick < 90; ++tick) {

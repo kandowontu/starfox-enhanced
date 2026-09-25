@@ -1,5 +1,536 @@
 # Widescreen background audit (local, incomplete)
 
+## Later Original 32:9 samples — September 23
+
+Original LEVEL1_2, LEVEL2_3, LEVEL3_3 and LEVEL3_5 each pass at 1,800 source
+ticks plus 12 presentations, 60 Hz/1x on both D3D12 and Vulkan, with exact
+software/GPU native raster and final 800x224 image hashes and resident GPU
+rasterization. The D3D12 and Vulkan final BMP hashes also match each other
+for all four scenes. Evidence: `tmp/gpu-original-late-sep23/ORIGINAL-<level>/`
+and `tmp/gpu-original-late-vulkan-sep23/ORIGINAL-<level>/`. All four final GPU images were
+inspected: the asteroid field remains in the central band, the LEVEL2_3
+sky/ground fill the sides, LEVEL3_3 has one moon above an uninterrupted ocean,
+and the LEVEL3_5 boss scene keeps its red horizon across the width. These are
+four later snapshots, not continuous or console-synchronized proof; they do
+not resolve Colony's separate source-sensitive asymmetry or physical Android
+behavior.
+
+## Later EX stage samples — September 23
+
+The baseline GPU stage sweep now forces the FPS overlay off. Inherited user
+settings previously stamped different live FPS numbers into otherwise matching
+CPU/GPU screenshots, causing a false hash failure for EX LEVEL5_1 tick 2200.
+With the overlay pinned, this later orbital-horizon sample passes exact native
+and final 32:9 CPU/GPU parity (`tmp/gpu-late-ex51-no-fps-sep23`). The initial
+overlay-on failure is preserved in `tmp/gpu-late-ex51-sep23` as a rejected
+comparison, not a renderer regression.
+
+EX LEVEL4_4 tick 400 also passes exact CPU/GPU parity at 32:9 and 4:3
+(`tmp/gpu-late-ex44-sep23`, `tmp/gpu-late-ex44-native-sep23`). The inspected
+wide frame has solid outer margins with 3D foreground geometry continuing
+into them; the native-width frame shows the same center scene. These isolated
+late samples add transition coverage but do not establish every frame or
+source-console visual parity.
+
+An 8,000-tick cartridge transition trace for EX 5-1/6-1/7-1 confirms their
+BG_5_1I entry, course-specific sky at tick 179, and BG_5_1E at ticks
+2169/2156/2099 respectively (`tmp/transition-ex{51,61,71}-sep23.log`).
+EX 7-1's 32:9 tick-2000 golden-storm frame, tick-2080 uniform-black fade,
+and tick-2150 orbital frame each pass exact CPU/GPU native and final hashes
+(`tmp/gpu-transition-ex71-{2000,fade}-sep23`,
+`tmp/gpu-transition-ex71-sep23`). The fade fixture uses an explicit
+`-AllowUniformFinal` switch; ordinary stage sweeps still reject blank frames.
+These three snapshots do not prove continuous fade cadence or palette accuracy
+between them.
+
+## Fresh full-entry 32:9 migration sweep — September 20
+
+All 64 discovered campaign/special entry samples pass: 21 Original and 43 EX,
+1,000 source ticks followed by 12 presentations at 60 Hz, 1x rendering, D3D12.
+Every software/GPU pair has exact native-raster and final-image hashes and an
+800x224 final target. The harness requires resident GPU geometry/composition,
+rejects CPU replay/readback fallback, and explicitly disables persisted effects,
+materials, manipulations and all six environment settings.
+
+Evidence: `tmp/gpu-stage-ultrawide-sep20/<experience>-<level>/` contains paired
+native/final BMPs and logs. Command: `tools/check_gpu_stage_sweep.ps1
+-OutputDirectory tmp/gpu-stage-ultrawide-sep20 -DisplayMode 32_9
+-IncludeSpecialRoutes`.
+
+Selected images inspected include Original Dimension, asteroid field, Armada
+tunnel, ocean/moon, Macbeth, Colony and EX routes 4/5 plus 6_4/6_5/6_6/7_2.
+The Armada ceiling/floor fill the width, the asteroid band remains centered,
+and the ocean moon is singular. Colony's source-sensitive asymmetry remains;
+this does not resolve its synchronized original-console comparison.
+These are early entry samples, not full playthroughs, later scramble/boss
+planet-horizon coverage, every intermediate frame, physical VR or FPS proof.
+
+## Completed-frame camera fidelity — September 20
+
+Added a test-only SourceFrame capture mode that selects interpolation alpha 1
+without pausing or changing simulation inputs. Replaying the 6,401-frame
+20 FPS route reaches the same BG $B1/map $DCA9D/wait $B71 and door animation 9.
+The grey right-hand door remains in the inspected completed-frame capture
+(`tmp/colony-completed-source-sep20`), ruling out fractional interpolation as
+its sole cause. This is still not a synchronized SNES full-frame comparison.
+
+That capture exposed a separate default-camera error: zero mouse rotation
+still performed a basis round-trip through approximate Q15 matrices, changing
+door depth from source 24.99847412109375 to 24.976137299049014. The application
+now skips that orbit transform when both mouse rotation offsets are zero;
+nonzero rotation and independent wheel zoom retain their existing paths.
+`tools/check_colony_camera.ps1` replays the actual route and asserts exact
+completed door/source depth equality. It passes in the rebuilt Windows app;
+evidence is `tmp/colony-source-camera-check`. This corrects a small camera
+fidelity error, not the outstanding full-composition/source acceptance.
+The before/after completed-frame BMPs are byte-identical (SHA-256
+`3C506AC9EF85FD5C3D61D65865D7FB3F8E6983CAC58D96DBA3AF16EE2ECA06FE`),
+so no visible improvement to this particular frame is claimed. Native Linux
+also rebuilds successfully with the camera correction.
+
+## Door clears during continued tunnel travel — September 20
+
+`tmp/colony-paused-source-sep20` attempted a Start press at presentation 6400
+of the 20 FPS route and ran through 6409. Despite its directory name, this
+fixture did **not** pause: no PAUSED overlay, map wait advances $B71->$9F7,
+and the door disappears from submitted models. The inspected final image has
+the unobstructed symmetric tunnel again. The earlier grey panel is transient
+as the player/camera passes the authored door, not a persistent stale overlay.
+This failed pause attempt does not supply exact source-camera parity evidence;
+do not interpret the directory name as a completed-frame capture guarantee.
+
+## Original-cadence door comparison — September 20
+
+Background capture now accepts PresentationFps (20..240; default 60).
+Repeating the same route at 20 FPS for 6,401 presentations, with input periods
+300->100 and hold durations 240->80, reaches the same BG $B1 / map $DCA9D /
+wait $B71 and the identical source HALF_D slot/position/animation. Evidence:
+`tmp/colony-source-cadence-sep20`. The final image was inspected and still
+shows the large right-hand panel. Its pose explicitly has continuous=0 and
+subpixel=0. Thus the continuous high-FPS geometry path is not required for
+this appearance. This is not an exact source-frame image comparison: the
+presentation camera remains interpolated (door depth 62.7738 versus source
+24.9985), while the 60 FPS sample uses 87.9723. Do not claim that disabling
+high-FPS geometry removes it, or call these images pixel-equivalent.
+
+## Door animation decoding checked against source — September 20
+
+Added real-asset assertions to packed_faces_tests for HALF_D: ten frames,
+16 vertices in each, preserved four-vertex fixed prefix, and explicit frame-0
+and frame-9 coordinates from SHAPES4.ASM. Both Original and EX checks pass
+(2,697 / 3,511 discovered models respectively). Source MOBJ.MC selects the
+point frame by masking the counter to six bits then reducing by frame count;
+the captured door selects 9, which addresses A9A in the ten-frame source table.
+No off-by-one frame or lost static-prefix error is demonstrated. These checks
+do not validate camera placement, near-plane clipping, or full source output;
+those remain the relevant next comparison, rather than editing door vertices.
+
+## Obstruction attributed to HALF_D — September 20
+
+New test-only `ModelLayers` capture renders each identified normal model
+separately on the final presentation without altering object state or draw
+order. It uses source CGRAM (magenta index-zero marker), not final fade/effect
+colours. Windows app rebuild passes. The same natural replay with this capture
+enabled (`tmp/colony-natural-model-layers-sep20`) retains the final BMP hash
+listed below, proving no observed final-output change in this fixture.
+
+Inspected model-23.bmp (WALL_4) is empty. Model-29.bmp (HALF_D) contains the
+large grey right-side door obstruction. Its logged pose has animation 9,
+camera-space XYZ approximately (59.9963,0,87.9723), source depth 24.9985,
+identity rotation and continuous geometry enabled. The source maphalfdR
+explicitly spawns HALF_D at X=60/Y=-60; halfd_strat advances it to animation 9
+near the player. This attributes the pixels, but does not yet establish whether
+source projection/animation selection matches. Do not delete this authored
+door or label its absence a background fix without that comparison.
+
+## Reached tunnel composition isolated — September 20
+
+The same 19,201-presentation natural-route input replay also completes using
+Software (`tmp/colony-natural-tunnel-software-sep20`). Its final BMP is byte
+identical to the GPU final BMP from `colony-natural-tunnel-bounded-sep20`:
+SHA-256 `BC73790BF7DD07701AE8070F7B5B64F8F04AD008411BEDA6C670493227D887E7`.
+Both reach BG $B1 / map $DCA9D / tunnel=1 / inatunnel=1. Thus the observed
+right-side obstruction in this specific frame is not a GPU-only migration
+regression. Isolated BG1 contains only edge masks; BG3 is empty; neither
+contains the large grey obstruction. BG2 independently matches Snes9x below.
+
+The object trace identifies nearby HALF_D ($C43F, slot 29) and WALL_4
+($BEFF, slot 23) at Z=23034, behind player Z=23192 but potentially within
+the camera's view. FINALMAP.ASM explicitly places walls at both X=+110 and
+-110. These are investigation candidates, not proven offending objects;
+object-isolated projection/source-camera comparison is still needed before
+changing clipping, deleting models, or declaring full composition parity.
+
+## Natural Colony route reaches the tunnel — September 20
+
+`tmp/colony-vulnerable-fire-sep20` completes 30,000 presentations from
+Original LEVEL2_6 with normal scripted controller input and God Mode. Input
+is Y+X (16448) for the first 9,000 presentations, then Y+A (16512), held
+240 of every 300 frames. No map-pointer, boss-health or object-removal
+override is used. Source Mad Trucker's hit handler requires its rear child
+animation to be nonzero and the HF2 vulnerable region, rejecting HF1 hits.
+
+Inspected frames 12000/14400 show the active boss, 16800 no longer shows its
+meter, 19200 shows the final tunnel entrance, and 21000/23400 show Andross.
+Final trace is BG $69, map $DD74F, tunnel=1, inatunnel=1. This supersedes
+the earlier claim that no natural progression through Trucker had been
+demonstrated. It does not prove the asymmetric tunnel composition correct;
+that still requires source-state/reference comparison.
+
+Bounded native-width replay stops at presentation 19200 in BG $B1, map
+$DCA9D, tunnel=1, inatunnel=1. Evidence:
+`tmp/colony-natural-tunnel-bounded-sep20`. Its final PPU snapshot was loaded
+into the private BG2-only probe and rendered by the unchanged Snes9x DLL.
+With the explicitly documented `--host-origin` visible-line adjustment,
+all 57,344 opaque native pixels match exactly in RGB555 (RGB888 expansion
+differs by at most two). Both isolated images were inspected: the tunnel
+background is symmetric. The final game image still has the large right-side
+obstruction, narrowing this reached-state question to other composition/model
+layers rather than BG2 sampling. This is a snapshot-rendering oracle, not an
+independently synchronized full-game execution or proof of all layers.
+
+The PpuSnapshot harness now defaults to the final presentation only, avoiding
+thousands of unsolicited VRAM/bitmap dumps on long replays. Explicit positive
+CaptureInterval retains sequence behavior. A three-frame smoke run writes only
+the six `000002` files (`tmp/background-snapshot-bounded-sep20`). An initial
+overcapturing replay was intentionally stopped to limit disk use, not because
+of an observation timeout; its redundant generated frame files were removed.
+Cleanup removed 36,373 generated files / 1.67 GiB from that exact aborted
+snapshot directory; logs and completed proof captures remain. These discarded
+diagnostics are regenerable, not recoverable through the recycle bin.
+
+## Colony input correction and stopped-object evidence — September 20
+
+Correction to the two preceding attempts: their B+X mask (32832) is **brake
+plus boost**, not fire plus boost. PSTRATS.ASM gates laser fire on Y (16384),
+braking on B (32768), boost on X (64), and bombs on A (128). The earlier
+descriptions of those attempts as firing are incorrect; their images/logs are
+retained only as failed coverage evidence.
+
+Added optional test-only TraceObjects to the background harness. The 12,000
+presentation reproduction (`tmp/colony-biker-state-sep20`) reports three AIR_1
+bikers, shape $A2E3, strategy $9C1DC, each with HP 10. This is not a dead-object
+cleanup failure. ROM bytes at $27864E are `8A 06` (mapwait2, 96 units), followed
+at $278650 by `2E 39 06 27` (mapgoto $278639), identifying the biker-wait loop.
+No Trucker defeat or Colony tunnel transition has been reached in those runs.
+
+Corrected Y+X (16448) run: `tmp/colony-correct-fire-sep20` completes 30,000
+presentations with the same three bomb requests. Frame 14400 was inspected and
+shows Trucker with an active ENEMY meter. Final map cursor advances to $2786B5
+(wait $172), still BG $A5 / tunnel=0. Thus proper laser input clears the first
+gate and reaches the boss, but this unsteered fixture has not defeated it or
+entered the tunnel. Remaining bikers include one at HP 4, unlike the previous
+all-full-health fixture. Further work should target boss positioning, not treat
+the initial wait as an interpreter deadlock or change background pixels.
+
+## Colony pulsed-input follow-up — September 20
+
+A second real-entry Original LEVEL2_6 run completes 30,000 presentations with
+B+X held for 120 of each 300 frames, plus A at frames 9000/15000/21000. It
+still ends at BG $A5 / map $278650 / wait $60, tunnel=0, inatunnel=2.
+Evidence: `tmp/colony-natural-pulses-sep20`; process completed normally in
+about 73 seconds. No map-pointer or object-removal shortcut was used.
+
+Source TRUCKER.ASM first waits for all AIR_1 biker objects to disappear, then
+spawns Mad Trucker and waits for its defeat trigger before continuing. The
+unchanged bomb count does not mean the requests failed: God Mode replenishes
+SPECWEPCNT, and the observed SPECIALDELAY=4 is set after detecting a newly
+spawned bomb. The separate Infinite Bombs preference is off. Neither continuous
+nor pulsed input has demonstrated the tunnel path; surviving-object state and
+exact map-cursor decoding are the next useful checks. Do not repeat the same
+input schedule or claim this clears the encounter/background acceptance gap.
+
+## Colony continuous-input route attempt — September 20
+
+Original LEVEL2_6, no preroll, 30,000 presentations at 60 Hz with God Mode and
+continuous B+X (32768+64) completes normally but does not reach CL_COLON.
+Final trace remains BG $A5, map cursor $278650, wait $60, tunnel=0,
+inatunnel=2. The final 32:9 capture was inspected and retains the native
+asymmetric cross-section. Eighty sparse captures begin at presentation 6000.
+Evidence: `tmp/colony-natural-fire-sep20`.
+
+The observation wrapper expired at 60 seconds while PID 40444 was demonstrably
+live and writing captures. That same process was awaited to completion (about
+86 seconds), not restarted or killed. No map-pointer/object/death shortcut was
+used. Continuous input did not demonstrate the requested natural tunnel path;
+discrete presses and route-position diagnosis are needed before another attempt.
+Do not count this as a successful tunnel/reference comparison.
+
+## Current special-route desktop execution (September 20)
+
+The numbered-stage GPU sweep excluded special routes. Its level resolver now
+also accepts LEVEL_BLACKHOLE, LEVEL_SPECIAL and EX LEVEL_COMET; an optional
+IncludeSpecialRoutes switch includes them in automatic enumeration. DisplayMode
+is explicit and final BMP dimensions are checked against the requested aspect.
+
+Five 32:9 samples at tick 1000 on D3D12 and five at tick 6000 on Vulkan pass
+exact CPU/GPU native-raster and final-target comparisons, with resident GPU
+model/raster execution. All twenty final images are 800x224; all ten distinct
+GPU images were visually inspected. Black Hole's abstract field, Dimension's
+distorted star/face artwork and Comet's hot landscape extend to the sides;
+the late Original Dimension sample reaches the slot-machine boss.
+
+Evidence: `tmp/gpu-special-ultrawide-sep20` and
+`tmp/gpu-special-late-vulkan-sep20`. These are twelve-presentation samples after
+the specified prerolls, not complete routes, synchronized original-console
+comparisons or proof that every distorted atlas occurrence is unique. No
+background artwork/production sampling policy was changed to obtain parity.
+VR and physical-device acceptance remain separate outstanding work.
+
+September 20 natural-route #71 follow-up: added an explicit test-only God Mode
+override and exposed it in `capture_background_audit.ps1`, avoiding reliance on
+saved cheats. The harness now accepts up to 30,000 presentations, an explicit
+bounded wait with live-PID progress, and rejects named rather than numeric
+scripted button masks before launching. Normal gameplay is unchanged.
+
+`tmp/armada-natural-third-ship-sep20` runs Original LEVEL1_3 from its real entry
+with no preroll, map jump, fabricated tunnel flag or object deletion. X/boost
+is held for 120 of each 300 presentations at 60 Hz; God Mode keeps the route
+alive. It completes 24,000 presentations and reaches BG $45 / map $0DB48F,
+the boss room. Eighty sparse captures cover presentations 12,000..23,850.
+The inspected 13,350..14,250 doorway samples (150-frame spacing) show the third
+ship entry and corridor, without the report's detached cruiser. Earlier full
+route samples show the first and second interiors. This closes the earlier
+shortcut-fixture gap, not issue #71: unsampled frames, different player timing,
+source-reference occlusion and Android/software acceptance remain unproven.
+
+The separate shortcut run `tmp/armada-boss-transition-sep20` captures 27 samples
+at 4,400..7,000; selected corridor/door samples likewise did not reproduce the
+report. No production visibility/deletion workaround or issue closure was made.
+Windows application rebuild and scoped whitespace checks pass.
+
+September 20 corrected replay coverage: #67 names Space Armada, which is
+LEVEL1_3 (not Colony/LEVEL2_6 or Meteor/LEVEL1_4). The ending regression now
+restarts through the title after THE END, launches LEVEL1_3 through the public
+level-select path alongside a clean title instance, and uses periodic boost
+without rewriting map cursors, tunnel flags or object state. Both histories
+naturally reach a tunnel. For each of the two ending fixtures (route-1 unlocked
+and special-route original pace), 120 consecutive tunnel ticks match in BG2
+scroll override, horizontal offsets and scanline vertical scroll. At samples
+1/60/120, software BG2 pixels match at widths 256/400/800. The complete Original
+ending executable passes with these assertions. This rules out retained ending
+scroll/tile corruption on this specific current Windows replay path; it does
+not prove every Armada corridor, Android driver behavior, palette composition
+or the separate cruiser-occlusion report #71. No speculative production change
+or issue closure was made.
+
+September 20 replay-fixture attempt: after the ending/title restart, launching
+LEVEL2_6 through level select and ticking 6,000 times does not reach the colony
+tunnel on either history. Both remain on BG_2_6A ($a5): MAP2_6A requires the
+Trucker encounter before returning to CL_COLON. The attempted tunnel test was
+withdrawn rather than weakening its assertion or claiming this proves #67.
+Next replay fixture must defeat that encounter or explicitly enter the authored
+colony continuation; source-synchronized tunnel coverage remains outstanding.
+
+## Ending-star report #72 (September 20, fixed locally)
+
+Current Windows software 32:9 ending capture reproduces repeated margin stars:
+`tmp/issue72-current/ending.bmp` (800x224). The actual ending fixture uses
+LEVEL1_6, STARFOX_TEST_ENDING=1, ENDING_PREROLL=6000, SKIP_PREROLL=1,
+one presentation frame at 60 Hz, render scale 1. Of 90 nonblack pixels in
+columns 0..219, 84 match exactly at x+512; only 3 match at x+128 and 14
+at x+256. This is measured repetition, not a subjective similarity report.
+
+The same run's STARFOX_CAPTURE_TITLE_LAYERS output identifies BG2 as the
+source: `layer-bg2-tilemap.bmp` is a 512x512 atlas containing stars AND
+nebula artwork. The expanded layer wraps that atlas. Do not randomly shift
+whole margin columns to disguise the stars: that would relocate/repeat
+nebulae too.
+
+Implemented BG_CRED-only extension for Original: retain the first authored
+atlas occurrence, then sample its star-only upper-left 256x128 area in stable
+32x32 patches. Integer world-cell hashing removes the 512-pixel repetition
+without frame-dependent shimmer, CPU readback or relocated nebulae. The same
+mapping is implemented in CPU and the resident BG2 shader; other backgrounds
+and EX are unaffected. Generated DXIL/SPIR-V/Metal outputs are updated.
+
+`tmp/issue72-fixed/{SOFTWARE,GPU}-final.bmp` are actual final-target captures.
+Compared with the prior software capture, 350 margin pixels change and zero
+native-center pixels change; x+512 star matches drop from 84/90 to 1/115.
+The added margins are pixel-identical between software and GPU. There are
+1,530 central presentation differences in this initial, unpinned-enhancement
+comparison; it is not a whole-scene parity claim. The apparent missing purple
+nebula in the image preview was disproved by direct pixel reads (see below).
+
+Follow-up: with enhancements explicitly disabled, the GPU nebula is present
+(`tmp/ending-unenhanced/GPU-final.bmp`). The reusable
+`tools/check_ending_enhancements.ps1` matrix isolates settings and restores the
+environment. Direct System.Drawing pixel comparisons of `tmp/ending-enhancements`
+disprove the earlier preview-based claim that LIGHT/RAY lose the nebula:
+all nebula pixels are unchanged. LIGHT changes 343 pixels, RAY 150,
+REFLECTION 1,919 and ALL 1,973; every change is inside the 3D THE END lettering
+(x321..479, y102..124). The script now asserts that all background and UI
+pixels outside that geometry remain identical to OFF. No speculative shader
+change was retained. The normal executable was open in a user-launched
+process during relinking; it was not killed. Do not reopen a nebula-loss bug
+based on the misleading image preview alone.
+
+D3D12 and Vulkan background checks each pass 432 cases / 183,997,440
+pixel-and-coverage comparisons plus composition/resize checks. Those checks
+also exposed a software tunnel high-priority pass drawing a wrapped copy over
+the already-expanded low-pass cross-section. Software now suppresses that
+outer duplicate, matching the existing GPU policy. Physical Android corridor
+acceptance remains outstanding. No release or GitHub closure performed.
+
+## Route-selection report #70 (September 19)
+
+Resolved after extending the reproducer to cycle RIGHT through all three
+courses. At presentation 78, `tmp/route70-cycle/000078.bmp` reproduces the
+eight-pixel green mark at native (0,7), while fresh entry does not.
+DRAWPLANETLINES writes the next sprite position before testing the route-table
+terminator; the now-unused slot retains a line tile from the longer route.
+
+Full-route preview now hides only the unused tail from CURRENTSPRITE through
+the end of the 20 route slots using UNDRAW's (248,248) coordinates. Partial
+post-level route overlays are unchanged. The regression cycles courses and
+checks all blink phases for stray top-left sprite ink. Fixed capture
+`tmp/route70-fixed/000078.bmp` was inspected: exactly eight pixels change,
+with zero changes outside the artifact rectangle. Windows application rebuilt.
+Original/EX simulation suites pass (2/2, 126.76 s), including existing route
+blink/selection/arrival checks. Regular Android rebuild passes (16 s); no
+physical Android acceptance or GitHub issue closure is claimed.
+
+Initial investigation (superseded by the course-cycle reproducer above):
+Inspected the Android/software report's blinking green mark at the upper-left
+native viewport. Current Windows software PLANETSELECT captures over 24
+presentations (every three frames) show the route blinking without that mark.
+Inspected the bright visible/hidden phases in `tmp/route70-before`.
+No renderer mask was added. A direct selector entry does not cover course
+changes or physical Android.
+
+## Armada approach reproduction work (September 19)
+
+Sparse sequence follow-up: all 12 captures at frames 3300–4400 (every 100
+presentations) were inspected in `tmp/armada-entry-sequence-sep19`. They show
+the approach, door crossing and corridor without the reported cruiser overlap.
+This rules out that sampled timing/input path, not the Android report or
+unsampled frames. `-CaptureStart`/`-CaptureInterval` now expose the existing
+sparse capture controls in the audit harness without per-frame disk output.
+
+Follow-up captures at 4,500 and 6,000 presentations reach BG $33, Mode 1,
+tunnel=1/INATUNNEL=1; both final images were inspected and do not show the
+reported large cruiser overlap. At 7,500 presentations BG $45/boss room has
+a white fragment left of the boss. Its identity is NOT established: boss
+component shapes are also active, so this is not yet a reproduction of #71.
+Evidence: `tmp/armada-entry-{4500,6000,7500}-sep19`.
+
+`tmp/armada-removal-state-sep19` repeats frame 7,500 with removal diagnostics.
+Both remaining SHIP_4 cruisers have type=0, collision=16, view flags=0;
+GAMEFLAGS=0. Source removal requires ATZREMOVE (type bit 8), which these objects
+do not have. Their persistence alone therefore does not prove a removal bug,
+and forcing deletion at tunnel entry is not justified. Next checks must identify
+the offending rendered shape and capture the earlier corridor transition.
+The Windows executable rebuilt successfully with these opt-in final-frame logs.
+
+The longer scripted approach now reaches the boss room without setting the
+entry-complete flag: `tmp/armada-long-entry-sep19`, 10,000 presentations,
+X/boost held for 120 frames every 300 frames starting at frame 1200. The final
+trace is BG $45, map $0DB48F, tunnel=1 and INATUNNEL=1. The final software
+presentation was visually inspected and contains the boss inside the room.
+The harness now permits up to 12,000 frames for this route. This resolves the
+fixture's earlier distance-gate problem, not the reported cruiser occlusion;
+earlier corridor frames must still be inspected. The route still skips the
+first part of the level and is not full natural-route parity evidence.
+
+Follow-up object-state capture (`tmp/armada-object-state-sep19`) identifies the
+unmet condition: player slot 1 is at (0,-60,-11511), main mothership slot 6
+(shape $A8AF) is at (0,1680,-5315), still running SHIP3_STRAT ($08A06F).
+Their Z separation is 6,196, outside its 1,600-unit transition to SHIP3A_STRAT
+and subsequent 600-unit entry completion. Both remain alive (255 health).
+This is not an empty/removed ship or a missing background command. The fixture
+must reach that distance condition before judging corridor composition.
+Object dumps are restricted to the explicit Armada diagnostic and final
+render-state trace; normal gameplay/render behavior is unchanged.
+
+Added opt-in `STARFOX_TEST_ARMADA_APPROACH` and harness `-ArmadaApproach`
+(`LEVEL1_3` only). It starts at the level's authored BG_1_3C command, preserving
+its subsequent wait, initialization, cruiser spawns and strategy-dependent
+corridor gate; it does not fabricate an empty tunnel or remove ships. This
+skips earlier stage sections and therefore is not a natural-route reproduction.
+
+Captured software final frames at 240/720/1200/2400/3300 presentations after
+200 initial preroll ticks. The early approach images were inspected and contain
+the expected cruiser/gate geometry. At 3300 the script remains at $0DB1A3,
+countdown 1, BG $39, with tunnel and INATUNNEL both zero. It has not reached the
+reported interior. Do not count these captures as corridor acceptance or a fix.
+Final render-state diagnostics now include map cursor/countdown to distinguish
+this strategy wait from a background-rendering failure. Current app rebuild and
+capture complete successfully; no occlusion behavior was changed.
+
+Evidence: `tmp/armada-approach-{240,720,1200,2400,3300}-sep19` and the newer
+`tmp/armada-approach-state-sep19` with cursor diagnostics. Next reproduction
+work must satisfy the ship-entry strategy's player-position/approach conditions
+or explicitly separate a synthetic occlusion fixture from natural-route proof.
+
+## Current city report #73 — final renderer comparison (September 19)
+
+Inspected the reporter's Android/software screenshot and current issue comments.
+The city scene matches the existing LEVEL2_6 Colony asymmetry investigation.
+Fresh tick-1000 final-presentation captures at 4:3 and 16:9 reproduce the left
+transparent/gold terrain and right opaque wall in BOTH Windows GPU and software.
+Each same-aspect GPU/software BMP is byte-identical; the 16:9 software image was
+visually inspected. Therefore switching to GPU is not a demonstrated fix.
+
+Evidence: `tmp/city-final-{gpu,software}-sep19/ORIGINAL-LEVEL2_6-1000-*-final.bmp`.
+The 16:9 pair SHA-256 is
+`7C810FB0CC6BECE0FF90A95F71D11C08B48B6A1C4C94BE656F9730E4DB5DB48C`;
+the 4:3 pair is
+`E61E13E725EF68843DE1B384CD4A30B37A914A32F11E351D6CD01A735D57D42C`.
+This supports the prior independent source-reference reproduction below, not
+natural-route/retail-ROM equivalence or physical Android acceptance. No
+mirroring/recolour workaround or issue closure was applied.
+
+The background audit harness now optionally captures the final presentation
+and explicitly disables FSR1, 2D bloom, software shadows and reflections to
+avoid contaminating baseline comparisons with saved preferences.
+
+Also inspected #71: the reporter confirms ships visible through the Space
+Armada corridor from a fresh run, not only after completing the game. Source
+LEVEL1_3/MAP1_3C includes the two cruiser draws and a later BG_1_3B transition.
+Its transition still needs a synchronized capture before changing occlusion;
+the city comparison is not evidence that corridor visibility is correct.
+
+## Original special-route adjacent-frame coverage (September 19)
+
+Fresh final-game captures for LEVEL_BLACKHOLE and LEVEL_SPECIAL at preroll
+999/1000/1001, 16:9 and 32:9, produce 12 exact GPU/software BMP pairs.
+Both ultrawide sequences contain three distinct frames, rather than repeated
+copies of a frozen image. The tick-1000 ultrawide frames were inspected:
+Black Hole's authored coloured wave field and Out of This Dimension's star/
+floating-shape field cover the full width with no flat side gutter.
+Render-state logs show flow 9, backgrounds $ED/$10B, Mode 1/2 respectively,
+and tunnel classification off. Proof: `tmp/special-route-gpu-sep19` and
+`tmp/special-route-software-sep19`.
+
+These are direct-entry adjacent source-state samples, not a natural warp route,
+continuous high-frame-rate video or VR wrap acceptance. LEVEL_COMET was rejected
+as unavailable in the Original symbols before capture and is not counted.
+
+## EX 4-4 final-composition transition coverage (September 19)
+
+The previously pending final-game boundary images are now captured, not merely
+isolated BG2 renders. `capture_background_audit.ps1` accepts GPU/SOFTWARE and
+pins DLSS, stereo, language, AA, separated models, smoothing, lighting and model/
+world effects so saved preferences cannot contaminate these comparisons.
+
+Fresh EX LEVEL4_4 preroll labels 186/187/188 and 326/327/328/329 at 16:9 and
+32:9 produce 14 GPU/software pairs; every full BMP matches byte-for-byte.
+Evidence: `tmp/ex-four-four-boundary-{gpu,software}-sep19`. All seven ultrawide
+frames were inspected (six are hash-identical to the preliminary inspected
+captures). The final images include game models, HUD, fade and both backgrounds.
+
+The recorded states, not just nominal preroll labels, establish boundary coverage:
+186 is BG $123/non-tunnel; 187/188 are BG $69/tunnel. Label 326 remains BG $69,
+while 327 installs BG $ED/Mode 1 with tunnel disabled immediately. 328/329 retain
+that background. Thus the earlier headless diagnostic's tick-328 transition
+cannot be assumed to equal this capture harness's tick label; 326 was added to
+capture the actual preceding state. No stale one-frame tunnel flag is observed.
+
+The authored asymmetric Colony opening remains visible. Independent reference
+reproduction below remains the reason not to mirror/recolour it as a port fix.
+These results close this specific final-composition coverage gap, not every
+background, natural route, VR surround or physical-display acceptance requirement.
+
 ## EX VR scramble and boss horizon follow-up (September 13)
 
 Fresh 8,000-tick, no-input/God Mode source traces identify the shared

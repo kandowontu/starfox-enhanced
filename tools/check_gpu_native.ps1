@@ -17,8 +17,11 @@ param(
     [switch]$RayTracing,
     [switch]$SeparatedModels,
     [switch]$PresentationCapture,
+    [switch]$AllowUniformFinal,
     [switch]$Sequence,
     [switch]$AllowFallback,
+    [switch]$CpuUploadTrace,
+    [switch]$RequireNoCpuUpload,
     [switch]$Bomb,
     [switch]$ScrambleWipe,
     [ValidateRange(0,3)][int]$Bloom=2,
@@ -28,6 +31,14 @@ param(
     [ValidateRange(-1,255)][int]$Message=-1
 )
 $ErrorActionPreference = 'Stop'
+# A fresh Corneria entry can still own the player during scripted launch, so
+# X/A input there is not a reliable bomb fixture. Use the verified playable
+# asteroid checkpoint unless the caller explicitly selects another scenario.
+if($Bomb) {
+    if(!$PSBoundParameters.ContainsKey('Level')) {$Level='LEVEL1_2'}
+    if(!$PSBoundParameters.ContainsKey('Ticks')) {$Ticks=200}
+    if(!$PSBoundParameters.ContainsKey('Frames')) {$Frames=360}
+}
 if($RasterOnly -and $Geometry) { throw 'RasterOnly and Geometry are mutually exclusive' }
 if($Sequence -and (!$PresentationCapture -or $Frames -lt 1 -or $Frames -gt 240)) {
     throw 'Sequence requires PresentationCapture and 1..240 frames'
@@ -50,11 +61,21 @@ $env:STARFOX_TEST_SDL_GPU = '1'
 $env:STARFOX_DISABLE_GPU_NATIVE = '1'
 $env:STARFOX_TEST_VSYNC = '0'
 $env:STARFOX_TEST_BLOOM = "$Bloom"
+$env:STARFOX_TEST_DLSS_SELECTION = '0'
+$env:STARFOX_TEST_FSR1_SELECTION = '0'
 $env:STARFOX_TEST_SEPARATED_MODELS = if($SeparatedModels) {'1'} else {'0'}
 $env:STARFOX_TEST_RAY_TRACING = if($RayTracing) {'1'} else {'0'}
+# Baseline fixtures must not inherit persisted terrain/sky upgrades. Explicit
+# diagnostic environment overrides still allow callers to test those features.
+for($field=0;$field -lt 6;++$field) {
+    $name="STARFOX_TEST_ENVIRONMENT_$field"
+    if(!(Test-Path "Env:$name")) {Set-Item -LiteralPath "Env:$name" -Value '0'}
+}
 $env:STARFOX_TRACE_PROFILE = '1'
 $env:STARFOX_TRACE_PROFILE_DISTRIBUTION = '1'
 $env:STARFOX_TRACE_GPU = '1'
+if($CpuUploadTrace -or $RequireNoCpuUpload) {$env:STARFOX_TRACE_GPU_CPU_UPLOAD='1'}
+else {Remove-Item Env:STARFOX_TRACE_GPU_CPU_UPLOAD -ErrorAction SilentlyContinue}
 Remove-Item Env:STARFOX_TEST_SCRAMBLE_WIPE -ErrorAction SilentlyContinue
 if($ScrambleWipe) {$env:STARFOX_TEST_SCRAMBLE_WIPE='1'}
 if($PresentationCapture) {
@@ -70,7 +91,7 @@ if($Message -ge 0) {
 if($FpsOverlay) {
     if(!$DefaultPipeline -and !$Resident) {throw '-FpsOverlay requires a resident/default pipeline check'}
     $env:STARFOX_TEST_SHOW_FPS='1'
-}
+} else {$env:STARFOX_TEST_SHOW_FPS='0'}
 if($PanelOverlay) {
     if(!$DefaultPipeline -and !$Resident) {throw '-PanelOverlay requires a resident/default pipeline check'}
     if(!$FpsOverlay) {$env:STARFOX_TEST_SHOW_FPS='0'}
@@ -79,6 +100,7 @@ if($PanelOverlay) {
 }
 if($Bomb) {
     if(!$DefaultPipeline -and !$Resident) {throw '-Bomb requires a resident/default pipeline check'}
+    if($Frames -lt 36) {throw '-Bomb requires at least 36 frames to reach its scheduled input'}
     $env:STARFOX_TEST_PRESENTATION_FPS='60'
     $env:STARFOX_TEST_SKIP_PREROLL='1'
     $env:STARFOX_TEST_PRESSES='12:64,24:128'
@@ -128,6 +150,21 @@ foreach($scale in $Scales) {
         if($mode -eq 'gpu' -and -not (Select-String -Path $log -Pattern $required -Quiet)) {
             throw "GPU raster was not exercised: $stem"
         }
+        if($mode -eq 'gpu' -and ($Resident -or $DefaultPipeline) -and !$AllowFallback -and
+            (Select-String -Path $log -Pattern 'CPU scene replay for transition/overlay|GPU scene readback for transition/overlay|GPU raster readback for CPU transition/overlay|replaying complete frame' -Quiet)) {
+            throw "Resident GPU path used CPU replay/readback: $stem"
+        }
+        if($mode -eq 'gpu' -and $RequireNoCpuUpload) {
+            $uploads=@(Select-String -LiteralPath $log -Pattern 'gpu-cpu-upload:.*bytes=([0-9]+)')
+            if($uploads.Count -ne $Frames) {
+                throw "Expected $Frames GPU CPU-upload records, found $($uploads.Count): $stem"
+            }
+            foreach($record in $uploads) {
+                if([int]$record.Matches[0].Groups[1].Value -ne 0) {
+                    throw "GPU frame uploaded a CPU image: $($record.Line.Trim()) ($stem)"
+                }
+            }
+        }
         if($Geometry -and $mode -eq 'gpu') {
             if(!(Select-String -Path $log -Pattern 'native-geometry: GPU model batch resident' -Quiet)) {
                 throw "Live GPU model geometry was not exercised: $stem"
@@ -169,7 +206,10 @@ foreach($scale in $Scales) {
                         if($captureBitmap.GetPixel($x,$y).ToArgb() -ne $firstPixel) { $varied=$true; break }
                     }
                 }
-                if(!$varied) { throw "Uniform final presentation capture: $stem" }
+                if(!$varied -and !$AllowUniformFinal) { throw "Uniform final presentation capture: $stem" }
+                if(!$varied -and $AllowUniformFinal) {
+                    Write-Output "Explicit transition sample has uniform presentation: $stem"
+                }
             } finally { $captureBitmap.Dispose() }
             $presentationHashes += (Get-FileHash -LiteralPath $env:STARFOX_CAPTURE_PRESENTATION_PATH -Algorithm SHA256).Hash
         }

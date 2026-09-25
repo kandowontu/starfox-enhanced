@@ -331,6 +331,8 @@ inline constexpr unsigned char spirv[]={
 148,1,0,0,62,0,3,0,122,0,0,0,149,1,0,0,249,0,2,0,102,0,0,0,248,0,2,0,102,0,0,0,
 253,0,1,0,56,0,1,0
 };
+#if defined(_WIN32)
+
 inline constexpr unsigned char dxil[]={
 68,88,66,67,189,22,187,203,148,148,47,251,51,14,243,236,68,135,79,174,1,0,0,0,96,32,0,0,7,0,0,0,
 60,0,0,0,76,0,0,0,92,0,0,0,108,0,0,0,132,1,0,0,116,13,0,0,144,13,0,0,83,70,73,48,
@@ -592,6 +594,9 @@ inline constexpr unsigned char dxil[]={
 128,32,24,88,56,243,47,230,194,43,42,19,252,137,159,244,137,187,204,18,168,193,44,129,26,96,64,12,6,0,0,0,
 91,134,219,8,238,96,203,192,30,193,29,108,25,64,36,184,131,45,3,139,4,122,0,0,0,0,0,0,0,0,0,0
 };
+#endif
+
+#if defined(__APPLE__)
 
 inline constexpr char metal[]=R"SFXMETAL(
 #pragma clang diagnostic ignored "-Wmissing-prototypes"
@@ -984,4 +989,5 @@ kernel void main0(device type_StructuredBuffer_CameraPoint& points [[buffer(1)]]
 }
 
 )SFXMETAL";
+#endif
 }

@@ -1,4 +1,6 @@
 #include "starfox/render/framebuffer.hpp"
+#include "starfox/render/environment_effects.hpp"
+#include "starfox/render/fsr1_settings.hpp"
 #include "starfox/render/effects.hpp"
 #include "starfox/render/chromatic_aberration.hpp"
 #include "starfox/render/hdr_effect.hpp"
@@ -25,12 +27,33 @@
 #include <vector>
 
 namespace {
+using starfox::render::Fsr1Mode;
+using starfox::render::Fsr1Extent;
+using starfox::render::fsr1_input_extent;
+static_assert(fsr1_input_extent({1920,1080},Fsr1Mode::off)==Fsr1Extent{1920,1080});
+static_assert(fsr1_input_extent({1920,1080},Fsr1Mode::ultra_quality)==Fsr1Extent{1477,831});
+static_assert(fsr1_input_extent({1920,1080},Fsr1Mode::quality)==Fsr1Extent{1280,720});
+static_assert(fsr1_input_extent({1920,1080},Fsr1Mode::balanced)==Fsr1Extent{1130,636});
+static_assert(fsr1_input_extent({1920,1080},Fsr1Mode::performance)==Fsr1Extent{960,540});
+static_assert(fsr1_input_extent({3441,1441},Fsr1Mode::performance)==Fsr1Extent{1721,721});
+static_assert(fsr1_input_extent({0,0},Fsr1Mode::quality)==Fsr1Extent{});
+static_assert(fsr1_input_extent({1,1},Fsr1Mode::performance)==Fsr1Extent{1,1});
+static_assert(fsr1_input_extent({1920,1080},static_cast<Fsr1Mode>(255))==Fsr1Extent{1920,1080});
+static_assert(fsr1_input_extent({0xffffffffU,0xffffffffU},Fsr1Mode::performance)
+    ==Fsr1Extent{0x80000000U,0x80000000U});
 
 using starfox::render::Framebuffer;
 using starfox::render::PixelFilterScratch;
 using starfox::render::PixelLayer;
 using starfox::render::Rgba8;
 using starfox::render::TwoDFilter;
+
+static_assert(starfox::render::anti_aliasing_eligible(PixelLayer::three_d));
+static_assert(starfox::render::anti_aliasing_eligible(PixelLayer::world_geometry));
+static_assert(starfox::render::anti_aliasing_eligible(PixelLayer::terrain_geometry));
+static_assert(!starfox::render::anti_aliasing_eligible(PixelLayer::two_d));
+static_assert(!starfox::render::anti_aliasing_eligible(PixelLayer::background));
+static_assert(!starfox::render::anti_aliasing_eligible(PixelLayer::textured_geometry));
 
 constexpr std::uint32_t source_width = 64U;
 constexpr std::uint32_t source_height = 48U;
@@ -570,6 +593,12 @@ static void reference_chromatic(const Framebuffer& frame,
 }
 
 int main(int argc, char** argv) {
+    for(bool installed : {false,true}) {
+        const auto order=starfox::simulation::pregame_menu_order(starfox::simulation::PregamePage::three_d,installed);
+        require((std::find(order.begin(),order.end(),31U)!=order.end())==installed,
+            "neural menu availability differs from installed host capability");
+        require(order.back()==23U,"optional neural row displaced BACK");
+    }
     require(std::find(starfox::simulation::three_d_menu_order.begin(),
         starfox::simulation::three_d_menu_order.end(),25U)==starfox::simulation::three_d_menu_order.end(),
         "removed line thickness remains in menu navigation");
@@ -743,7 +772,10 @@ int main(int argc, char** argv) {
         ppu.bg2_scanline_scroll_enabled=true;
         ppu.tunnel_scene=true; // water uses scanline scrolling too
         for(unsigned i=0;i<1024;++i) ppu.vram[ppu.bg2_screen_base*2U+i*2U]=1U;
-        for(unsigned y=0;y<8;++y) ppu.vram[ppu.bg2_character_base*2U+32U+y*2U]=255U;
+        for(unsigned y=0;y<8;++y) {
+            ppu.vram[ppu.bg2_character_base*2U+32U+y*2U]=y<4?255U:0U;
+            ppu.vram[ppu.bg2_character_base*2U+33U+y*2U]=y<4?0U:255U;
+        }
         starfox::render::BackgroundRenderer renderer;
         for(unsigned width:{400U,512U,768U}) for(unsigned scale:{1U,2U,4U}) {
             Framebuffer wide{width,8,scale}, native{256,8,scale};
@@ -751,11 +783,16 @@ int main(int argc, char** argv) {
             renderer.draw_bg2(ppu,0,0,wide,starfox::render::TilePriorityPass::all,origin);
             renderer.draw_bg2(ppu,0,0,native);
             for(unsigned y=0;y<8;++y) for(unsigned x=0;x<width;++x) {
-                const auto expected=x<unsigned(origin) || x>=unsigned(origin)+256U
-                    ? 1U : native.get(x-origin,y); // Solid tile-1 wall, not palette black.
-                require(wide.get(x,y)==expected,"tunnel duplicated artwork into wide borders or changed native centre");
+                const auto expected=native.get(x*256U/width,y);
+                require(wide.get(x,y)==expected,"tunnel did not expand its single authored cross-section");
             }
             require(native.get(0,0)!=0U,"tunnel regression fixture is empty");
+            Framebuffer split{width,8,scale};
+            renderer.draw_bg2(ppu,0,0,split,starfox::render::TilePriorityPass::low,origin);
+            renderer.draw_bg2(ppu,0,0,split,starfox::render::TilePriorityPass::high,origin);
+            for(unsigned y=0;y<8;++y) for(unsigned x=0;x<width;++x)
+                require(split.get(x,y)==wide.get(x,y),
+                    "high-priority tunnel pass erased extended ceiling/floor");
         }
     }
     for (const auto layer : {PixelLayer::three_d, PixelLayer::background}) {
@@ -913,6 +950,71 @@ int main(int argc, char** argv) {
             "1x boss meter was tagged as an effect-eligible model");
     }
     {
+        using starfox::render::Effect;
+        for(bool world:{false,true}) {
+            std::array<bool,starfox::render::effect_count> seen{};
+            std::uint8_t current=0;
+            do {
+                require(!seen[current],"effect selector repeats a style before wrapping");
+                seen[current]=true;
+                require(current!=unsigned(Effect::ice) && current!=unsigned(Effect::bloom),"legacy duplicate remains selectable");
+                require(!world || !starfox::render::reflective_material(static_cast<Effect>(current)),"model material leaked into world selector");
+                const auto next=starfox::render::next_effect(current,world,false);
+                require(starfox::render::next_effect(next,world,true)==current,"effect navigation is not reversible");
+                current=next;
+            } while(current!=0);
+            for(unsigned i=0;i<seen.size();++i)
+                require(seen[i]==(starfox::render::selectable_effect(i,world) && i!=unsigned(Effect::ice)
+                    && (world || (!starfox::render::manipulation(static_cast<Effect>(i)) && !starfox::render::material(static_cast<Effect>(i))))),"effect missing from grouped selector");
+        }
+        std::array<bool,starfox::render::effect_count> manipulations{};
+        std::uint8_t selected=0;
+        do {
+            require(!manipulations[selected],"manipulation selector repeats");
+            manipulations[selected]=true;
+            const auto next=starfox::render::next_manipulation(selected,false);
+            require(starfox::render::next_manipulation(next,true)==selected,"manipulation navigation not reversible");
+            selected=next;
+        } while(selected);
+        for(unsigned i=0;i<manipulations.size();++i)
+            require(manipulations[i]==starfox::render::valid_manipulation(i),"missing manipulation");
+        std::array<bool,starfox::render::effect_count> materials{};
+        selected=0;
+        do {
+            require(!materials[selected],"material selector repeats");materials[selected]=true;
+            const auto next=starfox::render::next_material(selected,false);
+            require(starfox::render::next_material(next,true)==selected,"material navigation not reversible");selected=next;
+        } while(selected);
+        for(unsigned i=0;i<materials.size();++i) require(materials[i]==starfox::render::valid_material(i),"missing material");
+        static_assert(unsigned(Effect::silver)-unsigned(Effect::duotone)==10,
+            "ten new effects must precede the new materials");
+        static_assert(unsigned(Effect::count)-unsigned(Effect::silver)==10,
+            "the new material group must contain ten entries");
+        require(starfox::render::conductor(Effect::silver)==1
+            && starfox::render::conductor(Effect::brass)==2
+            && starfox::render::conductor(Effect::rose_gold)==3,
+            "new metallic materials lost their ray-reflection conductor");
+        Framebuffer material_fixture{8U,4U};
+        material_fixture.enable_layer_tags(true);
+        std::fill(material_fixture.layer_tags().begin(),material_fixture.layer_tags().end(),
+            std::uint8_t(PixelLayer::three_d));
+        std::vector<std::uint8_t> material_source(material_fixture.pixels().size()*4U), material_scratch;
+        for(std::size_t p=0;p<material_fixture.pixels().size();++p) {
+            material_source[p*4]=std::uint8_t(31U+p*37U);
+            material_source[p*4+1]=std::uint8_t(113U+p*19U);
+            material_source[p*4+2]=std::uint8_t(217U-p*5U);
+            material_source[p*4+3]=255U;
+        }
+        std::vector<std::vector<std::uint8_t>> signatures;
+        for(unsigned id=unsigned(Effect::duotone);id<unsigned(Effect::count);++id) {
+            auto pixels=material_source;
+            starfox::render::apply_effect(static_cast<Effect>(id),material_fixture,pixels,material_scratch);
+            require(pixels!=material_source,"new effect/material is visually inert");
+            require(std::find(signatures.begin(),signatures.end(),pixels)==signatures.end(),
+                "new effects/materials produce duplicate output");
+            signatures.push_back(std::move(pixels));
+        }
+        require(starfox::render::canonical_effect(unsigned(Effect::ice))==unsigned(Effect::cyanotype),"legacy Ice migration failed");
         Framebuffer frame{2U, 1U};
         frame.enable_layer_tags(true);
         frame.set_layer_override(PixelLayer::three_d);
@@ -927,7 +1029,14 @@ int main(int argc, char** argv) {
                 frame, pixels, scratch);
             require(std::equal(pixels.begin() + 4, pixels.end(), original.begin() + 4),
                 "effects changed HUD pixels");
-            require((pixels == original) == (effect == 0), "effect/off output mismatch");
+            // This one-row fixture is on a bright scanline; dark alternating
+            // rows are covered by the multi-row CPU/GPU fixture.
+            require((pixels == original) == (effect == 0
+                || effect == unsigned(starfox::render::Effect::crosshatch)
+                || effect == unsigned(starfox::render::Effect::scanlines)
+                || starfox::render::spatial_manipulation(static_cast<Effect>(effect))
+                || starfox::render::persistence_mode(static_cast<Effect>(effect))
+                || starfox::render::reflective_material(static_cast<starfox::render::Effect>(effect))), "effect/off output mismatch");
             require(pixels[3] == 255, "effects changed alpha");
             auto disabled = original;
             starfox::render::apply_effect(static_cast<starfox::render::Effect>(effect),
@@ -940,6 +1049,36 @@ int main(int argc, char** argv) {
                 halfway[c] == (unsigned(original[c]) + pixels[c] + 1U) / 2U,
                 "intensity did not blend linearly");
         }
+    }
+    for(auto manipulation:{starfox::render::Effect::kaleidoscope,starfox::render::Effect::prism_split,starfox::render::Effect::pixel_sort,
+        starfox::render::Effect::shatter,starfox::render::Effect::melt,starfox::render::Effect::ripple_warp,
+        starfox::render::Effect::barrel_warp,starfox::render::Effect::venetian,starfox::render::Effect::checker_fold,
+        starfox::render::Effect::twist,starfox::render::Effect::ring_ripple,starfox::render::Effect::shard_split}) {
+        Framebuffer pattern(32,16);pattern.enable_layer_tags(true);
+        std::fill(pattern.layer_tags().begin(),pattern.layer_tags().end(),std::uint8_t(PixelLayer::three_d));
+        std::vector<std::uint8_t> input(pattern.pixels().size()*4),scratch;
+        for(std::size_t i=0;i<pattern.pixels().size();++i) {
+            input[i*4]=std::uint8_t(255-i%32*7);input[i*4+1]=std::uint8_t(i/32*13);
+            input[i*4+2]=std::uint8_t(i*17);input[i*4+3]=255;
+        }
+        pattern.layer_tags()[0]=std::uint8_t(PixelLayer::two_d);
+        auto result=input;
+        starfox::render::apply_effect(manipulation,pattern,result,scratch);
+        require(result!=input,"manipulation failed to transform a patterned surface");
+        require(std::equal(result.begin(),result.begin()+4,input.begin()),"manipulation changed HUD");
+        for(std::size_t i=3;i<result.size();i+=4)require(result[i]==255,"manipulation changed opacity");
+    }
+    for(unsigned scale:{1U,2U,4U}) for(auto layer:{PixelLayer::three_d,PixelLayer::background}) {
+        Framebuffer flat(8*scale,8*scale);flat.set_draw_scale(scale);flat.enable_layer_tags(true);
+        flat.clear(1);std::fill(flat.layer_tags().begin(),flat.layer_tags().end(),std::uint8_t(layer));
+        std::vector<std::uint8_t> pixels(flat.pixels().size()*4),scratch;
+        for(std::size_t i=0;i<flat.pixels().size();++i) {
+            pixels[i*4]=30;pixels[i*4+1]=80;pixels[i*4+2]=110;pixels[i*4+3]=255;
+        }
+        starfox::render::apply_effect(starfox::render::Effect::comic,flat,pixels,scratch,100,
+            starfox::render::Effect::comic,100);
+        for(std::size_t i=1;i<flat.pixels().size();++i) for(unsigned c=0;c<4;++c)
+            require(pixels[i*4+c]==pixels[c],"Comic added dots to a flat model/world surface");
     }
     for (const auto scale : {1U, 2U, 3U, 4U, 6U, 10U}) {
         check_filter(TwoDFilter::edge, scale, dump_directory);
@@ -969,11 +1108,14 @@ int main(int argc, char** argv) {
             "bright world pixel produced no bloom halo");
     }
     {
-        Framebuffer frame{4U, 1U};
+        Framebuffer frame{4U, 2U};
         frame.enable_layer_tags(true);
         frame.layer_tags() = {std::uint8_t(PixelLayer::three_d), std::uint8_t(PixelLayer::background),
-            std::uint8_t(PixelLayer::two_d), std::uint8_t(PixelLayer::world_geometry)};
-        const std::vector<std::uint8_t> original{180,100,40,255,180,100,40,255,180,100,40,255,180,100,40,255};
+            std::uint8_t(PixelLayer::two_d), std::uint8_t(PixelLayer::world_geometry),
+            std::uint8_t(PixelLayer::three_d),std::uint8_t(PixelLayer::background),
+            std::uint8_t(PixelLayer::two_d),std::uint8_t(PixelLayer::world_geometry)};
+        const std::vector<std::uint8_t> original{180,100,40,255,180,100,40,255,180,100,40,255,180,100,40,255,
+            180,100,40,255,180,100,40,255,180,100,40,255,180,100,40,255};
         std::vector<std::uint8_t> scratch;
         using starfox::render::Effect;
         for (unsigned style = 8; style < starfox::render::effect_count; ++style) {
@@ -982,8 +1124,13 @@ int main(int argc, char** argv) {
                 auto pixels = original;
                 starfox::render::apply_effect(world ? Effect::off : effect,
                     frame, pixels, scratch, 100, world ? effect : Effect::off, 100);
-                for (unsigned pixel = 0; pixel < 4; ++pixel) {
-                    const bool selected = world ? pixel == 1 || pixel == 3 : pixel == 0;
+                for (unsigned pixel = 0; pixel < 8; ++pixel) {
+                    const bool selected = (world ? pixel%4 == 1 || pixel%4 == 3 : pixel%4 == 0)
+                        && !starfox::render::reflective_material(effect)
+                        && effect!=Effect::crosshatch
+                        && !starfox::render::spatial_manipulation(effect)
+                        && !starfox::render::persistence_mode(effect)
+                        && (effect!=Effect::scanlines || pixel>=4);
                     const bool same = std::equal(pixels.begin() + pixel * 4,
                         pixels.begin() + pixel * 4 + 3, original.begin() + pixel * 4);
                     require(same != selected, "new style missed its layer or leaked into another");
@@ -1001,6 +1148,21 @@ int main(int argc, char** argv) {
         require(world_only[0] == original[0] && world_only[4] != original[4]
                 && world_only[8] == original[8] && world_only[12] != original[12],
             "world effects missed scenery or changed model/HUD");
+    }
+    {
+        using namespace starfox::render;
+        require(valid_environment({1,9,3,1,3,2}) && !valid_environment({1,10,0,0,0,0}),"environment setting bounds");
+        starfox::simulation::SnesPpuState p;
+        p.tunnel_scene=true;
+        const auto mask=environment_palette_regions(p,232);
+        require(std::all_of(mask.begin(),mask.end(),[](auto v){return v==0;}),"tunnel was treated as landscape");
+        Framebuffer f(5,1);f.enable_layer_tags(true);
+        for(unsigned i=0;i<5;++i) {f.pixels()[i]=1;f.layer_tags()[i]=i;}
+        std::vector<std::uint8_t> rgb(20,100);const auto original=rgb;
+        EnvironmentEffects e;e.classes[1]=1;e.modes={6,0,1,0};e.motion={-10,0,0,0};
+        apply_environment(e,f,rgb);
+        for(unsigned i=0;i<5;++i) if(i!=2) require(std::equal(rgb.begin()+i*4,rgb.begin()+i*4+4,original.begin()+i*4),"environment affected protected ink");
+        e.modes={};rgb=original;apply_environment(e,f,rgb);require(rgb==original,"disabled environment changed pixels");
     }
     std::cout << "pixel filter tests passed\n";
     return 0;

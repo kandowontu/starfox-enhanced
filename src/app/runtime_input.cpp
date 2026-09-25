@@ -2,6 +2,7 @@
 
 #include "starfox/input/buttons.hpp"
 #include "starfox/render/effect_types.hpp"
+#include "starfox/render/environment_effects.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -12,6 +13,9 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#if defined(__ANDROID__)
+#include <sys/system_properties.h>
+#endif
 
 namespace starfox::app {
 namespace {
@@ -126,6 +130,9 @@ constexpr std::string_view kPregameTag{"SFE_PREGAME_V"};
 constexpr int kPregameRevision = 13;
 
 std::filesystem::path portable_directory;
+#if defined(__APPLE__) && !defined(SDL_PLATFORM_IOS)
+std::filesystem::path legacy_bundle_directory;
+#endif
 
 std::filesystem::path desktop_data_directory() {
 #if defined(STARFOX_UWP) || defined(__ANDROID__) || defined(SDL_PLATFORM_IOS) || defined(SDL_PLATFORM_VITA) || defined(__SWITCH__)
@@ -140,12 +147,21 @@ std::filesystem::path desktop_data_directory() {
 
 bool steam_input_device(SDL_JoystickID identifier) {
     const auto* name=SDL_GetGamepadNameForID(identifier);
-    return (SDL_GetGamepadVendorForID(identifier)==0x28deU
-            && SDL_GetGamepadProductForID(identifier)==0x11ffU)
+    // SDL's Steam metadata can replace the public vendor/product with the
+    // physical controller's identity. The driver's GUID still identifies the
+    // virtual transport; do not classify that stream as a duplicate raw Deck.
+    Uint16 guid_vendor{},guid_product{};
+    SDL_GetJoystickGUIDInfo(SDL_GetJoystickGUIDForID(identifier),
+        &guid_vendor,&guid_product,nullptr,nullptr);
+    return steam_virtual_gamepad_ids(SDL_GetGamepadVendorForID(identifier),
+            SDL_GetGamepadProductForID(identifier),guid_vendor,guid_product)
         || (name && contains(name,"steam virtual"));
 }
 
 bool native_deck_device(SDL_JoystickID identifier) {
+    // Steam may preserve the hardware name in its virtual device. Never
+    // discard the translated input stream as its own physical duplicate.
+    if (steam_input_device(identifier)) return false;
     const auto* name=SDL_GetGamepadNameForID(identifier);
     return (SDL_GetGamepadVendorForID(identifier)==0x28deU
             && SDL_GetGamepadProductForID(identifier)==0x1205U)
@@ -295,7 +311,23 @@ void set_portable_data_directory(const std::filesystem::path& directory) {
     if (directory.empty() || !directory.is_absolute()) {
         throw std::invalid_argument{"Portable data directory must be absolute"};
     }
+#if defined(__APPLE__) && !defined(SDL_PLATFORM_IOS)
+    // Gatekeeper can run the bundle from a read-only, translocated mount.
+    // Assets, settings, saves and the single-instance lock must all share
+    // persistent writable storage, rather than Contents/MacOS.
+    legacy_bundle_directory = directory.lexically_normal();
+    if (char* preference_path =
+            SDL_GetPrefPath("StarFoxEnhanced", "StarFoxEnhanced");
+        preference_path != nullptr) {
+        portable_directory = std::filesystem::path{preference_path};
+        SDL_free(preference_path);
+        return;
+    }
+    throw std::runtime_error{"Cannot locate writable macOS application data: "
+        + std::string{SDL_GetError()}};
+#else
     portable_directory = directory.lexically_normal();
+#endif
 #endif
 }
 
@@ -305,7 +337,7 @@ void migrate_legacy_data(const std::filesystem::path& destination,
     const std::filesystem::path& legacy_settings,
     const std::filesystem::path& legacy_bindings) {
     if (destination.empty()) return;
-    for (const auto* filename : {"pregame.cfg", "hud-layout.cfg", "starfox-ex.srm", "input-bindings.cfg"}) {
+    for (const auto* filename : {"pregame.cfg", "hud-layout.cfg", "touch-layout.cfg", "starfox-ex.srm", "input-bindings.cfg"}) {
         const auto target = destination / filename;
         if (std::filesystem::exists(target)) continue;
         const auto& source_directory = std::string_view{filename} == "input-bindings.cfg"
@@ -324,9 +356,17 @@ void migrate_legacy_user_data() {
     if (destination.empty()) return;
     migrate_legacy_data(destination, legacy_documents_path("pregame.cfg").parent_path(),
         legacy_bindings_path().parent_path());
+#if defined(__APPLE__) && !defined(SDL_PLATFORM_IOS)
+    migrate_legacy_data(destination, legacy_bundle_directory,
+        legacy_bundle_directory);
+#endif
 }
 
 void configure_native_gamepad_support() noexcept {
+    // SDL's Steam virtual-gamepad filter reads this environment variable,
+    // not an SDL hint. Without it Game Mode can hide the only input device.
+    // Respect an explicit launcher/user value, including a deliberate opt-out.
+    SDL_setenv_unsafe("SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD", "1", 0);
 #if defined(STARFOX_UWP)
     // SDL3 disables WGI by default on desktop. It is the ONLY native
     // controller backend in our WinRT build (XInput/RawInput are absent).
@@ -416,7 +456,48 @@ std::string gamepad_device_label(SDL_Gamepad* gamepad) {
     return result;
 }
 
-InputBindings::InputBindings() {
+bool handheld_menu_layout_identity(
+    std::string_view vendor, std::string_view model) {
+    if (contains(vendor, "retroid") || contains(model, "retroid")) return true;
+    return contains(vendor, "valve")
+        && (lower_ascii(model) == "jupiter"
+            || lower_ascii(model) == "galileo");
+}
+
+bool handheld_menu_layout_default() {
+#if defined(__ANDROID__)
+    char vendor[PROP_VALUE_MAX]{};
+    char model[PROP_VALUE_MAX]{};
+    __system_property_get("ro.product.manufacturer", vendor);
+    __system_property_get("ro.product.model", model);
+    if (handheld_menu_layout_identity(vendor, model)) return true;
+#elif defined(__linux__)
+    std::ifstream vendor_file{"/sys/class/dmi/id/sys_vendor"};
+    std::ifstream model_file{"/sys/class/dmi/id/product_name"};
+    std::string vendor, model;
+    std::getline(vendor_file, vendor);
+    std::getline(model_file, model);
+    if (handheld_menu_layout_identity(vendor, model)) return true;
+#endif
+    // A raw built-in Deck pad can still be enumerated beside Steam's virtual
+    // Xbox device. Check every device, not merely the selected virtual pad.
+    int count = 0;
+    auto* ids = SDL_GetGamepads(&count);
+    bool found = false;
+    for (int index = 0; ids && index < count; ++index) {
+        const auto* name = SDL_GetGamepadNameForID(ids[index]);
+        if (native_deck_device(ids[index])
+            || (name && contains(name, "retroid"))) {
+            found = true;
+            break;
+        }
+    }
+    SDL_free(ids);
+    return found;
+}
+
+InputBindings::InputBindings(bool handheld_menu_layout)
+    : handheld_menu_layout_(handheld_menu_layout) {
     reset(BindingDevice::keyboard);
     reset(BindingDevice::gamepad);
 }
@@ -465,7 +546,7 @@ input::ButtonMask InputBindings::sample_gamepad_only(
 }
 
 input::ButtonMask InputBindings::sample_fixed_menu_navigation(
-    SDL_Gamepad* gamepad) const noexcept {
+    SDL_Gamepad* gamepad, bool setup_confirm) const noexcept {
     const auto* keys = SDL_GetKeyboardState(nullptr);
     input::ButtonMask result{};
     add_keyboard_button(result, keys, SDL_SCANCODE_UP, input::up);
@@ -476,6 +557,12 @@ input::ButtonMask InputBindings::sample_fixed_menu_navigation(
     add_keyboard_button(result, keys, SDL_SCANCODE_A, input::y);
     add_keyboard_button(result, keys, SDL_SCANCODE_Z, input::b);
     add_keyboard_button(result, keys, SDL_SCANCODE_RETURN, input::start);
+    return result | sample_fixed_gamepad_navigation(gamepad, setup_confirm);
+}
+
+input::ButtonMask InputBindings::sample_fixed_gamepad_navigation(
+    SDL_Gamepad* gamepad, bool setup_confirm) const noexcept {
+    input::ButtonMask result{};
     add_gamepad_button(result, gamepad, SDL_GAMEPAD_BUTTON_DPAD_UP, input::up);
     add_gamepad_button(result, gamepad, SDL_GAMEPAD_BUTTON_DPAD_DOWN, input::down);
     add_gamepad_button(result, gamepad, SDL_GAMEPAD_BUTTON_DPAD_LEFT, input::left);
@@ -485,9 +572,12 @@ input::ButtonMask InputBindings::sample_fixed_menu_navigation(
     add_gamepad_button(result, gamepad, SDL_GAMEPAD_BUTTON_NORTH, input::y);
     add_gamepad_button(result, gamepad, SDL_GAMEPAD_BUTTON_EAST, input::b);
 #else
-    add_gamepad_button(result, gamepad, SDL_GAMEPAD_BUTTON_EAST, input::a);
+    const bool snes_positions = handheld_menu_layout_ || !setup_confirm;
+    add_gamepad_button(result, gamepad, SDL_GAMEPAD_BUTTON_EAST,
+        snes_positions ? input::a : input::b);
     add_gamepad_button(result, gamepad, SDL_GAMEPAD_BUTTON_WEST, input::y);
-    add_gamepad_button(result, gamepad, SDL_GAMEPAD_BUTTON_SOUTH, input::b);
+    add_gamepad_button(result, gamepad, SDL_GAMEPAD_BUTTON_SOUTH,
+        snes_positions ? input::b : input::a);
 #endif
     add_gamepad_button(result, gamepad, SDL_GAMEPAD_BUTTON_START, input::start);
     add_gamepad_axis(result, gamepad,
@@ -756,6 +846,9 @@ bool load_pregame_settings(
         } else if (name == "INFINITE_BOMBS" || name == "INFINITE_BOOST" || name == "INFINITE_LIVES") {
             if (value < 0 || value > 1) return false;
             (name == "INFINITE_BOMBS" ? loaded.infinite_bombs : name == "INFINITE_LIVES" ? loaded.infinite_lives : loaded.infinite_boost) = value != 0;
+        } else if (name == "PLANET_SELECT_CHEAT") {
+            if(value<0 || value>1) return false;
+            loaded.planet_select_cheat=value!=0;
         } else if (name == "DEFAULT_LASER") {
             if (value < 0 || value > 2) return false;
             loaded.default_laser = static_cast<std::uint8_t>(value);
@@ -765,13 +858,25 @@ bool load_pregame_settings(
         } else if (name == "SELECTED_LEVEL") {
             if (value != 0 && (value < 11 || value > 79 || value % 10 == 0)) return false;
             loaded.selected_level = static_cast<std::uint8_t>(value);
+        } else if (name == "FSR1_MODE") {
+            if (value < 0 || value > 4) return false;
+            loaded.fsr1_mode = static_cast<std::uint8_t>(value);
+        } else if (name == "DLSS_MODE") {
+            if (value < 0 || value > 4) return false;
+            loaded.dlss_mode = static_cast<std::uint8_t>(value);
+        } else if (name == "REFLECTIVE_SURFACES") {
+            if (value < 0 || value > 3) return false;
+            loaded.reflective_surfaces = static_cast<std::uint8_t>(value);
         } else if (name == "RAY_TRACING") {
             if (value < 0 || value > 1) return false;
             loaded.ray_tracing = value != 0;
+        } else if (name == "SOFTWARE_SHADOWS") {
+            if (value < 0 || value > 1) return false;
+            loaded.enhanced_shadows = value != 0;
         } else if (name == "ENHANCED_SHADOWS") {
             if (value < 0 || value > 1) return false;
             // Accept old files without silently enabling hardware ray tracing.
-            loaded.enhanced_shadows = false;
+            // Obsolete pre-migration key: do not override SOFTWARE_SHADOWS.
         } else if (name == "CHROMATIC_ABERRATION") {
             if (value < 0 || value > 3) return false;
             loaded.chromatic_aberration = static_cast<std::uint8_t>(value);
@@ -787,6 +892,19 @@ bool load_pregame_settings(
         } else if (name == "EFFECT_INTENSITY") {
             if (value < 0 || value > 100) return false;
             loaded.effect_intensity = static_cast<std::uint8_t>(value);
+        } else if (name.size()==13 && name.starts_with("ENVIRONMENT_") && name.back()>='0' && name.back()<='5') {
+            const auto field=unsigned(name.back()-'0');
+            if(value<0 || unsigned(value)>=render::environment_limits[field]) return false;
+            loaded.environment[field]=std::uint8_t(value);
+        } else if (name == "MATERIAL") {
+            if(value<0 || !render::valid_material(value)) return false;
+            loaded.material=static_cast<std::uint8_t>(value);
+        } else if (name == "MANIPULATION") {
+            if(value<0 || !render::valid_manipulation(value)) return false;
+            loaded.manipulation=static_cast<std::uint8_t>(value);
+        } else if (name == "MANIPULATION_INTENSITY") {
+            if(value<0 || value>100) return false;
+            loaded.manipulation_intensity=static_cast<std::uint8_t>(value);
         } else if (name == "WORLD_EFFECTS") {
             if (value < 0 || value >= render::effect_count) return false;
             loaded.world_effect = static_cast<std::uint8_t>(value);
@@ -845,6 +963,17 @@ bool load_pregame_settings(
     if (revision < 12) {
         loaded.two_d_filter = loaded.enhanced_graphics ? 1U : 0U;
     }
+    if(render::manipulation(static_cast<render::Effect>(loaded.effect))) {
+        if(!loaded.manipulation) {
+            loaded.manipulation=loaded.effect;
+            loaded.manipulation_intensity=loaded.effect_intensity;
+        }
+        loaded.effect=0;
+    }
+    if(render::material(static_cast<render::Effect>(loaded.effect))) {
+        if(!loaded.material) loaded.material=loaded.effect;
+        loaded.effect=0;
+    }
     settings = loaded;
     return true;
 }
@@ -857,10 +986,16 @@ bool save_pregame_settings(
         || settings.anti_aliasing > 3U || settings.rtx_lighting > 3U
         || settings.two_d_filter > 5U || settings.effect >= render::effect_count
         || settings.effect_intensity > 100U || settings.renderer_mode > 1U
+        || !render::valid_manipulation(settings.manipulation) || settings.manipulation_intensity>100
+        || !render::valid_material(settings.material)
+        || !render::valid_environment(settings.environment)
         || settings.world_effect >= render::effect_count || settings.world_effect_intensity > 100U || settings.bloom > 3U || settings.bloom_2d > 3U
         || settings.wireframe_thickness < 1U || settings.wireframe_thickness > 4U
         || settings.chromatic_aberration > 3U
         || settings.hdr_effect > 3U
+        || settings.dlss_mode > 4U
+        || settings.fsr1_mode > 4U
+        || settings.reflective_surfaces > 3U
         || settings.default_laser > 2U
         || settings.stereo_output > 2U
         || (settings.selected_level != 0U && (settings.selected_level < 11U
@@ -897,6 +1032,15 @@ bool save_pregame_settings(
            << static_cast<unsigned>(settings.two_d_filter) << '\n'
            << "EFFECTS " << static_cast<unsigned>(settings.effect) << '\n'
            << "EFFECT_INTENSITY " << static_cast<unsigned>(settings.effect_intensity) << '\n'
+           << "MANIPULATION " << unsigned(settings.manipulation) << '\n'
+           << "MATERIAL " << unsigned(settings.material) << '\n'
+           << "ENVIRONMENT_0 " << unsigned(settings.environment[0]) << '\n'
+           << "ENVIRONMENT_1 " << unsigned(settings.environment[1]) << '\n'
+           << "ENVIRONMENT_2 " << unsigned(settings.environment[2]) << '\n'
+           << "ENVIRONMENT_3 " << unsigned(settings.environment[3]) << '\n'
+           << "ENVIRONMENT_4 " << unsigned(settings.environment[4]) << '\n'
+           << "ENVIRONMENT_5 " << unsigned(settings.environment[5]) << '\n'
+           << "MANIPULATION_INTENSITY " << unsigned(settings.manipulation_intensity) << '\n'
            << "WORLD_EFFECTS " << static_cast<unsigned>(settings.world_effect) << '\n'
            << "WORLD_EFFECT_INTENSITY " << static_cast<unsigned>(settings.world_effect_intensity) << '\n'
            << "BLOOM " << static_cast<unsigned>(settings.bloom) << '\n'
@@ -906,8 +1050,13 @@ bool save_pregame_settings(
            << "CHROMATIC_ABERRATION " << static_cast<unsigned>(settings.chromatic_aberration) << '\n'
            << "HDR_EFFECT " << static_cast<unsigned>(settings.hdr_effect) << '\n'
            << "RAY_TRACING " << static_cast<unsigned>(settings.ray_tracing) << '\n'
+           << "SOFTWARE_SHADOWS " << static_cast<unsigned>(settings.enhanced_shadows) << '\n'
+           << "DLSS_MODE " << static_cast<unsigned>(settings.dlss_mode) << '\n'
+           << "FSR1_MODE " << static_cast<unsigned>(settings.fsr1_mode) << '\n'
+           << "REFLECTIVE_SURFACES " << static_cast<unsigned>(settings.reflective_surfaces) << '\n'
            << "INFINITE_BOMBS " << static_cast<unsigned>(settings.infinite_bombs) << '\n'
            << "INFINITE_LIVES " << static_cast<unsigned>(settings.infinite_lives) << '\n'
+           << "PLANET_SELECT_CHEAT " << unsigned(settings.planet_select_cheat) << '\n'
            << "INFINITE_BOOST " << static_cast<unsigned>(settings.infinite_boost) << '\n'
            << "DEFAULT_LASER " << static_cast<unsigned>(settings.default_laser) << '\n'
            << "SELECTED_LEVEL " << static_cast<unsigned>(settings.selected_level) << '\n'
@@ -1063,6 +1212,48 @@ bool save_hud_layout(
                    << layouts[profile].offsets[index].x << ' '
                    << layouts[profile].offsets[index].y << '\n';
         }
+    }
+    return static_cast<bool>(output);
+}
+
+std::filesystem::path touch_layout_settings_path() {
+    return documents_settings_path("touch-layout.cfg");
+}
+
+bool load_touch_layout(const std::filesystem::path& path,
+    TouchLayoutConfig& layout) noexcept {
+    if(path.empty()) return false;
+    std::ifstream input{path};
+    std::string version;
+    if(!(input>>version) || version!="SFE_TOUCH_LAYOUT_V1") return false;
+    TouchLayoutConfig loaded{};
+    std::array<bool,static_cast<std::size_t>(TouchGroup::count)> seen{};
+    int index{};
+    float x{},y{},scale{};
+    while(input>>index>>x>>y>>scale) {
+        if(index<0 || index>=static_cast<int>(seen.size()) || seen[index]
+            || !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(scale)) return false;
+        loaded.groups[index]={std::clamp(x,-1.0F,1.0F),
+            std::clamp(y,-1.0F,1.0F),std::clamp(scale,0.55F,2.0F)};
+        seen[index]=true;
+    }
+    if(!std::all_of(seen.begin(),seen.end(),[](bool value){return value;})) return false;
+    layout=loaded;
+    return true;
+}
+
+bool save_touch_layout(const std::filesystem::path& path,
+    const TouchLayoutConfig& layout) noexcept {
+    if(path.empty()) return false;
+    std::error_code error;
+    std::filesystem::create_directories(path.parent_path(),error);
+    if(error) return false;
+    std::ofstream output{path,std::ios::trunc};
+    if(!output) return false;
+    output<<"SFE_TOUCH_LAYOUT_V1\n";
+    for(std::size_t i=0;i<layout.groups.size();++i) {
+        const auto& group=layout.groups[i];
+        output<<i<<' '<<group.x<<' '<<group.y<<' '<<group.scale<<'\n';
     }
     return static_cast<bool>(output);
 }

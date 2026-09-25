@@ -11,13 +11,15 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--dxc')
 parser.add_argument('--spirv-cross')
 parser.add_argument('--check', action='store_true')
-parser.add_argument('--shader', choices=['temporal_resample_portable', 'temporal_hud_portable', 'temporal_inputs_portable', 'background2_portable', 'background_portable', 'ray_geometry_portable', 'motion_portable', 'projected_text_portable', 'particle_portable', 'dust_portable', 'grid_spans_portable', 'grid_portable', 'warp_expand_portable', 'warp_material_portable', 'colour_warp_portable', 'axis_portable', 'shadow_portable', 'raster_portable', 'raster_bins', 'composite_portable', 'projection_portable', 'visibility_portable', 'transform_portable', 'continuous_portable', 'continuous_visibility_portable', 'clip_portable', 'clip_continuous_portable', 'spans_portable', 'bsp_portable', 'surface_portable', 'scene_portable', 'billboard_portable'], default='shadow_portable')
+parser.add_argument('--shader', choices=['warp_lookup_portable', 'warp_reflection_portable', 'ray_materials_portable', 'temporal_resample_portable', 'temporal_hud_portable', 'temporal_inputs_portable', 'background2_portable', 'background_portable', 'ray_geometry_portable', 'motion_portable', 'projected_text_portable', 'particle_portable', 'dust_portable', 'grid_spans_portable', 'grid_portable', 'warp_expand_portable', 'warp_material_portable', 'colour_warp_portable', 'axis_portable', 'shadow_portable', 'raster_portable', 'raster_bins', 'composite_portable', 'projection_portable', 'visibility_portable', 'transform_portable', 'continuous_portable', 'continuous_visibility_portable', 'clip_portable', 'clip_continuous_portable', 'spans_portable', 'bsp_portable', 'surface_portable', 'scene_portable', 'billboard_portable'], default='shadow_portable')
 args = parser.parse_args()
 root = pathlib.Path(__file__).resolve().parents[1]
 source = root / f'src/render/shaders/{args.shader}.hlsl'
 destination = root / f'src/render/shaders/generated/{args.shader}.hpp'
 stamp = '// Source SHA-256: ' + source_digest(source)
 dxil_enabled = True
+platform_payloads = args.shader in ('shadow_portable', 'surface_portable', 'billboard_portable',
+                                   'clip_portable', 'clip_continuous_portable', 'spans_portable')
 compiler_stamp = '// Strict IEEE (-Gis): enabled' if args.shader in ('temporal_inputs_portable', 'background2_portable', 'projected_text_portable', 'particle_portable', 'dust_portable', 'axis_portable', 'clip_continuous_portable', 'continuous_portable', 'billboard_portable') else ''
 if args.check:
     validate_metal_bindings(destination.read_text())
@@ -25,6 +27,10 @@ if args.check:
         raise SystemExit('Portable shadow shader is stale.')
     if dxil_enabled and 'unsigned char dxil[]=' not in destination.read_text():
         raise SystemExit('Portable shader is missing DXIL; regenerate.')
+    if args.shader == 'clip_continuous_portable' and 'unsigned char intel_dxil[]=' not in destination.read_text():
+        raise SystemExit('Continuous clipping shader is missing Intel DXIL; regenerate.')
+    if platform_payloads and any(guard not in destination.read_text() for guard in ('#if defined(_WIN32)', '#if defined(__APPLE__)')):
+        raise SystemExit('Portable shadow platform payload guards are stale.')
     if compiler_stamp and compiler_stamp not in destination.read_text().splitlines()[:4]:
         raise SystemExit('Portable clipping shader requires strict IEEE regeneration.')
     raise SystemExit(0)
@@ -38,16 +44,25 @@ with tempfile.TemporaryDirectory() as temporary:
     subprocess.run([args.dxc, *strict, '-spirv', '-fspv-target-env=vulkan1.0', '-T', 'cs_6_0', '-E', 'main',
                     '-Fo', str(spv), str(source)], check=True)
     subprocess.run([args.spirv_cross, str(spv), '--msl', '--msl-version', '20100', '--output', str(msl)], check=True)
-    metal = msl.read_text()
+    # SPIRV-Cross emits whitespace-only lines in its MSL template. Normalize
+    # them before embedding so generated headers pass git's whitespace check.
+    metal = '\n'.join(line.rstrip() for line in msl.read_text().splitlines()) + '\n'
     native_text = ''
     if dxil_enabled:
         # DXIL does not permit a non-inlined struct-return helper. Keep the
         # software binary64 arithmetic, but inline it for this backend only.
         subprocess.run([args.dxc, *strict, '-D', 'SF_NOINLINE=', '-T', 'cs_6_0', '-E', 'main',
                         '-Fo', str(dxil), str(source)], check=True)
-        native_blob = dxil.read_bytes()
-        native_text = '\ninline constexpr unsigned char dxil[]={\n' + ',\n'.join(
-            ','.join(str(b) for b in native_blob[i:i+32]) for i in range(0,len(native_blob),32)) + '\n};\n'
+        def native_array(name, blob):
+            return '\ninline constexpr unsigned char ' + name + '[]={\n' + ',\n'.join(
+                ','.join(str(b) for b in blob[i:i+32]) for i in range(0,len(blob),32)) + '\n};\n'
+        native_text = native_array('dxil', dxil.read_bytes())
+        if args.shader == 'clip_continuous_portable':
+            intel_dxil = pathlib.Path(temporary) / 'clip_continuous_intel.dxil'
+            subprocess.run([args.dxc, *strict, '-D', 'SF_NOINLINE=',
+                            '-D', 'STARFOX_CLIP_CAPACITY=96', '-T', 'cs_6_0', '-E', 'main',
+                            '-Fo', str(intel_dxil), str(source)], check=True)
+            native_text += native_array('intel_dxil', intel_dxil.read_bytes())
     bindings = {'Settings': 0, 'nodes': 1, 'triangles': 2, 'outputMask': 3} if args.shader == 'shadow_portable' else {
         'Settings': 0, 'commands': 1, 'rows': 2, 'indices': 3, 'texels': 4,
         'back_pixels': 5, 'back_surfaces': 6, 'geometry_planes': 7, 'back_depth': 8,
@@ -85,6 +100,10 @@ with tempfile.TemporaryDirectory() as temporary:
         bindings = {'Settings': 0}
     if args.shader == 'ray_geometry_portable':
         bindings = {'Settings': 0, 'points': 1, 'residuals': 2, 'triangles': 3, 'positions': 4}
+    if args.shader == 'ray_materials_portable':
+        bindings = {'Settings': 0, 'topology': 1, 'corners': 2, 'polygons': 3, 'materials': 4, 'faceLookup': 5, 'outputMaterials': 6}
+    if args.shader == 'warp_lookup_portable':
+        bindings = {'Settings': 0, 'polygons': 1, 'corners': 2, 'faceLookup': 3}
     if args.shader == 'axis_portable':
         bindings = {'Settings': 0, 'points': 1, 'indices': 2, 'residuals': 3, 'centres': 4, 'centreResiduals': 5}
     if args.shader == 'visibility_portable':
@@ -108,6 +127,8 @@ with tempfile.TemporaryDirectory() as temporary:
         bindings = {'Settings': 0, 'clipped': 1, 'materials': 2, 'order': 3, 'orderResults': 4, 'commands': 5, 'masks': 6}
     if args.shader == 'bsp_portable':
         bindings = {'Settings': 0, 'nodes': 1, 'visibility': 2, 'faces': 3, 'trees': 4, 'ordered': 5, 'results': 6}
+    if args.shader == 'warp_reflection_portable':
+        bindings = {'Settings': 0, 'descriptors': 1, 'traversal': 2, 'ordered': 3, 'combinedDescriptors': 4, 'result': 5, 'combinedOrder': 6}
     if args.shader == 'colour_warp_portable':
         bindings = {'Settings': 0, 'ordered': 1, 'traversal': 2, 'polygons': 3, 'visibility': 4, 'descriptors': 5, 'result': 6}
     if args.shader == 'warp_material_portable':
@@ -143,6 +164,8 @@ with tempfile.TemporaryDirectory() as temporary:
         namespace = 'starfox::render::motion_shader'
     if args.shader == 'ray_geometry_portable':
         namespace = 'starfox::render::ray_geometry_shader'
+    if args.shader == 'ray_materials_portable':
+        namespace = 'starfox::render::ray_materials_shader'
     if args.shader == 'visibility_portable':
         namespace = 'starfox::render::visibility_shader'
     if args.shader == 'transform_portable':
@@ -161,6 +184,10 @@ with tempfile.TemporaryDirectory() as temporary:
         namespace = 'starfox::render::bsp_shader'
     if args.shader == 'colour_warp_portable':
         namespace = 'starfox::render::colour_warp_shader'
+    if args.shader == 'warp_reflection_portable':
+        namespace = 'starfox::render::warp_reflection_shader'
+    if args.shader == 'warp_lookup_portable':
+        namespace = 'starfox::render::warp_lookup_shader'
     if args.shader == 'warp_material_portable':
         namespace = 'starfox::render::warp_material_shader'
     if args.shader == 'warp_expand_portable':
@@ -189,9 +216,14 @@ with tempfile.TemporaryDirectory() as temporary:
         namespace = 'starfox::render::temporal_hud_shader'
     if args.shader == 'temporal_resample_portable':
         namespace = 'starfox::render::temporal_resample_shader'
+    if platform_payloads:
+        native_text = '\n#if defined(_WIN32)\n' + native_text + '#endif\n'
+    metal_text = '\ninline constexpr char metal[]=R"SFXMETAL(\n' + metal + ')SFXMETAL";\n'
+    if platform_payloads:
+        metal_text = '\n#if defined(__APPLE__)\n' + metal_text + '#endif\n'
     destination.write_text('// Generated by tools/generate_portable_shadows.py; do not edit.\n' + stamp
         + ('\n' + compiler_stamp if compiler_stamp else '')
         + '\n#pragma once\nnamespace ' + namespace + ' {\n'
         + 'inline constexpr unsigned char spirv[]={\n' + ',\n'.join(rows)
-        + '\n};' + native_text + '\ninline constexpr char metal[]=R"SFXMETAL(\n' + metal + ')SFXMETAL";\n}\n',
+        + '\n};' + native_text + metal_text + '}\n',
         encoding='utf-8', newline='\n')

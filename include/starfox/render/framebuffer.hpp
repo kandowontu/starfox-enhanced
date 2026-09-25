@@ -26,7 +26,16 @@ enum class PixelLayer : std::uint8_t {
     background = 2,
     world_geometry = 3, // stars/dust/grid: world effects, but not a 2D-art filter
     textured_geometry = 4, // model texels: filterable artwork, still a 3D surface
+    terrain_geometry = 5, // enhanced landscape: world effects and ground surface shading
 };
+
+// Screen-space 3D AA must not soften cartridge art, including texels painted
+// on polygons: those pixels can carry a 2D filter such as CRT scanlines.
+[[nodiscard]] constexpr bool anti_aliasing_eligible(PixelLayer layer) noexcept {
+    return layer == PixelLayer::three_d
+        || layer == PixelLayer::world_geometry
+        || layer == PixelLayer::terrain_geometry;
+}
 
 // Pixels are stored at the render scale while every cartridge-authored pass
 // keeps addressing the source raster: a draw scale of S expands one logical
@@ -136,6 +145,42 @@ public:
             std::fill(tags_.begin(), tags_.end(),
                 static_cast<std::uint8_t>(PixelLayer::three_d));
         }
+    }
+
+    // Twelve little-endian 16-bit rows, MSB-first pixels, as stored in the
+    // cartridge font. Compact text samples endpoints exactly like the source.
+    void glyph12(std::int32_t x,std::int32_t y,std::uint32_t glyph_width,
+        std::span<const std::uint8_t> rows,std::uint8_t colour,std::uint32_t output_height=12) {
+        if(rows.size()!=24 || !glyph_width || glyph_width>16 || output_height<2) return;
+        if(commands_) {
+            RasterCommand c;
+            c.left=c.u=x*int(draw_scale_);c.top=c.v=y*int(draw_scale_);
+            c.right=c.left+int(glyph_width*draw_scale_);c.bottom=c.top+int(output_height*draw_scale_);
+            c.du=int(draw_scale_);c.dv=int(output_height);c.even=colour;
+            c.tag=write_tag(PixelLayer::two_d);c.textured=6;
+            c.texture_offset=commands_->snapshot(rows);commands_->add(c);return;
+        }
+        for(std::uint32_t row=0;row<output_height;++row) {
+            const auto source=row*11/(output_height-1);
+            const auto bits=std::uint32_t(rows[source*2])|(std::uint32_t(rows[source*2+1])<<8);
+            for(std::uint32_t column=0;column<glyph_width;++column)
+                if(bits&(0x8000U>>column)) set(x+int(column),y+int(row),colour);
+        }
+    }
+
+    void glyph8(std::int32_t x,std::int32_t y,std::span<const std::uint8_t> rows,
+        std::uint8_t colour,std::uint32_t edge=8) {
+        if(rows.size()!=8 || (edge!=8 && edge!=12)) return;
+        if(commands_) {
+            RasterCommand c;
+            c.left=c.u=x*int(draw_scale_);c.top=c.v=y*int(draw_scale_);
+            c.right=c.left+int(edge*draw_scale_);c.bottom=c.top+int(edge*draw_scale_);
+            c.du=int(draw_scale_);c.dv=int(edge);c.even=colour;
+            c.tag=write_tag(PixelLayer::two_d);c.textured=7;
+            c.texture_offset=commands_->snapshot(rows);commands_->add(c);return;
+        }
+        for(unsigned row=0;row<edge;++row) for(unsigned column=0;column<edge;++column)
+            if(rows[row*8/edge]&(0x80U>>(column*8/edge))) set(x+int(column),y+int(row),colour);
     }
 
     void set(std::int32_t x, std::int32_t y, std::uint8_t colour) noexcept {

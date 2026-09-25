@@ -1,4 +1,5 @@
 #include "starfox/render/gpu_background.hpp"
+#include <cmath>
 #include "starfox/render/gpu_scene.hpp"
 #include "starfox/render/gpu_composite.hpp"
 #include "starfox/render/terrain_profile.hpp"
@@ -44,7 +45,103 @@ int main(int argc,char** argv) {
         device=SDL_CreateGPUDeviceWithProperties(props);SDL_DestroyProperties(props);require(device,"GPU device");
         {
         GpuBackground gpu;BackgroundRenderer reference;
+        {
+            // Independent text semantics, not just two matching decoders.
+            starfox::simulation::SnesPpuState p{};
+            p.background_mode=1;p.main_screen=1;p.bg1_screen_base=0x7000;
+            p.vram[6]=0x10; // Glyph 0, (3,3), dark ink 1.
+            for(const auto [colour,lift]:std::array<std::pair<unsigned,bool>,6>{{
+                {0,true},{31U|(12U<<5),true},{31U<<10,true},
+                {31U|(31U<<5),false},{(31U<<5)|(31U<<10),false},{32767U,false}}})
+            for(bool outline:{false,true}) {
+                p.cgram[1]=std::uint16_t(colour);
+                GpuBackgroundSettings s;s.text_outline=outline;s.extend_horizontal=false;
+                Framebuffer cpu(8,8);cpu.begin_write_coverage();
+                reference.draw_bg1(p,cpu,TilePriorityPass::all,0,false,0,false,false,outline);
+                const auto actual=run(device,gpu,p,8,8,1,s);
+                for(unsigned y=0;y<8;++y) for(unsigned x=0;x<8;++x) {
+                    const bool center=x==3 && y==3;
+                    const bool edge=outline && std::abs(int(x)-3)+std::abs(int(y)-3)==1;
+                    const unsigned index=center?(outline && lift?254:1):edge?255:0;
+                    const unsigned expected=index?(index|(unsigned(s.tag)<<8)|0x04000000U):0;
+                    require(actual[y*8+x]==expected,"Enhanced menu outline footprint/color");
+                    require(cpu.pixels()[y*8+x]==index && bool(cpu.write_coverage()[y*8+x])==bool(index),
+                        "Software menu outline footprint/color");
+                }
+            }
+            GpuBackgroundSettings clipped;clipped.text_outline=true;
+            clipped.extend_horizontal=false;clipped.horizontal_inset=4;
+            const auto edge=run(device,gpu,p,8,8,1,clipped);
+            Framebuffer clipped_cpu(8,8);clipped_cpu.begin_write_coverage();
+            reference.draw_bg1(p,clipped_cpu,TilePriorityPass::all,0,false,4,false,false,true);
+            for(unsigned i=0;i<64;++i) require(edge[i]==0 && !clipped_cpu.write_coverage()[i],
+                "Hidden offscreen glyph leaked an outline into the menu border");
+            std::cout<<"Menu outline: independent glyph, four-neighbor border, clipped neighbors and disabled path passed\n";
+        }
+        {
+            GpuScene scene;unsigned checks=0;
+            for(unsigned ss:{1U,2U,4U}) for(unsigned ds:{1U,3U,4U})
+            for(int offset:{-3,5}) for(unsigned step:{1U,4U,16U}) {
+                Framebuffer source(16,12,ss),expected(32,24,ds),actual(32,24,ds),replayed(32,24,ds);
+                for(auto* f:{&source,&expected,&actual,&replayed}) f->enable_layer_tags(true);
+                RasterCommands ink,pending;ink.reset(source.stored_width(),source.stored_height());
+                pending.reset(expected.stored_width(),expected.stored_height());
+                GpuSceneRecording recording;recording.reset(expected.stored_width(),expected.stored_height());
+                expected.record_to(&pending);
+                for(int y=0;y<24;++y) for(int x=0;x<32;++x) expected.set(x,y,31);
+                expected.record_to(nullptr);
+                for(int y=0;y<24;++y) for(int x=0;x<32;++x) expected.set(x,y,31);
+                const auto paint=[&](){
+                    for(int y=0;y<12;++y) for(int x=0;x<16;++x) source.set(x,y,std::uint8_t(80+(x+y)%7));
+                    for(int y=3;y<9;++y) for(int x=2;x<13;++x) source.set(x,y,0);
+                };
+                paint();source.record_to(&ink);paint();source.record_to(nullptr);
+                LayerCompositeSettings settings;settings.offset_x=offset;settings.offset_y=offset;
+                settings.clip_left=1;settings.clip_top=2;settings.clip_right=29;settings.clip_bottom=21;
+                settings.mosaic=((step-1)<<4)|1;settings.mosaic_layer_mask=1;
+                settings.mosaic_origin_x=3;settings.mosaic_origin_y=-2;
+                composite_transparent_layer(source,expected,settings);
+                recording.append_indexed_layer(pending,std::move(ink),settings,ss,ds);recording.finish(pending);
+                recording.replay(replayed,nullptr);
+                require(replayed.pixels()==expected.pixels() && replayed.layer_tags()==expected.layer_tags(),"indexed layer replay");
+                require(scene.render_resident(device,actual.stored_width(),actual.stored_height(),recording.draws()),scene.status().c_str());
+                require(scene.readback(actual,nullptr),"indexed layer readback");
+                require(actual.pixels()==expected.pixels() && actual.layer_tags()==expected.layer_tags(),"indexed layer GPU mosaic/clear/offset");
+                ++checks;
+            }
+            std::cout<<checks<<" recorded indexed layers match independent CPU composition\n";
+        }
         auto ppu=std::make_unique<starfox::simulation::SnesPpuState>();
+        {
+            ppu->main_screen=1;ppu->bg1_screen_base=0x7000;ppu->bg1_scroll_x=-17;ppu->bg1_scroll_y=11;
+            std::uint32_t random=0x1243;
+            for(auto& b:ppu->vram) {random=random*1664525U+1013904223U;b=std::uint8_t(random>>24);}
+            for(unsigned i=0;i<256;++i) ppu->cgram[i]=i%7?0x7fff:0;
+            unsigned checks=0;
+            for(unsigned mode:{1U,3U}) for(unsigned scale:{1U,2U,4U})
+            for(int origin:{0,72}) for(unsigned step=1;step<=16;++step) {
+                ppu->background_mode=mode;ppu->mosaic=((step-1)<<4)|1;
+                Framebuffer staging(256,224,scale),expected(256+origin*2,224,scale),replayed(256+origin*2,224,scale);
+                reference.draw_bg1(*ppu,staging,TilePriorityPass::all,0,false,16,true);
+                LayerCompositeSettings layer;layer.offset_x=origin;layer.mosaic=ppu->mosaic;
+                layer.mosaic_layer_mask=1;layer.mosaic_origin_x=origin;
+                composite_transparent_layer(staging,expected,layer);
+                GpuBackgroundSettings s;s.layer=1;s.horizontal_origin=origin;s.extend_horizontal=false;
+                s.horizontal_inset=16;s.transparent_cgram_black=true;s.mosaic_staging_inset=true;
+                const auto result=run(device,gpu,*ppu,expected.width(),224,scale,s);
+                GpuSceneRecording recording;RasterCommands pending;
+                recording.reset(replayed.stored_width(),replayed.stored_height());
+                pending.reset(replayed.stored_width(),replayed.stored_height());
+                recording.append_background(pending,{std::make_shared<const starfox::simulation::SnesPpuState>(*ppu),s,scale});
+                recording.finish(pending);recording.replay(replayed,nullptr);
+                require(expected.pixels()==replayed.pixels(),"BG1 staged mosaic replay");
+                for(std::size_t i=0;i<result.size();++i)
+                    require(std::uint8_t(result[i])==expected.pixels()[i],"BG1 staged mosaic GPU");
+                ++checks;
+            }
+            std::cout<<checks<<" BG1 staged mosaic/inset cases match independent two-pass composition\n";
+            ppu=std::make_unique<starfox::simulation::SnesPpuState>();
+        }
         if(argc>1) {
             std::ifstream asset(argv[1],std::ios::binary);std::array<char,8192> bytes{};
             require(bool(asset.read(bytes.data(),bytes.size())) && asset.peek()==EOF,"authored terrain fixture");
@@ -82,9 +179,10 @@ int main(int argc,char** argv) {
             GpuBackgroundSettings s;s.layer=layer;s.priority=TilePriorityPass(priority);
             s.horizontal_origin=std::array<int,3>{-17,72,300}[cases%3];s.extend_horizontal=cases%2;
             s.horizontal_inset=std::array<unsigned,3>{0,16,129}[cases%3];s.transparent_cgram_black=cases%2;
+            s.text_outline=layer==1 && cases%3==0;
             Framebuffer expected(w,h,scale);expected.enable_layer_tags(true);expected.begin_write_coverage();
             {ScopedLayer tag(expected,s.tag);
-            if(layer==1) reference.draw_bg1(*ppu,expected,s.priority,s.horizontal_origin,s.extend_horizontal,s.horizontal_inset,s.transparent_cgram_black);
+            if(layer==1) reference.draw_bg1(*ppu,expected,s.priority,s.horizontal_origin,s.extend_horizontal,s.horizontal_inset,s.transparent_cgram_black,false,s.text_outline);
             else reference.draw_bg3(*ppu,expected,s.priority,s.horizontal_origin,s.extend_horizontal);}
             const auto actual=run(device,gpu,*ppu,w,h,scale,s);
             for(std::size_t i=0;i<actual.size();++i) {
@@ -128,10 +226,25 @@ int main(int argc,char** argv) {
             s.scroll_x=int(variant)*7-500;s.scroll_y=int(variant)*11-800;
             s.wrap_horizontal=variant%8!=0;s.transparent_cgram_black=variant%2==0;
             s.single_occurrence_top_rows=variant%4==0?96:0;
+            s.ending_star_extension=variant%7==0;
+            s.game_over_star_extension=variant%7==1;
+            s.sky_source_min=variant%4==0?256U:variant%4==1?2048U:0U;
             if(variant%5==0) s.unique_regions={{0,0,1024,1024,1,63,0},{0,0,1024,1024,64,127,3}};
+            if(variant%5==1) s.unique_regions={{0,0,1024,1024,1,127,3,256}};
+            if(variant%5==2) s.unique_regions={{0,0,1024,1024,1,127,3,-256}};
+            if(variant%5==3) s.unique_regions={{0,0,1024,1024,1,127,3,BackgroundUniqueRegion::suppress_every_copy}};
             Framebuffer expected(w,h,scale);expected.enable_layer_tags(true);expected.begin_write_coverage();
             {ScopedLayer tag(expected,s.tag);reference.draw_bg2(*ppu,s.scroll_x,s.scroll_y,expected,s.priority,
-                s.horizontal_origin,s.extend_horizontal,s.wrap_horizontal,s.transparent_cgram_black,s.single_occurrence_top_rows,s.unique_regions);}
+                s.horizontal_origin,s.extend_horizontal,s.wrap_horizontal,s.transparent_cgram_black,s.single_occurrence_top_rows,s.unique_regions,s.ending_star_extension,s.game_over_star_extension,s.sky_source_min);}
+            if(s.ending_star_extension || s.game_over_star_extension) {
+                Framebuffer native(w,h,scale);
+                reference.draw_bg2(*ppu,s.scroll_x,s.scroll_y,native,s.priority,
+                    s.horizontal_origin,s.extend_horizontal,s.wrap_horizontal,s.transparent_cgram_black,
+                    s.single_occurrence_top_rows,s.unique_regions,false);
+                for(unsigned y=0;y<h;++y) for(int x=std::max(0,s.horizontal_origin);
+                    x<std::min(int(w),s.horizontal_origin+256);++x)
+                    require(native.get(x,y)==expected.get(x,y),"ending extension changed native canvas");
+            }
             const auto actual=run(device,gpu,*ppu,w,h,scale,s);
             for(std::size_t i=0;i<actual.size();++i) {
                 const std::uint32_t wanted=expected.write_coverage()[i]?std::uint32_t(expected.pixels()[i])|(unsigned(s.tag)<<8)|0x04000000U:0;
@@ -145,6 +258,33 @@ int main(int argc,char** argv) {
             if(variant%37==0) gpu.release_device();
         }
         require(ink>100000,"empty tile fixtures");
+        for(unsigned layer:{1u,2u,3u}) {
+            GpuBackgroundSettings s;s.layer=layer;s.scroll_x=-23;s.scroll_y=79;
+            const auto logical=run(device,gpu,*ppu,400,224,1,s);
+            s.logical_viewport={400,224};
+            for(const auto size:{std::array<unsigned,2>{267,149},std::array<unsigned,2>{533,299},std::array<unsigned,2>{800,448}})
+            for(const auto jitter:{std::array<float,2>{},std::array<float,2>{.375f,-.25f},std::array<float,2>{-.375f,.25f}}) {
+                s.raster_jitter=jitter;
+                const float sample_center=jitter==std::array<float,2>{}?0.f:.5f;
+                auto* command=SDL_AcquireGPUCommandBuffer(device);require(command,"arbitrary background command");
+                const auto output=gpu.enqueue(device,command,*ppu,size[0],size[1],2,s);
+                require(output.pixels,gpu.status().c_str());
+                const auto reduced=read_pixels(device,command,output);
+                GpuScene scene;
+                const std::array<GpuSceneDraw,1> draws{GpuBackgroundDraw{
+                    std::make_shared<const starfox::simulation::SnesPpuState>(*ppu),s,2}};
+                command=SDL_AcquireGPUCommandBuffer(device);require(command,"fractional background scene command");
+                const auto composed=scene.enqueue_batch(device,command,size[0],size[1],draws);
+                require(composed.pixels,scene.status().c_str());
+                require(read_pixels(device,command,composed)==reduced,"fractional background scene parity");
+                for(unsigned y=0;y<size[1];++y) for(unsigned x=0;x<size[0];++x) {
+                    const auto sx=std::clamp(int(std::floor((float(x)+sample_center-jitter[0])*400/size[0])),0,399);
+                    const auto sy=std::clamp(int(std::floor((float(y)+sample_center-jitter[1])*224/size[1])),0,223);
+                    if(reduced[y*size[0]+x]!=logical[sy*400+sx])
+                        throw std::runtime_error("arbitrary background raster mismatch layer="+std::to_string(layer)+" size="+std::to_string(size[0])+" x="+std::to_string(x)+" y="+std::to_string(y));
+                }
+            }
+        }
         {
             // Terrain follows authored source rows after scrolling, not a
             // screen-space horizon. Classification must not change colour.
@@ -247,7 +387,7 @@ int main(int argc,char** argv) {
         bad.horizontal_origin=INT32_MAX;
         require(!gpu.enqueue(device,cmd,*ppu,32,32,1,bad).pixels,"accepted overflowing origin");
         SDL_CancelGPUCommandBuffer(cmd);
-        std::cout<<cases<<" BG1/BG2/BG3 GPU cases, "<<samples<<" packed pixel/coverage samples match CPU; mixed priority/black overlay replay, stereo, invalid inputs and release/reuse pass\n";
+        std::cout<<cases<<" BG1/BG2/BG3 GPU cases, "<<samples<<" packed pixel/coverage samples match CPU; 27 independent-size/phase background/scene cases, mixed priority/black overlay replay, stereo, invalid inputs and release/reuse pass\n";
         }
         SDL_DestroyGPUDevice(device);SDL_Quit();return 0;
     } catch(const std::exception& error) {

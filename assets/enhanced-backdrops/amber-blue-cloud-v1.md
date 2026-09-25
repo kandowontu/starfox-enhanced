@@ -1,0 +1,5 @@
+# Original 1-4 amber-blue cloud
+
+Generated with OpenAI ImageGen on 2026-09-22 by editing `blue-cloud-v1.png` against a native Original 1-4 capture. The source PNG and lossless runtime RGB BMP are alongside this note. Resource 230 is a single-object replacement for Original BG_1_4 only; EX retains its distinct blue cloud. The nearby green planet remains native and is not repeated or replaced by this asset.
+
+Prompt: “Edit the FIRST reference image to make a distinct Original Star Fox 1-4 small cloud replacement matching the SECOND reference screenshot. Preserve the FIRST image's exact isolated irregular gas-cloud silhouette, composition, size, square black background, and thin soft fade at its edges. Recolor the cloud to deep midnight navy and cobalt with its BRIGHT INNER CENTER and wispy highlights glowing warm amber/gold/orange, not the EX version's icy cyan-blue center. Keep realistic detailed cloud structure, dark space, no planet disk, no ship, no text, no HUD. Output a square bitmap suitable for a single small celestial object. Do not include anything from the second screenshot except the cloud's color relationship.”

@@ -102,6 +102,46 @@ void check_audio_restore(starfox::audio::Spc700Audio& live) {
     require(rejected && live.save_state() == saved, "Truncated SPC state changed audio");
 }
 
+void check_original_selected_level_bank(const starfox::assets::RomImage& rom,
+    const starfox::assets::SymbolMap& symbols) {
+    // Stage 3-5's bank is an overlay. Normal progression has already
+    // installed route 3's common first-stage effects before reaching it.
+    auto selected = std::make_unique<starfox::simulation::GameSimulation>(
+        rom, symbols, "BOOT");
+    selected->set_selected_level(35U);
+    starfox::audio::Spc700Audio audio;
+    (void)audio.prime_upload_sequence(selected->map().take_apu_port_writes());
+    for (int tick = 0; tick < 30; ++tick) (void)audio.render_logic_tick({});
+    selected->synchronize_apu_output_ports(audio.output_ports());
+    for (int tick = 0; tick < 120
+            && selected->flow_state()
+                != starfox::simulation::GameFlowState::gameplay; ++tick) {
+        for (int phase = 0; phase < 3; ++phase) selected->present_frame();
+        const auto result = selected->tick(tick == 0
+            ? starfox::input::TickInput{0, starfox::input::start, 0}
+            : starfox::input::TickInput{});
+        (void)audio.render_logic_tick(result.audio_port_writes);
+        selected->synchronize_apu_output_ports(audio.output_ports());
+    }
+    require(selected->flow_state() == starfox::simulation::GameFlowState::gameplay
+            && selected->map().apu_upload_generation() >= 2U
+            && audio.driver_loaded(),
+        "level 3-5 shortcut skipped its common or stage sound bank");
+    for (int tick = 0; tick < 40; ++tick) (void)audio.render_logic_tick({});
+    constexpr std::array laser{starfox::simulation::ApuPortWrite{3U, 0x35U, 0U}};
+    bool heard_laser{};
+    for (int tick = 0; tick < 24; ++tick) {
+        (void)audio.render_logic_tick(tick == 0
+            ? std::span<const starfox::simulation::ApuPortWrite>{laser}
+            : std::span<const starfox::simulation::ApuPortWrite>{});
+        heard_laser = heard_laser || std::any_of(
+            audio.last_effect_samples().begin(),
+            audio.last_effect_samples().end(),
+            [](std::int16_t sample) { return sample != 0; });
+    }
+    require(heard_laser, "level 3-5 shortcut silenced the laser effect");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -116,6 +156,9 @@ int main(int argc, char** argv) {
         check_audio_restore(fresh);
     }
     check_good_luck_tail(rom, symbols);
+    if (symbols.find("BGMPLAYLIST").empty()) {
+        check_original_selected_level_bank(rom, symbols);
+    }
     auto effect = std::make_unique<starfox::simulation::GameSimulation>(
         rom, symbols, "LEVEL1_1", std::span<const std::uint8_t>{}, true);
     auto control = std::make_unique<starfox::simulation::GameSimulation>(

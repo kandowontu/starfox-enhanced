@@ -32,3 +32,18 @@ typedef struct StarfoxSdlVulkanGeometryBridgeV1 {
                              uint64_t destination_bytes, uint32_t bytes);
     bool (*signal_timeline)(void *device, VkSemaphore semaphore, uint64_t value);
 } StarfoxSdlVulkanGeometryBridgeV1;
+
+#define STARFOX_SDL_VULKAN_RAY_BRIDGE "starfox.gpu.vulkan.ray.bridge.v3"
+typedef struct StarfoxSdlVulkanRayBridgeV3 {
+    uint32_t version;
+    /* Record native Vulkan work inside one SDL command buffer. The caller
+     * must be outside SDL passes and finish every prepared output. */
+    VkCommandBuffer (*command)(void *sdl_command);
+    VkBuffer (*prepare_write)(void *sdl_command, void *sdl_buffer);
+    bool (*finish_write)(void *sdl_command, void *sdl_buffer);
+    /* Copy submitted SDL geometry into a native AS input in the same command
+     * buffer, with transfer-to-AS visibility and no queue ownership transfer. */
+    bool (*copy_ray_range)(void *sdl_command, void *sdl_source,
+                           uint64_t source_offset, VkBuffer destination,
+                           uint64_t capacity, uint32_t bytes);
+} StarfoxSdlVulkanRayBridgeV3;

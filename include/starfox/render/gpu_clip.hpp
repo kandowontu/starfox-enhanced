@@ -67,10 +67,13 @@ public:
     // per painter slot. The returned combined buffer must replace source_texels
     // for raster consumption, before the next enqueue. No CPU mask readback.
     // Mask storage is bounded to 256 MiB and output is null on failure.
+    // reuse_span_scratch requires every consumer to be encoded before the next
+    // enqueue on the same ordered queue. Diagnostic/deferred consumers retain
+    // the default cycling behavior; no CPU access or cross-queue reuse allowed.
     void* enqueue_spans(void* command,void* materials,bool winding_independent=false,std::uint32_t render_scale=1,
         const GpuSpanOrder* order=nullptr,std::uint32_t line_thickness=1,
         void* source_texels=nullptr,std::uint32_t source_texel_bytes=0,void** masked_texels=nullptr,
-        std::array<std::uint32_t,2> raster_size={});
+        std::array<std::uint32_t,2> raster_size={},bool reuse_span_scratch=false);
     void release_device() noexcept;
     const std::string& status() const noexcept;
 private:

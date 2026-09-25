@@ -15,12 +15,13 @@ struct GpuWarpSettings {
     std::array<std::int32_t,4> light{};
     std::array<std::uint32_t,4> shade_counts{};
     std::int32_t scroll_x{},scroll_y{};
+    bool reflection_materials{}; // Canonical hidden faces followed by untouched actual occurrences; never rasterize this output.
 };
 struct GpuWarpInputs {
     void *order{},*traversal{},*polygons{},*corners{},*visibility{},*materials{};
     void *normals{},*diffuse{},*depth_colours{},*texture_lookup{},*textures{},*coordinates{};
 };
-struct GpuWarpOutput {void *polygons{},*corners{},*materials{},*result{};};
+struct GpuWarpOutput {void *polygons{},*corners{},*materials{},*result{},*face_lookup{};};
 // Borrowed SDL buffers. Inputs must cover settings ranges, with order sized to
 // capacity, diffuse padded to 4*62*10 bytes, depth colours 128 bytes and lookup
 // 65536 uints. Texture/coordinate buffers must exist even when empty (dummy).

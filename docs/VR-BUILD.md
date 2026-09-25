@@ -1,5 +1,168 @@
 # VR development status
 
+## Current native Linux PCVR regression (September 23)
+
+Rebuilt the current shared worktree in the existing Ubuntu x86-64 OpenXR/Vulkan
+Release configuration at `/home/kando/starfox-enhanced-0052-check`, including
+the Linux `starfox_pcvr` player, scene checker and full desktop/VR target set.
+All 17 VR-labeled CTests pass. The player starts its `--help` path and `ldd`
+reports no missing linked libraries on this host.
+
+The real EX LEVEL1_4 tick-1000 Enhanced Sky stereo scene passes the Linux
+llvmpipe Vulkan readback suite with exactly two cloud/limb subjects and no
+native duplicate. Its left-eye image is visually the same as the Windows GPU
+capture; 829 of 65,536 pixels differ by at most one RGB value. Evidence:
+`tmp/vr-linux-ex114-sep23` and `tmp/vr-ex114-enhanced-cloud-sep23`.
+Software Vulkan compilation was slow; this is functional/parity evidence,
+not Linux hardware FPS, Index tracking or headset acceptance.
+
+## Windows PCVR tester handoff (September 23)
+
+Updated tester snapshot:
+`build/Starfox-Enhanced-PCVR-Windows-x64-Tester-2026-09-23-r2.zip`.
+It adds the EX 1-4 live cloud/limb sky route. SHA-256:
+`7A5621BE3A5716666D224C8862C882CB84C14BBBC69DC310B51311234CE24535`.
+The ZIP executable hash matches staging; `--help` and the live EX 1-4
+stereo/sky diagnostic pass. The original archive remains unchanged.
+
+User-requested shareable archive:
+`build/Starfox-Enhanced-PCVR-Windows-x64-Tester-2026-09-23.zip`.
+Staged via the PCVR install component with symbols stripped; includes the
+asset builder, setup notes, a logging launcher and drag-and-drop BIN builder.
+No ROM/BIN/music, settings, saves, keys or shader caches are included.
+Archive executable hash matches staging; both executables import only Windows
+system/UCRT libraries. Player help, missing-BIN and invalid-option checks pass.
+This is the current development snapshot through the full-surround EX room
+variants, not a release tag or physical SteamVR/Index compatibility sign-off.
+Tester should supply their own compatible BIN and use their active OpenXR
+runtime; START-HERE.txt describes setup and remaining limitations.
+
+## Enhanced Sky menu control (September 23)
+
+Quest and PCVR now expose **Options → 2D Options → Enhanced Sky: Off/On**.
+It defaults to Off, works with Preview, and is also available in the runtime
+menu (Menu + Select). Closing the menu persists it in `vr-preferences.bin`.
+Version-5 preferences retain the existing 20-byte size and migrate versions
+1–4 with Enhanced Sky off. `--enhanced-sky` remains an explicit launch override;
+the user can subsequently switch it off from the menu.
+
+Changing this setting invalidates background submission even at an unchanged
+paused source revision. Migrated families use the shared photographic assets;
+unmigrated families retain their original surround rather than losing artwork.
+See `VR-ENHANCED-BACKDROPS-STATUS.md` for coverage and limitations. No hardware
+ray-tracing capability is required for this option; unsupported headsets still
+hide the separate Ray Tracing row.
+
+Current local unsigned APK SHA-256:
+`9C7A10CDDAC033F186B8B90BC2DF692F08126252399D32489CA68F819619BF1A`.
+This also includes the EX Mario/Luigi final-room surround variants, in addition
+to the unique landscape previews and corrected snowy ground boundary; build/capture
+evidence is at the top of `VR-ENHANCED-BACKDROPS-STATUS.md`.
+Windows/Quest builds, preference/input tests, English/Japanese/Spanish stereo
+menu captures and all-37-asset package checks pass. This is not a signed release
+or physical headset acceptance. Older artifact hashes below are historical.
+
+## Release/package build follow-up (2026-09-22)
+
+The local Quest release variant now builds successfully (3m 11s). Its previous
+failure was Ninja's 260-character Windows filename limit in Vulkan-Headers'
+FetchContent stamp. Quest's Gradle staging now uses ignored `build/q` rather
+than `platform/quest/.cxx`; `STARFOX_QUEST_BUILD_ROOT` can point to a still
+shorter directory for longer checkouts. No SDK policy or registry change was
+needed, and existing build directories were preserved.
+
+Validated artifact: `platform/quest/build/outputs/apk/release/quest-release-unsigned.apk`,
+10,509,673 bytes; SHA-256
+`EE6D158AF3853C6ADF2996C04E778FFEAE3704E2AFC05E4532A74C8F85EF228A`.
+Payload checker and aapt confirm arm64 VR/SDL/C++ libraries, QuestActivity,
+package `com.starfox.enhanced.quest`, API 29/35, version 12 / 0.0.6.7-vr-dev,
+and no ROM, BIN, signing keys, flat libmain or platform-library stubs.
+This local release variant is **unsigned**, not an installable signed release.
+The GitHub Quest job already signs with the permanent Android secret and
+checks its certificate; that remote workflow has not been run in this pass.
+
+The Windows PCVR player and application tests rebuild. The clean install
+component at `build/pcvr-package-sep22` includes instructions and licenses,
+not user game data. Its --help, missing-BIN and invalid-option paths pass;
+objdump shows only Windows system/UCRT imports, not unpackaged SDL/OpenXR or
+MinGW DLLs. Application lifecycle/save tests pass without starting a headset.
+Executable SHA-256:
+`571D2D91B7F811FC7F4A3ABD08B3A197306D880FC4E6DA19EEFDB54E29D16774`.
+
+Native Linux also rebuilds the current PCVR player and passes its application
+tests and --help smoke check. The current Linux Lavapipe background checker
+passes the outlined-menu glyph/clip fixtures and complete tile parity sweep.
+
+The standalone PCVR host keeps its own vr-data saves/preferences/shader cache
+and runs until exit, not the diagnostic 120-frame limit. Physical Quest/Index
+comfort, rendering and performance remain unverified here. No installation,
+release publication, or claim that desktop photographic effects now exist
+in the VR rendering path is made.
+
+Build dependency improvement: dr_libs now skips its unused miniaudio test
+submodule. Only its pinned standalone decoder headers are consumed.
+
+## Full current desktop/OpenXR checks (2026-09-19)
+
+All configured Windows VR and native Linux desktop/OpenXR targets rebuild
+successfully after the grid-compute/reuse changes. The complete 16-test VR
+suite passes on Windows (21.97s) and Linux (22.58s), including both cartridge
+input checks, packet/cache tests and the embedded shader freshness test.
+This supplements the actual Vulkan rendering comparisons below; CTest alone
+does not demonstrate physical Index/Quest tracking, comfort or frame rate.
+Fresh ADB enumeration lists no devices, so no installation was attempted.
+
+## Retained grid arena build (2026-09-19)
+
+Connected-grid camera changes now reuse their GPU output arena and drawing
+descriptor. Windows dispatched update/failure-recovery and image comparisons
+pass; see GPU-MIGRATION-STATUS for setup timings and scope. Quest arm64 package
+verification passes (22 s), APK 17,481,136 bytes, SHA-256
+`1977002EF2C0E7221014D7142C0F5F5B2E90C118BDBAD986542B43CC640CB52D`.
+Not installed; physical-headset performance remains unverified.
+
+## Connected-grid compute build (2026-09-19)
+
+The source connected-line grid now projects and bins on Vulkan compute before
+graphics. Flat/rotated Windows eye images and raw row primitives match the CPU
+reference; a live EX connected-grid scene passes. See GPU-MIGRATION-STATUS for
+scope and remaining performance/device checks. Quest arm64 rebuild/package
+checks pass (30 s), APK 17,479,256 bytes, SHA-256
+`3BD0CDAC8620A90A5F1E63946B75BE2D6F28A662E8C7CE69FCF17C4EFF68FA38`.
+Native Linux software-Vulkan rotated row data and both eye images also match
+the reference. No device installation or physical-headset acceptance in this
+pass; fresh ADB enumeration is empty.
+
+## Embedded shader freshness gate (2026-09-19)
+
+Every VR configuration now validates both the main graphics shader and ray
+expansion SPIR-V before building. Changes to HLSL, shared helpers, included
+planet-region data or the generated headers trigger CMake reconfiguration and
+the same validation during incremental builds. Previously only ray expansion
+was guarded here, so the main scene shader could silently remain stale.
+
+Both generators hash their local include graphs. Developers changing shader
+source must regenerate with `tools/generate_vr_shaders.py --dxc <dxc>` and/or
+`tools/generate_vr_ray_shader.py --dxc <dxc>`; normal builds need Python but no
+shader compiler. The `starfox_vr_shader_freshness` CTest uses disposable projects
+to prove stale-source/include/header rejection and recovery without modifying
+the real checkout. Direct Windows and Linux executions pass all five cases.
+
+## Native Linux/OpenXR validation (2026-09-19)
+
+The existing native Linux Release build at
+`/home/kando/starfox-enhanced-0052-check` now enables `STARFOX_BUILD_VR=ON`.
+The full build passes after qualifying a test button name that collided with
+POSIX `select()`. All 15 Linux VR CTests pass (19.49 s), including Original/EX
+cartridge checks and exact Touch/Index binding validation. The native x86-64
+ELF runtime has no missing linked libraries in this environment.
+
+Linux llvmpipe Vulkan particle and scaled-text checks and their independent
+CPU references all pass. Both eye BMPs match byte-for-byte for each pair in
+`tmp/vr-linux-{particles,particles-reference,text,text-reference}-sep19`.
+These replace syntax-only evidence, not physical SteamVR/Index acceptance or
+a portable-distribution ABI/performance sign-off. No headset was used.
+
 ## Preview and reset controls (2026-09-13)
 
 Added session-only PREVIEW: OFF/ON to the main, 2D and 3D setup pages.
@@ -449,8 +612,11 @@ text packet tests pass. Menu labels are currently English and settings are
 session-only; headset legibility/operation is not yet verified.
 
 Valve Index has an explicit OpenXR profile: left stick steering; right A/B
-fire/bomb; left A/B boost/brake; stick clicks roll; right trigger click menu;
-left trigger click view/select. The system button is not used. Index hardware
+fire/bomb; left A/B boost/brake; left/right trigger clicks L/R; right grip
+Start/pause and left grip Select/change view. Both grips open runtime options;
+both triggers plus newly pressed stick clicks reset the app. The system button
+is not used. Exact Touch and Index binding paths are covered by input tests.
+Index hardware
 and SteamVR end-to-end testing remain outstanding.
 
 ## Current surrounding-space changes

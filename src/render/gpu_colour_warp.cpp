@@ -4,6 +4,8 @@
 #include "shaders/generated/colour_warp_portable.hpp"
 #include "shaders/generated/warp_material_portable.hpp"
 #include "shaders/generated/warp_expand_portable.hpp"
+#include "shaders/generated/warp_reflection_portable.hpp"
+#include "shaders/generated/warp_lookup_portable.hpp"
 #include <cstring>
 #include <stdexcept>
 #endif
@@ -12,9 +14,9 @@ struct GpuColourWarp::Impl {
     std::string status{"GPU colour warp unavailable"};
 #if defined(STARFOX_SDL_GPU_EFFECTS)
     SDL_GPUDevice* device{};
-    std::array<SDL_GPUComputePipeline*,3> pipelines{};
-    std::array<SDL_GPUBuffer*,6> buffers{};
-    std::array<std::uint32_t,6> sizes{};
+    std::array<SDL_GPUComputePipeline*,5> pipelines{};
+    std::array<SDL_GPUBuffer*,10> buffers{};
+    std::array<std::uint32_t,10> sizes{};
     static void require(bool value){if(!value)throw std::runtime_error(SDL_GetError());}
     ~Impl(){release();}
     void release() noexcept {
@@ -22,19 +24,20 @@ struct GpuColourWarp::Impl {
         for(auto* p:pipelines)if(p)SDL_ReleaseGPUComputePipeline(device,p);
         buffers={};pipelines={};sizes={};device=nullptr;
     }
-    void initialize(SDL_GPUDevice* next) {
-        if(device==next && pipelines[2])return;
-        release();device=next;
+    void initialize(SDL_GPUDevice* next,bool reflection) {
+        if(device==next && pipelines[2] && (!reflection || pipelines[4]))return;
+        if(device!=next) {release();device=next;}
         bool spirv=(SDL_GetGPUShaderFormats(device)&SDL_GPU_SHADERFORMAT_SPIRV)!=0;
         bool dxil=(SDL_GetGPUShaderFormats(device)&SDL_GPU_SHADERFORMAT_DXIL)!=0;
         if(!spirv && !dxil && !(SDL_GetGPUShaderFormats(device)&SDL_GPU_SHADERFORMAT_MSL))throw std::runtime_error("GPU colour warp requires Vulkan, Metal or D3D12");
-        const unsigned char* codes[]{colour_warp_shader::spirv,warp_material_shader::spirv,warp_expand_shader::spirv};
-        const std::size_t bytes[]{sizeof(colour_warp_shader::spirv),sizeof(warp_material_shader::spirv),sizeof(warp_expand_shader::spirv)};
-        const char* metal[]{colour_warp_shader::metal,warp_material_shader::metal,warp_expand_shader::metal};
-        const unsigned char* native[]{colour_warp_shader::dxil,warp_material_shader::dxil,warp_expand_shader::dxil};
-        const std::size_t native_bytes[]{sizeof(colour_warp_shader::dxil),sizeof(warp_material_shader::dxil),sizeof(warp_expand_shader::dxil)};
-        const unsigned reads[]{4,6,8},writes[]{2,1,3},threads[]{1,64,32};
-        for(unsigned i=0;i<3;++i){
+        const unsigned char* codes[]{colour_warp_shader::spirv,warp_material_shader::spirv,warp_expand_shader::spirv,warp_reflection_shader::spirv,warp_lookup_shader::spirv};
+        const std::size_t bytes[]{sizeof(colour_warp_shader::spirv),sizeof(warp_material_shader::spirv),sizeof(warp_expand_shader::spirv),sizeof(warp_reflection_shader::spirv),sizeof(warp_lookup_shader::spirv)};
+        const char* metal[]{colour_warp_shader::metal,warp_material_shader::metal,warp_expand_shader::metal,warp_reflection_shader::metal,warp_lookup_shader::metal};
+        const unsigned char* native[]{colour_warp_shader::dxil,warp_material_shader::dxil,warp_expand_shader::dxil,warp_reflection_shader::dxil,warp_lookup_shader::dxil};
+        const std::size_t native_bytes[]{sizeof(colour_warp_shader::dxil),sizeof(warp_material_shader::dxil),sizeof(warp_expand_shader::dxil),sizeof(warp_reflection_shader::dxil),sizeof(warp_lookup_shader::dxil)};
+        const unsigned reads[]{4,6,8,3,2},writes[]{2,1,3,3,1},threads[]{1,64,32,1,1};
+        for(unsigned i=0;i<(reflection?5U:3U);++i){
+            if(pipelines[i]) continue;
             SDL_GPUComputePipelineCreateInfo info{};
             info.format=spirv?SDL_GPU_SHADERFORMAT_SPIRV:dxil?SDL_GPU_SHADERFORMAT_DXIL:SDL_GPU_SHADERFORMAT_MSL;
             info.code=spirv?codes[i]:dxil?native[i]:reinterpret_cast<const Uint8*>(metal[i]);
@@ -73,6 +76,8 @@ void GpuColourWarp::release_device()noexcept {
 GpuWarpOutput GpuColourWarp::enqueue(void* device,void* command,const GpuWarpInputs& in,const GpuWarpSettings& s){
     // 32 corners * 16 bytes per occurrence; bound allocations and dispatches.
     if(!device || !command || !s.capacity || s.capacity>1048576 || !s.face_count){impl_->status="Invalid GPU warp settings";return {};}
+    const auto expanded_capacity=std::uint64_t(s.capacity)+(s.reflection_materials?s.face_count:0U);
+    if(expanded_capacity>1048576){impl_->status="GPU reflection warp capacity exceeded";return {};}
     for(auto count:s.shade_counts)if(count>62){impl_->status="Invalid GPU warp shade count";return {};}
 #if defined(STARFOX_SDL_GPU_EFFECTS)
     try {
@@ -81,28 +86,43 @@ GpuWarpOutput GpuColourWarp::enqueue(void* device,void* command,const GpuWarpInp
             if(!input)throw std::runtime_error("Missing GPU warp input");
             for(auto* output:impl_->buffers)if(input==output)throw std::runtime_error("GPU warp input aliases output");
         }
-        impl_->initialize(static_cast<SDL_GPUDevice*>(device));
-        const std::uint32_t sizes[]{s.capacity*4,8,s.capacity*16,s.capacity*16,s.capacity*512,s.capacity*96};
+        impl_->initialize(static_cast<SDL_GPUDevice*>(device),s.reflection_materials);
+        const auto count=std::uint32_t(expanded_capacity);
+        const std::uint32_t sizes[]{s.capacity*4,8,count*16,count*16,count*512,count*96};
         for(unsigned i=0;i<6;++i)impl_->allocate(i,sizes[i]);
         auto buffer=[](void* p){return static_cast<SDL_GPUBuffer*>(p);};
         auto* cmd=static_cast<SDL_GPUCommandBuffer*>(command);auto& b=impl_->buffers;
         SDL_GPUBuffer* generate[]{buffer(in.order),buffer(in.traversal),buffer(in.polygons),buffer(in.visibility)};
         const std::array<std::uint32_t,4> generation{s.capacity,s.face_count,s.visibility_count,s.seed};
         impl_->stage(cmd,0,generate,4,0,2,generation.data(),sizeof(generation),1);
-        SDL_GPUBuffer* decode[]{b[0],buffer(in.order),buffer(in.normals),buffer(in.diffuse),buffer(in.depth_colours),buffer(in.texture_lookup)};
+        auto* descriptors=b[0];auto* order=buffer(in.order);auto* result=b[1];
+        if(s.reflection_materials) {
+            impl_->allocate(6,count*4);impl_->allocate(7,8);impl_->allocate(8,count*4);
+            SDL_GPUBuffer* reflection_inputs[]{b[0],b[1],buffer(in.order)};
+            const std::array<std::uint32_t,4> reflection_settings{s.capacity,s.face_count,s.seed,0};
+            impl_->stage(cmd,3,reflection_inputs,3,6,3,reflection_settings.data(),sizeof(reflection_settings),1);
+            descriptors=b[6];result=b[7];order=b[8];
+        }
+        SDL_GPUBuffer* decode[]{descriptors,order,buffer(in.normals),buffer(in.diffuse),buffer(in.depth_colours),buffer(in.texture_lookup)};
         struct MaterialSettings {
             std::uint32_t count,faces,band,flags;
             std::array<std::int32_t,4> light;
             std::array<std::uint32_t,4> shades;
             std::uint32_t base,override_colour,forced,padding;
-        } material{s.capacity,s.face_count,s.depth_band,s.flags,s.light,s.shade_counts,s.colour_base,s.override_colour,s.forced_colour,0};
+        } material{count,s.face_count,s.depth_band,s.flags,s.light,s.shade_counts,s.colour_base,s.override_colour,s.forced_colour,0};
         static_assert(sizeof(MaterialSettings)==64);
-        impl_->stage(cmd,1,decode,6,2,1,&material,sizeof(material),(s.capacity+63)/64);
-        SDL_GPUBuffer* expand[]{buffer(in.order),b[1],buffer(in.polygons),buffer(in.corners),buffer(in.materials),b[2],buffer(in.textures),buffer(in.coordinates)};
-        const std::array<std::uint32_t,8> expansion{s.capacity,s.face_count,s.corner_count,s.texture_count,s.coordinate_count,s.colour_base,std::uint32_t(s.scroll_x),std::uint32_t(s.scroll_y)};
-        impl_->stage(cmd,2,expand,8,3,3,expansion.data(),sizeof(expansion),(s.capacity+31)/32);
+        impl_->stage(cmd,1,decode,6,2,1,&material,sizeof(material),(count+63)/64);
+        SDL_GPUBuffer* expand[]{order,result,buffer(in.polygons),buffer(in.corners),buffer(in.materials),b[2],buffer(in.textures),buffer(in.coordinates)};
+        const std::array<std::uint32_t,8> expansion{count,s.face_count,s.corner_count,s.texture_count,s.coordinate_count,s.colour_base,std::uint32_t(s.scroll_x),std::uint32_t(s.scroll_y)};
+        impl_->stage(cmd,2,expand,8,3,3,expansion.data(),sizeof(expansion),(count+31)/32);
+        if(s.reflection_materials) {
+            impl_->allocate(9,s.face_count*4);
+            SDL_GPUBuffer* lookup_inputs[]{b[3],b[4]};
+            const std::array<std::uint32_t,4> lookup_settings{count,s.face_count,count*32,0};
+            impl_->stage(cmd,4,lookup_inputs,2,9,1,lookup_settings.data(),sizeof(lookup_settings),1);
+        }
         impl_->status="Ordered colour warp GPU resident";
-        return {b[3],b[4],b[5],b[1]};
+        return {b[3],b[4],b[5],result,s.reflection_materials?b[9]:nullptr};
     }catch(const std::exception& e){impl_->status=e.what();}
 #endif
     return {};

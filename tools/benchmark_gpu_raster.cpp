@@ -1,4 +1,5 @@
 #include "starfox/render/gpu_raster.hpp"
+#include "starfox/localization/bitmap_font.hpp"
 #if !defined(STARFOX_TEST_RASTER_CPU)
 #include <SDL3/SDL.h>
 #endif
@@ -83,6 +84,83 @@ int main(int argc,char** argv) {
     GpuRaster explicitly_binned;
     if(gpu.wait_for_completion() || resident.wait_for_completion()) return 34;
 #endif
+    unsigned glyph_cases=0;
+    for(unsigned scale:{1U,2U,3U,4U}) for(unsigned height:{8U,12U})
+    for(int origin:{-5,0,19,35}) for(unsigned width:{1U,7U,16U}) {
+        Framebuffer expected(40,24,scale),recorded(40,24,scale),replayed(40,24,scale);
+        expected.enable_layer_tags(true);recorded.enable_layer_tags(true);replayed.enable_layer_tags(true);
+        std::array<std::uint8_t,24> rows;
+        for(unsigned i=0;i<24;++i) rows[i]=std::uint8_t(i*73+19);
+        // Independent old per-pixel loop: do not use glyph12 as its own oracle.
+        for(unsigned y=0;y<height;++y) {
+            const auto row=y*11/(height-1);
+            const auto bits=unsigned(rows[row*2])|(unsigned(rows[row*2+1])<<8);
+            for(unsigned x=0;x<width;++x) if(bits&(0x8000U>>x)) expected.set(origin+int(x),origin/2+int(y),173);
+        }
+        RasterCommands batch;batch.reset(recorded.stored_width(),recorded.stored_height());
+        recorded.record_to(&batch);recorded.glyph12(origin,origin/2,width,rows,173,height);recorded.record_to(nullptr);
+        if(batch.commands.size()>1 || batch.texels.size()!=24) throw std::runtime_error("Glyph was not compactly recorded");
+        replay_raster_commands(batch,replayed,nullptr);
+        if(replayed.pixels()!=expected.pixels() || replayed.layer_tags()!=expected.layer_tags()) throw std::runtime_error("Glyph replay mismatch");
+#if !defined(STARFOX_TEST_RASTER_CPU)
+        if(!gpu.render(batch,recorded,nullptr) || recorded.pixels()!=expected.pixels()
+            || recorded.layer_tags()!=expected.layer_tags()) throw std::runtime_error("Glyph GPU mismatch: "+gpu.status());
+#endif
+        ++glyph_cases;
+    }
+    std::cout<<glyph_cases<<" packed font cases match independent pixel decoding.\n";
+    unsigned bitmap_cases=0;
+    for(unsigned scale:{1U,2U,3U,4U}) for(unsigned edge:{8U,12U}) for(int origin:{-5,0,19,35}) {
+        Framebuffer expected(40,24,scale),recorded(40,24,scale),replayed(40,24,scale);
+        expected.enable_layer_tags(true);recorded.enable_layer_tags(true);replayed.enable_layer_tags(true);
+        RasterCommands batch;batch.reset(recorded.stored_width(),recorded.stored_height());recorded.record_to(&batch);
+        for(const auto code:{U'?',U'\u00e9',U'\u3042',U'\u65e5'}) {
+            const auto* glyph=starfox::localization::glyph(code);
+            if(!glyph) continue;
+            for(unsigned row=0;row<edge;++row) for(unsigned column=0;column<edge;++column)
+                if(glyph->rows[row*8/edge]&(0x80U>>(column*8/edge))) expected.set(origin+int(column),origin/2+int(row),149);
+            recorded.glyph8(origin,origin/2,glyph->rows,149,edge);
+        }
+        recorded.record_to(nullptr);replay_raster_commands(batch,replayed,nullptr);
+        if(replayed.pixels()!=expected.pixels() || replayed.layer_tags()!=expected.layer_tags()) throw std::runtime_error("Bitmap font replay mismatch");
+#if !defined(STARFOX_TEST_RASTER_CPU)
+        if(!gpu.render(batch,recorded,nullptr) || recorded.pixels()!=expected.pixels()
+            || recorded.layer_tags()!=expected.layer_tags()) throw std::runtime_error("Bitmap font GPU mismatch: "+gpu.status());
+#endif
+        ++bitmap_cases;
+    }
+    std::cout<<bitmap_cases<<" localized bitmap font cases match independent pixel decoding.\n";
+    unsigned portrait_cases=0;
+    for(unsigned scale:{1U,2U,3U,4U}) for(bool aspect:{false,true}) for(int origin:{-9,0,35}) {
+        Framebuffer expected(64,56,scale),recorded(64,56,scale),replayed(64,56,scale);
+        expected.enable_layer_tags(true);recorded.enable_layer_tags(true);replayed.enable_layer_tags(true);
+        std::array<std::uint8_t,640> bytes;
+        for(unsigned i=0;i<bytes.size();++i) bytes[i]=std::uint8_t(i*73+19);
+        const auto edge=[&](int value){return (value*int(scale)*7+3)/6;};
+        const int left=aspect?(origin+32)*int(scale)-edge(32):origin*int(scale);
+        const auto tag=aspect?PixelLayer::three_d:PixelLayer::two_d;
+        // Source forward expansion is independent of the GPU's inverse mapping.
+        for(int sy=0;sy<40;++sy) for(int sx=0;sx<32;++sx) {
+            const auto at=((sx/8)*5+sy/8)*32+(sy%8)*2;unsigned ink=0;
+            for(unsigned plane=0;plane<4;++plane) ink|=((bytes[at+(plane/2)*16+plane%2]>>(7-sx%8))&1U)<<plane;
+            for(int y=(origin+sy)*int(scale);y<(origin+sy+1)*int(scale);++y)
+                for(int x=left+(aspect?edge(sx):sx*int(scale));x<left+(aspect?edge(sx+1):(sx+1)*int(scale));++x)
+                    expected.set_stored(x,y,std::uint8_t(240+ink),tag);
+        }
+        RasterCommands batch;batch.reset(recorded.stored_width(),recorded.stored_height());
+        RasterCommand c;c.left=c.u=left;c.right=(origin+32)*int(scale);
+        c.top=c.v=origin*int(scale);c.bottom=(origin+40)*int(scale);
+        c.du=scale;c.dv=aspect;c.textured=8;c.colour_base=240;c.tag=std::uint32_t(tag);
+        c.texture_offset=batch.snapshot(bytes);batch.add(c);
+        replay_raster_commands(batch,replayed,nullptr);
+        if(replayed.pixels()!=expected.pixels() || replayed.layer_tags()!=expected.layer_tags()) throw std::runtime_error("Portrait replay mismatch");
+#if !defined(STARFOX_TEST_RASTER_CPU)
+        if(!gpu.render(batch,recorded,nullptr) || recorded.pixels()!=expected.pixels()
+            || recorded.layer_tags()!=expected.layer_tags()) throw std::runtime_error("Portrait GPU mismatch: "+gpu.status());
+#endif
+        ++portrait_cases;
+    }
+    std::cout<<portrait_cases<<" packed portrait cases match independent forward expansion.\n";
     starfox::assets::Shape shape;
     shape.vertices={{-90,-60,0},{-80,60,25},{90,65,0},{80,-65,-20}};
     shape.colour_words={0x0009,0x006c,0x4000};

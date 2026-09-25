@@ -285,6 +285,12 @@ int main() {
     }
     require(caster_capture.pixels() == framebuffer.pixels(),
         "shadow geometry collection changed the original raster");
+    collected.clear();collected.capture_reflection_materials(true);
+    renderer.draw(shape,{},caster_capture,true,nullptr,&collected);
+    require(caster_capture.pixels()==framebuffer.pixels(),"reflection material capture changed raster colours");
+    require(collected.triangle_count()==shadow_scene.triangle_count(),"reflection materials changed shadow geometry");
+    require(std::any_of(collected.triangles().begin(),collected.triangles().end(),
+        [](const auto& triangle){return triangle.reflection_valid;}),"CPU reflection materials were not collected");
     std::size_t coloured_pixels = 0;
     std::size_t surface_pixels = 0;
     for (std::uint32_t y = 0U; y < framebuffer.height(); ++y) {

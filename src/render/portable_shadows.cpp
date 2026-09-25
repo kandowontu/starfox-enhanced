@@ -67,14 +67,21 @@ struct PortableShadows::Impl {
         if(formats&SDL_GPU_SHADERFORMAT_SPIRV) {
             info.format=SDL_GPU_SHADERFORMAT_SPIRV;info.code=portable_shader::spirv;
             info.code_size=sizeof(portable_shader::spirv);info.entrypoint="main";
-        } else if(formats&SDL_GPU_SHADERFORMAT_MSL) {
+        }
+#if defined(__APPLE__)
+        else if(formats&SDL_GPU_SHADERFORMAT_MSL) {
             info.format=SDL_GPU_SHADERFORMAT_MSL;
             info.code=reinterpret_cast<const Uint8*>(portable_shader::metal);
             info.code_size=sizeof(portable_shader::metal)-1;info.entrypoint="main0";
-        } else if(formats&SDL_GPU_SHADERFORMAT_DXIL) {
+        }
+#endif
+#if defined(_WIN32)
+        else if(formats&SDL_GPU_SHADERFORMAT_DXIL) {
             info.format=SDL_GPU_SHADERFORMAT_DXIL;info.code=portable_shader::dxil;
             info.code_size=sizeof(portable_shader::dxil);info.entrypoint="main";
-        } else throw std::runtime_error("Portable shadows require Vulkan, Metal or D3D12");
+        }
+#endif
+        else throw std::runtime_error("Portable shadows require a supported native shader format");
         info.num_readonly_storage_buffers=2;info.num_readwrite_storage_buffers=1;
         info.num_uniform_buffers=1;info.threadcount_x=info.threadcount_y=8;info.threadcount_z=1;
         pipeline=SDL_CreateGPUComputePipeline(device,&info);require(pipeline);
@@ -155,6 +162,8 @@ struct PortableShadows::Impl {
         if(mask) read(*mask,true);
     }
     void enqueue_download(Uint32 output_bytes) {
+        if(!device || !command || !buffers[2] || !output_bytes)
+            throw std::runtime_error("Portable shadow readback source is missing");
         transfer(download,download_capacity,output_bytes,SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD);
         auto* copy=SDL_BeginGPUCopyPass(command);require(copy);
         SDL_GPUBufferRegion source{buffers[2],0,output_bytes};

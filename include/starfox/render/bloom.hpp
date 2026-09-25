@@ -9,10 +9,13 @@ namespace starfox::render {
 // Split the already tone-mapped bloom contribution for linear-filtered display.
 // Later host overlays must remain untouched and must not receive scene glow.
 inline void split_bloom_layer(std::vector<std::uint8_t>& base,
-    std::vector<std::uint8_t>& glow, const std::vector<std::uint8_t>& final) {
+    std::vector<std::uint8_t>& glow, const std::vector<std::uint8_t>& final,
+    RowWorkers* workers = nullptr) {
     if (base.size() != final.size() || glow.size() != final.size()
         || final.size() % 4U != 0U) return;
-    for (std::size_t i = 0; i < final.size(); i += 4U) {
+    const auto split = [&](std::uint32_t first, std::uint32_t last) {
+    for (std::size_t pixel = first; pixel < last; ++pixel) {
+        const auto i = pixel * 4U;
         const auto unchanged = glow[i] == final[i] && glow[i+1] == final[i+1]
             && glow[i+2] == final[i+2] && glow[i+3] == final[i+3];
         for (unsigned c = 0; c < 3; ++c) {
@@ -23,6 +26,11 @@ inline void split_bloom_layer(std::vector<std::uint8_t>& base,
         base[i+3] = final[i+3];
         glow[i+3] = 255U;
     }
+    };
+    const auto pixels = static_cast<std::uint32_t>(final.size() / 4U);
+    if (workers && pixels >= 128U * 1024U)
+        workers->parallel_rows(pixels, split);
+    else split(0U, pixels);
 }
 // Scene-wide, linear-light bright pass with separate tight and broad halos.
 // Work at half native resolution so cost stays bounded at high render scales.
@@ -127,7 +135,10 @@ public:
                 }
             }
         };
-        if (workers && frame.pixels().size()>=1024U*1024U) {
+        // A typical 2x Android frame is just under one megapixel. Keeping
+        // extraction serial at the old one-megapixel cutoff made bloom the
+        // dominant CPU pass precisely at that common resolution.
+        if (workers && frame.pixels().size()>=256U*1024U) {
             workers->parallel_rows(height,extract);
         } else {
             // On small buffers another worker barrier costs more than it
@@ -170,6 +181,10 @@ public:
             for (unsigned c = 0; c < 3; ++c) {
                 const auto glow = std::lerp(std::lerp(core_[row0+sx.first][c],core_[row0+sx.second][c],sx.fraction),
                     std::lerp(core_[row1+sx.first][c],core_[row1+sx.second][c],sx.fraction),fy-y0);
+                // Most of a dark scene has no bloom contribution. In that
+                // case the linearize/sqrt round trip reproduces the original
+                // byte, so leave it untouched (especially valuable at 2x+).
+                if (glow == 0.0F) continue;
                 rgba[i*4+c] = std::uint8_t(std::sqrt(std::clamp(linear_table[rgba[i*4+c]] + glow*strength[level], 0.0F, 1.0F))*255.0F + 0.5F);
             }
         }

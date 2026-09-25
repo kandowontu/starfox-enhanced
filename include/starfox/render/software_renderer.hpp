@@ -48,6 +48,9 @@ struct RenderPose {
     // afexp/al_count: MOBJ offsets each face along its signed normal as the
     // destroyed model breaks apart.
     std::uint8_t explosion_progress{};
+    // Presentation-only fractional counter. The source byte above remains
+    // authoritative for destruction mode and all completed source frames.
+    std::optional<double> explosion_phase;
     std::array<std::int16_t, 9> rotation_matrix{};
     bool use_rotation_matrix{};
     // Geometry may be interpolated between source frames for high-FPS
@@ -86,6 +89,9 @@ struct RenderPose {
     // Presentation-only fallback for a long tapered solid crossing the near
     // plane. It retains the model's material while drawing its centre axis.
     bool collapse_to_axis_line{};
+    // Generated scenery remains world geometry, never model material/HUD ink.
+    bool world_geometry{};
+    bool terrain_geometry{};
 };
 
 void apply_source_depth_tables(
@@ -135,8 +141,18 @@ public:
     [[nodiscard]] std::uint32_t width() const noexcept { return width_; }
     [[nodiscard]] std::uint32_t height() const noexcept { return height_; }
     [[nodiscard]] std::span<const SurfaceSample> samples() const noexcept { return samples_; }
+    [[nodiscard]] std::size_t allocated_bytes() const noexcept {
+        return samples_.capacity() * sizeof(SurfaceSample);
+    }
 
     void resize(std::uint32_t width, std::uint32_t height) {
+        if (!width || !height) {
+            if (!width_ && !height_ && !samples_.capacity()) return;
+            width_ = height_ = 0;
+            std::vector<SurfaceSample>{}.swap(samples_);
+            reset_bounds();
+            return;
+        }
         if (width == width_ && height == height_) return;
         width_ = width;
         height_ = height;

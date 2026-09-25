@@ -1,4 +1,5 @@
 #include "starfox/render/packed_faces.hpp"
+#include "starfox/render/ray_materials.hpp"
 #include "starfox/assets/shape_decoder.hpp"
 #include <iostream>
 #include <set>
@@ -7,6 +8,28 @@
 using namespace starfox;
 void require(bool value){if(!value) throw std::runtime_error("Packed faces assertion failed");}
 int main(int argc,char** argv)try {
+    {
+        render::PackedFaces faces;
+        faces.polygons={{0,3,0,0},{3,3,0,0}};
+        faces.corners={{0,0,0,0},{1,1,0,0},{2,0,1,0},
+            {3,0,0,0},{4,1,0,0},{5,0,1,0}};
+        faces.materials.resize(2);faces.texels={0,4,8,12};
+        faces.materials[0].even=21;faces.materials[0].odd=22;faces.materials[0].dither=1;
+        auto& texture=faces.materials[1];texture.textured=1;texture.u_mask=texture.v_mask=1;
+        texture.colour_base=32;texture.reserved0=std::uint32_t(-3);
+        std::array<std::array<std::uint32_t,4>,2> topology{{{3,4,5,1},{0,1,2,0}}};
+        render::RayMaterials materials;
+        require(render::pack_ray_materials(faces,topology,materials));
+        require(materials.triangles[0].face==1 && materials.triangles[0].uv[0]==-3
+            && materials.triangles[0].colour_base==32 && materials.texels==faces.texels);
+        require(materials.triangles[1].even==21 && materials.triangles[1].odd==22
+            && materials.triangles[1].dither==1);
+        texture.texture_offset=1;
+        require(!render::pack_ray_materials(faces,topology,materials));
+        require(materials.triangles.size()==2 && materials.triangles[0].offset==0);
+        texture.texture_offset=0;topology[0][0]=0;
+        require(!render::pack_ray_materials(faces,topology,materials));
+    }
     assets::Shape shape;shape.visibilities.resize(1);
     assets::Face face;face.visibility_index=-1;face.vertex_indices={0,1,2,3};shape.faces={face,face,face};
     shape.faces[1].visibility_index=0;shape.faces[2].visibility_index=99;
@@ -134,6 +157,21 @@ int main(int argc,char** argv)try {
     const bool list_sprites=argc==4 && std::string_view(argv[3])=="--list-sprites";
     if(argc==3 || list_sprites) {
         const auto rom=assets::RomImage::load(argv[1]);const auto symbols=assets::SymbolMap::load(argv[2]);const assets::ShapeDecoder decoder(rom,symbols);
+        if(const auto doors=symbols.find("HALF_D");!doors.empty()) {
+            // SHAPES4's door keeps four fixed vertices before its ten-frame
+            // jump table. A missing prefix or wrong relative jump makes the
+            // final tunnel's open panel cover the wrong part of the view.
+            const auto door=decoder.decode(doors.front(),"HALF_D");
+            require(door.declared_frame_count==10 && door.frames.size()==10);
+            for(const auto& frame:door.frames) {
+                require(frame.vertices.size()==16);
+                require(frame.vertices[0]==assets::Vec3i{30,30,-10});
+                require(frame.vertices[3]==assets::Vec3i{30,-30,-10});
+            }
+            require(door.frames[0].vertices[4]==assets::Vec3i{20,30,-10});
+            require(door.frames[9].vertices[4]==assets::Vec3i{-25,30,-10});
+            require(door.frames[9].vertices[15]==assets::Vec3i{-30,-30,10});
+        }
         std::set<std::uint32_t> seen;
         for(const auto& [name,addresses]:symbols.entries()) for(auto address:addresses)
             if(seen.insert(address).second && decoder.looks_like_shape_header(address)) {

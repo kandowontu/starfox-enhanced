@@ -14,11 +14,36 @@
     uint count,hasFrontSurfaces,hasBack,hasBackSurfaces;
     uint wantDepth,hasFrontDepth,hasBackDepth,padding;
     uint wantMotion,hasFrontMotion,hasBackMotion,motionPadding;
+    uint outputWidth,outputHeight,sourceWidth,sourceHeight;
+    uint sourceScale,destinationScale,referenceWidth,referenceHeight;
+    int offsetX,offsetY,clipLeft,clipTop;
+    int clipRight,clipBottom,mosaicX,mosaicY;
+    uint mosaicStep,wantSurfaces,unused1,unused2;
 };
 [numthreads(64,1,1)]
 void main(uint3 id:SV_DispatchThreadID) {
     if(id.x>=count) return;
-    uint front=frontPixels[id.x],back=0;
+    uint front=0,back=0;
+    if(motionPadding!=0) {
+        uint2 at=uint2(id.x%outputWidth,id.x/outputWidth)*uint2(referenceWidth,referenceHeight)/uint2(outputWidth,outputHeight);
+        int2 logical=int2(at/destinationScale);
+        bool inside=logical.x>=max(offsetX,clipLeft) && logical.y>=max(offsetY,clipTop)
+            && logical.x<min(offsetX+int(sourceWidth/sourceScale),clipRight)
+            && logical.y<min(offsetY+int(sourceHeight/sourceScale),clipBottom);
+        int2 delta=logical-int2(mosaicX,mosaicY);int step=int(mosaicStep);
+        int2 snapped=int2(delta.x<0?-((-delta.x+step-1)/step):delta.x/step,
+            delta.y<0?-((-delta.y+step-1)/step):delta.y/step)*step+int2(mosaicX,mosaicY)-int2(offsetX,offsetY);
+        if(inside && all(snapped>=0) && all(snapped<int2(sourceWidth,sourceHeight)/int(sourceScale))) {
+            uint2 sub=((at%destinationScale*2+1)*sourceScale)/(destinationScale*2);
+            uint2 sampleAt=uint2(snapped)*sourceScale+sub;
+            front=frontPixels[sampleAt.y*sourceWidth+sampleAt.x];
+            // Layer-composite transparency is palette zero, not write coverage.
+            front=(front&255u)!=0?(front&0xffffu)|0x04000000u:0;
+        }
+    } else front=frontPixels[id.x];
+    // World billboards deliberately keep their 2D effects/filter tag. That
+    // styling classification must not turn explosions into protected HUD.
+    if((padding&1u)!=0 && ((front>>8)&255u)==1u) front|=0x10000000u;
     if(hasBack!=0) back=backPixels[id.x];
     // Colour and metadata have independent painter ownership. A later line
     // can paint black without erasing an earlier model's surface sample.
@@ -29,8 +54,11 @@ void main(uint3 id:SV_DispatchThreadID) {
     } else if(hasBackSurfaces!=0 && (back&0x01000000U)!=0) {
         metadata=back&0x01ff0000U;normal=backSurfaces[id.x];
     }
-    pixels[id.x]=(colour&0x0c00ffffU)|metadata;
-    surfaces[id.x]=normal;
+    if((padding&2u)!=0 && (front&0x04000000u)!=0) {
+        metadata=0;normal=float4(0,0,1,0);
+    }
+    pixels[id.x]=(colour&0x1c00ffffU)|metadata;
+    if(wantSurfaces!=0) surfaces[id.x]=normal;
     if(wantDepth!=0) {
         // Unlike effects metadata, geometry belongs to the visible colour.
         // A covering sprite/HUD pixel with unknown depth must not inherit a

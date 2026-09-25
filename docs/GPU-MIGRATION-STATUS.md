@@ -1,5 +1,1603 @@
 # GPU migration checkpoint
 
+## Intel continuous clipping and exact billboard projection — September 23
+
+The forced Intel D3D12 crash at the first continuous-clip dispatch is avoided
+by a vendor-selected, compact DXIL variant with 96 polygon scratch slots.
+The ordinary 128-slot shader remains selected on other adapters and APIs.
+The Intel variant passes the 320-polygon terrain model fixture (18 exact
+images), a 16-model/192-image batch, Original/EX menu startup, and 60-frame
+Original/EX Corneria gameplay at 1× plus EX at 4×. The gameplay samples have
+exact Software native/final images and no CPU-image uploads. Evidence:
+`tmp/intel-d3d12-dual-clip-sep23` and
+`tmp/intel-d3d12-dual-clip-gameplay-sep23`.
+
+The first broader sweep isolated a separate one-pixel vertical offset in a
+whole-object sprite: 119 pixels differed in Original LEVEL3_5 on both Intel
+D3D12 and Intel Vulkan, whereas Intel raster-only and NVIDIA full geometry
+matched Software. The sprite GPU shader now receives exact binary64 input
+bits and uses the shared integer-only binary64 geometry arithmetic; one
+workgroup computes the rectangle once for its rows. This retains GPU
+projection/rasterization, avoiding a CPU-image transfer or CPU projection.
+An added near-integer-boundary billboard fixture passes 64 Original and 64 EX
+models at 1×/2×/4× on Intel D3D12 (1,344 exact GPU/Software images each).
+Evidence of the isolated failure:
+`tmp/intel-d3d12-stage-sweep-sep23`, `tmp/intel-vulkan-l3-5-sep23`,
+`tmp/intel-vulkan-l3-5-raster-sep23`, and
+`tmp/nvidia-d3d12-l3-5-sep23`.
+
+With the exact shader, all 59 numbered Original/EX stage entries and all five
+special routes pass strict eight-frame Intel D3D12 samples after 1,000 source
+ticks: exact Software native/final images and zero CPU-image uploads. Intel
+Vulkan and NVIDIA D3D12 targeted LEVEL3_5 checks also pass. Evidence:
+`tmp/intel-d3d12-stage-sweep-billboard-sep23`,
+`tmp/intel-d3d12-special-billboard-sep23`,
+`tmp/intel-vulkan-l3-5-exact-billboard-final-sep23`, and
+`tmp/nvidia-d3d12-l3-5-exact-billboard-final-sep23`. The full forced-Intel
+Vulkan sweep also passes all 59 numbered entries with exact native/final
+parity and zero CPU-image upload (`tmp/intel-vulkan-stage-sweep-billboard-sep23`).
+
+On this Intel adapter, D3D12 had the lower hidden-window median frame-work
+time in 17 of 19 matched Original stage samples; the median Vulkan/D3D12
+ratio was 1.46. Some Vulkan cold-frame outliers were multi-second. Intel now
+defaults to D3D12, with an explicit backend override retained and a Vulkan
+startup fallback if D3D12 creation fails. Original/EX cold previews pass both
+default and explicit Vulkan with DLSS disabled; default logs show Intel
+`driver=direct3d12`, explicit override logs `driver=vulkan`.
+The same default D3D12 selection also passes when the bundled DLSS runtime
+is present (`tmp/intel-default-with-dlss-runtime-sep23`). Evidence:
+`tmp/intel-default-backend-final-sep23`. These are diagnostic
+samples, not entire-route or physical-device FPS proof. The GPU migration and
+iPhone 4× stability are not fully accepted.
+
+The ordinary Android arm64 Debug APK rebuilds with the exact billboard shader
+and passes the package integrity check (37 complete enhanced backdrops, no
+bundled ROM/BIN). This is compile/package evidence only; no Android device
+rendering or iPhone 4× crash retest was performed in this pass.
+
+## 4× compositor and scene-scratch reuse — September 23
+
+The scene painter's four full-frame merge buffers now cycle on their first
+write to each ping-pong slot in a command, but reuse that backing for later
+ordered writes to the same slot. Direct non-batch calls retain their previous
+cycling behavior. This bounds same-command scratch versions to two slots
+instead of growing with every model/layer; it does not reduce the two-slot
+base allocation or establish the cause of the iPhone exits. After this change,
+eight generated terrain batches at 4× pass 48 exact GPU/Software images on
+NVIDIA D3D12, Intel D3D12 and Intel Vulkan. Intel D3D12 mixed and submitted
+16-model batches each pass 192 exact images, including cancellation/retry and
+pending-work protection; Intel Vulkan recorded batches pass another 192 and
+exact CPU fallback. A 24-frame Original 1-1 live Intel D3D12 4× check passes
+exact native capture parity with zero CPU-image uploads; a 48-frame EX 1-1
+4× check passes the same requirements. The Android arm64 Debug APK also builds
+and passes its package-integrity check. The Intel 4× unpaced presentation time
+is still high, and physical-device memory/FPS plus the iPhone 4× crash still
+need testing. Evidence: `tmp/gpu-scene-cycle-4x`,
+`tmp/gpu-scene-cycle-ex-4x`.
+
+The resident compositor now resolves the unmosaicked native sample once per
+output pixel and reuses it for color plus depth/surface/motion metadata.
+Mosaic color remapping still samples its separate source. This removes one
+duplicate sample-coordinate calculation in the common 1×/4× path without
+changing the output contract. Generated Vulkan/D3D12/Metal payloads are fresh;
+the independent compositor suite passes on Vulkan and D3D12. A 60-frame EX
+1-1 4× Intel Vulkan live comparison and a 60-frame Original 1-1 1× D3D12
+comparison retain exact native/final Software parity and zero CPU-image
+uploads. Evidence: `tmp/gpu-composite-sample-reuse-{before,after}-sep23` and
+`tmp/gpu-composite-sample-reuse-d3d12-sep23`.
+
+In the unpaced hidden-window Intel 4× samples, measured compositor median
+was 38.8 ms before and 35.7 ms after. This single before/after pair is noisy
+and does not establish sustained device FPS or fix the reported iPhone 4×
+exits; physical-device validation remains necessary.
+
+A follow-up shortcut for equal-size source mapping and zero-jitter CPU lookup
+preserved image parity but measured 45.8 ms compositor median in the same
+Intel 4× fixture. Both shortcuts were reverted; the shared native-sample
+change above remains. The fixture is retained at
+`tmp/gpu-composite-coordinate-fastpath-sep23` as rejected benchmark evidence.
+
+## Special-route zero-upload sweep and Intel DXIL isolation — September 23
+
+The two Original special routes (Black Hole, Special) and three EX routes
+(Black Hole, Special, Comet) now pass strict 60-frame Vulkan and D3D12 checks
+at 1×/16:9 after 1,000 source ticks. Each sample has exact software/native and
+final-presentation parity, no CPU-image upload, and no scene readback/replay.
+Evidence: `tmp/gpu-special-route-strict-sep23` and
+`tmp/gpu-special-route-d3d12-strict-sep23`. Together with the numbered
+stage sweep below, every defined stage entry has a sampled strict check;
+this does not cover every later route event or a physical-device FPS result.
+
+The forced Intel D3D12 clipping crash was reproduced with one terrain
+triangle. Reducing its compute group from 32 threads to one did not prevent
+the driver access violation. A minimal shader with the same six bound input
+buffers and output did dispatch, narrowing the failure to the full compiled
+shader rather than the buffer binding count alone. DXIL `-O1`, `-O2`, and
+`-Od` each passed the terrain fixture (18 image-parity cases), but all three
+still crashed on the submitted-batch D_PILAR continuous-clip dispatch. Those
+experimental changes were reverted; the production compiler setting and
+automatic non-NVIDIA Vulkan choice are unchanged. Explicit Intel D3D12 is
+still unresolved.
+
+## Numbered-stage zero-upload sweep — September 23
+
+The stage execution sweep now has an opt-in strict CPU-upload gate. It requires
+one upload record per GPU frame, rejects any nonzero CPU-image transfer and
+still checks native/final Software parity plus scene readback/replay rejection.
+All 59 numbered Original/EX entries pass separately on D3D12 and Vulkan at
+1×/16:9, sampling eight frames after 1,000 source ticks per entry: 472
+zero-upload GPU frames on each backend. Evidence:
+`tmp/gpu-stage-zero-upload-full-sep23` and
+`tmp/gpu-stage-zero-upload-vulkan-sep23`. This covers those stage-entry
+samples, not every frame of every route, later bosses, optional effects,
+integrated adapters or physical Android/Metal drivers.
+
+## Controls foreground stays resident — September 23
+
+An EX Controls audit found a 256-pixel-wide full-height high-priority BG2
+foreground uploaded as a 465,920-byte CPU image on the first frame. Controls
+already had an ordered late GPU layer, but started it after drawing that
+foreground. It now starts immediately after the player demonstration, before
+the high-priority BG2 pass, preserving the source ordering without a CPU
+framebuffer upload. The strict no-upload audit passes 120/120 frames for
+Original and EX at 1× on Vulkan, EX at 4× on Vulkan, and EX at 1× on D3D12.
+Native and final captures match Software exactly; the visible controls art,
+ship and labels were inspected. A separate EX Controls failure-injection check
+matches the same final image with late GPU submission deliberately declined,
+ordinary background failure, CPU background, and CPU models.
+Evidence: `tmp/gpu-ex-controls-strict-audit-sep23`
+(before), `tmp/gpu-ex-controls-resident-ink-sep23`,
+`tmp/gpu-original-controls-resident-ink-sep23`,
+`tmp/gpu-ex-controls-resident-ink-4x-sep23`, and
+`tmp/gpu-ex-controls-resident-ink-d3d12-sep23`, plus
+`tmp/gpu-ex-controls-late-fallback-sep23`. These are sampled desktop
+frames, not physical-device FPS evidence.
+
+## EX intro comms host ink stays resident — September 23
+
+The strict CPU-upload trace found a real exception in the EX intro: its early
+37×40 comms portrait/dialogue region was recorded, then replayed into the CPU
+foreground because the late GPU cartridge layer was not started until the
+gameplay HUD. Across the first 120 frames this caused 14 CPU-image transfers,
+490,640 bytes total, including a 465,920-byte first transfer. The intro now
+starts the existing ordered late layer before host ink is composed. This keeps
+the portrait and subsequent cartridge passes in their authored order without
+a CPU framebuffer transfer.
+
+The strict audit requires one zero-byte upload record per GPU frame and rejects
+scene readback/replay. Original and EX intro captures pass at 1× for 120 frames,
+and EX passes at 4× for 120 frames on Vulkan and at 1× on D3D12, with exact
+Software/GPU native and final pixels. The visible EX frame contains its
+portrait, text, stars and logo. The ordinary Android arm64 Debug APK rebuilds
+and passes its 37-resource package check; no phone-side result is implied.
+Evidence: `tmp/gpu-ex-intro-strict-audit-sep23` (before),
+`tmp/gpu-ex-intro-resident-ink-sep23`,
+`tmp/gpu-original-intro-resident-ink-sep23`, and
+`tmp/gpu-ex-intro-resident-ink-4x-sep23`, plus
+`tmp/gpu-ex-intro-resident-ink-d3d12-sep23`. The same strict audit also passed a
+60-frame EX title sample; a separate 60-frame EX planet-select trace had zero
+CPU uploads. This is sampled scene evidence, not a full intro route or device
+FPS result.
+
+An extended 600-frame EX intro run also has exact native/final parity and
+zero CPU-image transfers or readback; its later visible dialogue was inspected
+(`tmp/gpu-ex-intro-long-strict-sep23`). EX title passes the same strict gate
+for 240 frames (`tmp/gpu-ex-title-long-strict-sep23`). Original Game Over passes
+600 frames (`tmp/gpu-original-gameover-continue-strict-sep23`), but its final
+image is still the static Game Over screen, so that capture does **not** prove
+the Continue handoff despite the directory name.
+
+Two older first-frame upload traces (Original Titania 2-6 and EX 5-1 near
+tick 1000) now pass the strict eight-frame no-upload audit with exact native
+and final parity. Their earlier 358,400-byte first transfers were removed by
+the uniform/cache work; they are not remaining migration exceptions. Evidence:
+`tmp/gpu-titania-strict-upload-sep23` and
+`tmp/gpu-ex-scramble-strict-upload-sep23`.
+
+## Cartridge-side-strip CPU upload removed — September 23
+
+The Original boss-roll/credits fixture exposed a real nonuniform CPU backing:
+two constant 16-pixel strips at source x=72–87 and 312–327, spanning all 224
+rows. Its first GPU frame uploaded 358,400 bytes of packed CPU image; later
+frames reused that buffer. The compositor now recognizes an exact full-height
+one/two-strip pattern (including layer and write-coverage bits) and supplies
+its base, stripe colour, and x bounds as GPU constants. Any row that differs
+falls back to the ordinary packed upload; this is not a visual approximation.
+
+The 1× boss-roll audit now reports zero CPU-image bytes and no scene readback
+on all 451 GPU frames. Its visible dossier and fully closed wipe match Software
+byte-for-byte. A 4× first-frame capture also has zero CPU-image upload, no
+readback, and exact GPU/Software final pixels. The compositor's independent
+packed-upload comparison, changed-row fallback/recovery, and 108-case suites
+pass on Vulkan and D3D12. Evidence: `tmp/gpu-boss-roll-stripes-sep23`,
+`tmp/gpu-boss-roll-stripes-4x-sep23`. This removes one identified transfer,
+not every CPU-owned layer or the Intel D3D12 driver crash. The ordinary
+Android arm64 Debug APK also rebuilds and passes its package-content check;
+no handset-side validation is implied.
+
+## Resident palette transfer cache — September 23
+
+The compositor previously mapped an upload buffer and copied a 1,024-byte
+palette to the GPU every frame, even when its CPU backing was uniform and the
+palette was unchanged. It now keeps the last submitted 256 packed colours,
+uploads only on a change, and omits the copy pass entirely when there is also
+no changed CPU image row. Replacing the palette GPU buffer or a failed compose
+invalidates this cache. This is a transfer/command reduction, not a claimed
+frame-rate gain.
+
+The 108-case compositor suite passes on Vulkan and D3D12, including palette-
+only changes and fallback cases. In a visible 4× Original pre-game menu, the
+GPU uploads the palette in 1/90 frames and CPU image in 0/90, with exact
+Software native/final output (`tmp/gpu-palette-cache-boot-sep23`). At the live
+EX 6-1 palette change near source tick 1600, it uploads the palette in 2/60
+frames, CPU image in 0/60, and retains exact native/final parity at 2×
+(`tmp/gpu-palette-cache-ex-fade-sep23`). These captures show the cache both
+skipping stable transfers and reacting to a real palette change; they do not
+verify every stage transition or physical Metal/Vulkan drivers.
+
+## First physical iOS startup and 4× report — September 23
+
+A sideloaded **0.0.6.7** IPA on a connected iPhone (iOS 26.7) launched after
+`Starfox-Assets.BIN` was added through iTunes File Sharing. Its SDL file picker
+does not work on iOS; a native UIKit document picker is now in source but has
+not yet been compiled or installed on the phone. The user reported two app
+exits at 4× upscale (one in the menu, one in gameplay) and a brief 1× run
+without an exit. Device crash-report enumeration exposed no StarFox report, so
+the exit mechanism is not proven. The released GPU span path cycles a large
+scratch buffer for every draw; the current source reuses it during ordinary
+scene rendering, but that change is **not** in the installed IPA and has not
+been physically checked on iOS. Do not claim the 4× crash fixed from the 1×
+control or a Windows GPU comparison.
+
+The final Windows source still passes one 4× generated-terrain, five-layer
+resident scene on Intel Vulkan with exact software coverage and palette.
+This is a narrow cross-check of the reuse path, not an iPhone stress test.
+The first 60-frame EX 1-1 Intel Vulkan/4× parity run also passes, but its
+timings are contaminated: the low-power adapter selector previously enabled
+per-model clip diagnostics. Those prints now require the separate
+`STARFOX_TRACE_GPU_MODEL_DISPATCH` flag. The selector alone is quiet. A clean
+EX 1-1/4×/60-frame Intel Vulkan run has exact native and final presentation
+parity. On its hidden, unpaced test window, measured GPU frame-work median is
+about 52 ms versus about 16 ms for software. A separate slow-frame run
+attributes most GPU time to resident composition (typically 43–52 ms), while
+scene retirement/encoding/submission is small and the effects pass is usually
+below 6 ms. `STARFOX_TRACE_GPU_PASS_COST` separates composition, effects and
+final draw for this diagnosis. These are integrated-adapter, hidden-window
+results, not physical iOS FPS measurements or proof of the cause of the iPhone
+exits. The source also dispatches the native iOS picker onto UIKit's main
+queue when SDL calls it from another thread; macOS compilation and device
+validation remain outstanding.
+
+Two compositor experiments (skipping unowned surface writes and a larger
+compute workgroup) preserved image parity but did not show a reliable gain on
+the integrated adapter; the surface-gated variant produced one severe
+~164 ms median frame-work run. Both experiments were reverted. The checked-in
+compositor shader and workgroup remain at their previously validated behavior.
+
+The same 30-frame EX 1-1 fixture at 1× on Intel Vulkan has about 8.5 ms
+average GPU presentation work and exact software native-raster parity. At 4×
+on the discrete NVIDIA Vulkan adapter, it has about 5.4 ms average GPU
+presentation work and exact parity, versus about 19 ms software presentation
+work in that run. This contrast localizes the severe 4× cost to the Intel
+adapter/large-output combination; hidden swapchain timing still cannot be
+used as a universal gameplay FPS claim.
+
+## Cross-stage native GPU precision and adapter check — September 23
+
+The 59-entry Original/EX stage execution sweep now passes on Windows Vulkan at
+1x, 16:9: eight frames after 1,000 source ticks per entry have exact CPU/GPU
+native-raster and final-presentation images, with scene replay and readback
+fallback rejected (`tmp/gpu-migration-vulkan-full-fixed-sep23`). This extends
+the earlier 59-entry D3D12 run. A fresh 59-entry D3D12 sweep of the final
+binary also passes (`tmp/gpu-migration-d3d12-full-final-sep23`). It is a
+sampled stage-entry check, not an every-frame or sustained-FPS result.
+
+EX 6-1 initially differed by three pixels in the native model geometry. A
+live shape/pose fixture isolated a source half-pixel projection tie. Continuous
+matrix projection now retains a third translation tail and reconstructs the
+source binary64 operation order only at candidate raster ties, leaving the
+ordinary compensated-float path unchanged. The isolated model and all 17
+individual faces now match SoftwareRenderer on Vulkan and D3D12. The rebuilt
+final shader also passes eight-frame EX 6-1 native/final parity on both
+backends (`tmp/gpu-migration-ex61-final-{vulkan,direct3d12}-sep23`). Portable
+shader payload freshness and the 108-case resident compositor and stereo
+checks pass on both backends. A 16-model/192-image submitted-batch fixture
+also retains exact coverage and palette output on both backends at 1x/2x,
+including five-layer resident composition. The full Vulkan sweep preceded a
+validity guard and motion-surface reconstruction line added after the sweep;
+the final binary has focused parity, not a second full 59-entry run.
+
+Intel D3D12 remains a concrete adapter-specific gap. An isolated generated
+terrain model crashes at the continuous clip compute dispatch even when
+restricted to one triangle (one polygon, three vertices). Disabling its
+terrain-geometry flag does not prevent the crash, while the live EX 6-1 model
+fixture passes on the same Intel adapter. The same isolated terrain triangle
+matches SoftwareRenderer exactly on Intel Vulkan. An EX menu-preview
+startup also crashes on Intel D3D12. The automatic non-NVIDIA GPU choice uses
+Vulkan and Original/EX Intel preview startup passes there
+(`tmp/gpu-migration-intel-default-sep23`). An explicit D3D12 override is not
+validated on this adapter; do not call cross-adapter migration complete or
+infer a driver-side fix. Physical Android/Metal acceptance and representative
+nonuniform host-overlay transfer/FPS measurements also remain open.
+
+Another isolated Intel D3D12 test disabled output-buffer cycling only for the
+first continuous clip dispatch of a single-triangle enhanced-terrain model.
+It still exited at that dispatch, after all pipelines and buffers bound. The
+diagnostic switch was reverted; this rejects cycling as a sufficient fix and
+leaves the explicit Intel D3D12 crash open. The production non-NVIDIA Vulkan
+selection is unchanged.
+
+A local unpaced 180-frame Original Corneria 1x/4:3 baseline (60-frame warmup,
+all enhancements off, Vulkan, `tmp/gpu-migration-baseline-sep23`) reports GPU
+frame-work median/p95 3,862/6,797 µs versus Software 2,845/5,114 µs. The GPU
+path is resident but not faster in this sample. Hidden-window timings do not
+establish displayed FPS on weaker hardware; migration should not be presented
+as a performance win without physical-device measurement.
+
+## Focused resident-path audit — September 23
+
+The GPU native checker now pins DLSS/FSR1 and the FPS overlay off unless the
+corresponding overlay is requested, so saved settings cannot silently change
+CPU/GPU comparisons. Every resident/default check now rejects scene replay,
+scene/raster readback for composition, and whole-frame geometry fallback, not
+only checks using the `-Geometry` switch. An opt-in CPU-upload trace exposes
+the backing transfer of each composed frame.
+
+With that clean gate, EX's slot panel at 1x and an Original forced-message
+entry at 4x pass 12-frame native/final parity with no readback fallback or
+CPU-image transfer. The forced-message capture has not reached the portrait
+or dialogue text, so it is not a comms-completion claim. The EX 5-1 scramble
+wipe passes all 36 native/final frames with bloom
+enabled on both D3D12 and Vulkan, with no readback fallback. Both backends
+also pass the 108-case compositor/device suite. That wipe test first exposed
+the software/native-fallback bloom halo leaking into the shutter's black rows:
+its early CPU wipe was not included in the later GPU style pass. Both paths now
+use the same exact stored-pixel shutter bounds, and fallback reapplies it
+after bloom/AA. The no-bloom 36-frame control also passes. This is a desktop
+path fix and evidence; it does not certify all routes or physical GPU drivers.
+
+## GPU uniform backing and CPU delta uploads — September 23
+
+`GpuComposite::compose` now recognizes a uniform CPU colour/tag/coverage image
+and passes its packed word directly to the compute shader. It need not allocate,
+pack or upload a full-resolution CPU storage buffer, even on the first frame;
+the shader also skips CPU-image indexing. Palette data remains independent.
+On nonuniform frames, the compositor uploads changed row runs, coalescing
+nearby changes. More than 64 copy commands trigger one contiguous upload.
+A transition from uniform to nonuniform refreshes the entire CPU buffer before
+sparse updates resume. Failure invalidates the buffer cache.
+`STARFOX_DISABLE_CPU_UPLOAD_CACHE` (or the earlier uniform-cache switch) allows
+an A/B run, and `last_cpu_upload_bytes()` reports CPU-image transfer bytes.
+
+The current 32:9/4× Corneria sequence transfers **zero** CPU-image bytes on
+all 12 frames; cache-off transfers 11,468,800 bytes on each. All 12 GPU final
+presentation hashes match cache-off, and native/final CPU/GPU sequence parity
+passes. EX 5-1's D3D12 live sample likewise has eight zero-byte CPU-image
+frames and eight exact CPU/GPU final frames. Focused tests cover single-pixel,
+tag, coverage, separated/adjacent-row, palette-only, transition and fragmented
+fallback cases. The 108-case compositor suite passes on Vulkan and D3D12;
+portable shader freshness and the Android arm64 APK/package checks pass.
+
+Two unpaced 120-frame Original LEVEL1_1 32:9/4× on/off pairs (30-frame warmup,
+Vulkan) measured cache-on median frame work at 15,168 and 14,886 µs versus
+15,733 and 15,800 µs with cache disabled. The p95 moved in opposite directions
+across the two pairs (21,221 versus 20,234 µs; 18,559 versus 20,973 µs).
+This is a local median improvement, **not** a general FPS or consistency
+guarantee. General nonuniform CPU overlays still pack their full image for
+delta comparison, except the later full-height strip fast path documented at
+the top. Physical GPU-device performance and broad scene acceptance remain
+open.
+
+## Packed text, portrait and sprite decode audit — September 23
+
+Current source already records cartridge 12-row glyphs (`Framebuffer::glyph12`),
+localized 8-row glyphs (`glyph8`), 4-bpp FACEDATA portraits, and OAM sprite
+bitplanes as packed GPU raster commands (textured modes 6, 7, 8 and 4).
+`ScaledTextRenderer` still performs language lookup, glyph selection, line
+layout and small source-byte uploads on the CPU; those are presentation inputs,
+not CPU expansion of their pixels on the normal recorded GPU path. The older
+"sprite bitplane decoding" and "glyph-source decoding" gaps below are
+historical and must not be read as current pixel-rasterization gaps.
+
+Fresh `starfox_gpu_raster_check` runs on both Vulkan and D3D12 pass 96 packed
+font, 32 localized bitmap-font and 24 packed portrait independent-oracle cases,
+plus resident-output lifetime tests. This is direct GPU component evidence,
+not proof that every menu/portrait scene stays resident or that Android's
+Vulkan driver is stable.
+
+A remaining cost is CPU-owned host overlays in `GpuComposite::compose`:
+general nonuniform frames still pack colour, layer tags and coverage for
+comparison, although only changed row runs are transferred. Uniform frames
+and the identified full-height side-strip pattern now use shader constants
+without discarding layer ownership. The boss-roll transition above is a
+measured nonuniform example; other shapes and physical-device behavior remain
+open.
+
+September 23 follow-up: forced Original message 36 reaches Pepper's visible
+portrait/dialogue by frame 120 at 4×, and EX's in-game slot panel is visible
+by frame 60. Both Vulkan GPU runs match Software exactly in native and final
+presentation captures. Every frame of both resident GPU runs reports
+`gpu-cpu-upload ... bytes=0` (120/120 and 60/60 respectively): these overlays
+are already GPU-recorded, so they are not examples of the remaining
+nonuniform CPU transfer cost. Evidence:
+`tmp/gpu-comms-upload-audit-sep23` and `tmp/gpu-slot-upload-audit-sep23`.
+Other transition scenes may still produce nonuniform CPU data; no blanket
+zero-upload claim follows from these two fixtures.
+
+The same opt-in trace now covers the Original and EX Game Over sequences at
+4× for 90 frames each, and the visible Original pre-game BOOT menu for 90
+frames. All three have exact
+GPU/Software native and final images; Game Over keeps its late margin stars on
+the GPU. Every sampled frame reports zero CPU-image upload (270/270 total).
+Evidence: `tmp/gpu-gameover-upload-audit-sep23`,
+`tmp/gpu-ex-gameover-upload-audit-sep23`, and
+`tmp/gpu-boot-upload-audit-sep23`. These are sampled transitions, not all
+possible menus or exit paths.
+
+The compositor now resolves the unmosaicked source coordinate and source
+ownership once for depth, motion and surface metadata instead of repeating
+the projection for each consumer. The regenerated shader passes all 108
+compositor cases on both Vulkan and D3D12, plus exact 4× EX 1-1 native/final
+parity on Intel Vulkan and NVIDIA D3D12. The Intel hidden-window 60-frame
+frame-work median changed from 45.3 to 44.9 ms against an earlier comparable
+sample, while p95 rose from 46.6 to 48.0 ms. That variation does not establish
+a consistent performance improvement; the 4× integrated-GPU bottleneck is
+still open. The ordinary Android arm64 Debug APK also builds offline with the
+local JDK 17/SDK, and its packaged runtime/backdrop resources pass
+`check_android_package.py`; this is compilation/package evidence only, with
+no phone-side GPU startup or stability test.
+
+## Android GPU safe-start recovery — September 23
+
+GitHub issue #64 identifies a GPU-only freeze on ordinary Android when
+entering preview or play; the reporter says Software works. The Android
+runtime now chooses Software on the first launch after this policy update,
+retains GPU as an explicit menu choice, and journals GPU renderer/scene
+startup. If a GPU hang forces termination before 120 stable frames, the next
+launch selects and persists Software. Flow transitions re-arm the guard.
+`startup.log` is now written in Android app storage beside `pregame.cfg`.
+The ordinary arm64 debug APK compiles and passes complete payload inspection
+(37 enhanced backdrops); there is no attached ordinary Android device, so
+this is a recovery mitigation, not proof that the Vulkan hang is repaired.
+
+## Android optimized native build — September 23
+
+The current Android debug APK now compiles native code with -O2 and symbols;
+the workflow ships this variant, which previously had no optimization flag.
+A Clang-only background-table assertion failure is fixed. All 35 current
+enhanced backdrops are verified in the APK; stale-asset incremental dependencies
+and the CI payload gate are corrected. See ANDROID-PORTABILITY-SEPT23.md.
+This establishes build/package portability, not physical-device FPS or
+completion of the GPU migration's broader hardware acceptance.
+
+## Portable embedded-asset compilation — September 22
+
+Photographic resources had grown the generated C++ translation unit to 790 MiB.
+Each byte was a separate initializer, and a live compiler process reached about
+12 GiB RSS before the Linux build was interrupted. The interruption itself did
+not report a compiler error, so memory pressure is not asserted as its proven
+sole cause.
+
+`embed_runtime_assets.py` now emits adjacent escaped byte-string literals and
+returns spans excluding their implicit terminator. Empty resources remain valid;
+every byte is escaped to prevent hexadecimal-escape continuation ambiguity.
+There is no runtime decompression, asset quality reduction or format change.
+
+The current Linux runtime subsequently builds successfully. An isolated
+`starfox_embedded_assets` rebuild with `/usr/bin/time -v` took 16.96 seconds and
+peaked at 2,679,488 KiB RSS. This is a build-resource improvement, not an in-game
+FPS measurement. The new native Unix CTest compiles generated resources and
+round-trips all byte values, embedded zeros, hexadecimal-looking bytes, empty
+payloads and missing-ID exceptions. Five focused Linux CTests pass: this test,
+embedded runtime startup, enhanced terrain, backdrop decoder and spectral asset.
+No physical Quest/Index/Metal validation or release is implied.
+
+## Headless startup isolation — September 20
+
+A fresh parallel 61-test run found three 10-second smoke-test timeouts while
+58 tests passed. The headless fixtures inherited saved graphics settings and
+logged active hardware ray tracing. CMake now pins baseline software rendering
+and disables enhancements without changing the user's settings. All four
+runtime/exit/embedded/EX smoke fixtures then pass when run together, but the
+three short tests still time out amid the complete parallel suite.
+
+Their logs show optional Streamline initialization/signature checks despite
+SDL's dummy driver being unable to present D3D12. DlssHost now skips loading
+its native SDK only for the explicit dummy driver. Real-window startup and
+renderer switching keep their pre-SDL initialization. This is not a general
+DLSS-disable workaround, timeout increase, or hardware-test exemption.
+The current Windows executable is linked. A fresh complete parallel CTest run
+passes 61/61 in 156.73 seconds. The three formerly timing-out smoke tests take
+0.82/2.26/2.52 seconds, with their original time limits unchanged; EX intro
+smoke passes too. Real-window installed DLSS initialization, actual GPU binding,
+swapchain restore and shutdown pass separately in
+`tmp/dlss-real-window-after-headless-sep20` (evaluation intentionally OFF).
+No in-game FPS improvement or full DLSS evaluation revalidation is implied.
+
+## Terrain lighting parity — September 20
+
+The thin GPU grass was missing surface metadata, not missing triangles. Terrain
+draws explicitly disabled normals even when lighting/reflections needed them;
+the software path supplied them. GPU terrain now follows `surface_effects`.
+The full Corneria 4x native and final captures match exactly for grass, dirt,
+sand and snow (`tmp/terrain-normal-parity-sep20` and
+`tmp/terrain-material-{2,3,4}-parity-sep20`). These replace the earlier terrain
+parity failures below; they do not establish sustained performance acceptance.
+
+New `--terrain` and `--terrain-batch` model checks cover all four generated
+materials and all three foliage LODs at 1x/2x/4x in six poses. Each passes 216
+images on Windows D3D12; the five-layer mixed batch also passes Linux Lavapipe
+with exact coverage/palettes and bounded float normal/depth error. Batch cases
+include geometry-depth output and independent surface metadata ownership.
+The CPU-raster/GPU-composition isolation fixture also passes at 4x.
+
+Dirt visual follow-up reduces orange saturation toward muted loam, retains
+black fades, and reduces noisy grain contrast in shared CPU/GPU/DXR shading.
+The four material captures above precede that final dirt color adjustment.
+The final muted dirt capture (`tmp/terrain-dirt-muted-sep20`) was inspected and
+also passes exact 4x native/final software-GPU parity. Fresh Windows/Linux
+application builds, effects comparisons, terrain unit checks and the Windows
+hardware DXR checker pass after this change. Portable shader payloads are
+regenerated. No release or headset deployment was performed.
+
+## Dense terrain scratch reuse — September 20
+
+The Corneria failure inherited Enhanced Ground/Sky from saved settings: the
+trace shows 496 terrain patches and 518 scene draws. Explicitly disabling all
+six environment settings restores exact default 4x native/final parity
+(`tmp/gpu-corneria4x-clean-sep20`). The generic native checker now defaults
+those fields to OFF while preserving explicit diagnostic environment overrides.
+
+Serial scene completion avoids device loss but still has a terrain image
+mismatch (`tmp/gpu-corneria4x-serial-sep20`); serializing production is not the
+fix. GpuClip previously cycled its polygon*height*96-byte span buffer for every
+model, retaining hundreds of large scratch allocations until submission ended.
+GpuModel now opts into ordered span reuse after its raster consumer is encoded.
+Direct/deferred clipping callers and model diagnostics retain cycling by default.
+No scene/raster/transform work is moved to the CPU and no grass is removed.
+
+Windows and Linux apps build. Queued-model cancel/retry, ping-pong and four
+unread-submission comparisons pass: Original 16 models/192 images on D3D12 and
+Linux Lavapipe; EX 64 models/768 images on D3D12. The first EX 16-model sample
+was empty and correctly failed the visibility gate; it is not evidence.
+The formerly failing non-serialized terrain 4x runs now complete 12 and 60
+frames without device loss (`tmp/gpu-terrain4x-reused-spans-sep20` and
+`tmp/gpu-terrain4x-reused-spans60-sep20`). They still fail exact CPU/GPU image
+parity, also seen before reuse in the serialized control. That separate terrain
+composition discrepancy and sustained performance remain open; do not claim
+full terrain acceptance or a measured FPS improvement.
+
+## Wide-disk runtime follow-up — September 20
+
+Linux Vulkan/Lavapipe composition now passes all 108 configurations, including
+3,456 wide/tangent disk cases. The earlier device-creation failure was a missing
+`STARFOX_TEST_SOFTWARE_GPU=1` opt-in: GpuRaster deliberately requires hardware
+by default. No driver/system installation or production policy change was needed.
+
+The verified asteroid fixture (Original LEVEL1_2, 200 preroll ticks, 360 frames,
+60 Hz) exercises the resident colour disk and passes exact native/final image
+parity at 1x and 4x on NVIDIA D3D12. Evidence:
+`tmp/gpu-wide-circle-asteroid-sep20` and
+`tmp/gpu-wide-circle-asteroid4x-sep20`. `check_gpu_native.ps1 -Bomb` now selects
+that established level/timing only when callers omit those parameters, preserving
+explicit scenarios. This supersedes the failed bomb-coverage attempts in short
+Corneria runs, not universal bomb/transition acceptance.
+
+The separate Corneria 4x device-loss report is not declared fixed. A 60-frame
+CPU-model/GPU-effects control completed and final images match SHA-256
+`67E25B977854D7BB80848F96F95E3BB662AA892BFF20894EFB313D23D956EEDE`
+(`tmp/gpu-corneria4x-raster-control-sep20`); its bomb gate correctly rejects it
+because no disk was exercised. It is a composition/control result, not a bomb
+pass or proof of the GPU model hang's cause.
+The matching GPU-model recheck reproduces device loss in only 12 frames,
+without bomb inputs (`tmp/gpu-corneria4x-model-recheck-sep20`). Both processes
+are terminal. Next isolate the resident model batch/individual dispatch rather
+than changing circle arithmetic or repeatedly rerunning the same failed fixture.
+
+## Wide colour disks stay resident — September 20
+
+SDL effects now evaluate disk distances through exact split-word unsigned
+squares for radii above 16,383; ordinary radii retain the small integer fast
+path. Host validation bounds distances/radius to 1,048,575, covering scaled
+cartridge values without optional shader int64. The native presentation gate
+uses the same bound, removing that size-triggered CPU composition fallback.
+Portable SPIR-V/Metal/DXIL effects were regenerated; Windows/Linux apps build.
+
+Windows D3D12 composition checker passes 3,456 disk cases, including large
+offscreen centres, exact 3/4/5 tangent boundaries, limb carries, sprite exclusion,
+add/subtract/half arithmetic, source/output scales and clips. These are exact
+comparisons to an independent CPU int64 reference, not natural gameplay proof.
+
+Runtime follow-up is NOT accepted: a 4x/60-frame native-model bomb fixture lost
+the D3D12 device (0x887A0006) before a disk marker, while 1x completed but did not
+exercise the bomb. Evidence: `tmp/gpu-wide-circle-bomb-active-sep20` and
+`tmp/gpu-wide-circle-bomb-native-sep20`. A first 12-frame attempt was too short
+for the scripted input; the harness now rejects fewer than 36 bomb frames.
+Linux checker currently cannot create its Vulkan device (including explicit
+X11/Lavapipe); it is not counted as a pass. Device-init errors now print their
+cause rather than returning silently. Investigate these runtime conditions;
+do not infer that disk arithmetic caused the unrelated-before-disk hang or
+claim all large natural bomb effects validated from synthetic cases.
+
+## Resident DXR backdrop image — September 20
+
+Reflection panoramas now use a separate retained DXR SRV instead of being
+appended to the changing coverage/background metadata. Camera, brightness,
+scroll and style parameters remain in that metadata; complete image-content
+comparison detects edits, not pointer identity. Producer fences complete before
+an upload buffer is overwritten or resized. The optional binding has a valid
+fallback resource when no image is present, and device destruction releases it.
+
+Windows/Linux applications rebuild. Hardware DXR checker on RTX 5070 Ti Laptop
+passes exact reflected colors with unchanged-image zero upload, in-place edit,
+same-byte dimension change, growth beyond allocation, OFF/edit/ON, repeated
+reuse and a fresh device. Existing water, shadow, alpha/texture, stereo and
+resident-output cases pass. The 2172x724 panoramas avoid 6,290,112 repeated
+image bytes per unchanged reflection update; this is not a sustained FPS result.
+Final game capture inspected: `tmp/dxr-backdrop-resident-sep20/presentation.bmp`
+(Original Corneria, Enhanced Sky, ray tracing, reflective material). No physical
+VR/Deck testing or release was performed. This supersedes the earlier note that
+only SDL effects cache the enhanced image; authored VRAM metadata still updates.
+
+## Shared environment package refresh and model checks — September 20
+
+Ordinary Android arm64 debug rebuild passes (26 seconds) after the Macbeth
+backdrop, interpolated/saved environment clock and Sky Motion OFF correction.
+The package checker now accepts repeated `--backdrop` arguments and verifies
+both complete 4,717,638-byte BMP resources inside libmain.so, alongside required
+runtime entries and exclusion of system link stubs, loose ROMs and docs.
+APK SHA-256: `d0f2125b365c2a753ac3e324d82814c32bec19fda0a3a83441651be49cfad0b0`.
+This supersedes the earlier package hash below, not physical Android acceptance.
+
+Current EX TREE destruction passes all 90 images on NVIDIA D3D12, including
+the formerly failing 4x view. CPU-left/GPU-right proof inspected at
+`tmp/gpu-terrain-followup-tree/model-53034-face-0-layer-0-mode-0-view-1-scale-4.bmp`.
+Historical TREE precision failures below must not be treated as current blockers.
+Original colour-warp alternate-effects coverage expands to 256 models / 23,040
+images on Linux Vulkan/Lavapipe, with exact coverage/palette values, zero
+deferrals, maximum normal error 5.96046e-8 and depth error 1.52588e-5.
+This is software-adapter correctness, not physical Linux GPU performance.
+Matching EX expanded check passes on NVIDIA RTX 5070 Ti Laptop / D3D12:
+256 models, 23,040 images, no deferrals, exact coverage/palettes, maximum
+normal error 1.19209e-7 and depth error 0.00012207. These bounded effect
+samples do not establish all-model/all-animation or gameplay performance.
+No device installation, VR work or release was performed.
+
+## Ordinary Android terrain/backdrop refresh — September 20
+
+The arm64 debug APK rebuilds successfully (27 seconds) with current terrain,
+backdrop residency and default-camera correction. New read-only
+`tools/check_android_package.py` validates nonempty manifest/dex/main/SDL/C++
+entries, rejects duplicate entries, system Android link stubs, SFC/SMC files
+and development-docs folders, and finds the complete 4,717,638-byte alpine BMP
+inside the packaged native library. Verification passes for
+`platform/android/app/build/outputs/apk/debug/app-debug.apk`, SHA-256
+`48b6671cdba1d87319f4e1b413a5bb3aee10d8bc1e50916be500b8367b28e51c`.
+This is build/package evidence, not physical Android rendering, fullscreen or
+performance acceptance. No installation, Quest work or release was performed.
+
+## Resident enhanced backdrop — September 20
+
+SDL effects now keep the backdrop in a dedicated GPU buffer instead of
+appending its pixels to the changing overlay upload every frame. Only the
+environment dispatch borrows that binding; setup/portrait overlays retain
+their own buffer. Content comparison detects in-place edits, while scroll,
+roll, brightness and dimension-only reinterpretation reuse the image bytes.
+Successful submission commits the cache, and device release clears it.
+
+Windows and Linux applications rebuild. D3D12 and Linux Vulkan effects
+checks cover changes, growth, toggling while edited, and device recreation.
+The GPU composition checker also verifies exact resident backdrop output
+and zero image upload on unchanged frames across its 108 cases. The current
+2172x724 panorama avoids 6,290,112 image bytes per unchanged frame (staging
+alignment excluded); content comparison still reads the CPU image. This is
+a transfer reduction, not a measured sustained-FPS claim. Inspected gameplay
+capture: `tmp/backdrop-proof/resident-sky/presentation.bmp`. DXR's separate
+reflection-environment payload is not cached by this change. No VR work,
+device deployment or release was performed.
+
+## Current diagnostic/asset checks on non-Windows — September 20
+
+Native Linux application and packed-face test targets rebuild after the
+final-model isolation diagnostic and HALF_D source-coordinate regression.
+Original and EX real-asset checks both pass (2,697 and 3,511 discovered
+models). Ordinary Android arm64 debug APK also rebuilds successfully in
+18 seconds. No Quest build/install, release, or physical Android runtime
+acceptance was performed. These checks establish build portability of the
+current additions, not a new GPU performance result or full device parity.
+
+## Clipping payload platform pruning — September 20
+
+Extended the existing generated-payload guards to native clipping, continuous
+clipping and span emission. SPIR-V remains portable; DXIL is compiled only on
+Windows and Metal source only on Apple. Runtime selection has matching guards
+and rejects an unavailable platform format rather than referencing excluded
+arrays. No clipping arithmetic or GPU/CPU selection policy changed.
+
+Windows executable size changes from 20,174,488 to 18,747,103 bytes (1,427,385
+bytes smaller). Windows and native Linux application/model-check targets rebuild;
+ordinary Android arm64 debug APK rebuilds successfully (23 seconds). Generated
+payload freshness checks pass. D3D12 and Vulkan each pass the 16-model,
+192-image submitted-batch comparison, including exact coverage/palette output
+and mixed resident composition.
+Native Linux Vulkan/Lavapipe also passes all 192 images and mixed composition;
+that is software-adapter correctness, not physical Linux GPU performance.
+These results do not establish an FPS improvement or fix the Intel cold D3D12
+dispatch crash.
+No VR deployment, release or driver changes were performed.
+
+## Cold-dispatch hardware control — September 20
+
+The exact continuous-first 16-model/96-image submitted-batch test passes on
+NVIDIA D3D12 (RTX 5070 Ti Laptop), with exact pixels. It fails on this Intel
+D3D12 driver and passes Vulkan/Lavapipe, so it is not a backend-independent
+cold-start failure. Inspection of clipping inputs and SDL root bindings found
+no demonstrated missing binding; this is not proof of their universal validity.
+An upstream issue search found no confirmed matching fix; do not apply unrelated
+SDL descriptor/swapchain patches. The automatic Vulkan selection fix remains
+verified, while explicit Intel D3D12 needs further driver-level investigation.
+
+## Cross-adapter image and Linux follow-up — September 20
+
+Original and EX automatic-backend final preview captures match byte-for-byte
+between Intel/Vulkan and NVIDIA/D3D12 after live switching. Original Intel
+capture inspected: models/background/menu render, with GPU selected. Evidence
+is the paired `tmp/{intel,nvidia}-auto-backend-sep20` directories.
+Native Linux application and model checker rebuild after the platform shader
+guards, diagnostics and Windows-only automatic selection correction. The new
+continuous-first check passes all 96 images on Vulkan/Lavapipe (16 models),
+including exact coverage/palette parity. This is software-Vulkan correctness,
+not physical Linux performance; forced Intel D3D12 remains unresolved.
+
+## Non-NVIDIA automatic backend correction — September 20
+
+Found a separate production selection bug: a loaded NVIDIA DLSS runtime chose
+D3D12 even when the selected adapter was not NVIDIA. After querying the actual
+adapter, automatic selection now retains the normal Vulkan GPU backend for
+known non-NVIDIA vendors, before recording model commands. Explicit SDL_GPU_DRIVER
+overrides are honored; NVIDIA retains D3D12 for DLSS. This is GPU backend
+selection, not CPU geometry substitution or a clipping accuracy change.
+
+On the actual Intel adapter, Original/EX preview and four live GPU/software
+switches each pass (`tmp/intel-auto-backend-sep20`), with installed optional
+runtimes. NVIDIA automatic selection also passes both experiences and switches
+(`tmp/nvidia-auto-backend-sep20`). The forced Intel D3D12 dispatch crash remains
+unresolved; no claim is made that #58/#64 share this cause. AMD hardware is not
+available for acceptance. The minimal continuous-first diagnostic is retained.
+
+## Rejected Intel initialization workaround — September 20
+
+Experimentally inserted a native clipping dispatch with polygon_count=0 before
+continuous clipping, preserving all output. It still crashed in the cold
+continuous test (`tmp/intel-prime-experiment-sep20.log`); the experiment was
+removed, not enabled in production. Split tracing around dispatch/end confirms
+the failure is inside SDL_DispatchGPUCompute, before SDL_EndGPUComputePass
+(`tmp/intel-dispatch-vs-end-sep20.log`). Windows application/checker rebuild.
+This rejects a simple pipeline-priming workaround; dispatch-time resource
+binding/driver behavior remains unresolved. No accuracy fallback was introduced.
+
+## Standalone cold continuous-dispatch reproduction — September 20
+
+Added STARFOX_TEST_CONTINUOUS_FIRST to the model checker to skip native views
+0..2. On Intel D3D12, the same 16-model submitted-batch check that previously
+passed now crashes at D_PILAR's first continuous clipping dispatch. Log:
+`tmp/intel-continuous-first-sep20.log`. Pipeline creation and resource binding
+complete. No game runtime, menu or DLSS/ReShade dependency is needed.
+Normal ordering (native clipping before continuous) passes all 192 images;
+cold continuous ordering fails. This materially narrows the reproduction to
+first-dispatch state/driver behavior rather than a game-specific model.
+Low-power diagnostics also log model names; some live decoded shapes have no
+name (`tmp/intel-model-trace-sep20`), so the named standalone fixture is the
+useful next debugging target. No production workaround yet.
+
+## Intel crash call-stack/dispatch isolation — September 20
+
+GDB captured the failure in the Intel D3D12 driver from GpuClip::enqueue
+(`tmp/intel-crash-stack-sep20.log`). Although the original stack includes the
+installed ReShade proxy, an executable-only folder also reproduces it with
+DLSS unavailable (`tmp/intel-clean-d3d12-sep20`); neither add-on is necessary.
+GPU validation enabled also reproduces (`tmp/intel-validation-sep20`).
+Diagnostic tracing proves native, continuous and span pipelines all create;
+the first continuous clipping dispatch then crashes after pipeline/buffer
+binding (`tmp/intel-dispatch-trace-sep20`). Thus pipeline creation was an
+initial inference, not the established failure. Next inspect dispatch bindings
+and root descriptor state versus the passing standalone queued-model checker.
+Tracing is enabled only by the low-power diagnostic environment flag. The
+startup harness accepts an alternate executable and tracks its own startup log,
+allowing clean-folder tests without changing the normal installation.
+
+## Intel failure isolation — September 20
+
+The startup harness now independently selects backends, disables live cycling,
+and can isolate CPU model geometry/native presentation. Intel D3D12 still
+crashes without cycling and without the optional DLSS runtime, before first
+frame in this run (`tmp/intel-d3d12-no-cycle-sep20`). Both Original and EX pass
+Intel Vulkan (`tmp/intel-vulkan-no-cycle-sep20`), D3D12 with CPU scene
+(`tmp/intel-d3d12-cpu-scene-sep20`), and D3D12 with just CPU model geometry
+(`tmp/intel-d3d12-cpu-models-sep20`). Thus live device replacement is not needed;
+GPU model execution is implicated, while final GPU presentation alone works.
+
+The direct model checker now accepts the low-power adapter preference and logs
+actual identity. On Intel D3D12 its 16-model/192-image queued batch completes
+with exact coverage/palette parity (initial pipeline setup is slow). This
+narrows the failure beyond those model fixtures, not a fixed game startup.
+Next obtain the failing game call stack/model or expand the model-mode fixture;
+do not suppress the GPU path or claim #58/#64 resolved from these checks.
+
+## Intel D3D12 live-switch crash reproduced — September 20, unresolved
+
+Added diagnostic-only low-power GPU preference (requires STARFOX_TEST_FRAMES)
+and actual adapter-name logging; production adapter selection is unchanged.
+`check_startup_backends.ps1 -LowPowerGpu` selects Intel(R) Graphics instead of
+NVIDIA. Original preview renders its first frame, switches to Software at 8,
+then crashes after returning to GPU at 16. Exit 0xc0000005; Windows event 1000
+identifies igd12um64xeh.dll 32.0.101.6629, offset 0xefbb03. A fresh process with
+the optional DLSS runtime explicitly unavailable also crashes, ruling out a
+loaded DLSS runtime as necessary for this reproduction. Evidence directories:
+`tmp/low-power-startup-sep20`, `tmp/low-power-no-dlss-sep20`.
+
+This is a real additional-adapter failure, not a claimed explanation/fix for
+#58 or Android #64. Next isolate no-switch startup, Vulkan, resource destruction
+and driver validation. Both test processes are terminal; no hung process was
+restarted. No Android device is currently attached; no device test was made.
+
+## Android model payload cleanup — September 20
+
+Android arm64 build/static lint completed after scratch-storage changes.
+The billboard Metal string still produced an oversized-string warning, so
+surface/billboard shader generation now uses the same platform payload guards
+as effects/FSR/ScaleFX/shadows. Metal is Apple-only, DXIL Windows-only, SPIR-V
+universal, with matching runtime branches. Windows and Android rebuild; the
+Android warning is gone. D3D12 and Vulkan each pass 192 queued-model and 36
+billboard comparison images. An initial eight-model selection failed the
+nonempty-image coverage gate and is not counted as evidence.
+
+Fullscreen activity review confirms create/resume/focus hiding plus post-resume
+attachment retry. Android lint reports no errors, but manifest warnings remain
+(including landscape restriction and missing icon). No physical navigation-mode
+test, universal fullscreen claim, VR deployment or release was performed.
+
+## Training Vulkan hardware-shadow acceptance — September 20
+
+Ray-tracing harness now selects its SDL GPU backend explicitly, restores that
+environment setting, and pins FSR1 off. Fresh Training/Windows Vulkan run
+(1,000 source ticks, 12 presentations, 2x/16:9) passes GPU caster residency,
+nonempty ground receivers, resident/readback final-image equality, disabled
+legacy override equality and unavailable-DXR/native-output equality. Final
+resident image inspected: angled ship shadows are visible on grass. Proof:
+`tmp/rt-training-vulkan-sep20/b3487c19c3694383b1f6138057c705a2`.
+This uses Windows Vulkan/DXR interop on the current NVIDIA GPU, not native
+Linux ray tracing, AMD hardware acceptance or every training/boss frame.
+
+## Linux scratch-storage and renderer-switch follow-up — September 20
+
+Native Linux application/model checker rebuild after the model upload scratch
+reuse. Vulkan/Lavapipe passes 192 queued model comparison images, including
+cancel/retry and ping-pong reuse. Fresh Original/EX live renderer cycles each
+complete four GPU/software transitions and return to resident GPU output;
+both final captures were visually inspected. Evidence:
+`tmp/linux-renderer-cycle-current-sep20`. The cycle harness now explicitly
+disables FSR1, neural selection and AA instead of inheriting saved values.
+This is portable correctness coverage, not physical Linux GPU/Deck performance
+or confirmation of the Gaming Mode controller report. No VR deployment.
+
+## Numbered-stage execution sweep — September 20
+
+`tools/check_gpu_stage_sweep.ps1` completes all 59 numbered stage entries
+(19 Original, 40 EX) on Windows D3D12. Each fresh process runs 1,000 source
+preroll ticks followed by 12 presentation frames at 60 Hz, 1x, 16:9, with
+enhancements disabled and invulnerability enabled. Both the indexed native
+capture and final presentation capture match the CPU reference byte-for-byte
+in every sample. The harness requires resident GPU raster/model execution and
+rejects CPU scene/readback fallback. Evidence: `tmp/gpu-stage-execution-sep20`.
+
+This establishes actual desktop execution, beyond the earlier scene-producer
+preparation sweep. It does not establish full-route, every-frame, boss-phase,
+other-backend/device or steady-state performance acceptance. Cold 12-frame
+profile values include startup work and must not be used as FPS benchmarks.
+
+## Additional native-format payload cleanup — September 20
+
+Applied matching platform guards to FSR1, all six ScaleFX stages and the portable
+shadow shader. Metal remains compiled into Apple builds; DXIL remains in Windows;
+SPIR-V remains universal. Runtime format selection has matching guards rather
+than empty placeholder bytecode. Other shared scene-shader families are not
+changed by this batch. Freshness checks enforce the new packaging contract.
+
+Windows executable shrinks a further 123,040 bytes (20,380,682 -> 20,257,642).
+Android packaged libmain.so shrinks another 180,016 bytes (14,640,552 ->
+14,460,536); its compressed entry falls 56,220 bytes. Whole APK length is not
+used to attribute savings because incremental packaging also changed its layout.
+
+Windows/Linux desktop builds and ordinary Android arm64 debug build pass.
+FSR1, ScaleFX and portable shadow diagnostics pass on Windows D3D12/Vulkan and
+native Linux Vulkan/Lavapipe. ScaleFX exercises 72 fixtures plus 1x..4x effects
+integration; the shadow checker includes changing geometry/light/receiver,
+empty scenes and partial workgroups. Its established edge tolerances still
+apply (not universal pixel-exact shadows). Logs:
+`tmp/native-payload-{starfox_gpu_fsr1_check,starfox_scalefx_check,starfox_portable_shadows_check}-{direct3d12,vulkan,linux}-sep20.log`.
+No FPS improvement, physical Apple/AMD/mobile acceptance, VR deployment or
+release is claimed by this binary-size optimization.
+
+## Platform-specific effects payloads — September 20
+
+The portable effects header previously embedded Metal source and DXIL on every
+platform. Generated headers now expose Metal only on Apple and DXIL only on
+Windows; SPIR-V remains available everywhere (including optional Apple Vulkan).
+The runtime's format-selection branches have matching compile guards, so it
+cannot select a missing payload. Generator freshness checks require the guards.
+No supported backend or effect has been removed.
+
+Measured same-worktree artifacts before/after this change:
+
+| Artifact | Before bytes | After bytes | Reduction bytes |
+| --- | ---: | ---: | ---: |
+| Windows executable | 21,368,477 | 20,380,682 | 987,795 |
+| Android packaged arm64 libmain.so | 15,714,808 | 14,640,552 | 1,074,256 |
+| Android debug APK | 11,783,590 | 11,647,274 | 136,316 |
+
+Windows and native Linux applications rebuild. D3D12, Windows Vulkan and Linux
+Vulkan/Lavapipe effects checks pass after removing the unavailable payloads;
+logs are `tmp/shader-payload-{direct3d12,vulkan,linux}-sep20.log`. Android debug
+rebuild passes (10 s), with the prior oversized Metal string warning gone.
+APK manifest, dex, libmain, SDL3 and C++ runtime entries are nonempty; no Android
+system-stub library is bundled. Generated shader freshness and scoped whitespace
+checks pass. This reduces binary payload/compilation input, not measured frame
+time or a claimed fix for Android GPU freeze #64. Apple hardware execution is
+not tested here. No deployment, release or VR changes.
+
+## Temporal multi-pass effects — September 20
+
+Trails/Long Exposure now stay on the portable GPU even when presentation uses
+the older multi-pass composition route. Intermediate filters preserve history
+without advancing it, including different-resolution overlay passes; history
+textures own independent extents and mono/left/right slots. CPU history only
+runs when GPU effects decline the final pass, avoiding duplicate accumulation.
+D3D12/Vulkan reference comparisons pass at 60/120/240 Hz with resized overlays,
+HUD protection, scene resets and eye isolation. Actual 60-frame game capture
+`tmp/manipulations-legacy-gpu-sep20` confirms 60 GPU history submissions and was
+visually inspected. D3D11-only and Software correctly keep the CPU reference.
+No VR deployment, all-platform runtime claim or release accompanies this change.
+
+## Latest style refresh — September 19
+
+Native Linux desktop, pixel-filter tests and portable GPU effect checker rebuilt
+successfully after the Comic dot removal, Crosshatch retirement and styles 33–36
+(Watercolour, Chalk, Emboss, Bleach Bypass). Pixel-filter tests pass. The Vulkan
+checker passes CPU/style comparisons, tone/chromatic/smoothing, all bloom pairs,
+shadow composition, batching, deferred readback and filter scales 1–6. Reported
+filter/bloom rounding differences remain at most one byte value. This uses
+Lavapipe, not physical GPU or Steam Deck performance acceptance.
+
+The ordinary Android arm64 debug APK also rebuilt successfully with the current
+style changes; manifest, dex and required native libraries were checked. No
+device installation or release was performed. Unenhanced Windows performance
+measurements and their limitations are in NATIVE-PERFORMANCE-BASELINE.md.
+
+## Current desktop effect portability and tunnel presentation (September 19)
+
+After grouped styles and Gold/Copper were added, native Linux desktop and all
+requested check targets rebuilt successfully. Three focused CTests pass in
+51.55s: software reflections, native controller input, and Original ROM-backed
+menu simulation. Native Vulkan/Lavapipe all-style CPU comparisons pass, together
+with bloom/effect batching, layer/shadow composition and deferred readback tests.
+Lavapipe timings are software-adapter diagnostics, not game performance claims.
+
+The Linux software reflection harness now accepts the four real material IDs.
+Gold OFF/LOW/HIGH passes for Original and EX, with no GPU reflection execution;
+six screenshots/logs are retained at `tmp/reflections-linux-gold-sep19`.
+The EX HIGH image was inspected. Current shared conductor codes therefore have
+actual native Linux application evidence, in addition to Windows DXR fixtures.
+
+Complementary Original 16:9/EX 32:9 tunnel **final presentation** images match
+GPU/software and were inspected; see ISSUES-43-49-VERIFICATION. No physical Deck,
+Apple GPU or headset acceptance is implied. The user closed the Windows game;
+`build/current/starfox_pc.exe` has now successfully relinked with these changes.
+
+## Native Linux reflection refresh (September 19)
+
+Rebuilt the current desktop application, software reflection/shadow/material
+tests and GPU ray/warp checkers in the existing native Linux Release tree.
+Five targeted CTests pass in 17.53s: software reflections, shadow geometry,
+shape decoding, runtime input and ROM-backed Original simulation/menu tests.
+The Vulkan/Lavapipe warp-chain checker also passes the current cached material
+lookup, omitted-face extension, invalid-list/reuse and visible-command checks.
+The larger GPU ray geometry checker passes too: material slots/UV scroll/bounds
+and 2,925 native/fractional/compensated expanded vertices, scene assembly,
+resize/reuse and invalidation. Its prolonged cold run was confirmed by a live
+stack in Lavapipe compute-pipeline creation for GpuProjection; it subsequently
+completed normally. The checker now flushes completed stages immediately.
+
+New `tools/check_software_reflections_linux.sh` pins renderer/effects and runs
+Original/EX OFF/LOW/HIGH in fresh processes with hardware RT disabled. All six
+captures pass, including an actual changed final frame for each enabled mode.
+Both HIGH images were inspected in `tmp/reflections-linux-software-sep19`.
+This is Linux SDL software rendering, not a hardware performance claim. The
+synthetic four-worker reflection pass measured 1.63/2.10/4.94ms locally for
+LOW/MEDIUM/HIGH (640x448, all pixels reflective, 20 triangles); WSLg whole-game
+presentation and Steam Deck hardware are separate from those pass timings.
+
+The existing neutral renderer-cycle harness now explicitly disables software
+shadows/reflections so saved preferences cannot change its GPU/software tests.
+No Quest deployment, VR implementation changes or release was performed.
+
+## EX alternate-material input coverage (September 19)
+
+The cartridge VR test now exercises MYSHIP_4 with all five EX replacement
+colour tables (NAN, fire, blue lava, stealth, Trevor), then wobble, wave, cel
+and wireframe source poses independently. Each must assemble exactly one
+compute model with no pending work or fallback, and pass actual compute-plan
+and coverage-data preparation. Windows and native Linux EX cartridge tests
+pass (22.31s / 18.00s). Existing tests separately retain crosshair colour,
+geometry and orientation exemptions from the same material tables.
+
+This closes a preparation-test gap in the default-stage inventory; it is not
+all-shape coverage, actual shader dispatch or a physical NaN-menu sequence.
+No production rendering change was required by these fixtures.
+
+## Current all-numbered-stage producer sweep (September 19)
+
+After the particle/text/grid conversions, all 19 Original and 40 EX entries
+pass fresh 1,500-source-tick invulnerable ray-input audits. All 59 summaries
+have zero rejected compute inputs and zero ordinary legacy models. Inspection
+of every producer summary additionally finds zero CPU connected-grid and zero
+unclassified procedural packets. Totals: 311,319 whole-object sprites, 42,713
+dust packets, 33,126 grid-dot packets, 3,686 particles and 844 scaled-text
+packets, all classified into their GPU producer routes.
+
+The default stage settings did not activate connected-line grids (count zero);
+their dispatched checks above/below remain the separate evidence for that path.
+These are source assembly/preparation counts, not GPU execution, full routes
+or headset performance. No pending compute assembly was reported.
+`tools/check_vr_world.ps1 -RayAudit -Ticks 1500 -OutputDirectory
+tmp/vr-current-producer-sweep-sep19` now reproduces the audit and saves one log
+per stage; ray mode rejects missing summaries, rejected compute inputs and
+ordinary legacy models. All 59 logs are in that directory.
+
+## Connected-grid allocation follow-up (September 19)
+
+Changed camera inputs now retain the 537,036-byte compute output arena and its
+graphics descriptor. The 56-byte input upload and compute descriptors stay
+frame-local; initialization never writes the retained output, so an unsuccessful
+replacement cannot corrupt the preceding scene. Exact unchanged packets retain
+everything without uploading inputs. Resource-owning grid types are noncopyable.
+
+Windows Intel Vulkan checks pass eight actual dispatched camera/wrap updates
+(including signed-word extrema), with CPU projection equality and zero output/
+vertex reallocations. Each failed replacement preserves completed output, and
+new inputs cannot expose old output before their compute pass. The rotated row
+lists and both final images remain exactly equal to the CPU reference; live EX
+also passes with 25 packets. Proof: `tmp/vr-grid-arena-reuse-sep19` and
+`tmp/vr-grid-arena-live-ex-sep19`, compared with the prior reference captures.
+
+Two 128-update setup measurements report fresh/retained arenas at
+202.448/5.45625 us and 91.1094/3.02031 us per update. They measure CPU/Vulkan
+allocation/setup only, not GPU duration or gameplay FPS; scheduling/allocator
+variation is substantial. The deterministic improvement is eliminating one
+537 KB arena allocation and graphics descriptor creation per changed grid.
+
+Windows and native Linux targets build. Quest arm64 package verification passes
+(22 s): 17,481,136 bytes, SHA-256
+`1977002EF2C0E7221014D7142C0F5F5B2E90C118BDBAD986542B43CC640CB52D`.
+Native Linux llvmpipe also passes the dispatched reuse/failure tests, exact row
+data and full reference-eye image hashes (`tmp/vr-grid-arena-linux-sep19`). Its
+setup measurement is 11.5667/9.51086 us fresh/retained, again not hardware FPS.
+No release or headset installation; physical frame-rate acceptance stays open.
+
+## VR connected-grid compute migration (September 19)
+
+The visual path identified below now uploads 14 signed source words: camera,
+Q15 matrix and the cartridge-owned previous endpoint. Two Vulkan compute
+passes project the 225 lattice points and build the 192 row lists. Graphics
+reads those resident lists directly using the existing source line sampler.
+Simulation endpoint history remains CPU-owned and advances once per source
+tick; render interpolation does not mutate it. The old CPU projection/binning
+path remains an independent diagnostic reference, not the production path.
+
+Production standalone/mixed-model submissions dispatch before the render pass,
+with compute-to-compute/graphics barriers. Pipelines are retained across frame
+updates. This removes CPU visual projection/bin construction, not all CPU
+resource management: the initial version allocated a new resident output arena
+for changed inputs. The allocation follow-up above removes that churn.
+No CPU readback is used for gameplay; diagnostic readback requires completion.
+
+Windows Intel Vulkan verification:
+
+- Flat and rotated source row counts and every referenced primitive match CPU
+  projection/binning in both eyes; full rendered BMPs are byte-identical.
+- Eight malformed raw packets reject without replacing the working scene;
+  unprepared output cannot be read or drawn. Existing eleven CPU-row malformed
+  cases and the shared producer/graphics suite also pass.
+- Live EX with its M_GRIDLINES/M_MOREDOTS options enabled submits 25 packets,
+  including the new compute grid, and completes both eyes. Its left image was
+  inspected. This diagnostic enables source options in memory, not save data.
+- Application and Original/EX input tests pass (3/3, 41.52 s), including
+  interpolation endpoints and transition snapping.
+
+Proof: `tmp/vr-connected-compute-{flat,rotated}-sep19` against
+`tmp/vr-connected-reference-{flat,rotated}-sep19`, and
+`tmp/vr-connected-live-ex-sep19`. Rotated left-eye grid capture inspected.
+Quest arm64 package build passes (30 s): 17,479,256 bytes, SHA-256
+`3BD0CDAC8620A90A5F1E63946B75BE2D6F28A662E8C7CE69FCF17C4EFF68FA38`.
+No headset install, physical performance acceptance or full-goal completion.
+
+Native Linux runtime targets compile. After rebuilding a stale diagnostic
+object, the complete llvmpipe Vulkan check passes: rotated row data matches the
+CPU reference, and both final BMP hashes match the Windows reference exactly
+(`tmp/vr-connected-linux-rotated-sep19`). Its earlier unrelated-fixture readback
+failure was a stale checker, not accepted evidence. Software Vulkan establishes
+portability, not hardware speed. Refreshing that checker invalidated 488 cached
+build outputs; the 491-step rebuild completed, with source/assets unchanged.
+Fresh ADB enumeration is empty. Earlier APK hashes below are historical.
+
+## Producer inventory gap that exposed connected-grid work (September 19)
+
+The live ray audit previously inspected packets only after `SourceRayPolicy`
+removed nonphysical dust/grid/indicators, and ignored line-only packets. It
+could not establish complete visual migration. It now inventories triangles
+and lines before that policy, separately reporting GPU whole-object sprites,
+particles, scaled text, grid dots and dust; CPU connected-grid preparation;
+and unclassified ordinary/procedural paths. Caster counts remain post-policy.
+Mixed/unknown flags are not optimistically classified as a migrated producer.
+
+New classification tests cover both triangle-only and line-only packets, empty
+packets, sRGB variants, surrounding/Controls dust, and mixed/unknown modes. The
+Windows runtime/application targets rebuild and application tests pass.
+Fresh EX 400-tick preflights show 401 GPU grid packets in each of LEVEL1_1 and
+LEVEL5_1 (the latter also has 56 particle packets); no rejected compute models.
+Original Fortuna at 1200 ticks identifies migrated particles, including the
+line-only cases previously omitted. EX LEVEL5_5 at 1800 ticks identifies 211
+scaled-text packets. These are producer-routing evidence, not GPU execution or
+performance measurements. Ordinary preflights leave EX's M_GRIDLINES option off.
+
+Historical finding, resolved by the conversion above: production selected
+`SourceModels::connected_grid_pose`, whose `project_source_grid` call, clipped
+endpoints and 192 row lists were prepared on the CPU. The conversion had to
+preserve source-order previous endpoints, signed-word arithmetic, clipping and
+interpolated camera/view behavior, without substituting disconnected dots or a
+full-scene fragment scan. The compute path above now does that visual work;
+canonical simulation history still advances only once per source tick.
+
+## Preventing stale VR graphics in builds (September 19)
+
+Found and fixed a build-integration gap: only the ray-expansion SPIR-V was
+checked by OpenXR CMake; the main graphics shader's existing checker was not
+invoked. Shared `VRShaderChecks.cmake` now guards both during configuration and
+incremental reconfiguration, including shader helpers and planet-region data.
+The scene generator now uses the same include-graph digest as the ray generator.
+
+A new asset-free disposable-project test proves incremental rejection and
+recovery for scene source, included planet data, ray source, the scene header's
+stamp and a transitive ray helper. It passes directly on Windows and Linux;
+the registered Windows (10.86 s) and Linux (1.63 s) CTests pass. Real Windows/Linux VR runtime
+targets rebuild, and Quest configuration/package verification succeeds (22 s).
+The Quest APK retains SHA-256
+`34C6BF36A23488E48E6B4C6549B6437D36C5D4473164C0D3ACE8412F85D8FF22`;
+this pass changes build validation, not the verified rendering binary.
+The VR suite now includes 16 tests; earlier 15/15 entries describe their
+then-current suite, not a new complete 16-test run.
+
+## Native Linux VR migration verification (September 19)
+
+Enabled OpenXR in the existing native Linux Release build and completed the
+full build. Fixed a POSIX `select()` collision in the VR cartridge input test;
+production runtime objects compiled without that issue. Exact profile tests now
+check all 13 Touch/Index action paths, including left A/B versus X/Y and trigger
+click versus value, with duplicate-action rejection. They pass on Linux and
+Windows. All 15 native Linux VR CTests pass (19.49 s).
+
+Four native Linux llvmpipe Vulkan runs (`--particles`, `--particles-reference`,
+`--text`, `--text-reference`) completed successfully, including the shared
+producer/graphics fixtures. Their particle and text eye BMPs match respective
+CPU references byte-for-byte in both eyes. Evidence:
+`tmp/vr-linux-{particles,particles-reference,text,text-reference}-sep19`.
+This covers shader portability beyond the Windows Intel driver; llvmpipe is
+software Vulkan and does not prove Index/Quest performance or physical input.
+See VR-BUILD.md for native build details. No release or installation performed.
+
+## VR scaled-text sizing migration (September 19)
+
+`text_packet` now uploads raw source size/depth and normalized glyph corners.
+The Vulkan vertex shader computes truncating projected size, per-glyph placement
+and visibility. Packed 1bpp glyph decoding was already on the fragment shader.
+Text deliberately does not inherit whole-object sprites' 240-pixel cap. CPU
+still reads message tokens, packs unique glyph rows/palette and emits templates.
+
+The existing sprite-sizing flag now explicitly distinguishes packed text.
+Upload validation accepts that combination only with billboard glyphs and
+finite sizing parameters; nine malformed-glyph cases reject transactionally.
+Unit tests now inspect raw rejection parameters rather than expecting CPU-culled
+geometry, while GPU tests assert no ink for near-depth/nonpositive-size text.
+
+Fresh Intel Vulkan results:
+
+- Original normal and near-camera (508 source pixels, above the sprite cap)
+  captures match the independent previous CPU size calculation byte-for-byte in
+  both eyes: `tmp/vr-gpu-sized-text{-close}-sep19` against corresponding
+  `tmp/vr-gpu-sized-text-reference{-close}-sep19`.
+- Depth 127 and size -1 produce zero ink in both eyes, with complete checker
+  success: `tmp/vr-sized-text-{hidden,zero}-final-sep19`.
+- EX normal text matches both reference-eye captures exactly in
+  `tmp/vr-sized-ex-text-sep19` / `tmp/vr-sized-ex-text-reference-sep19`.
+- Updated VR build, SPIR-V freshness and 15/15 CTests pass (22.37 s).
+
+Quest arm64 rebuild and package checks pass (15 s). Current development APK
+is 17,450,712 bytes, SHA-256
+`34C6BF36A23488E48E6B4C6549B6437D36C5D4473164C0D3ACE8412F85D8FF22`.
+No device install or headset performance claim. Earlier APK hashes below are
+historical, not the current file.
+
+## Quest particle build and fixture refresh (September 19)
+
+`tools/build_quest.ps1` successfully compiled the migrated particle path for
+arm64 and packaged the development APK (40 s). Its required native libraries
+and manifest checks pass; no platform stub libraries or flat entry library
+are packaged. APK: `platform/quest/build/outputs/apk/debug/quest-debug.apk`,
+17,450,024 bytes, SHA-256
+`49E58D4B02C6B9C5ED37395F06E007143EAB13F9CA93F32B5BEE44D217A3D5E7`.
+Fresh ADB enumeration has no attached devices; no installation occurred.
+
+The same uninitialized-brightness problem as the particle fixture also affected
+standalone source text, native-shadow and dust/grid fixtures. They now explicitly
+set brightness 15, without changing production fade behavior. Fresh Intel Vulkan
+`--text`, `--shadows`, `--dust-gpu` and `--grid-gpu` runs pass their visible-ink
+checks and the shared graphics/producer suite. `--shadows-off` also passes its
+zero-ink assertion, verifying the isolated native shadow is actually removed.
+All five processes completed successfully. Captures are in
+`tmp/vr-brightness-{text,shadows,dust-gpu,grid-gpu}-sep19`; text and native-shadow
+left-eye captures were inspected. Native-shadow coverage here is a reference-path
+test, not evidence that enhanced ray-traced shadows satisfy all scene requirements.
+
+## VR particle producer migration (September 19)
+
+The remaining `particle_packet` interpolation/depth/dot-size work identified
+below now runs in the shared Vulkan vertex shader. CPU assembly uploads raw
+signed-word previous/current endpoints, interpolation fraction, owner depth,
+trail endpoint selectors and unit corner templates. The GPU performs wrapped
+16-bit interpolation, source near-depth rejection (both endpoints for trails),
+angular dot sizing, eye projection and rasterization. CPU still selects live
+owned particles, resolves their palette and emits/uploads vertex templates;
+this is not a claim of entirely GPU-driven simulation or zero CPU preparation.
+
+The pre-existing `--particles` test had zero display brightness and therefore
+failed with black output before this change. Its scene now explicitly uses
+brightness 15. Added an independent previous-CPU-producer reference mode and
+fixtures for half-tick movement, signed-coordinate wrap, near-plane rejection,
+crossing dots, rejected trails, wrong owners and expired particles.
+
+Intel Vulkan captures pass and match the CPU reference BMPs byte-for-byte in
+both eyes: `tmp/particles-gpu-final-sep19/live-scene-{left,right}.bmp` against
+`tmp/particles-reference-final-sep19/live-scene-{left,right}.bmp`.
+Visible dot/trail pixels are 6/28 left and 9/29 right, with no rejected blue
+particles. The shared producer/graphics fixtures also complete successfully.
+The generated SPIR-V is current; VR rebuild and all 15 CTests pass (23.28 s).
+Original LEVEL3_3 1,200-tick world preflight passes with 69,408 packets across
+three interpolation samples/frame. No headset installation or FPS claim.
+
+## Live model routing audit (September 19)
+
+Rebuilt `starfox_vr_runtime_check` after separating whole-object GPU sprites
+from ordinary legacy meshes in `--ray-audit`. Exact sprite flags match the
+whole-object path in `draw_packet.cpp`; this is a reporting correction, not
+a new rendering implementation or a claim that sprites cast shadows.
+
+Fresh Original 1,200-frame invulnerable preflights with the source ROM/symbols:
+
+- TRAININGMAP: 8,070 compute object/frames accepted, zero rejected, three
+  whole-object sprites, no ordinary/procedural legacy entries.
+- LEVEL2_3: 10,861 accepted, zero rejected, 1,015 whole-object sprites,
+  no ordinary/procedural legacy entries.
+- LEVEL3_3: 7,602 accepted, zero rejected, 2,687 whole-object sprites and
+  130 ordinary legacy entries. The latter resolve to PARTICLEPOLLEN_ISTRAT
+  ($06BD80), NULLSHAPE ($9500), flags 4: untextured particle billboards.
+  Their per-particle interpolation and quad construction still run on CPU
+  in `particle_packet`; per-eye projection/drawing run on GPU. This remains
+  actual producer work to migrate, not missing building meshes.
+
+All three processes exited successfully. These are preparation/routing tests,
+not GPU execution, shadow appearance, full-stage coverage or headset acceptance.
+
+## Native Linux migration refresh (September 19)
+
+Rebuilt all 135 pending Linux targets in the existing Release build
+`/home/kando/starfox-enhanced-0052-check`, whose CMake source is this worktree.
+Full CTest passes 55/55 in 174.81 seconds, including native runtime-input,
+Original/EX state/ending/level-clear and embedded-asset checks.
+
+Linux Vulkan/Lavapipe checks pass:
+- 54 recorded indexed-source layers against independent CPU composition;
+  192 staged mosaic/inset cases; 432 BG1/2/3 cases and 27 size/phase cases.
+- 96 cartridge glyph, 32 localized bitmap glyph and 24 portrait cases;
+  168 raster cases; 32 unread submissions; borrowed-device/release checks.
+- Original/EX four live GPU/software renderer switches ending on GPU,
+  with resident-background traces and final captures in
+  `tmp/linux-renderer-cycle-sep19`. EX final capture visually inspected.
+
+The raster check initially rejected Lavapipe because the explicit diagnostic
+software-GPU permission was omitted. Re-running with
+`STARFOX_TEST_SOFTWARE_GPU=1` passes; no production capability bypass was added.
+The renderer-cycle script now pins neutral effects and clears unrelated
+inherited STARFOX diagnostics while preserving that explicit test permission.
+These are software-Vulkan correctness results, not Steam Deck hardware FPS,
+Metal testing, or physical Quest/Index acceptance. The separate compositor
+check subsequently passed: 108 core composition cases plus resident/uploaded
+shutters, circles, fades, colour math, cartridge/host/setup windows, subtractive
+layers, touch, model/glow splitting and full-size deferred briefing composition.
+All test/build sessions from this refresh have finished successfully.
+
+## Broad build/test and Android refresh (September 19)
+
+After the glyph, portrait and indexed-source connections, full build/current
+and build/vr-dev rebuilds succeed. Desktop CTest: 56/56, 224.21 seconds. VR host
+CTest: 15/15, 30.55 seconds, including Original/EX inputs and draw packets.
+These concurrently exercised tests are correctness evidence, not FPS benchmarks.
+
+Quest assembleDebug succeeds (72 seconds). APK structural checks confirm the
+Quest entry library, SDL and manifest, and reject flat libmain/platform stubs.
+`platform/quest/build/outputs/apk/debug/quest-debug.apk`: 10,617,320 bytes,
+SHA256 `DA74FFFA951D96D4DACD7DB228E6D1ACE35BAE9151BBE15DF45054E9E1C907D5`.
+Ordinary Android assembleDebug also succeeds (37 seconds); its APK contains
+arm64 libmain.so, libSDL3.so, libc++_shared.so and AndroidManifest.xml.
+Warnings about unsupported-backend unused parameters, generated Metal literal
+lengths and Gradle deprecations remain non-fatal. No device was attached in the
+fresh ADB inventory. No installation, release upload or package handoff occurred.
+
+## Comms/tally source recording connected (September 19)
+
+Recorded indexed-layer draws now rasterize their source commands on GPU, then
+remap the resident indices into the ordered scene. Palette-zero transparency is
+applied after source rasterization, preserving source erases; clipping, offsets,
+mixed source/destination scales and mosaic use the CPU compositor's arithmetic.
+Recording owns copied source commands. Full replay rebuilds the source layer
+and uses the CPU compositor; unrecorded destination paths explicitly replay too.
+
+PC comms_hud and superfx_ui now record when native background recording is
+active. This connects the packed portrait and both font decoders for these
+layers, including comms and tally. The source CPU framebuffer is not sampled by
+this new GPU path. Disabled GPU backgrounds/models retain the old source path.
+Scene resize/stereo retain screen-space layer placement and reference dimensions.
+
+Evidence:
+- 54 independent indexed-layer mosaic/clip/scale/zero-erase fixtures pass on
+  both D3D12 and Vulkan, plus existing 432 background and 192 mosaic cases.
+- Original/EX LEVEL1_1 GPU, CPU-background, failure and CPU-model captures match
+  in `tmp/host-ink-gameplay-sep19` (Original idle sample has no host ink).
+- Forced message 1 in Original/EX at 32:9/4x, full SBS and effects matches CPU
+  backgrounds in `tmp/host-ink-comms-stereo-sep19`; each GPU run logs 60 frames
+  using recorded host ink.
+- Original LEVEL3_4/CL_SHIP3_4 tally, frame 1080, full SBS matches CPU-source
+  output in `tmp/host-ink-tally-sep19`; 926 recorded-layer draws are logged.
+- D3D12 recorded-model regression: 128 models / 1,536 images match software,
+  including CPU replay coverage/tags/surfaces and lifetime/failure checks.
+
+No Quest installation, Metal-device result, or full-goal acceptance is implied.
+The previous decoder-only comms/tally note below is superseded by this connection.
+
+## Localized glyph recording and portrait decoder (September 19)
+
+Misaki 8x8 glyphs now use one raw eight-byte raster command when their target
+is recorded; both native 8px and enlarged 12px sampling match the old loop.
+Japanese Original/EX briefing captures, ScaleFX and Enhanced Lighting enabled,
+match across GPU, CPU-background, background failure, CPU-model and isolated
+failure in `tmp/gpu-japanese-glyph-briefing-sep19`. The harness now explicitly
+selects language instead of inheriting saved preferences.
+
+Added a raw 640-byte, column-major SNES 4bpp portrait command. It preserves
+opaque palette-zero pixels, existing layer tags and source 7:6 aspect rounding.
+`draw_face` uses it for recorded targets. IMPORTANT: the current comms_hud and
+superfx_ui staging targets are not recorded yet, so this is decoder readiness,
+not completion of runtime comms/tally portrait migration. These layers need an
+ordered GPU-source composition path preserving transparent clears and mosaic.
+
+Per backend the raster checker now covers 96 cartridge glyph cases, 32 bitmap
+glyph cases and 24 portrait cases against independent old-loop/forward-expansion
+references, in addition to the existing raster and resource-lifetime checks.
+
+## Cartridge font decoding moved to GPU (September 19)
+
+The standard 12-row cartridge font now records one packed 24-byte glyph and
+one raster command instead of CPU-decoding each covered pixel into a rectangle.
+The portable raster shader decodes its bits; CPU replay retains the same
+arithmetic. Briefing text, ASCII menus, compact labels and cartridge-font Latin
+localized menu letters use this path. Layout, accents and custom punctuation
+are unchanged. Misaki bitmap glyphs and host comms portrait bitplanes remain
+CPU-generated and are not claimed migrated by this change.
+
+96 independent old-loop glyph cases per backend pass on D3D12 and Vulkan,
+covering 1x/2x/3x/4x, compact/full heights, widths 1/7/16 and clipped origins.
+The existing 168 raster cases and resident queue/lifetime checks also pass on
+both. Original/EX briefing captures match across five rendering/failure paths
+in `tmp/gpu-glyph-briefing-sep19`. EX full capture additionally matches the
+pre-migration ScaleFX+lighting baseline byte-for-byte, including both portraits.
+Generated DXIL/SPIR-V/Metal shader freshness and whitespace checks pass.
+This is a Windows runtime result, not physical Metal or Quest acceptance.
+
+## Shared ScaleFX scratch restored and verified (September 19)
+
+Removed the speculative three-instance filter allocation and restored normal
+SDL scratch-buffer cycling. One ordered filter instance again handles the base
+and both isolated layers; no claim of a Vulkan scratch-reuse defect remains.
+The Direct3D 12 and Vulkan compositor suites and 72-case ScaleFX suites pass.
+The rebuilt runtime's EX briefing at tick 1000/frame 360, filter 5 with Enhanced
+Lighting, matches across all five GPU/CPU/failure paths in
+`tmp/briefing-scalefx-shared-sep19`. Direct portrait checks against the
+lighting-disabled reference pass exactly: 7,008 Pepper and 2,506 Fox colored
+pixels. This avoids two unnecessary persistent filter instances. Model lighting
+still precedes isolated artwork so model metadata cannot shade the UI.
+
+## ScaleFX portrait false alarm corrected (September 19)
+
+The image preview appeared to omit portraits, but direct System.Drawing decoding
+of the saved BMPs proves they exist. The original suspect capture in
+`tmp/isolated-briefing-scalefx-text-sep19` and later fixed/stable/intermediate
+captures all contain 7,008 colored pixels in Pepper's 96x160 portrait rectangle.
+The latest intermediate capture's two portrait rectangles match the
+`tmp/briefing-scalefx-no-light-sep19` reference exactly, including alpha.
+The old single-pixel diagnostic sampled a transparent corner and was not useful.
+`tools/check_briefing_portrait_capture.ps1` verifies both rectangles directly,
+including a nonempty-art assertion. This supersedes the missing-portrait warning
+below; it does not establish a renderer defect or validate speculative changes.
+The recent separate ScaleFX scratch instances, disabled buffer cycling, and
+lighting-order changes still need review against this corrected evidence.
+
+## Runtime isolated planet/briefing layers connected (September 19)
+
+PC presentation now records isolated BG2 and briefing text into separate logical
+resolution GPU scenes. The effects consumer uses those resident indices directly;
+BG2 tile decoding no longer requires its CPU framebuffer. The text renderer still
+lays out and emits glyph pixels on the CPU into raster commands, so glyph-source
+decoding is not yet fully migrated. Separate scenes preserve artwork/text fades
+and source ordering. Device teardown releases both scenes; fallback presentation
+replays both recordings into temporary CPU frames instead of using empty sources.
+
+Original and EX PLANETSELECT, tick 1000 plus Start, frame 360, 16:9/2x captures
+match across GPU, CPU-background, background failure, CPU-model and explicitly
+injected isolated-scene failure (`tmp/isolated-briefing-ready-sep19`). Trace asserts
+resident isolated sources were actually consumed. Inspected EX capture shows
+planet, portraits, heading and dialogue. Original/EX 32:9/4x full-SBS with effects
+also match CPU-background output (`tmp/isolated-briefing-stereo-sep19`).
+The same five-path Original/EX comparison passes with ScaleFX enabled at frame
+240 (`tmp/isolated-briefing-scalefx-sep19`) and frame 360 with visible text
+(`tmp/isolated-briefing-scalefx-text-sep19`, EX image inspected).
+IMPORTANT: that EX ScaleFX image loses both portraits, whereas the unfiltered
+frame-360 capture has them. All five comparison paths agree, so parity is not
+proof of visual correctness. Investigate shared overlay filtering before
+accepting ScaleFX briefing visuals. The reference_subtractive helper itself
+uses GPU filtering, so it is not an independent filter oracle for this bug.
+The harness now selects the filter
+explicitly rather than inheriting the user's saved filter preference.
+These checks do not prove every scene, platform, or full migration completion.
+VR host input target rebuilt and Original/EX checks pass (19/40 stage routes,
+menu gestures, runtime options, native pad parity and paused sandbox). This is
+host validation, not a new Quest APK or physical-device result.
+
+## Resident isolated-overlay consumer ready (September 19)
+
+Subtractive planet/briefing effects now accept logical-resolution packed GPU
+indices directly, skipping CPU index uploads for those inputs. Layers may mix
+resident and uploaded sources independently; palette filtering, five-bit fade
+and ordered alpha composition are unchanged. Device/extent mismatches reject
+the input. The temporary overlay binding restores the shadow buffer afterward.
+
+Direct3D 12 and Vulkan composition suites pass, including 1,944 overlay fixtures
+with both GPU layers, either mixed layer, uploaded/resident base scenes, six
+filters and three brightness values. GPU-only tests erase the CPU source images
+before applying effects, proving they are not silently consumed. Invalid-input
+tests use separate effects instances because failure disables an instance.
+Portable shader freshness and diff whitespace checks pass.
+
+This is consumer support, NOT completed runtime migration: isolated BG2 and
+briefing source recording still must be connected in starfox_pc.cpp, with CPU
+replay preserved on failure. No updated APK or release was produced here.
+
+## HUD lighting ownership discrepancy resolved (September 19)
+
+The compositor now excludes native surface metadata wherever CPU foreground
+coverage is set, matching GPU late-overlay ownership even when HUD/model
+palette indices coincide. Added deliberate same-palette foreground/model
+fixtures and assertions that covered pixels carry no hidden model surface.
+The 108-case compositor/effects suite passes D3D12; generated DXIL/SPIR-V/Metal
+shader freshness checks pass. Repeated the previously failing Original/EX
+paused 32:9/4x full-SBS effects capture: both now match CPU-background output
+byte-for-byte (`tmp/hud-gpu-stereo-fixed-sep19`). This resolves the specific
+pending mismatch below, not all-platform or full-goal acceptance. Pure software
+lighting ownership and isolated overlay/source-art migration still need audit.
+
+## Indexed HUD composition migration — acceptance pending (September 19)
+
+Found that composite_transparent_layer's equal-scale fast path writes storage
+directly, bypassing recording. Earlier EX bitmap notes must not be interpreted
+as proof of GPU HUD composition. Added indexed layer command mode 5 carrying
+immutable colours/tags, offsets, scale conversion, clipping and mosaic, with
+GPU and CPU replay. Original stage HUD now starts the late recorder too.
+288 layer fixtures and 222 sprite fixtures pass on D3D12/Vulkan. Original/EX
+16:9/2x gameplay CPU/background-failure/model comparisons pass in
+`tmp/hud-gpu-layers-sep19`.
+
+DO NOT mark accepted yet: EX paused 32:9/4x full SBS differs from CPU-background
+at the central pause-text/model overlap (`tmp/hud-gpu-stereo-sep19`, and
+`tmp/hud-gpu-stereo-plain-sep19` without the effects preset). Original passes.
+Plain comparison: 632 pixels, bounding box (1512,424)-(4879,463), including
+bright [255,214,148] versus shaded [186,156,108]. Late overlays clear surface
+metadata in composite_portable.hlsl; CPU foreground retains unmosaicked model
+metadata and uses palette-index ownership, which can collide with HUD colours.
+Resolve that ownership discrepancy and add explicit regression coverage before
+claiming this conversion verified. Source text/portrait generation still CPU.
+
+## EX mosaic bitmap stays resident (September 19)
+
+Removed the mosaic exclusion from EX bitmap recording. A BG1 staging-inset
+setting rounds both inset boundaries forward to whole mosaic blocks, matching
+the former inset bitmap followed by mosaic composition (two mosaic samples are
+idempotent, but clipping before the second sample is not). Shared GPU constants
+and CPU scene replay implement this without a new shader or temporary bitmap.
+
+192 fixtures compare GPU and recorded-scene replay against the independent old
+two-pass path: all 16 mosaic sizes, BG1 modes 1/3, native/wide origins, scales
+1/2/4, wrapped scroll and CGRAM-black transparency. D3D12 and Vulkan pass, along
+with the existing 432 background and 27 independent-raster cases. PC rebuilt.
+This is fixture-based coverage, not a new headset or live mosaic-menu capture.
+Isolated layers and non-EX host HUD still require migration.
+
+## EX native bitmap joined to ordered GPU overlays (September 19)
+
+For resident non-mosaic EX frames, BG1 pause/tally/diagnostic artwork now decodes
+directly into the ordered GPU foreground with the original 16-pixel guard inset
+and CGRAM-black transparency. Active gameplay dialogue still suppresses the
+native duplicate. Host HUD composition and OAM writes after this bitmap are
+recorded in the same ordered layer, ahead of final cartridge overlays.
+Mosaic and dossier clipping retain the original staging path; isolated overlays
+and non-EX host HUD remain to migrate. This is not a full migration claim.
+
+Original/EX LEVEL1_1 paused at tick 1000, 16:9/2x, matches CPU backgrounds,
+forced background failure and CPU models byte-for-byte (`tmp/ex-bitmap-pause-sep19`).
+EX trace confirms GPU late-layer use; pause-menu image inspected.
+Original/EX 32:9/4x full-SBS plus effects also matches CPU-background output
+(`tmp/ex-bitmap-pause-stereo-sep19`). The existing
+pale left-edge background strip appears on both CPU/GPU paths and remains a
+separate background issue, not evidence of correct scene expansion.
+
+## Final cartridge overlays beyond titles (September 19)
+
+The existing ordered late-cartridge recorder now covers the final main-frame
+cartridge pass in all eligible scenes: priority-3 OBJ, high-priority BG3 and
+non-isolated briefing text, as well as title restoration. Empty passes are
+discarded; scenes with no eligible late work avoid allocation. CPU replay and
+the disable switch retain the same ordering. Isolated briefing/planet targets,
+EX native bitmap and earlier host-HUD work are not covered by this change.
+
+Original/EX PLANETSELECT full-SBS captures at 32:9/4x with effects match the CPU
+background path byte-for-byte and explicitly assert the late-cartridge GPU
+trace (`tmp/late-cartridge-map-stereo-sep19`). EX stereo map inspected. Controls
+and planet-map Original/EX 16:9/2x captures also match CPU-background, injected
+failure and CPU-model paths (`tmp/late-cartridge-final-sep19`). Controls
+at the sampled frame contains no late draws: a required-late trace correctly
+rejects that fixture, so it cannot be used as evidence of active late decoding.
+
+## Recorded OBJ bitplane decoding on GPU (September 19)
+
+SpriteRenderer now records bounded sprite rectangles and immutable 64 KiB VRAM
+snapshots rather than decoding each sprite pixel on the CPU when its destination
+is recorded. The shared raster shader decodes SNES 4bpp planes, bank/base address
+wrap, transparency and X/Y flips. OAM ordering, priority selection, HUD placement
+and suppression stay in the existing CPU scene preparation. CPU replay decodes
+the same recording; ordinary non-recorded destinations retain the reference path.
+Mutable VRAM snapshots deliberately bypass pointer-only texture deduplication.
+
+The new starfox_gpu_sprites_check passes 222 comparisons each on D3D12 and
+Windows Vulkan against independent unrecorded SpriteRenderer pixels/tags, also
+checking replay after source VRAM mutation. Covers sizes/banks/flips/priorities,
+screen clipping, vertical wrap and widescreen anchoring at 1x/2x/4x. Existing
+168-case raster checks and deferred/replaced buffer lifetime checks pass D3D12.
+DXIL/SPIR-V/Metal sources regenerated; freshness validation passes.
+
+Actual Original and EX TITLEMAP, PLANETSELECT and CONTMAP captures at 16:9/2x
+match CPU-background, forced-failure and CPU-model paths byte-for-byte:
+`tmp/sprite-gpu-frontends-sep19`. Original map and EX title captures inspected.
+PC and VR host input-check targets rebuilt. This does not claim that every
+destination records: isolated overlays and remaining late CPU targets still
+need migration, including sprites drawn into those targets. No APK installed.
+
 ## Main briefing background enabled on GPU (September 13)
 
 Removed the whole-scene briefing exclusion from early background recording.
@@ -4517,3 +6115,91 @@ indexed scroll, moving geometry, resource resize and imported-mask pixel
 comparisons on RTX 5070 Ti Laptop. Small resident fixture median 1.9693 ms,
 max 2.0036 ms; not a controlled before/after benchmark or gameplay FPS claim.
 Desktop mask readback and full migration remain unfinished.
+
+# iPhone 4× scene-memory reduction and high refresh (September 23)
+
+The installed iOS 0.0.6.7 IPA was terminated by jetsam (`per-process-limit`)
+immediately when its intro began at 4×. Its earlier 2× run did not exit before
+switching to 4×. This is direct evidence of a memory-limit kill in the old IPA,
+not proof that the current source has the same peak or that this change alone
+eliminates it. A fresh signed IPA and device retest are required.
+
+`GpuScene` now allocates full per-pixel surface metadata only when a scene
+actually carries model/legacy surface samples; metadata-free merges bind a
+16-byte dummy and publish no surface output. The empty-scene path also avoids
+requesting surface metadata. The scene shader skips its normal write in that
+case. At 400×224 logical/4×, this avoids 22,937,600 bytes per scene scratch
+slot that previously existed even with enhancements off. Pixel, depth, and
+motion buffers retain their previous behavior. Original mixed-batch checks
+pass 192 images on D3D12 and Vulkan; EX passes 1,536 on D3D12, including
+normal/depth comparisons and ordered mixed composition. The 16-model EX
+sample happened to produce no visible pixels and therefore is not cited as
+validation. Metal was regenerated and binding-checked, but not device-tested.
+
+The host `SurfaceBuffer` is now initially empty and releases its vector
+capacity when surface-driven effects are disabled. Previously the 4×
+256×192 startup buffer alone reserved about 15.7 MB, and resize-to-zero kept
+that capacity for the rest of the process. Its allocate/release/reallocate
+invariant passes `starfox_software_reflection_tests`. The combined Android
+arm64 Debug package rebuild passes `check_android_package.py --source-root .`
+with all 37 backdrop resources (SHA-256
+`d1e34c7ef11f5f9cf12bb9de416fb8f451b849eeb5da0e33f3809e8b3bbb259c`).
+
+The Apple bundle now opts in to ProMotion via
+`CADisableMinimumFrameDurationOnPhone`. The installed IPA predates that
+change, so its observed solid 60 FPS at a requested 240 is not a post-fix
+measurement; the connected display is physically limited to 120 Hz.
+
+The GPU Ray Tracing option now selects portable GPU-compute BVH shadow rays
+when Windows DXR is absent but SDL Metal/Vulkan GPU effects are available;
+the menu shows `COMPUTE` rather than claiming hardware RT acceleration.
+This includes the iOS GPU renderer in source, and preserves DXR on supported
+Windows adapters. The Vulkan portable shadow fixture passes 1×/2×/4× CPU
+comparison, 51 partial-workgroup cases, stereo receiver cases and resident
+mask lifetime checks. A five-mode 1-1 runtime comparison at 1× shows portable
+compute and DXR both change the final image relative to off, while resident
+and readback DXR match (`tmp/ios-ray-compute-sep23/3a83299bdd714b63859d76f01c0ee851`).
+At 2× on D3D12, portable compute again runs and changes the final image, but
+the pre-existing strict resident/readback DXR comparison fails by one pixel
+at (174,269); do not cite that run as exact parity
+(`tmp/ios-ray-compute-sep23/893c7ef3608f46ff9bf6010877eb55f4`).
+Android arm64 Debug compiles and packages with these changes. Apple Metal
+hardware acceleration structures/reflections have **not** been implemented
+or tested; a new iOS IPA is still required for physical verification.
+
+# Legacy desktop D3D11 enhanced-sky compute (September 24)
+
+The optional desktop D3D11 effects backend now uploads an immutable enhanced
+backdrop atlas once per image identity and samples it in the existing compute
+environment stage. This removes its blanket photographic-backdrop CPU fallback
+without changing the default SDL GPU backend. The upload uses the same atlas
+and projection/keep-out logic as the SDL GPU shader; the D3D11 shader now has
+the shared backdrop sampler and a dedicated raw-buffer binding. The legacy
+backend can be selected for captures with `STARFOX_TEST_D3D11_GPU=1`.
+
+FXC SM5 and the desktop runtime build pass. Forced D3D11 captures report
+`gpu-presentation: direct D3D11`. Against the same backend with GPU effects
+disabled, the enhanced-sky final images differ by only 6 pixels (Original
+Corneria) and 2 pixels (EX 5-1), each by at most one channel value, at
+400×224. A 120-frame Corneria D3D11 run also retains direct GPU presentation
+and the same six-pixel final difference. These are close parity, not exact
+identity or a frame-rate claim.
+The normal SDL GPU path remains unchanged; Windows Store/UWP excludes this
+desktop-only effects target and is not covered by these captures. A live EX
+Game Over trace also showed its existing SDL GPU composition was already
+resident, without scene readback or CPU replay. Full platform migration and
+device validation remain open.
+
+# Mixed billboard/ray-caster scene (September 24)
+
+The normal GPU scene no longer marks a whole-object texel billboard as an
+unsupported shadow caster. The software renderer's shadow-only path emits no
+triangles for this pose, so its presence must not invalidate the other
+models' resident caster batch and trigger CPU caster collection. The GPU
+scene now excludes only that billboard from ray geometry while retaining its
+visible raster. The ray-geometry checker asserts the software zero-caster
+rule, a sprite-only scene with no published casters, and a mixed scene with
+the remaining caster positions, order, and reflection materials intact.
+The checker passes on D3D12 and Vulkan. This removes one real normal-gameplay
+fallback condition; it is not a measured frame-rate gain or proof that every
+other ray scene remains resident.

@@ -25,23 +25,28 @@ def main() -> int:
     lines = [
         '#include "starfox/assets/embedded.hpp"',
         "",
-        "#include <array>",
         "#include <stdexcept>",
         "",
         "namespace starfox::assets {",
         "namespace {",
     ]
     for identifier, payload in resources:
-        lines.append(
-            f"constexpr std::array<std::uint8_t, {len(payload)}> r{identifier}{{{{")
-        for offset in range(0, len(payload), 20):
-            chunk = payload[offset : offset + 20]
-            lines.append("    " + ",".join(f"0x{value:02x}" for value in chunk) + ",")
-        lines.append("}};")
+        # One initializer per byte makes the compiler build tens of millions
+        # of AST nodes for the photographic backdrops. Adjacent string literals
+        # retain every byte (including NUL) without that compilation overhead.
+        # Always escape every byte: a following hexadecimal character must not
+        # extend the preceding escape. The implicit terminator is not exposed.
+        lines.append(f"const unsigned char r{identifier}[] =")
+        for offset in range(0, len(payload), 256):
+            chunk = payload[offset : offset + 256]
+            lines.append('    "' + ''.join(f"\\x{value:02x}" for value in chunk) + '"')
+        if not payload:
+            lines.append('    ""')
+        lines.append(";")
     lines.extend(["}", "", "std::span<const std::uint8_t> embedded_asset(int identifier) {"])
     lines.append("    switch (identifier) {")
     for identifier, _ in resources:
-        lines.append(f"    case {identifier}: return r{identifier};")
+        lines.append(f"    case {identifier}: return {{r{identifier}, sizeof(r{identifier}) - 1}};")
     lines.extend([
         "    default: throw std::runtime_error{\"embedded Star Fox asset resource is missing\"};",
         "    }",

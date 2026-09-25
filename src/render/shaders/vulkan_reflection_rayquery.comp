@@ -1,0 +1,303 @@
+#version 460
+#extension GL_EXT_ray_query : require
+
+layout(local_size_x = 64) in;
+layout(set = 0, binding = 0) uniform accelerationStructureEXT scene;
+layout(set = 0, binding = 1, std430) buffer Output { uint pixels[]; } output_image;
+layout(set = 0, binding = 2, std140) uniform Parameters {
+    uvec4 dimensions; // Width, height, quality, metallic response.
+    vec4 camera;      // Focal X/Y and centre X/Y.
+    vec4 settings;    // Roughness, ground enabled, texel count.
+    vec4 ground_point;
+    vec4 ground_normal;
+    uvec4 environment; // Fallback RGBA, panorama width, height, native origin.
+    vec4 water_settings; // Time, reflection strength, enabled, material.
+    vec4 water_row0, water_row1, water_row2;
+    uvec4 enhanced_size, enhanced_modes;
+    vec4 enhanced_motion, enhanced_plane, enhanced_projection, enhanced_palette;
+    vec4 enhanced_keep0, enhanced_keep1;
+} p;
+layout(set = 0, binding = 3, std430) readonly buffer Vertices { vec4 vertex[]; } vertices;
+struct RayMaterial {
+    vec2 uv0, uv1, uv2;
+    uint textured, dither, even_colour, odd_colour, colour_base, face;
+    uint offset, u_mask, v_mask, reserved;
+};
+layout(set = 0, binding = 4, std430) readonly buffer Materials { RayMaterial material[]; } materials;
+layout(set = 0, binding = 5, std430) readonly buffer Palette { uint colour[]; } palette;
+layout(set = 0, binding = 6, std430) readonly buffer Texels { uint word[]; } texels;
+layout(set = 0, binding = 7, std430) readonly buffer Backdrop { uint pixel[]; } backdrop;
+layout(set = 0, binding = 8, std430) readonly buffer EnhancedBackdrop {
+    uint pixel[];
+} enhanced_backdrop;
+
+float hash(uint n) {
+    n = (n ^ 61u) ^ (n >> 16u);
+    n *= 9u;
+    n ^= n >> 4u;
+    n *= 0x27d4eb2du;
+    n ^= n >> 15u;
+    return float(n & 65535u) / 65535.0;
+}
+vec3 rgb(uint packed) {
+    return vec3(float(packed & 255u), float((packed >> 8u) & 255u),
+                float((packed >> 16u) & 255u)) / 255.0;
+}
+uint rgba(vec3 value, uint marker) {
+    uvec3 c = uvec3(round(clamp(value, 0.0, 1.0) * 255.0));
+    return c.x | (c.y << 8u) | (c.z << 16u) | (marker << 24u);
+}
+uint material_colour(uint primitive, vec2 barycentric, uvec2 pixel) {
+    RayMaterial m = materials.material[primitive];
+    if (m.reserved != 0u || m.textured > 1u) return p.environment.x;
+    uint index = m.dither != 0u && ((pixel.x + pixel.y) & 1u) != 0u
+        ? m.odd_colour : m.even_colour;
+    if (m.textured != 0u) {
+        vec2 uv = m.uv0 * (1.0 - barycentric.x - barycentric.y)
+            + m.uv1 * barycentric.x + m.uv2 * barycentric.y;
+        uvec2 tile = uvec2(ivec2(floor(uv))) & uvec2(m.u_mask, m.v_mask);
+        uint at = m.offset + tile.y * (m.u_mask + 1u) + tile.x;
+        if (at < uint(p.settings.z)) {
+            uint texel = (texels.word[at >> 2u] >> ((at & 3u) * 8u)) & 255u;
+            index = (texel + m.colour_base) & 255u;
+        }
+    }
+    return palette.colour[index & 255u];
+}
+vec3 enhanced_texel(uint x, uint y) {
+    uint value=enhanced_backdrop.pixel[y*p.enhanced_size.x+x];
+    return rgb(value);
+}
+vec3 enhanced_bilinear(float x,float y) {
+    uint w=p.enhanced_size.x,h=p.enhanced_size.y;
+    uint x0=min(uint(x),w-1u),y0=min(uint(y),h-1u);
+    uint x1=min(x0+1u,w-1u),y1=min(y0+1u,h-1u);
+    float fx=fract(x),fy=fract(y);
+    return mix(mix(enhanced_texel(x0,y0),enhanced_texel(x1,y0),fx),
+        mix(enhanced_texel(x0,y1),enhanced_texel(x1,y1),fx),fy);
+}
+bool inside_enhanced_keep(vec2 point,vec4 ellipse) {
+    if(ellipse.z<=0.0 || ellipse.w<=0.0) return false;
+    vec2 offset=(point-ellipse.xy)/ellipse.zw;
+    return dot(offset,offset)<=1.0;
+}
+bool enhanced_sky_at(float sample_x,float sample_y,out uint colour) {
+    if(p.enhanced_size.z==0u || p.enhanced_size.x==0u || p.enhanced_size.y==0u)
+        return false;
+    float x=sample_x-128.0,slope=p.enhanced_plane.x;
+    if(sample_y>=p.enhanced_motion.x+slope*x
+        || inside_enhanced_keep(vec2(x,sample_y),p.enhanced_keep0)
+        || inside_enhanced_keep(vec2(x,sample_y),p.enhanced_keep1)) return false;
+    float inverse=inversesqrt(1.0+slope*slope);
+    float dy=sample_y-p.enhanced_motion.x;
+    float u=(inverse*(x+slope*dy)+p.enhanced_plane.z)*p.enhanced_projection.x;
+    float v=p.enhanced_projection.z
+        +inverse*(dy-slope*x)*p.enhanced_projection.y;
+    uint w=p.enhanced_size.x,h=p.enhanced_size.y;
+    uint overlap=max(1u,w/32u),period=max(1u,w-overlap);
+    float tx=fract(u)*float(period),ty=clamp(v,0.0,1.0)*float(h-1u);
+    vec3 sky=enhanced_bilinear(tx,ty);
+    if(tx<float(overlap)) {
+        float blend=tx/float(overlap);
+        blend=blend*blend*(3.0-2.0*blend);
+        sky=mix(enhanced_bilinear(float(period)+tx,ty),sky,blend);
+    }
+    sky=(sky*p.enhanced_palette.w+p.enhanced_palette.rgb)
+        *p.enhanced_plane.w;
+    colour=rgba(sky,255u);
+    return true;
+}
+uint sample_backdrop(float sample_x, float sample_y) {
+    uint enhanced_colour;
+    if(enhanced_sky_at(sample_x,sample_y,enhanced_colour))
+        return enhanced_colour;
+    if (p.environment.y == 0u || p.environment.z == 0u) return p.environment.x;
+    int x = clamp(int(floor(sample_x)) + int(p.environment.w), 0, int(p.environment.y) - 1);
+    int y = clamp(int(floor(sample_y)), 0, int(p.environment.z) - 1);
+    uint source = backdrop.pixel[uint(y) * p.environment.y + uint(x)];
+    return (source & 0x04000000u) != 0u
+        ? palette.colour[source & 255u] : p.environment.x;
+}
+uint reflected_backdrop(vec3 direction) {
+    return sample_backdrop(128.0 + atan(direction.x, direction.z) * 256.0,
+        112.0 + atan(direction.y, length(direction.xz)) * 256.0);
+}
+vec3 view_to_world(vec3 value) {
+    return vec3(dot(value, vec3(p.water_row0.x, p.water_row1.x, p.water_row2.x)),
+                dot(value, vec3(p.water_row0.y, p.water_row1.y, p.water_row2.y)),
+                dot(value, vec3(p.water_row0.z, p.water_row1.z, p.water_row2.z)));
+}
+vec3 world_to_view(vec3 value) {
+    return vec3(dot(p.water_row0.xyz, value), dot(p.water_row1.xyz, value),
+                dot(p.water_row2.xyz, value));
+}
+uint shade_water(uvec2 pixel, vec3 direction, float distance) {
+    vec3 hit = direction * distance;
+    vec3 position = view_to_world(hit)
+        + vec3(p.water_row0.w, p.water_row1.w, p.water_row2.w);
+    float t = p.water_settings.x;
+    float dx = 0.055 * cos(position.x * 0.018 + position.z * 0.011 - t * 0.8)
+        + 0.025 * cos(position.x * 0.047 - position.z * 0.025 + t * 1.2);
+    float dz = 0.045 * cos(position.z * 0.022 - position.x * 0.009 - t * 0.65)
+        - 0.020 * cos(position.x * 0.047 - position.z * 0.025 + t * 1.2);
+    if (p.water_settings.w > 2.5) {
+        dx = 0.18 * cos(position.x * 0.08 + position.z * 0.055 - t * 0.8)
+            + 0.08 * cos(position.x * 0.19 - position.z * 0.12 + t * 1.2);
+        dz = 0.16 * cos(position.z * 0.10 - position.x * 0.04 - t * 0.65)
+            - 0.06 * cos(position.x * 0.19 - position.z * 0.12 + t * 1.2);
+    }
+    if (p.water_settings.w > 0.5 && p.water_settings.w < 2.5) {
+        dx = 0.0; dz = 0.0;
+    }
+    vec3 normal = normalize(world_to_view(vec3(dx, -1.0, dz)));
+    if (dot(normal, direction) > 0.0) normal = -normal;
+    if (p.water_settings.w > 2.5) {
+        float a = sin(position.x * 0.08 + position.z * 0.055 - t * 0.8);
+        float b = sin(position.x * 0.19 - position.z * 0.12 + t * 1.2);
+        float c = sin(position.z * 0.10 - position.x * 0.04 - t * 0.65);
+        float heat = clamp(0.47 + 0.25 * a + 0.17 * b + 0.08 * c, 0.0, 1.0);
+        float bubble = pow(max(0.0,
+            sin(position.x * 0.035 + position.z * 0.018 - t * 1.8)
+            * sin(position.z * 0.041 - position.x * 0.012 + t * 1.3)), 24.0);
+        // 253 marks slope/heat data. Stage 30 warps the full-detail lava
+        // material with this water-style motion instead of painting flat orange.
+        return rgba(vec3(0.5 + dx * 1.5, 0.5 + dz * 1.5,
+            heat + bubble * 0.15), 253u);
+    }
+    vec3 light = normalize(world_to_view(vec3(-1.0)));
+    float bias = max(0.05, distance * 1.0e-5);
+    vec3 reflected = normalize(reflect(normalize(direction), normal));
+    rayQueryEXT secondary;
+    rayQueryInitializeEXT(secondary, scene, gl_RayFlagsOpaqueEXT, 0xff,
+                          hit + normal * bias, bias, reflected, 65536.0);
+    while (rayQueryProceedEXT(secondary)) {}
+    uint reflected_colour = rayQueryGetIntersectionTypeEXT(secondary, true)
+        == gl_RayQueryCommittedIntersectionTriangleEXT
+        ? material_colour(rayQueryGetIntersectionPrimitiveIndexEXT(secondary, true),
+            rayQueryGetIntersectionBarycentricsEXT(secondary, true), pixel)
+        : reflected_backdrop(reflected);
+    uint authored_colour = hit.z > 1.0
+        ? sample_backdrop(128.0 + 256.0 * hit.x / hit.z,
+            112.0 + 256.0 * hit.y / hit.z)
+        : reflected_backdrop(hit);
+    vec3 authored = rgb(authored_colour);
+    float luminance = dot(authored, vec3(0.30, 0.59, 0.11));
+    vec3 base = luminance * (p.water_settings.w > 1.5 ? vec3(1.0, 0.875, 0.58)
+        : p.water_settings.w > 0.5 ? vec3(0.8, 0.82, 0.85)
+        : vec3(0.20, 0.58, 0.85));
+    float diffuse = 0.65 + 0.35 * max(0.0, dot(normal, light));
+    vec3 radiance = base * base * diffuse;
+    float grazing = pow(1.0 - clamp(dot(-normalize(direction), normal), 0.0, 1.0), 5.0);
+    float fresnel = p.water_settings.w > 0.5 ? 0.95 : 0.02 + 0.98 * grazing;
+    vec3 reflection = rgb(reflected_colour);
+    // Gold absorbs blue light. Keep reflected shapes/luminance, but avoid a
+    // sky-blue mirror appearance when the source backdrop is blue.
+    if (p.water_settings.w > 1.5) {
+        float reflected_luminance = dot(reflection, vec3(0.30, 0.59, 0.11));
+        reflection = mix(vec3(reflected_luminance), reflection, 0.25)
+            * vec3(1.0, 0.72, 0.24);
+    }
+    radiance = mix(radiance, reflection * reflection,
+        clamp(fresnel * p.water_settings.y, 0.0, 1.0));
+    vec3 halfway = normalize(light - normalize(direction));
+    float specular = pow(max(0.0, dot(normal, halfway)), 96.0);
+    radiance += vec3(1.0, 0.95, 0.82) * specular
+        * max(authored.r, max(authored.g, authored.b)) * 0.55;
+    return rgba(sqrt(clamp(radiance, 0.0, 1.0)), 254u);
+}
+
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= p.dimensions.x * p.dimensions.y) return;
+    uvec2 pixel = uvec2(id % p.dimensions.x, id / p.dimensions.x);
+    vec3 direction = vec3((float(pixel.x) + 0.5 - p.camera.z) / p.camera.x,
+                          (float(pixel.y) + 0.5 - p.camera.w) / p.camera.y, 1.0);
+    rayQueryEXT primary;
+    rayQueryInitializeEXT(primary, scene, gl_RayFlagsOpaqueEXT, 0xff,
+                          vec3(0.0), 1.0, direction, 65536.0);
+    while (rayQueryProceedEXT(primary)) {}
+    bool model_hit = rayQueryGetIntersectionTypeEXT(primary, true)
+        == gl_RayQueryCommittedIntersectionTriangleEXT;
+    float distance = model_hit ? rayQueryGetIntersectionTEXT(primary, true) : 65536.0;
+    bool ground_hit = false;
+    if (p.settings.y > 0.5) {
+        float denominator = dot(direction, p.ground_normal.xyz);
+        if (abs(denominator) > 1.0e-10) {
+            float ground = dot(p.ground_point.xyz, p.ground_normal.xyz) / denominator;
+            if (ground > 1.0 && ground < distance) {
+                distance = ground;
+                ground_hit = true;
+            }
+        }
+    }
+    if (distance >= 65536.0) { output_image.pixels[id] = 0u; return; }
+    if (ground_hit && p.water_settings.z > 0.5) {
+        output_image.pixels[id] = shade_water(pixel, normalize(direction), distance * length(direction));
+        return;
+    }
+    vec3 normal;
+    if (ground_hit) normal = normalize(p.ground_normal.xyz);
+    else {
+        uint first = rayQueryGetIntersectionPrimitiveIndexEXT(primary, true) * 3u;
+        vec3 a = vertices.vertex[first].xyz;
+        vec3 b = vertices.vertex[first + 1u].xyz;
+        vec3 c = vertices.vertex[first + 2u].xyz;
+        normal = normalize(cross(b - a, c - a));
+    }
+    if (dot(normal, direction) > 0.0) normal = -normal;
+    vec3 point = direction * distance;
+    vec3 reflected = normalize(reflect(normalize(direction), normal));
+    uint count = p.dimensions.z >= 3u ? 4u : p.dimensions.z == 2u ? 2u : 1u;
+    vec3 sum = vec3(0.0);
+    for (uint ray_index = 0u; ray_index < count; ++ray_index) {
+        vec3 bounce_direction = reflected;
+        if (ray_index > 0u && p.settings.x > 0.0) {
+            vec3 reference = abs(reflected.y) < 0.9 ? vec3(0.0, 1.0, 0.0)
+                : vec3(1.0, 0.0, 0.0);
+            vec3 tangent = normalize(cross(reflected, reference));
+            vec3 bitangent = cross(reflected, tangent);
+            float angle = 6.2831853 * hash(id * 17u + ray_index * 101u);
+            float spread = p.settings.x * 0.08 * sqrt(hash(id * 29u + ray_index * 47u));
+            bounce_direction = normalize(reflected + spread *
+                (cos(angle) * tangent + sin(angle) * bitangent));
+        }
+        rayQueryEXT secondary;
+        rayQueryInitializeEXT(secondary, scene, gl_RayFlagsOpaqueEXT,
+                              0xff, point, max(0.1, distance * 1.0e-5),
+                              bounce_direction, 65536.0);
+        while (rayQueryProceedEXT(secondary)) {}
+        bool secondary_model = rayQueryGetIntersectionTypeEXT(secondary, true)
+            == gl_RayQueryCommittedIntersectionTriangleEXT;
+        float secondary_distance = secondary_model
+            ? rayQueryGetIntersectionTEXT(secondary, true) : 65536.0;
+        uint colour;
+        bool secondary_ground = false;
+        vec3 ground_position = vec3(0.0);
+        if (p.settings.y > 0.5) {
+            float denominator = dot(bounce_direction, p.ground_normal.xyz);
+            if (abs(denominator) > 1.0e-10) {
+                float ground_t = dot(p.ground_point.xyz - point, p.ground_normal.xyz)
+                    / denominator;
+                if (ground_t > max(0.1, distance * 1.0e-5)
+                    && ground_t < secondary_distance) {
+                    secondary_ground = true;
+                    ground_position = point + bounce_direction * ground_t;
+                }
+            }
+        }
+        if (secondary_ground) {
+            colour = ground_position.z > 1.0
+                ? sample_backdrop(128.0 + 256.0 * ground_position.x / ground_position.z,
+                    112.0 + 256.0 * ground_position.y / ground_position.z)
+                : reflected_backdrop(ground_position);
+        } else if (secondary_model) {
+            colour = material_colour(rayQueryGetIntersectionPrimitiveIndexEXT(secondary, true),
+                rayQueryGetIntersectionBarycentricsEXT(secondary, true), pixel);
+        } else colour = reflected_backdrop(bounce_direction);
+        sum += rgb(colour);
+    }
+    vec3 value = sum / float(count);
+    if (p.dimensions.w == 2u) value *= vec3(1.0, 0.82, 0.34);
+    else if (p.dimensions.w == 3u) value *= vec3(1.0, 0.59, 0.38);
+    output_image.pixels[id] = rgba(value, ground_hit ? 254u : 255u);
+}

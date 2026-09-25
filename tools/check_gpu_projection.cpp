@@ -71,8 +71,58 @@ int main()try {
     r.download=SDL_CreateGPUTransferBuffer(r.device,&download_info);require(r.download);
     std::vector<NativeProjectionPoint> points(maximum);
     starfox::render::GpuScene text_scene;
-    for(unsigned fixture=0;fixture<12;++fixture) {
-        const unsigned scale=1U<<(fixture%3),width=224*scale,height=192*scale;
+    // Fractional raster output must preserve source texture coordinates,
+    // checkerboard phase, painter order and explicit coverage. Exercise both
+    // binning implementations and the ordered scene path.
+    for(unsigned fixture=0;fixture<16;++fixture) {
+        const std::array<float,2> jitter=fixture>=8?std::array<float,2>{.375f,-.25f}:std::array<float,2>{};
+        using namespace starfox::render;
+        RasterCommands batch;batch.reset(224,192);
+        batch.add({-9,3,211,188,31,67,1,2});
+        std::array<std::uint8_t,64> texels{};
+        for(unsigned i=0;i<texels.size();++i) texels[i]=i%5?std::uint8_t(i+1):0;
+        RasterCommand texture{};
+        texture.left=37;texture.top=24;texture.right=220;texture.bottom=166;
+        texture.textured=3;texture.texture_offset=batch.texture(texels);
+        texture.u_mask=texture.v_mask=7;texture.du=32;texture.dv=3;texture.tag=3;
+        batch.add(texture);
+        batch.add({82,67,119,111,0,0,0,1}); // Covered black is not transparency.
+        const unsigned width=fixture&1?299:149,height=fixture&1?255:127;
+        auto* command=SDL_AcquireGPUCommandBuffer(r.device);require(command);
+        GpuRaster raster;GpuScene scene;
+        GpuRasterOutput output;
+        if(fixture&4) {
+            const std::array<GpuSceneDraw,1> draws{GpuRasterDraw{&batch,false,bool(fixture&2)}};
+            const auto resized=resize_scene_raster(draws,224,192);require(bool(resized));
+            require(!std::get<GpuRasterDraw>(draws[0]).independent_raster_size);
+            output=scene.enqueue_batch(r.device,command,width,height,*resized,jitter);
+        } else output=raster.enqueue_commands(r.device,command,batch,false,bool(fixture&2),{width,height},jitter);
+        require(output.pixels && output.width==width && output.height==height);
+        auto* copy=SDL_BeginGPUCopyPass(command);require(copy);
+        SDL_GPUBufferRegion from{static_cast<SDL_GPUBuffer*>(output.pixels),0,width*height*4};
+        SDL_GPUTransferBufferLocation to{r.download,0};
+        SDL_DownloadFromGPUBuffer(copy,&from,&to);SDL_EndGPUCopyPass(copy);
+        auto* fence=SDL_SubmitGPUCommandBufferAndAcquireFence(command);require(fence);
+        require(SDL_WaitForGPUFences(r.device,true,&fence,1));SDL_ReleaseGPUFence(r.device,fence);
+        Framebuffer expected(224,192);expected.enable_layer_tags(true);
+        replay_raster_commands(batch,expected,nullptr);
+        const auto* actual=static_cast<const unsigned*>(SDL_MapGPUTransferBuffer(r.device,r.download,false));require(actual);
+        for(unsigned y=0;y<height;++y) for(unsigned x=0;x<width;++x) {
+            const float center=jitter==std::array<float,2>{}?0.f:.5f;
+            const int sx=int(std::floor((float(x)+center-jitter[0])*224/width)),sy=int(std::floor((float(y)+center-jitter[1])*192/height));
+            if(sx<0 || sx>=224 || sy<0 || sy>=192) {require(actual[y*width+x]==0);continue;}
+            const unsigned index=sy*224+sx;
+            if((actual[y*width+x]&255U)!=expected.pixels()[index]) throw std::runtime_error("Raster fixture="+std::to_string(fixture)+" x="+std::to_string(x)+" y="+std::to_string(y)+" source="+std::to_string(sx)+","+std::to_string(sy)+" got="+std::to_string(actual[y*width+x]&255U)+" expected="+std::to_string(expected.pixels()[index]));
+            require(((actual[y*width+x]>>8)&255U)==expected.layer_tags()[index]);
+        }
+        SDL_UnmapGPUTransferBuffer(r.device,r.download);
+    }
+    std::cout<<"Fractional raster: 16 zero/jittered direct/scene, CPU/GPU binning fixtures passed\n";
+    for(unsigned fixture=0;fixture<48;++fixture) {
+        const bool custom=fixture%24>=12;
+        const std::array<float,2> jitter=fixture>=24?std::array<float,2>{-.375f,.25f}:std::array<float,2>{};
+        const unsigned scale=1U<<(fixture%3),width=custom?299:224*scale,height=custom?255:192*scale;
+        const std::array<std::uint32_t,2> logical=custom?std::array<std::uint32_t,2>{224,192}:std::array<std::uint32_t,2>{};
         starfox::render::ScaledTextRenderer::ProjectedFrame text;
         text.pose.x=-12.125;text.pose.y=4.375;text.pose.z=fixture<9?256.125:127;
         text.character_size=17;text.colour=114;
@@ -81,27 +131,31 @@ int main()try {
         text.glyphs={glyph,{},glyph};
         auto* command=SDL_AcquireGPUCommandBuffer(r.device);require(command);
         const auto text_tag=fixture%2?unsigned(starfox::render::PixelLayer::three_d):1U;
-        auto* output=static_cast<SDL_GPUBuffer*>(projection.enqueue_text(r.device,command,text,width,height,scale,std::uint8_t(text_tag)));require(output);
+        if(custom) text.pose.z=256.125;
+        auto* output=static_cast<SDL_GPUBuffer*>(projection.enqueue_text(r.device,command,text,width,height,scale,std::uint8_t(text_tag),0,512,logical,jitter));require(output);
         if(fixture%2) {
-            const std::array<starfox::render::GpuSceneDraw,1> draws{starfox::render::GpuTextDraw{text,scale}};
-            output=static_cast<SDL_GPUBuffer*>(text_scene.enqueue_batch(r.device,command,width,height,draws).pixels);require(output);
+            const std::array<starfox::render::GpuSceneDraw,1> draws{starfox::render::GpuTextDraw{text,scale,0,512,logical}};
+            output=static_cast<SDL_GPUBuffer*>(text_scene.enqueue_batch(r.device,command,width,height,draws,jitter).pixels);require(output);
         }
         auto* copy=SDL_BeginGPUCopyPass(command);require(copy);
         SDL_GPUBufferRegion from{output,0,width*height*4};SDL_GPUTransferBufferLocation to{r.download,0};
         SDL_DownloadFromGPUBuffer(copy,&from,&to);SDL_EndGPUCopyPass(copy);
         auto* fence=SDL_SubmitGPUCommandBufferAndAcquireFence(command);require(fence);
         require(SDL_WaitForGPUFences(r.device,true,&fence,1));SDL_ReleaseGPUFence(r.device,fence);
-        starfox::render::Framebuffer expected(width,height);expected.set_draw_scale(scale);
+        starfox::render::Framebuffer expected(224*scale,192*scale);expected.set_draw_scale(scale);
         starfox::render::ScaledTextRenderer::draw_projected(text,expected);
         const auto* actual=static_cast<const unsigned*>(SDL_MapGPUTransferBuffer(r.device,r.download,false));require(actual);
         for(unsigned i=0;i<width*height;++i) {
-            const auto pixel=expected.pixels()[i];
+            const float center=jitter==std::array<float,2>{}?0.f:.5f;
+            const int sx=int(std::floor((float(i%width)+center-jitter[0])*(224*scale)/width));
+            const int sy=int(std::floor((float(i/width)+center-jitter[1])*(192*scale)/height));
+            const auto pixel=sx>=0 && sy>=0 && sx<int(224*scale) && sy<int(192*scale)?expected.pixels()[sy*(224*scale)+sx]:0;
             if(actual[i]!=(pixel?unsigned(pixel)|(text_tag<<8)|(1U<<26):0U))
                 throw std::runtime_error("Projected text pixel mismatch "+std::to_string(fixture));
         }
         SDL_UnmapGPUTransferBuffer(r.device,r.download);
     }
-    std::cout<<"Projected text GPU/CPU pixels pass at 1x/2x/4x\n";
+    std::cout<<"Projected text GPU/CPU pixels pass at 1x/2x/4x and independent 299x255 output\n";
     starfox::render::GpuStereoScene stereo_text;
     for(unsigned scale:{1U,2U,4U}) for(double depth:{256.,512.,1024.}) {
         const unsigned width=224*scale,height=192*scale,bytes=width*height*4;
@@ -328,7 +382,9 @@ int main()try {
         SDL_UnmapGPUTransferBuffer(r.device,r.download);
     }
     std::cout<<"9198 dust points: matrix, depth, palette, viewport and stereo parity passed\n";
-    for(unsigned frame_index=0;frame_index<3;++frame_index) {
+    for(unsigned frame_index=0;frame_index<6;++frame_index) {
+        const bool reduced=frame_index>=3;
+        const unsigned out_width=reduced?149:224,out_height=reduced?127:192;
         starfox::render::GpuScene dust_scene;
         starfox::render::DustRenderer::DustFrame frame;
         frame.points={{-32768,0,512},{32767,4,1024},{0,-4,2048}};
@@ -337,21 +393,24 @@ int main()try {
         for(unsigned i=0;i<64;++i) frame.colours[i]=std::uint8_t((i*7+i/16)%16);
         auto* command=SDL_AcquireGPUCommandBuffer(r.device);require(command);
         require(projection.enqueue_dust_frame(r.device,command,frame,224,192));
-        auto* spans=projection.enqueue_dust_spans(command,192,1,1);require(spans);
-        auto rendered=dust_raster.enqueue_row_spans(r.device,command,spans,3,224,192,false,nullptr,true);require(rendered.pixels);
-        if(frame_index==1) {
-            const std::array<starfox::render::GpuSceneDraw,1> draws{starfox::render::GpuDustDraw{frame}};
-            rendered=dust_scene.enqueue_batch(r.device,command,224,192,draws);require(rendered.pixels);
+        auto* spans=projection.enqueue_dust_spans(command,out_height,1,1,0,0,
+            reduced?std::array<std::uint32_t,3>{224,192,out_width}:std::array<std::uint32_t,3>{});require(spans);
+        auto rendered=dust_raster.enqueue_row_spans(r.device,command,spans,3,out_width,out_height,false,nullptr,true);require(rendered.pixels);
+        if(frame_index%3==1) {
+            const std::array<starfox::render::GpuSceneDraw,1> draws{starfox::render::GpuDustDraw{frame,1,0,512,
+                reduced?std::array<std::uint32_t,2>{224,192}:std::array<std::uint32_t,2>{}}};
+            rendered=dust_scene.enqueue_batch(r.device,command,out_width,out_height,draws);require(rendered.pixels);
         }
         auto* copy=SDL_BeginGPUCopyPass(command);require(copy);
-        SDL_GPUBufferRegion source{static_cast<SDL_GPUBuffer*>(rendered.pixels),0,224*192*4};
+        SDL_GPUBufferRegion source{static_cast<SDL_GPUBuffer*>(rendered.pixels),0,out_width*out_height*4};
         SDL_GPUTransferBufferLocation destination{r.download,0};SDL_DownloadFromGPUBuffer(copy,&source,&destination);SDL_EndGPUCopyPass(copy);
         auto* fence=SDL_SubmitGPUCommandBufferAndAcquireFence(command);require(fence);
         require(SDL_WaitForGPUFences(r.device,true,&fence,1));SDL_ReleaseGPUFence(r.device,fence);
         const auto* actual=static_cast<const unsigned*>(SDL_MapGPUTransferBuffer(r.device,r.download,false));require(actual);
         starfox::render::Framebuffer reference_frame(224,192);
         starfox::render::DustRenderer::draw_dust_frame(frame,reference_frame);
-        for(unsigned i=0;i<224*192;++i) require((actual[i]&255U)==reference_frame.pixels()[i]);
+        for(unsigned y=0;y<out_height;++y) for(unsigned x=0;x<out_width;++x)
+            require((actual[y*out_width+x]&255U)==reference_frame.pixels()[(y*192/out_height)*224+x*224/out_width]);
         SDL_UnmapGPUTransferBuffer(r.device,r.download);
     }
     std::cout<<"Owned dust upload/wrapping/reuse pixel checks passed\n";

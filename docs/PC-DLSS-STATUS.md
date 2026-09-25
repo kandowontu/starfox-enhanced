@@ -1,5 +1,552 @@
 # PC DLSS work — September 13
 
+September 19 menu prerequisite update deployed locally: copied the desktop
+executable tested by the 120-frame high-resolution neural/control comparisons
+into `build/current` while no current game was running; hashes match. Previous
+executable retained at `tmp/pc-before-neural-status-sep19/starfox_pc.exe`.
+An enabled startup preference now reads ENABLE DLSS when ordinary DLSS is off,
+or UNAVAILABLE for unsupported renderer/stereo/capability. Restart and save-error
+labels remain intact. This is prerequisite reporting, NOT live evaluation or
+photorealism confirmation. No settings, add-on DLLs or VR artifacts changed.
+
+September 19 user-session correction: archived the normal installation's latest
+log and settings in `tmp/dlss5-user-session-sep19`. The 18:19 session has
+NeuralUplift=1 and DLSS_MODE=1; the log confirms signed NR initialization,
+feature 18 creation and successful inline evaluations at counts 1 and 60.
+Its output is 720x448 with 480x299 guides. The user reports no realistic visual
+transformation despite this. Therefore disabled DLSS does NOT explain this
+session, and successful execution does NOT establish visual acceptance.
+Do not present the experimental integration as completed photorealism.
+Controlled follow-up at 4x render scale / DLSS Quality / 120 frames:
+`tmp/dlss5-high-resolution-sep19/ORIGINAL-on.bmp` (neural ON) versus
+`tmp/dlss5-high-resolution-control-sep19/ORIGINAL-on.bmp` (neural OFF).
+Both retain ordinary DLSS; only the isolated add-on startup preference changes.
+ON logs confirm feature-18 success at 1600x896 with 1067x597 guides. Both
+captures were visually inspected: ON changes ground/building shading and softens
+some edges, but retains the low-poly scene without a photorealistic makeover.
+Thus higher resolution alone does not resolve the user's complaint. This is
+evidence of visible processing, not realism acceptance. The isolated installation
+was left neural OFF; normal user settings were not modified.
+Additional supported-control investigation: the installed add-on's own strings
+expose three presets, Natural/Cinematic style and intensity controls. Baseline
+runtime logs already report intensity=1 and global_tone=1. Tested preset=2,
+style=1 (third preset / Cinematic) in the isolated installation; logs confirm
+those settings and successful evaluations. Visually inspected
+`tmp/dlss5-cinematic-preset3-sep19/ORIGINAL-on.bmp`: altered tone and subtle
+surface detail, still not the requested realistic transformation. Restored the
+isolated configuration to OFF with preset/style overrides removed. No unsupported
+intensity values, patched runtime, or normal-install changes were introduced.
+Repeated feature creation also appears in this session; whether that is normal
+scene-transition behavior or unnecessary recreation remains to be investigated.
+
+September 19 local current-install follow-up: `build/current` now contains the
+same tested ReShade proxy, RenoDX V4.7 add-on and NVIDIA neural DLL as
+`tmp/dlss5-gameplay-sep19`. Previously the normal build deliberately lacked those
+files, which hid its conditional DLSS5 menu row. Add-on/neural DLL hashes match
+the retained author downloads; NVIDIA's neural DLL signature is valid. The
+three files were added only where absent, without replacing user settings or
+copying the isolated installation's gameplay configuration.
+
+Initialized NeuralUplift OFF. Fresh installed-runtime Original checks detect
+the add-on and validate regular DLSS Quality while neural processing stays OFF:
+`tmp/dlss5-current-installed-off-sep19`. A subsequent ON test was not started
+because a user game opened; the configurator correctly refused the running
+installation. A later live launch reports enabled=ON and its config contains
+NeuralUplift=1; that user state was preserved. Startup ON alone is not proof
+of neural evaluation. Existing isolated positive feature-18 evidence remains
+documented below. Local installation is not release redistribution clearance.
+
+September 19 package gate: `tools/package_dlss.ps1` now invokes the read-only
+`tools/verify_dlss_package.ps1` before reporting success (therefore the existing
+Windows packaging workflow also checks before creating its archive). It verifies
+the exact five-DLL manifest, sizes/hashes, x64 PE/DLL headers, NVIDIA Authenticode
+signatures and nonempty required notices, rejecting unexpected DLLs. The current
+local package passes. `tools/check_dlss_package.ps1` also passes disposable-copy
+negative tests for hash corruption, duplicate manifest entries, unexpected DLLs,
+and x86 machine headers with an otherwise matching hash. No DLL is loaded by
+these checks. The normal local runtime folder was repackaged with updated notices.
+
+Release review remains OPEN, not satisfied by these technical checks. The pinned
+SDK's `bin/x64/nvngx_dlss.license.txt` requires protective distribution terms,
+and its supplement describes NVIDIA attribution/mark placement and approval.
+Official reference: https://github.com/NVIDIA/DLSS/blob/main/LICENSE.txt .
+The application's GPLv3 xBRZ component also requires compatibility review; do
+not assume dynamic loading alone resolves that question. No NVIDIA approval,
+end-user licensing review, or RenoDX/neural-DLL redistribution permission is
+established by the evidence collected here. Do not describe the package as
+legally cleared or publish the experimental DLLs on that assumption.
+
+September 19 PC menu integration: compatible already-loaded RenoDX installations
+with an explicit NeuralUplift setting expose `DLSS5 (EXP.)` beneath ordinary
+DLSS in 3D OPTIONS. Absent add-ons leave the normal menu/VR navigation unchanged.
+The row changes the add-on's own persisted startup preference and displays
+`ON - RESTART` / `OFF - RESTART` when it differs from this launch. It does not
+claim live switching or automatically load unsigned code. Host preference and
+capability survive experience reconstruction and save-state restoration without
+becoming emulated state. Ordinary DLSS remains separately controlled; successful
+neural reconstruction still requires a compatible D3D12/DLSS path.
+
+Verified in the isolated installation: `tmp/neural-menu-on-sep19` saves ON from
+an OFF launch; `tmp/neural-menu-restarted-sep19` reads ON and confirms neural
+feature 18 evaluation, then saves OFF; `tmp/neural-menu-disabled-sep19` reads
+OFF and confirms no feature 18 evaluation while ordinary DLSS still evaluates.
+The latter run explicitly asserts the disabled state and absence of neural
+evaluation. Pixel/menu availability tests and the Original simulation substrate
+tests (including press-versus-hold behavior) pass. Redistribution/legal review,
+broader hardware compatibility and visual/performance acceptance remain open;
+this is an experimental optional integration, not a production release sign-off.
+Actual button navigation also selects/toggles the new row in a 4:3 capture:
+`tmp/neural-menu-visual-sep19/menu.bmp` (visually inspected: all rows fit, selected
+ON - RESTART is readable). The isolated installation is left OFF afterward.
+
+September 19 startup-control implementation: `tools/configure_dlss5.ps1`
+configures NeuralUplift in an explicitly selected, already-installed experimental
+installation. Defaults OFF; refuses the matching running game; checks companion
+files, preserves other sections/keys, rejects duplicate sections/keys, and keeps
+the original ini backup. It never loads or downloads add-ons. This is a startup
+configuration utility, not the still-pending in-game menu integration or a claim
+of supported hardware. `tools/check_dlss5_configuration.ps1` passes ON/OFF round
+trip, default OFF, unrelated-setting preservation, backup preservation, missing
+section/key insertion, idempotence and ambiguous-input rejection with inert
+temporary fixtures. No normal installation or running game was changed.
+
+September 19 live-control result: used the public ReShade global configuration
+ABI documented in https://github.com/crosire/reshade/blob/main/include/reshade.hpp
+through an already-loaded proxy (no additional DLL loading). Diagnostic-only
+calls set NeuralUplift=1 at presentation frame 8 and 0 at frame 24; getter
+readback confirms both values. V4.7's active state stays OFF and no feature-18
+evaluation occurs. Ordinary DLSS evaluates all 40 frames successfully. Evidence:
+`tmp/dlss5-live-control-sep19`. Therefore writing live configuration is NOT a
+working neural toggle for this build. Use explicit restart-required semantics
+unless a supported live interface is established. Diagnostic is opt-in through
+`-TestNeuralControl`; production does not write ReShade settings. Isolated
+configuration remains OFF after the test.
+
+September 19 DLSS5 control investigation: inspected installed V4.7 exports;
+only NAME and DESCRIPTION are exported, not a supported direct toggle API.
+Binary configuration strings identify `[RenoDX.DLSS5] NeuralUplift`. Setting
+`NeuralUplift=0` in only the isolated installation's ReShade.ini was verified
+on fresh launch: add-on logs report enabled=OFF, no neural evaluation succeeds,
+while regular DLSS still evaluates 24 Original frames successfully. Evidence:
+`tmp/dlss5-disabled-proof-sep19`. Earlier enabled runs provide the positive case.
+The isolated configuration is intentionally left OFF. This establishes a
+startup configuration control, NOT a verified live-reload interface. A menu
+integration must either verify live control or explicitly require restart;
+do not claim a working live toggle by writing an ini value alone.
+
+September 19 history/DLSS5 follow-up: added GPU fixtures for unchanged static
+texture with advancing animation counter, changed texture, previous near-plane
+clipping and previous non-billboard type. D3D12/Vulkan pass; rejected history
+does not change current colour/depth. Inspected the older controlled DLSS5/plain
+EX comparison: visible changes are modest, not evidence of a realism overhaul.
+Updated only the authorized isolated add-on installation with the current exe
+and static-CRT runtime. Original/EX each pass 32 Quality frames and the archived
+add-on logs confirm neural feature 18 evaluation in `tmp/dlss5-current-proof-sep19`.
+Inspected current EX output. This proves execution, not product integration:
+no user-facing DLSS5 toggle, redistribution approval or broad quality/performance
+acceptance yet. The normal installation still contains no unsigned add-on.
+
+September 19 sprite correspondence: added per-pixel motion for whole-object
+camera-facing sprites, using the source's rounded/truncated screen rectangles
+and normalized texture position rather than rigid polygon transforms. Texture
+changes reject correspondence; unchanged texture selection is valid even when
+the raw animation counter advances. Transparent texels remain invalid. The
+GPU translation-plus-depth/size-change fixture passes D3D12 and Vulkan at a
+fractional raster size. Original/EX Quality space runs each evaluate 32 frames
+and match normal GPU queue ordering against forced serialization exactly in
+`tmp/dlss-sprite-motion-sep19`. Native artwork preservation and default no-jitter
+behavior are unchanged. Other sprite-face types/particles and full visual
+acceptance remain; this does not establish complete DLSS5 integration.
+
+September 19 packaged runtime verification: rebuilt the native adapter with
+MSVC static CRT; `dumpbin /dependents` lists only WINTRUST.dll and KERNEL32.dll.
+Repackaged the adapter plus four signature-verified NVIDIA production DLLs into
+`build/current/dlss`. Original/EX installed-runtime Quality runs each evaluate
+24 frames successfully without explicit adapter/binary/backend environment
+paths (`tmp/dlss-static-runtime-sep19`). Packaging now writes a five-DLL SHA-256,
+size and version manifest with no machine paths; all five installed hashes
+verified. No release uploaded; licensing/publication review remains separate,
+and the unsigned DLSS5 add-on is not included.
+
+September 19 expanded scene checks: Original/EX each evaluate all 48 frames in
+Training (Quality, 60 FPS) and asteroid space (Performance, 240 FPS), with
+installed runtime discovery. Captures/logs: `tmp/dlss-training-quality-sep19`
+and `tmp/dlss-space-240-sep19`; inspected the latter EX final image. These are
+evaluation/lifecycle checks, not performance benchmarks or motion-vector proof.
+Fixed shared one-plane GPU buffer allocation to include compute-write usage:
+polygon generation can reuse the buffer previously uploaded by a sprite.
+The direct sprite test now requests depth before the same model instance draws
+a one-face polygon. D3D12/Vulkan targeted depth tests both pass after rebuild.
+
+September 19 sprite-depth follow-up: Original asteroid scenes had only
+whole-object sprites, which supplied no temporal depth and skipped DLSS despite
+configuration. Added constant-Z GPU depth for visible sprite texels (transparent
+texels remain unknown); kept lighting metadata disabled. Independent raster
+remapping explicitly supports these screen-aligned planes, while general
+plane restrictions remain. Corrected raster receiver gating to use flag bit 0,
+not the packed plane index. Depth/colour/ownership tests pass D3D12 and Vulkan;
+Original/EX Quality 32-frame space runs now both evaluate all frames in
+`tmp/dlss-space-depth-verified-sep19`. Sprite object-motion vectors still need
+implementation; this is not full temporal acceptance.
+
+The first new test incorrectly read an absent buffer and exposed an SDL assert
+dialog to the user. The process is gone, test readback now rejects absent
+buffers before SDL, and corrected runs pass. No user game was terminated.
+The preceding configured-but-unused SDK viewport cleanup crash is fixed by
+tracking successful evaluation separately from options configuration. Its
+Original no-evaluation regression passed before sprite depth was enabled;
+EX evaluated-space regression also passed. Current regular executable rebuilt.
+User reports the prior jitter issue appears fixed; preserve the current
+native-artwork restoration/no-jitter behavior while completing other inputs.
+
+## Additional queued reports — September 19
+
+User supplied Discord screenshot `C:/Users/kando/AppData/Local/Temp/codex-clipboard-581bae5c-618b-474f-b7ea-64adc066ddf3.png`
+(reports dated September 16; build/platform not established). Investigate after
+the current DLSS work; these reports are not yet reproduced or fixed:
+
+- Sector Z: tan/peach stepped artifact at the bottom-left of the gameplay view.
+- Corridors and Atomic Base: review incomplete widescreen background extensions.
+  Preserve the user's earlier constraint against duplicated tunnel elements;
+  do not crop gameplay to the original viewport.
+- Sector Z victory: last speaking pilot's portrait, static-box texture and
+  dialogue remain visible until the map loads instead of clearing.
+- Victory presentation: investigate the unexpected top-only letterbox band;
+  compare with source behavior before deciding how to correct framing.
+
+September 19 lifecycle follow-up: switching GPU -> software -> GPU previously
+closed the SDK permanently. The host now retains its verified runtime location,
+reopens after old-device destruction and before replacement-device creation,
+and binds each replacement renderer. Empty environment overrides are treated
+as unset. New `check_dlss_lifecycle.ps1 -RendererCycle` checks fresh SDK startup,
+swapchain upgrade, initial history reset and evaluation in every GPU segment.
+Original/EX installed-runtime runs each pass four renderer switches over 40
+frames (24 evaluated GPU frames, 16 software frames), evidence in
+`tmp/dlss-renderer-cycle-verified-sep19`. Initial harness assumed exactly one
+swapchain per renderer; SDL resize legitimately creates additional swapchains,
+so assertions now validate each restart segment instead of that false count.
+This is lifecycle coverage, not proof of complete DLSS motion quality.
+
+September 19 next pass: preserve native non-terrain background artwork after
+DLSS, alongside the existing HUD restoration. These are screen-space tilemaps,
+not surfaces with the pinhole-camera motion assumed by reconstruction. Explicit
+terrain bit 27 remains eligible, as do model/textured geometry and world sprites.
+The restoration remains GPU-resident and precedes normal presentation effects.
+Focused D3D12/Vulkan tests verify ownership, opaque black and alias rejection.
+Installed-runtime Original/EX 32-frame gameplay checks pass in
+`tmp/dlss-artwork-stability-sep19`; inspected EX frame 22. The matched EX upper
+region mean frame difference is now 0.183 versus 0.687 before this change and
+0.211 with DLSS off. This supports improvement for the tested background, not
+complete temporal acceptance. Jitter remains temporarily disabled; model-edge,
+moving terrain and wider-scene acceptance are still outstanding.
+
+September 19 follow-up: laser shape headers are explicitly excluded from
+PC lighting receiver metadata and ray caster collection (Original and EX).
+Emissive GPU draws also clear receiver metadata underneath opaque beam pixels,
+without removing temporal depth or changing palette colour. Focused GPU depth
+tests cover that ownership and pass on D3D12 and Vulkan.
+
+DLSS wobble is NOT resolved. Default subpixel jitter is temporarily disabled
+pending reliable screen-space background correspondence; diagnostic jitter
+remains available. Fresh installed-runtime Original/EX 32-frame runs pass in
+`tmp/dlss-beams-stability-sep19`. EX upper-region frame-change measurement is
+0.687 with this mitigation versus 2.809 with centered jitter, and 0.211 with
+DLSS off. These are matched-scene difference measurements, not a general
+quality score. Reconstruction remains enabled but loses jitter-based sampling
+benefits. Do not label DLSS motion release-ready yet.
+
+PRIORITY REGRESSION: user reports DLSS extremely wobbly/shaky and unplayable.
+Do not equate successful SDK evaluation or still images with acceptable motion.
+Pause DLSS5 expansion and investigate live temporal stability, especially the
+reported 1x render-upscale configuration. Added configurable test render scale
+and an explicit zero-jitter diagnostic override to separate sampling from
+motion/depth errors. NVIDIA's official sample applies positive pixel-offset
+projection translation and sends the same offset to Streamline, matching our
+model sign convention; no unsupported sign flip applied. No fix yet claimed.
+
+Code audit found an additional concrete failure: rejected temporal frames
+could present raw jitter, and transition readback could reuse jittered native
+pixels. Added projection-consistency preflight before resizing/jitter and
+unjittered recorded-scene replay whenever jittered reconstruction fails or
+transition composition falls back. Building; not yet proven to resolve all
+reported shaking. Added sequence capture and explicit no-jitter comparison
+options to the targeted harness. DLSS5 work stays secondary to this regression.
+
+1x Performance reproduction completed for Original/EX with per-frame captures
+in `tmp/dlss-motion-1x-sep19` and `tmp/dlss-motion-1x-nojitter-sep19`.
+All frames evaluated, so fallback alone does not explain instability.
+New `tools/check_dlss_sequence.py` measures matched frame-pair background
+change, not overall visual quality. EX frames 16–32: mean absolute sky change
+0.211 with DLSS off, 2.746 with jittered DLSS, 0.687 without jitter (0–255
+channel units). This reproduces excessive temporal variation and implicates
+background sampling/correspondence; disabling jitter reduces but does not
+resolve it and is not being substituted as the final fix. Input is 200x112
+for 400x224 output at this setting. Consecutive jittered EX frames inspected.
+
+Sampling audit: jittered 2D producers used pixel-edge inverse sampling and
+edge-based scatter bounds, while model/depth reconstruction uses pixel
+centers. Updated shared fixed-point helpers with explicit centered sampling
+and enabled it for jittered backgrounds, raster/text, span producers and CPU
+composition. Non-jitter legacy lookup stays unchanged. Regenerated all six
+affected portable shaders successfully. CPU expectation fixtures and combined
+motion validation are next; not claiming the visual regression resolved yet.
+
+Latest integration evidence (September 19): menu-selected Quality completed
+32 frames each for Original and EX, initial-only reset, matching queued and
+serialized captures: `tmp/dlss-menu-batch-fixed-sep19`. Captures inspected.
+The user's UNAVAILABLE report exposed a real deployment gap: Windows still
+defaulted to Vulkan. Installed SDK now selects D3D12 at initial device creation
+(explicit backend overrides remain honored). Added an installed-runtime test
+that removes all runtime paths and backend overrides. Current build compiled.
+
+Windows x64 packaging now downloads checksum-pinned official SDK 2.14.1,
+builds the native adapter with static CRT, verifies NVIDIA runtime signatures,
+and includes production DLLs and full notices under `dlss`. Local packaging
+passed. CI itself has not run. SDK attribution/marketing and other applicable
+distribution obligations still need release review; no release pushed.
+
+Isolated third-party gameplay experiment: Original/EX SDK evaluation completed
+in `tmp/dlss5-gameplay-proof-sep19`. EX's final ReShade log confirms feature 18
+creation and successful inline evaluation. This is genuine game input, not
+only the earlier analytical fixture. EX capture inspected, but comparison with
+the normal build is confounded by different portable settings; no neural
+quality/performance claim yet. Add-on logs must be preserved per process for
+stronger Original evidence. Add-on redistribution and user-facing control
+are not implemented. Files remain isolated in `tmp/dlss5-gameplay-sep19`.
+
+Priority note: after DLSS/DLSS5 integration, investigate reported black-screen
+startup in release 0.0.6.7. Platform/GPU/logs are not yet available. Do not
+interrupt the integration to chase this report unless new evidence makes it
+an integration blocker.
+
+Additional user queue, after integration and startup investigation: fix EX god
+nuke still killing the player; add a reflective complete metal/mirror model
+effect; research and implement roughly ten additional 2D/3D effects. These are
+queued requests, not implemented features or permission to change focus now.
+
+Also queued: a Double Rendering Distance option. Display objects twice as
+early, but keep their routines/animation static until the original spawn time.
+Early visual presence must not advance gameplay routines or collision state.
+
+Also queued: improve VR pre-game menu directional precision. Pressing Right
+to adjust an option too easily also navigates Up/Down. Add deliberate axis
+selection/hysteresis so horizontal adjustments do not accidentally change
+rows; preserve intentional vertical navigation. Menu-only behavior, not a
+change to gameplay stick precision. Investigate and verify after DLSS work.
+
+End-of-work cleanup requested: inspect and remove obsolete builds and truly
+unneeded temporary files only after integration. Preserve current/platform
+toolchains, required SDKs, assets, saves, signing keys, and useful proof.
+
+## Connected integration batch in progress (September 19)
+
+Native resized scene sampling now maps output pixel centers directly into
+the source, avoiding integer reference-canvas double rounding. Colour,
+surface metadata, depth and motion share that lookup; original-size and
+mosaic paths retain their established sampling. Added a native identity-grid
+fixture, not yet run. Regenerated the portable compositor shader.
+
+DLSS host fallback and preparation failure now invalidate all temporal
+history consistently. Both focal axes and projection centers are validated
+before evaluation; preparation/evaluation share mode parsing. Successful
+shutdown clears cached device and render-plan state. The SDK swapchain
+warning corresponds to the intentionally retained native swapchain reference
+used to restore SDL ownership; no speculative reference-count change made.
+
+Per user instruction, regression runs are deferred until this larger connected
+batch is ready. These newest changes are not yet runtime-verified.
+
+Capability handling now caches the actual device support result and exposes
+availability/reason for subsequent menu integration. Unsupported hardware
+keeps its native SDL swapchain rather than failing the optional presentation
+hook, and skips DLSS preparation/evaluation. This is an integration safeguard,
+not a verified explanation or fix for reported 0.0.6.7 black-screen startups.
+The alignment/history batch compiled successfully; capability changes are
+under compilation. No regression suite has been run for this pending batch.
+
+Capability build passed. Added default-off persisted DLSS quality preference
+(Off/Quality/Balanced/Performance/DLAA), strict read/write range validation,
+and pending round-trip fixtures. PC settings snapshots preserve this value.
+Menu selection and use of the saved preference by the evaluator are not yet
+wired; existing diagnostic environment controls remain the active path.
+
+Follow-up: connected the DLSS row in 3D Options, saved quality restoration,
+and runtime mode changes to temporal history, native-resolution scene drawing,
+jitter, terrain tagging, pre-HUD background capture and SDK evaluation.
+Explicit installed adapter/runtime paths now allow capability discovery
+without test switches. Missing runtime, incompatible renderer and stereo
+output display UNAVAILABLE; the stored preference is preserved. Normal
+installation/path discovery and complete input coverage remain unfinished.
+Updated the diagnostic off-control to omit installed runtime paths.
+Compilation caught a missing background callback capture; corrected it and
+restarted compilation. No runtime verification of this combined batch yet.
+
+Next connected changes: executable-local optional runtime discovery, keeping
+DLSS quality when restoring save states, and a menu-selection harness mode
+that removes all temporal/evaluation diagnostic enable switches. The runtime
+layout is `<executable directory>/dlss/starfox_dlss_native.dll` alongside the
+official SDK runtime DLLs; explicit paired `STARFOX_DLSS_ADAPTER` and
+`STARFOX_DLSS_BINARIES` paths still override it. Existing signature checks
+remain active for SDK binaries; no proprietary DLLs bundled or redistributed.
+Missing runtime leaves normal rendering available. Full input/visual quality
+and DLSS5 integration are still incomplete; this is not release acceptance.
+
+Combined validation: Windows build, runtime settings tests, and D3D12/Vulkan
+compositor checks pass, including direct native sample mapping and reduced
+early/late enlargement. First menu-path gameplay run failed: clearing process
+variables through .NET left an empty mode override, and SDK stderr split the
+restoration log line. Corrected empty-mode handling, harness variable removal,
+and single-write presentation logging. Rebuild/retry pending; no gameplay
+pass claimed for this batch yet (`tmp/dlss-menu-batch-sep19`).
+
+## Reduced layers and world-sprite ownership (September 19)
+
+Early background and late scene layers now use the SDK render extent when
+scene conversion supports it, with original-size fallback for unsupported
+draws. Composition samples their actual dimensions directly, rather than
+rounding through the CPU reference canvas. World billboards retain their
+2D styling tag but carry a separate world-sprite marker so temporal world
+composition includes them and HUD restoration does not overwrite them.
+CPU gameplay HUD overlays remain on the full-resolution presentation path;
+complete native HUD/reticle separation still needs acceptance verification.
+
+Focused D3D12/Vulkan depth and composition checks passed. Live Original and
+EX 32-frame Quality runs in `tmp/dlss-reduced-layers-sep19` pass native
+533x299 evaluation, changing jitter phases, initial-only history reset and
+identical queued/serialized captures. Both final captures visually inspected.
+This proves execution and synchronization, not final temporal image quality
+or a measured performance gain. SDK shutdown still emits a swap-chain
+reference-count warning; investigate lifecycle ownership before release.
+
+Remaining: full world correspondence, native HUD acceptance, capability/menu
+integration, performance and visual acceptance, and DLSS5 gameplay hookup.
+These remain opt-in diagnostic paths; no release pushed.
+
+## Scene jitter batch (September 19)
+
+Opt-in `STARFOX_TEST_DLSS_JITTER=1` with native raster evaluation now drives
+a deterministic 32-phase Halton sequence through scene models, billboards,
+raster commands, projected text, grid/particle/dust spans, early/late GPU
+layers and CPU world composition. Actual input-pixel jitter reaches temporal
+terrain reconstruction and the SDK; history poses remain unjittered. Native
+and presentation draw scales are accounted for independently.
+
+Added shared 1/256-phase integer sampling for 2D producers. Initial floating
+mapping disagreed at exact boundaries; initial signed remainder also differed
+on Vulkan. Both were replaced with bounded unsigned quotient/remainder
+arithmetic. Zero-jitter output retains its established sampling. BG2 scatter
+fills disjoint shifted intervals and clamps outer cells, without stale edges.
+
+Windows builds. D3D12 and Vulkan projection/raster/text, background, depth/
+motion and composition checks pass. Added 16 raster and 48 text fixtures plus
+27 background size/phase cases, with direct/scene comparisons, and sequence/
+invalid-jitter checks. Existing particle/grid tests pass; dedicated jittered
+particle/grid fixtures still need strengthening. Live Original/EX 32-frame
+Quality runs pass changing phases, native 533x299 inputs, initial-only history
+reset and exact queued/serialized final captures in
+`tmp/dlss-scene-jitter-fixed-sep19`; both final captures visually inspected.
+
+This is still diagnostic-only. Remaining integration includes full-resolution
+native HUD separation, reduced early/late layers, broader world motion/depth
+coverage, capability/menu controls, visual/performance acceptance and DLSS5
+gameplay hookup. No release or unrelated bug work was performed.
+
+## Native scene/composition batch (September 19, later)
+
+`STARFOX_TEST_DLSS_NATIVE_RASTER=1` now selects the SDK render plan before
+the main ordered scene is submitted. Original and EX both evaluate native
+533x299 inputs for 800x448 Quality output; this is no longer the previous
+full-resolution main-scene render followed by input resampling. Preparation,
+source projection dimensions, output composition dimensions and focal X/Y
+are connected. CPU, early background and late overlay inputs retain their
+reference coordinates. Those layers still render at their original sizes.
+
+Added independent command-raster and whole-object billboard output, a copied
+scene conversion preserving the original fallback recording, and independent
+compositor output with correctly scaled motion. Legacy motion arithmetic is
+preserved exactly (an initial shader reassociation changed its last bits;
+the corrected shader passes exact legacy and fractional motion tests).
+Wave-mode models still decline scene conversion and use the existing path.
+
+Focused checks: D3D12/Vulkan raster/projection, compositor and depth/motion
+checks pass, including fractional raster/billboard coverage, textures,
+palette, offsets, mosaic, HUD writes and temporal ownership. PC builds.
+Live Quality Original/EX 16-frame runs pass continuous history and identical
+queued/serialized captures in `tmp/dlss-native-raster-billboards-sep19`.
+Both final captures inspected. The earlier EX run intentionally failed the
+new native-size assertion and exposed the billboard restriction now fixed.
+No full-game regression suite run for this batch.
+
+Still not a finished user-facing DLSS feature: full-scene jitter, complete
+world correspondence, full-resolution native HUD separation, reduced early/
+late layers, capability/menu integration and performance measurement remain.
+DLSS5 remains isolated-test-only; this batch does not integrate that add-on
+with gameplay or redistribute its binaries. No release pushed.
+
+## Render-plan/evaluation batch (September 19)
+
+Particle, dust and grid scene records now carry optional logical viewports;
+their shared span shader maps logical cells directly into independent output
+dimensions, including signed edge coordinates. CPU replay rejects resized
+records before clearing its target. Projection batch builds and passes D3D12
+and Vulkan, including added 149x127 dust direct/scene reference comparisons.
+Existing particle/grid tests pass, but dedicated fractional particle/grid
+fixtures and gameplay render-plan routing still remain. No native performance
+benefit is claimed until the application actually selects this path.
+
+Preparation now exposes SDK render dimensions separately from evaluation.
+Evaluation accepts native input extents independently from final/HUD extents,
+rejects mismatched plans/devices, supports independent focal X/Y scaling and
+passes actual raster jitter to terrain reconstruction and SDK constants.
+Input-extent changes and failed evaluations invalidate history; failed texture
+allocation cannot reuse a stale configured plan. Adapter explicitly declares
+unjittered motion. These APIs are not yet selected by native scene rendering.
+
+Windows application and MSVC adapter compile. Projection tests pass, including
+rounded SDK ratios. One consolidated Quality lifecycle run, Original and EX
+16 frames each, passes actual SDK evaluation, continuous history and exact
+queued/serialized captures in tmp/dlss-plan-batch-sep19. This still uses the
+full-resolution diagnostic resample path. Full-scene jitter, native reduced
+scene routing and DLSS5 gameplay integration remain incomplete.
+
+## Independent background raster dimensions
+
+Projected text also supports independent output sizing, preserving its original
+projection and glyph sampling while dispatching only the target pixel count.
+Twelve added fixtures compare 299x255 direct/scene output to the original
+1x/2x/4x reference. Both D3D12 and Vulkan pass these and existing projection,
+stereo text, particle, dust and grid checks. This is not yet host-enabled.
+
+All three background layers now accept a logical viewport independently from
+their output texture dimensions, including through GpuScene composition.
+Nine fixtures cover 267x149, 533x299 and 800x448 output from a 400x224 canvas;
+packed pixels and coverage agree with logical reference sampling and direct
+versus scene rendering on D3D12 and Vulkan. Existing 432 background cases pass.
+CPU replay rejects these resized records before clearing the destination;
+recovery must retain the original-resolution recording.
+
+This removes a scene integration restriction, not the remaining gameplay host,
+particle/raster sizing or full-scene jitter work. DLSS is still unfinished.
+
+## Direct model raster dimensions
+
+GpuModel and GpuScene now accept output dimensions independent of the logical
+projection viewport. Span generation allocates/emits the requested row count;
+depth projection and both motion projections use independent X/Y scale factors.
+Raster jitter remains in output pixels. This permits direct geometry rendering
+at reduced SDK sizes instead of resizing a full-resolution model image.
+
+D3D12/Vulkan tests render 149x127, 299x255 and 533x299 from a 224x192 logical
+viewport, with/without fractional jitter. Analytical translation motion passes;
+scene composition preserves exact pixel/depth/motion outputs. Existing depth,
+motion, resampling and HUD tests also pass. The span tests additionally verify
+1.5x raster sizing against the software renderer.
+
+This API is not yet selected by the gameplay DLSS host. Mixed background,
+particle and raster chunks still need independent sizing. Whole-object
+billboards and wave effects reject custom model sizing; CPU recovery must use
+the original recording. Full-scene jitter and DLSS5 gameplay remain unfinished.
+
 ## Quality/Balanced/Performance gameplay connection (after 0.0.6.7)
 
 The diagnostic PC host now requests all three SDK super-resolution modes in
@@ -756,3 +1303,31 @@ Sources:
 - https://github.com/NVIDIA-RTX/Streamline/releases/tag/v2.14.1
 - https://github.com/NVIDIA-RTX/Streamline/blob/v2.14.1/docs/ProgrammingGuideDLSS.md
 - https://research.nvidia.com/labs/adlr/DLSS5/
+
+## September 24 default-path performance correction
+
+The above historical scaffold status predates the current opt-in gameplay
+integration. In the current worktree, DLSS OFF no longer upgrades SDL's D3D12
+swapchain merely because the optional SDK is installed. It also retains the
+ordinary Vulkan GPU backend on Windows instead of forcing D3D12. Turning DLSS
+ON selects D3D12 and recreates the renderer once; turning it OFF restores the
+native presentation path. Quality changes while ON do not rebuild the device.
+The optional RenoDX/ReShade proxy is not included in the release workflow.
+
+An installed-runtime lifecycle check on the local NVIDIA adapter confirms
+that OFF initializes the adapter but makes no `dlss-presentation: upgraded`
+call, while ON upgrades, evaluates eight frames and restores. This removes a
+default-path cost but is not a GTX 750 Ti performance measurement; the reported
+weak-system slowdown still needs hardware validation.
+
+The 180-frame, 1×/unenhanced, hidden/unpaced Original 1-1 check on this
+NVIDIA laptop measured 3.578 ms frame-work p99 on the restored default
+backend, versus 3.216 ms with D3D12 explicitly forced. These are local
+renderer-work measurements, not on-screen FPS or evidence for GTX 750 Ti;
+the native-default behavior is about preserving the pre-DLSS backend rather
+than claiming a universal speedup.
+
+A 24-frame diagnostic toggled OFF→DLAA→OFF without restarting the process:
+eight DLAA frames evaluated, the wrapped swapchain was restored, and the
+final renderer returned to the native non-D3D12 backend. The script is
+`tools/check_dlss_toggle.ps1`.

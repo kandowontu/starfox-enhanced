@@ -186,6 +186,8 @@ void SpriteRenderer::draw_objects(
         (ppu.object_select >> 5U) & 7U);
     const auto sizes = kObjectSizes[size_selection < kObjectSizes.size()
         ? size_selection : kObjectSizes.size() - 1U];
+    auto* commands=target.command_buffer();
+    std::optional<std::uint32_t> vram_snapshot;
 
     // The source border-warning animation briefly contains both the old and
     // new row of its vertical arrow. At 20 Hz that is a one-frame motion
@@ -310,6 +312,30 @@ void SpriteRenderer::draw_objects(
         if (priority && object_priority != *priority) continue;
         const auto flip_x = (ppu.oam[low + 3U] & 0x40U) != 0U;
         const auto flip_y = (ppu.oam[low + 3U] & 0x80U) != 0U;
+
+        if(commands) {
+            const auto scale=static_cast<std::int32_t>(target.draw_scale());
+            const auto left=x+object_origin+object_offset.x;
+            const auto top=static_cast<std::int32_t>(y_byte)+object_offset.y+(boss_label_tile?1:0);
+            const auto base=std::uint32_t(ppu.object_select&7U)*0x4000U
+                + ((tile&0x100U)?std::uint32_t(((ppu.object_select>>3U)&3U)+1U)*0x2000U:0U)
+                + std::uint32_t(tile&255U)*32U;
+            for(const auto y:{top,top-256}) {
+                RasterCommand c;
+                c.left=std::max(left,extend_horizontal?0:horizontal_origin)*scale;
+                c.right=std::min(left+int(size),extend_horizontal?int(target.width()):horizontal_origin+256)*scale;
+                c.top=y*scale;c.bottom=(y+int(size))*scale;
+                if(c.right<=0 || c.left>=int(target.stored_width()) || c.left>=c.right
+                    || c.bottom<=0 || c.top>=int(target.stored_height())) continue;
+                if(!vram_snapshot) vram_snapshot=commands->snapshot(ppu.vram);
+                c.texture_offset=*vram_snapshot;c.textured=4;
+                c.u=left*scale;c.v=y*scale;c.du=scale;c.dv=int(size);
+                c.reserved0=base;c.reserved1=(flip_x?1U:0U)|(flip_y?2U:0U);
+                c.colour_base=128U+palette*16U;c.tag=std::uint32_t(PixelLayer::two_d);
+                commands->add(c);
+            }
+            continue;
+        }
 
         for (std::uint32_t destination_y = 0; destination_y < size; ++destination_y) {
             const auto source_y = flip_y ? size - 1U - destination_y : destination_y;

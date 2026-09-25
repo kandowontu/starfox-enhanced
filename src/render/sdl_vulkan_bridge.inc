@@ -116,6 +116,76 @@ static bool Starfox_Vulkan_SignalTimeline(void *device, VkSemaphore semaphore, u
     return true;
 }
 static const StarfoxSdlVulkanGeometryBridgeV1 starfox_vulkan_geometry_bridge = {1, Starfox_Vulkan_CopyToExternal, Starfox_Vulkan_SignalTimeline};
+static VkCommandBuffer Starfox_Vulkan_RayCommand(void *command)
+{
+    VulkanCommandBuffer *cmd = (VulkanCommandBuffer *)command;
+    return cmd ? cmd->commandBuffer : VK_NULL_HANDLE;
+}
+static VkBuffer Starfox_Vulkan_RayPrepareWrite(void *command, void *buffer)
+{
+    VulkanCommandBuffer *cmd = (VulkanCommandBuffer *)command;
+    VulkanBufferContainer *container = (VulkanBufferContainer *)buffer;
+    VulkanBuffer *active;
+    if (!cmd || !container) { SDL_SetError("Invalid Vulkan ray output"); return VK_NULL_HANDLE; }
+    SDL_LockRWLockForReading(cmd->renderer->defragLock);
+    active = VULKAN_INTERNAL_PrepareBufferForWrite(cmd->renderer, cmd, container, true,
+        VULKAN_BUFFER_USAGE_MODE_COMPUTE_STORAGE_READ_WRITE);
+    SDL_UnlockRWLock(cmd->renderer->defragLock);
+    return active ? active->buffer : VK_NULL_HANDLE;
+}
+static bool Starfox_Vulkan_RayFinishWrite(void *command, void *buffer)
+{
+    VulkanCommandBuffer *cmd = (VulkanCommandBuffer *)command;
+    VulkanBufferContainer *container = (VulkanBufferContainer *)buffer;
+    if (!cmd || !container) return SDL_SetError("Invalid Vulkan ray output finish");
+    SDL_LockRWLockForReading(cmd->renderer->defragLock);
+    VULKAN_INTERNAL_BufferTransitionToDefaultUsage(cmd->renderer, cmd,
+        VULKAN_BUFFER_USAGE_MODE_COMPUTE_STORAGE_READ_WRITE, container->activeBuffer);
+    VULKAN_INTERNAL_TrackBuffer(cmd, container->activeBuffer);
+    SDL_UnlockRWLock(cmd->renderer->defragLock);
+    return true;
+}
+static bool Starfox_Vulkan_RayCopyRange(void *command, void *source, uint64_t source_offset,
+                                       VkBuffer destination, uint64_t capacity, uint32_t bytes)
+{
+    VulkanCommandBuffer *cmd = (VulkanCommandBuffer *)command;
+    VulkanBufferContainer *container = (VulkanBufferContainer *)source;
+    VulkanBuffer *active;
+    VkBufferMemoryBarrier barrier = {0};
+    VkBufferCopy copy = {0};
+    if (!cmd || !container || !destination || !bytes || (bytes & 3) || (source_offset & 3)
+        || bytes > capacity || source_offset > container->activeBuffer->size
+        || bytes > container->activeBuffer->size - source_offset)
+        return SDL_SetError("Invalid Vulkan ray buffer copy range");
+    SDL_LockRWLockForReading(cmd->renderer->defragLock);
+    active = container->activeBuffer;
+    VULKAN_INTERNAL_BufferTransitionFromDefaultUsage(cmd->renderer, cmd,
+        VULKAN_BUFFER_USAGE_MODE_COPY_SOURCE, active);
+    copy.srcOffset = source_offset;
+    copy.size = bytes;
+    cmd->renderer->vkCmdCopyBuffer(cmd->commandBuffer, active->buffer, destination, 1, &copy);
+    barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    /* Reflections read the same vertex buffer in the compute shader after
+       BLAS construction. Make the geometry copy visible to both consumers. */
+    barrier.dstAccessMask = VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR | VK_ACCESS_SHADER_READ_BIT;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.buffer = destination;
+    barrier.size = bytes;
+    cmd->renderer->vkCmdPipelineBarrier(cmd->commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        0, 0, NULL, 1, &barrier, 0, NULL);
+    VULKAN_INTERNAL_BufferTransitionToDefaultUsage(cmd->renderer, cmd,
+        VULKAN_BUFFER_USAGE_MODE_COPY_SOURCE, active);
+    VULKAN_INTERNAL_TrackBuffer(cmd, active);
+    VULKAN_INTERNAL_TrackBufferTransfer(cmd, active);
+    SDL_UnlockRWLock(cmd->renderer->defragLock);
+    return true;
+}
+static const StarfoxSdlVulkanRayBridgeV3 starfox_vulkan_ray_bridge = {
+    3, Starfox_Vulkan_RayCommand, Starfox_Vulkan_RayPrepareWrite,
+    Starfox_Vulkan_RayFinishWrite, Starfox_Vulkan_RayCopyRange};
 static void Starfox_Vulkan_PublishBridge(VulkanRenderer *renderer)
 {
     StarfoxSdlVulkanBridgeV2 *bridge = SDL_calloc(1, sizeof(*bridge));
@@ -132,4 +202,5 @@ static void Starfox_Vulkan_PublishBridge(VulkanRenderer *renderer)
     SDL_SetPointerPropertyWithCleanup(renderer->props, STARFOX_SDL_VULKAN_BRIDGE,
                                      bridge, Starfox_Vulkan_DestroyBridge, NULL);
     SDL_SetPointerProperty(renderer->props, STARFOX_SDL_VULKAN_GEOMETRY_BRIDGE, (void *)&starfox_vulkan_geometry_bridge);
+    SDL_SetPointerProperty(renderer->props, STARFOX_SDL_VULKAN_RAY_BRIDGE, (void *)&starfox_vulkan_ray_bridge);
 }

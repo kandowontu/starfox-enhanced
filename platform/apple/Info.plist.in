@@ -25,6 +25,17 @@
   <string>${CMAKE_OSX_DEPLOYMENT_TARGET}</string>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <!-- Without a launch-screen declaration, modern iPhones may run the app in
+       a compatibility-sized viewport with black borders around SDL. -->
+  <key>UILaunchScreen</key>
+  <dict/>
+  <key>UIStatusBarHidden</key>
+  <true/>
+  <key>UIViewControllerBasedStatusBarAppearance</key>
+  <false/>
+  <!-- Allow SDL's display link to request ProMotion refresh rates above 60 Hz. -->
+  <key>CADisableMinimumFrameDurationOnPhone</key>
+  <true/>
   <key>UIFileSharingEnabled</key>
   <true/>
   <key>LSSupportsOpeningDocumentsInPlace</key>

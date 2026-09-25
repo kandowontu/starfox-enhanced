@@ -31,12 +31,26 @@ XrResult XRAPI_PTR path(XrInstance,const char* name,XrPath* out) {require(name[0
 XrResult XRAPI_PTR suggest(XrInstance,const XrInteractionProfileSuggestedBinding* info) {
     ++suggestions;require(info->countSuggestedBindings==6 || info->countSuggestedBindings==13);
     if(info->countSuggestedBindings==13) {
+        const auto& profile=paths.at(info->interactionProfile-1);
+        const bool index=profile=="/interaction_profiles/valve/index_controller";
+        require(index || profile=="/interaction_profiles/oculus/touch_controller");
+        const std::array<const char*,13> expected{
+            "/user/hand/left/input/thumbstick", "/user/hand/right/input/a/click",
+            "/user/hand/right/input/b/click",
+            index?"/user/hand/left/input/a/click":"/user/hand/left/input/x/click",
+            index?"/user/hand/left/input/b/click":"/user/hand/left/input/y/click",
+            "/user/hand/right/input/squeeze/value",
+            index?"/user/hand/left/input/trigger/click":"/user/hand/left/input/trigger/value",
+            index?"/user/hand/right/input/trigger/click":"/user/hand/right/input/trigger/value",
+            "/user/hand/left/input/squeeze/value", "/user/hand/left/input/aim/pose",
+            "/user/hand/right/input/aim/pose", "/user/hand/left/input/thumbstick/click",
+            "/user/hand/right/input/thumbstick/click"};
+        std::array<bool,13> seen{};
         for(unsigned i=0;i<info->countSuggestedBindings;++i) {
             const auto& binding=info->suggestedBindings[i];const auto& name=paths.at(binding.binding-1);
-            if(binding.action==handle<XrAction>(6)) require(name=="/user/hand/right/input/squeeze/value");
-            if(binding.action==handle<XrAction>(9)) require(name=="/user/hand/left/input/squeeze/value");
-            if(binding.action==handle<XrAction>(7)) require(name.starts_with("/user/hand/left/input/trigger/"));
-            if(binding.action==handle<XrAction>(8)) require(name.starts_with("/user/hand/right/input/trigger/"));
+            const auto action=reinterpret_cast<uintptr_t>(binding.action)-1;
+            require(action<expected.size());require(!seen[action]);seen[action]=true;
+            require(name==expected[action]);
         }
     }
     return unsupported?XR_ERROR_PATH_UNSUPPORTED:XR_SUCCESS;
@@ -106,8 +120,8 @@ int main() try {
         menu.selection=7;require(menu.first_visible_row()==2);
         menu.selection=8;require(menu.first_visible_row()==3);
         VrControls down;down.steer.y=-1;
-        menu.sample({},true);menu.sample(down,true);require(menu.selection==0);
-        menu.sample(down,true);require(menu.selection==0);
+        menu.sample({},true);menu.sample(down,true);require(menu.selection==9);
+        menu.sample(down,true);require(menu.selection==9);
         VrControls up;up.steer.y=1;
         menu.sample({},true);menu.sample(up,true);require(menu.selection==8);
         for(unsigned language=0;language<6;++language) {
@@ -116,6 +130,9 @@ int main() try {
                 menu.page=page;
                 require(menu.localized_labels().size()==menu.row_count());
                 for(const auto& label:menu.localized_labels()) require(!label.empty());
+                if(menu.language>=1 && menu.language<=4 && (page==Page::two_d || page==Page::three_d))
+                    require(!menu.localized_labels().front().starts_with(U"WORLD EFFECT")
+                        && !menu.localized_labels().front().starts_with(U"MODEL EFFECT"));
             }
         }
         menu.page=Page::options;menu.selection=6;click();require(menu.page==Page::three_d && !menu.ray_tracing);
@@ -132,8 +149,16 @@ int main() try {
         click();require(menu.world_effect==4);
         menu.selection=1;click();require(menu.world_intensity==0);
         menu.selection=2;click();require(menu.preview);
-        menu.selection=3;click();require(menu.page==Page::options);
-        menu.selection=8;click();require(menu.page==Page::main && menu.selection==3);
+        menu.selection=3;click();require(menu.enhanced_sky && menu.page==Page::two_d && menu.row_count()==5);
+        menu.sample(press,true);require(menu.enhanced_sky);
+        menu.selection=4;click();require(menu.page==Page::options);
+        menu.selection=8;click();require(menu.steer_sensitivity_index==1
+            && menu.labels()[8]=="STICK SENSITIVITY: 40%");
+        VrControls steer;steer.steer={1.F,-.5F};
+        const auto softened=menu.gameplay_controls(steer);
+        require(std::abs(softened.steer.x-.4F)<.001F
+            && std::abs(softened.steer.y+.2F)<.001F);
+        menu.selection=9;click();require(menu.page==Page::main && menu.selection==3);
         menu.alternate_available=true;menu.selection=0;click();require(menu.extended && menu.selected_level==0);
         menu.open_runtime();require(menu.selection==4 && menu.page==Page::main && menu.labels()[4]=="RESUME");
         menu.selection=0;click();require(menu.extended && menu.labels()[0].find("LOCKED")!=std::string::npos);
@@ -153,7 +178,9 @@ int main() try {
         StartupMenu restored;
         require(restored.restore_preferences(preferences));
         require(restored.preferences()==preferences);
+        require(restored.steer_sensitivity_index==1);
         require(restored.ray_tracing && !restored.ray_tracing_available);
+        require(restored.enhanced_sky);
         require(!restored.ray_tracing_enabled());
         restored.page=Page::three_d;
         require(restored.row_count()==4 && restored.labels().back()=="BACK" && !restored.preview);
@@ -166,6 +193,9 @@ int main() try {
         std::array<uint8_t,16> legacy{};std::copy(preferences.begin(),preferences.begin()+16,legacy.begin());
         legacy[4]=1;legacy[11]&=1;legacy[15]&=1;
         StartupMenu migrated;require(migrated.restore_preferences(legacy) && !migrated.ray_tracing && !migrated.infinite_lives);
+        auto version4=preferences;version4[4]=4;version4[11]&=3;
+        require(migrated.restore_preferences(version4) && !migrated.enhanced_sky
+            && migrated.model_effect==menu.model_effect && migrated.world_effect==menu.world_effect);
         require(restored.open && !restored.runtime && !restored.extended
             && !restored.alternate_available && restored.page==Page::main
             && restored.selection==0 && restored.selected_level==0);

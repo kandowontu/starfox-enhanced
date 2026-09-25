@@ -1,4 +1,8 @@
 #include "starfox/vr/vulkan_loader.hpp"
+#include "starfox/vr/backdrop_texture.hpp"
+#include "starfox/vr/enhanced_landscape.hpp"
+#include <iterator>
+#include <numbers>
 #include "check_model_ray_expansion.hpp"
 #include "starfox/vr/vulkan_compute_ray_scene.hpp"
 #include "starfox/vr/vulkan_legacy_ray_geometry.hpp"
@@ -14,6 +18,7 @@
 #include "starfox/vr/source_span_layout.hpp"
 #include "starfox/render/packed_projection.hpp"
 #include "starfox/vr/vulkan_scene_textures.hpp"
+#include "starfox/vr/vulkan_connected_grid.hpp"
 #include "starfox/vr/vulkan_eye_commands.hpp"
 #include "starfox/vr/vulkan_depth_targets.hpp"
 #include "starfox/vr/scene_material.hpp"
@@ -27,6 +32,7 @@
 #include "starfox/vr/source_sprites.hpp"
 #include "starfox/vr/startup_menu.hpp"
 #include "starfox/render/grid_line_sample.hpp"
+#include "starfox/render/grid_projection.hpp"
 #include "starfox/render/dust_renderer.hpp"
 #include "starfox/audio/spc700_audio.hpp"
 #include "starfox/assets/shape_decoder.hpp"
@@ -72,6 +78,9 @@ void bitmap(const std::filesystem::path& path,const std::vector<unsigned char>& 
 }
 }
 int main(int argc,char** argv) try {
+    const bool photographic_sky=argc==4 && std::string_view(argv[2])=="--photographic-landscape";
+    std::string photographic_file;
+    if(photographic_sky) {photographic_file=argv[3];argc=2;}
     const bool pipeline_cache_fixture=argc==3 && std::string_view(argv[2])=="--cache";
     if(pipeline_cache_fixture) argc=2;
     const bool sbs_fixture=argc==3 && std::string_view(argv[2])=="--sbs";
@@ -102,6 +111,7 @@ int main(int argc,char** argv) try {
     if(argc>=2) std::filesystem::create_directories(argv[1]);
     ShapeBatch cartridge;
     std::vector<DrawPacket> live_packets;
+    std::optional<DrawPacket> connected_expected;
     std::optional<std::array<unsigned char,3>> terminal_ground_colour;
     bool menu_blackout_capture=false;
     SourceModelPackets live_compute_packets;
@@ -147,10 +157,11 @@ int main(int argc,char** argv) try {
     const bool source_bg3=source_bg2 || (argc==5 && std::string_view(argv[4])=="--source-bg3");
     const bool grid_line_suite=argc==5 && std::string_view(argv[4])=="--grid-line-suite";
     const bool tile_suite=grid_line_suite || (argc==5 && std::string_view(argv[4])=="--tile-suite");
-    const bool particles=argc==5 && std::string_view(argv[4])=="--particles";
+    const bool particle_reference=argc==5 && std::string_view(argv[4])=="--particles-reference";
+    const bool particles=particle_reference || (argc==5 && std::string_view(argv[4])=="--particles");
     const std::string_view grid_mode=argc==5?std::string_view(argv[4]):std::string_view{};
     const bool rotated_grid=grid_mode=="--grid-rotated" || grid_mode=="--grid-gpu-rotated" ||
-        grid_mode=="--connected-grid-rotated" || grid_mode=="--connected-grid-reference-rotated" || grid_mode=="--connected-grid-texture-rotated" || grid_mode=="--connected-grid-common-rotated" || grid_mode=="--connected-grid-binned-rotated";
+        grid_mode=="--connected-grid-rotated" || grid_mode=="--connected-grid-reference-rotated" || grid_mode=="--connected-grid-texture-rotated" || grid_mode=="--connected-grid-common-rotated" || grid_mode=="--connected-grid-binned-rotated" || grid_mode=="--connected-grid-gpu-rotated";
     const bool wrapped_grid=grid_mode=="--grid-wrapped" || grid_mode=="--grid-gpu-wrapped";
     const bool surround_grid=grid_mode=="--grid-surround" || grid_mode=="--grid-surround-lines";
     const bool gpu_grid=surround_grid || grid_mode=="--grid-gpu" || grid_mode=="--grid-gpu-rotated" || grid_mode=="--grid-gpu-wrapped";
@@ -158,7 +169,8 @@ int main(int argc,char** argv) try {
     const bool connected_reference=connected_texture || grid_mode=="--connected-grid-reference" || grid_mode=="--connected-grid-reference-rotated";
     const bool connected_common=grid_mode=="--connected-grid-common-rotated";
     const bool connected_binned=grid_mode=="--connected-grid-binned" || grid_mode=="--connected-grid-binned-rotated";
-    const bool connected_grid=connected_reference || connected_common || connected_binned || grid_mode=="--connected-grid" || grid_mode=="--connected-grid-rotated";
+    const bool connected_compute=grid_mode=="--connected-grid-gpu" || grid_mode=="--connected-grid-gpu-rotated";
+    const bool connected_grid=connected_compute || connected_reference || connected_common || connected_binned || grid_mode=="--connected-grid" || grid_mode=="--connected-grid-rotated";
     const bool grid=connected_grid || gpu_grid || rotated_grid || wrapped_grid || grid_mode=="--grid";
     const bool wrapped_dust=grid_mode=="--dust-wrapped" || grid_mode=="--dust-gpu-wrapped";
     const bool moving_dust=wrapped_dust || grid_mode=="--dust-motion" || grid_mode=="--dust-gpu-motion";
@@ -175,7 +187,11 @@ int main(int argc,char** argv) try {
     const bool full_font=font_reference || grid_mode=="--font";
     const bool briefing_reference=grid_mode=="--briefing-text-reference";
     const bool briefing_text=briefing_reference || grid_mode=="--briefing-text";
-    const bool projected_text=briefing_text || full_font || (argc==5 && std::string_view(argv[4])=="--text");
+    const bool scaled_text_reference=grid_mode=="--text-reference" || grid_mode=="--text-reference-close" || grid_mode=="--text-reference-hidden" || grid_mode=="--text-reference-zero";
+    const bool scaled_text_close=grid_mode=="--text-close" || grid_mode=="--text-reference-close";
+    const bool scaled_text_zero=grid_mode=="--text-zero" || grid_mode=="--text-reference-zero";
+    const bool scaled_text_hidden=scaled_text_zero || grid_mode=="--text-hidden" || grid_mode=="--text-reference-hidden";
+    const bool projected_text=briefing_text || full_font || scaled_text_reference || scaled_text_close || scaled_text_hidden || grid_mode=="--text";
     const bool tiles_empty=argc==5 && std::string_view(argv[4])=="--tiles-empty";
     const bool tilted_tiles=grid_mode=="--tiles-tilted" || grid_mode=="--tiles-tilted-alternate";
     const bool tiles=tilted_tiles || tiles_empty || (argc==5 && std::string_view(argv[4])=="--tiles");
@@ -697,18 +713,23 @@ int main(int argc,char** argv) try {
         const auto rom=starfox::assets::RomImage::load(argv[2]);
         const auto symbols=starfox::assets::SymbolMap::load(argv[3]);
         StartupMenu menu;menu.language=unsigned(std::stoul(std::string(grid_mode.substr(10))));
-        require(menu.language>=1 && menu.language<=4,"Startup capture expects language 1..4");
+        require(menu.language<=5,"Startup capture expects language 0..5");
         menu.alternate_available=true;menu.selection=1;
+        const bool sky_options=grid_mode.ends_with(":two-d");
+        if(sky_options) {menu.page=StartupMenu::Page::two_d;menu.selection=3;menu.enhanced_sky=true;}
         std::array<uint16_t,256> palette{};palette[1]=0x7fff;palette[2]=0x03ff;
         const auto add=[&](std::u32string_view text,int y,uint8_t ink) {
-            auto packet=source_unicode_ui_text_packet(rom,symbols,text,16,y,ink,palette);
+            auto packet=menu.language==0 || menu.language==5
+                ?source_ui_text_packet(rom,symbols,std::string(text.begin(),text.end()),16,y,240,ink,palette)
+                :source_unicode_ui_text_packet(rom,symbols,text,16,y,ink,palette);
             packet.model=source_layer_matrix(128,112,2.F).value();live_packets.push_back(std::move(packet));
         };
-        auto title=source_ui_text_packet(rom,symbols,"STAR FOX VR",16,35,240,1,palette);
-        title.model=source_layer_matrix(128,112,2.F).value();live_packets.push_back(std::move(title));
+        add(menu.translate(sky_options?menu.title():"STAR FOX VR"),35,1);
         const auto labels=menu.localized_labels();
-        for(unsigned i=0;i<4;++i) add((i==menu.selection?U"> ":U"  ")+labels[i],67+int(i)*26,i==menu.selection?2:1);
-        const auto help=menu.localized_help();add(help[0],183,1);add(help[1],201,1);
+        for(unsigned i=0;i<(sky_options?labels.size():4);++i)
+            add((i==menu.selection?U"> ":U"  ")+labels[i],67+int(i)*(sky_options?18:26),i==menu.selection?2:1);
+        if(menu.language==0 || menu.language==5) add(U"STICK: MOVE   FIRE: SELECT",185,1);
+        else {const auto help=menu.localized_help();add(help[0],183,1);add(help[1],201,1);}
     } else if(briefing_text) {
         const auto rom=starfox::assets::RomImage::load(argv[2]);
         const auto symbols=starfox::assets::SymbolMap::load(argv[3]);
@@ -768,18 +789,32 @@ int main(int argc,char** argv) try {
             live_packets.push_back(std::move(packet));
         } else {
         SourceModels assembler(rom,symbols);GameSceneSnapshot scene;
+        scene.display_brightness=15;
         scene.model_palette[3]=0x03e0;scene.objects.resize(1);
         auto& owner=scene.objects.front();owner.handle=1;owner.object.strategy_flags[0]=0x40;
         owner.object.colour_table=static_cast<uint16_t>(symbols.find("MSG_NINTENDO").at(0));
         owner.object.extended[21]=3;owner.source_pose.z=1024;
+        if(scaled_text_close) {owner.source_pose.z=128;owner.object.texture_scroll_x=127;}
+        if(scaled_text_hidden && !scaled_text_zero) owner.source_pose.z=127;
+        if(scaled_text_zero) owner.object.texture_scroll_x=128;
         const auto assembled=assembler.assemble(scene);
         require(assembled.pending.empty() && assembled.packets.size()==1,"Projected text GPU assembly failed");
         live_packets=assembled.packets;
+        if(scaled_text_reference && scaled_text_hidden) live_packets.clear();
+        if(scaled_text_reference) for(auto& packet:live_packets) for(auto& v:packet.geometry.vertices) {
+            // Previous CPU sizing formula; packed glyph decoding stays common.
+            const double size=scaled_text_close?254.:127.;
+            const double dimension=std::trunc(size*256./owner.source_pose.z);
+            const float side=float(dimension*owner.source_pose.z/256.);
+            v.billboard[0]=v.group_b[0]*side+v.billboard[0]*side;v.billboard[1]*=side;
+            v.texture[3]&=~134217728U;
+        }
         }
     } else if(shadows) {
         const auto rom=starfox::assets::RomImage::load(argv[2]);
         const auto symbols=starfox::assets::SymbolMap::load(argv[3]);
         SourceModels assembler(rom,symbols);GameSceneSnapshot scene;
+        scene.display_brightness=15;
         scene.shadows_enabled=!shadows_off;scene.shadow_height=128;
         scene.view_matrix={32767,0,0,0,32767,0,0,0,32767};scene.model_palette[9]=0x03e0;
         scene.objects.resize(1);auto& owner=scene.objects.front();owner.handle=1;
@@ -799,6 +834,7 @@ int main(int argc,char** argv) try {
         const auto rom=starfox::assets::RomImage::load(argv[2]);
         const auto symbols=starfox::assets::SymbolMap::load(argv[3]);
         SourceModels assembler(rom,symbols);GameSceneSnapshot scene;
+        scene.display_brightness=15;
         scene.dots_mode=-1;scene.dust_point_count=5;
         scene.flow=starfox::simulation::GameFlowState::gameplay;
         if(controls_dust) {
@@ -905,7 +941,10 @@ int main(int argc,char** argv) try {
         }
         if(connected_grid) {
             scene.grid_lines=true;scene.source_vanishing_point={112,96};
-            packet=connected_binned?assembler.assemble_connected_grid_binned(scene):assembler.assemble_connected_grid(scene);
+            packet=connected_compute?assembler.assemble_connected_grid_gpu(scene):connected_binned?assembler.assemble_connected_grid_binned(scene):assembler.assemble_connected_grid(scene);
+            if(connected_compute) require(packet.geometry.texels.size()==14 && packet.geometry.vertex_view().size()==6,
+                "Compute grid must upload raw source words, not projected points or row lists");
+            if(connected_compute) connected_expected=assembler.assemble_connected_grid_binned(scene);
             if(connected_binned) {
                 size_t words=0,row_candidates=0,max_row_candidates=0;
                 const auto started=std::chrono::steady_clock::now();
@@ -978,20 +1017,67 @@ int main(int argc,char** argv) try {
         const auto rom=starfox::assets::RomImage::load(argv[2]);
         const auto symbols=starfox::assets::SymbolMap::load(argv[3]);
         SourceModels assembler(rom,symbols);GameSceneSnapshot scene;
+        scene.display_brightness=15;
         scene.objects.resize(1);auto& owner=scene.objects.front();owner.handle=1;
         owner.object.strategy_flags[0]=0x10;owner.source_pose.z=512;
         scene.model_palette[1]=0x03e0;scene.model_palette[2]=0x001f;scene.model_palette[3]=0x7c00;
         for(unsigned i=0;i<4;++i) {
             auto& dot=scene.particles[i];dot.owner=1;dot.life=10;dot.colour=1;
-            dot.x=dot.previous_x=int16_t(-96+int(i)*64);dot.y=dot.previous_y=-64;
+            dot.previous_x=int16_t(-96+int(i)*64);dot.x=dot.previous_x+16;dot.y=dot.previous_y=-64;
         }
         auto& trail=scene.particles[4];trail.owner=1;trail.life=10;trail.colour=2;trail.flags=4;
         trail.previous_x=-96;trail.x=96;trail.previous_y=trail.y=64;
         scene.particles[5]=trail;scene.particles[5].owner=2;scene.particles[5].colour=3;
         scene.particles[6]=trail;scene.particles[6].life=0;scene.particles[6].colour=3;
+        scene.particles[7]=scene.particles[0];scene.particles[7].colour=3;
+        scene.particles[7].previous_x=32760;scene.particles[7].x=-32760; // Must not interpolate through screen centre.
+        scene.particles[8]=scene.particles[0];scene.particles[8].colour=3;
+        scene.particles[8].previous_z=scene.particles[8].z=-257; // Source near-plane rejection.
+        scene.particles[9]=trail;scene.particles[9].colour=3;scene.particles[9].previous_z=-300;
+        scene.particles[10]=scene.particles[0];scene.particles[10].previous_z=-300;scene.particles[10].z=0;
+        constexpr double particle_alpha=.5;
         const auto assembled=assembler.assemble(scene);
         require(assembled.pending.empty() && assembled.packets.size()==1,"Particle GPU fixture assembly failed");
         live_packets=assembled.packets;
+        for(auto& packet:live_packets) {
+            for(auto& vertex:packet.geometry.vertices) vertex.group_c[0]=float(particle_alpha);
+            for(auto& vertex:packet.geometry.line_vertices) vertex.group_c[0]=float(particle_alpha);
+        }
+        if(particle_reference) {
+            // Independent implementation of the previous CPU producer, used
+            // only as a pixel reference for the raw-endpoint GPU path.
+            auto& geometry=live_packets.front().geometry;
+            geometry.vertices.clear();geometry.line_vertices.clear();
+            const auto interpolate=[particle_alpha](int16_t previous,int16_t current) {
+                int delta=int(current)-previous;
+                if(delta>32767) delta-=65536;else if(delta<-32768) delta+=65536;
+                return float(previous+delta*particle_alpha);
+            };
+            for(const auto& p:scene.particles) {
+                if(!p.life || p.owner!=1) continue;
+                SceneVertex vertex{};
+                vertex.position[0]=interpolate(p.previous_x,p.x);
+                vertex.position[1]=interpolate(p.previous_y,p.y);
+                vertex.position[2]=interpolate(p.previous_z,p.z);
+                const double depth=512.+vertex.position[2];
+                if(depth<256) continue;
+                vertex.color[0]=p.colour==2?1.F:0.F;vertex.color[1]=p.colour==1?1.F:0.F;
+                vertex.color[2]=p.colour==3?1.F:0.F;vertex.color[3]=1;
+                std::copy_n(vertex.color,4,vertex.odd_color);
+                if(p.flags&4U) {
+                    if(512.+p.previous_z<256) continue;
+                    auto previous=vertex;previous.position[0]=p.previous_x;previous.position[1]=p.previous_y;previous.position[2]=p.previous_z;
+                    geometry.line_vertices.push_back(previous);geometry.line_vertices.push_back(vertex);
+                } else {
+                    constexpr float corners[4][2]{{0,0},{1,0},{1,-1},{0,-1}};
+                    vertex.texture[3]=4;
+                    for(unsigned corner:{0U,1U,2U,0U,2U,3U}) {
+                        auto point=vertex;point.billboard[0]=corners[corner][0]*float(depth/128.);
+                        point.billboard[1]=corners[corner][1]*float(depth/128.);geometry.vertices.push_back(point);
+                    }
+                }
+            }
+        }
     } else if(live) {
         const auto rom=starfox::assets::RomImage::load(argv[2]);
         const auto symbols=starfox::assets::SymbolMap::load(argv[3]);
@@ -1130,6 +1216,18 @@ int main(int argc,char** argv) try {
             && stage_argument.find("@from-entry")==std::string_view::npos
             && !game.map().peek_ram_word(checkpoint).value() && warmup<3000) {advance();++warmup;}
         require(warmup<3000,"Live scene checkpoint did not start");
+        if(const auto at=stage_argument.find("@continue-map=");at!=std::string_view::npos) {
+            const auto tail=stage_argument.substr(at+14);
+            const auto label=std::string(tail.substr(0,tail.find('@')));
+            const auto entry=symbols.find(label);
+            require(!entry.empty(),"Continuation map symbol not found");
+            // Start an internal authored route only after a real level has
+            // initialized the player, palette and display state. Directly
+            // booting a FINAL_* fragment skips the level's setup contract.
+            game.map().start(entry.front(),game.player());
+            std::cout<<"Authored map continuation: "<<selected_stage<<" -> "<<label
+                <<" after "<<warmup<<" bootstrap ticks\n";
+        }
         if(scramble_shutter) game.map().write_native_word(symbols.find("CIRCLEANIM").at(0),
             static_cast<uint16_t>(symbols.find("MSCRAMWIPE_CIRCLE").at(0)));
         if(titania_water) {
@@ -1151,8 +1249,12 @@ int main(int argc,char** argv) try {
             scene_ticks=unsigned(std::stoul(std::string(grid_mode.substr(grid_mode.find(':')+1))));
         for(unsigned i=0;i<scene_ticks;++i) {
             if(explicit_stage) {
-                const auto held=stage_argument.find("@steer-up")!=std::string_view::npos?starfox::input::up
-                    :stage_argument.find("@steer-down")!=std::string_view::npos?starfox::input::down:0;
+                const auto held=stage_argument.find("@weather")!=std::string_view::npos
+                    ?(i>=2600 && i<2620?starfox::input::right:i==2620?starfox::input::down:0)
+                    :stage_argument.find("@steer-up")!=std::string_view::npos?starfox::input::up
+                    :stage_argument.find("@steer-down")!=std::string_view::npos?starfox::input::down
+                    :stage_argument.find("@steer-left")!=std::string_view::npos?starfox::input::left
+                    :stage_argument.find("@steer-right")!=std::string_view::npos?starfox::input::right:0;
                 capture_input.sample(static_cast<starfox::input::ButtonMask>(held));
             }
             advance();
@@ -1195,7 +1297,22 @@ int main(int argc,char** argv) try {
             std::cout<<"Native paused background="<<game.map().background()<<" scroll="
                 <<game.map().ppu_state().bg2_scroll_y<<'\n';
         }
+        if(explicit_stage && stage_argument.find("@expose")!=std::string_view::npos) {
+            std::cout<<"Diagnostic exposure override: native brightness="<<unsigned(game.map().display_brightness())<<" -> 15\n";
+            game.map().set_display_brightness(15);
+        }
         GameSceneHistory history(game,rom,symbols);
+        const auto bg_lists=symbols.find("BGLISTS");
+        for(const auto label:{"BG_3_7C","BG_6_6C","BG_6_6D","BG_6_6E"}) {
+            const auto vortex=symbols.find(label);
+            if(!vortex.empty() && !bg_lists.empty() && history.current()->ppu->background_mode==2
+                && history.current()->background_id==uint16_t(vortex.front()-bg_lists.front())) {
+                require(!history.current()->ppu->tunnel_scene && history.current()->background_star_sphere,
+                    "Final vortex room retained its corridor mask");
+                std::cout<<"Full-surround final room: "<<label<<", native brightness "
+                    <<unsigned(game.map().display_brightness())<<'\n';
+            }
+        }
         if(controls_scene) {
             const auto& controls=*history.current();
             std::cout<<"Controls model palette (working/CGRAM):";
@@ -1413,6 +1530,30 @@ int main(int argc,char** argv) try {
             starfox::render::BackgroundRenderer decoder;
             decoder.draw_bg2(ppu,0,0,decoded,starfox::render::TilePriorityPass::all,0,true);
             const auto palette=starfox::render::decode_bgr555_palette(ppu.cgram);
+            if(stage_argument.find("@landmark-audit")!=std::string_view::npos) {
+                unsigned audit_x=0,audit_y=320,audit_width=atlas_width,audit_height=40;
+                if(const auto at=stage_argument.find("@ink-rect=");at!=std::string_view::npos) {
+                    auto text=std::string(stage_argument.substr(at+10));
+                    text.resize(text.find('@')==std::string::npos?text.size():text.find('@'));
+                    std::replace(text.begin(),text.end(),',',' ');
+                    std::istringstream fields(text);
+                    require(bool(fields>>audit_x>>audit_y>>audit_width>>audit_height)
+                        && audit_width>0 && audit_height>0 && audit_x<atlas_width && audit_y<512
+                        && audit_width<=atlas_width-audit_x && audit_height<=512-audit_y,
+                        "Invalid atlas ink audit rectangle");
+                }
+                std::array<unsigned,256> counts{},left{},right{};left.fill(atlas_width);
+                for(unsigned y=audit_y;y<audit_y+audit_height;++y)
+                    for(unsigned x=audit_x;x<audit_x+audit_width;++x) {
+                    const unsigned ink=decoded.get(x,y);++counts[ink];
+                    left[ink]=std::min(left[ink],x);right[ink]=std::max(right[ink],x);
+                }
+                for(unsigned ink=0;ink<256;++ink) if(counts[ink]) {
+                    const auto c=palette[ink];
+                    std::cout<<"Landmark ink "<<ink<<" count "<<counts[ink]<<" x "<<left[ink]<<' '<<right[ink]
+                        <<" rgb "<<unsigned(c.r)<<' '<<unsigned(c.g)<<' '<<unsigned(c.b)<<'\n';
+                }
+            }
             std::vector<unsigned char> pixels(atlas_width*512*4);
             for(unsigned y=0;y<512;++y) for(unsigned x=0;x<atlas_width;++x) {
                 const auto colour=palette[decoded.get(x,y)];const auto i=(y*atlas_width+x)*4;
@@ -1512,8 +1653,8 @@ int main(int argc,char** argv) try {
                 ?assembler.assemble_connected_grid_interpolated(*history.previous(),*history.current(),1.)
                 :assembler.assemble_grid_gpu(*history.current());
             if(live_connected) require(grid_packet.geometry.vertex_view().size()==6
-                && grid_packet.geometry.vertex_view()[0].texture[3]==512,
-                "Combined scene did not select binned connected grid");
+                && grid_packet.geometry.vertex_view()[0].texture[3]==(512U|4194304U),
+                "Combined scene did not select compute connected grid");
             assembled.packets.insert(assembled.packets.begin(),std::move(grid_packet));
             assembled.handles.insert(assembled.handles.begin(),0x30000U);
             for(auto& compute:assembled.compute_models) compute.packet_index+=2;
@@ -1563,13 +1704,18 @@ int main(int argc,char** argv) try {
                     "Native menu page moved its screen-space text plane");
                 const auto& ppu=*snapshot->ppu;
                 if(ppu.tunnel_scene) {
-                    auto surround=tunnel_surround_packet(source_backdrop_colour(ppu.cgram[starfox::render::tunnel_wall_index(ppu)],snapshot->display_brightness));
+                    const auto border=[&](unsigned y,unsigned x) {
+                        return source_backdrop_colour(ppu.cgram[starfox::render::tunnel_border_index(ppu,y,x)],
+                            snapshot->display_brightness);
+                    };
+                    auto surround=tunnel_surround_packet(border(112,0),border(4,128),border(219,128));
                     surround.model=sprites.model;live_tunnel_surround.push_back(std::move(surround));
                 }
                 live_backdrop=(controls_scene || snapshot->flow==starfox::simulation::GameFlowState::continue_choice)?source_menu_background_colour(ppu,snapshot->display_brightness):snapshot->flow==starfox::simulation::GameFlowState::game_over || ppu.tunnel_scene || snapshot->background_unique_top_rows!=0 || snapshot->background_star_sphere || snapshot->background_space_horizon
                     ?source_background_border_colour(ppu.cgram,snapshot->display_brightness)
                     :source_backdrop_colour(ppu.cgram[0],snapshot->display_brightness);
                 BackgroundTileOptions options;options.brightness=snapshot->display_brightness;
+                options.colour_subtract=snapshot->background_colour_subtract;
                 options.scroll_override=snapshot->background_scroll_override;
                 options.single_occurrence_top_rows=snapshot->background_unique_top_rows;
                 options.ex_twin_planets=snapshot->background_ex_twin_planets;
@@ -1581,6 +1727,44 @@ int main(int argc,char** argv) try {
                     options.expanded_horizontal=true;options.horizontal_bounds={-384,640};
                 }
                 auto bg2=background_tile_packet(ppu,BackgroundLayer::bg2,options);
+                if(stage_argument.find("@bg2-audit")!=std::string_view::npos) {
+                    starfox::render::Framebuffer reference(400,224);
+                    const int sx=options.scroll_override?(*options.scroll_override)[0]:ppu.bg2_scroll_x;
+                    const int sy=options.scroll_override?(*options.scroll_override)[1]:ppu.bg2_scroll_y;
+                    if(ppu.tunnel_scene) {
+                        // Desktop stretches one cross-section across its wide
+                        // frame. VR intentionally keeps a native center window
+                        // and solid surround: compare its sampling, not that
+                        // different desktop presentation transform.
+                        starfox::render::Framebuffer center(256,224);
+                        starfox::render::BackgroundRenderer{}.draw_bg2(ppu,sx,sy,center);
+                        for(unsigned y=0;y<224;++y) for(unsigned x=0;x<400;++x)
+                            reference.set(x,y,x>=72 && x<328?center.get(x-72,y)
+                                :starfox::render::tunnel_wall_index(ppu));
+                    } else starfox::render::BackgroundRenderer{}.draw_bg2(ppu,sx,sy,reference,
+                        starfox::render::TilePriorityPass::all,72,true);
+                    const auto colours=starfox::render::apply_snes_brightness(
+                        starfox::render::decode_bgr555_palette(ppu.cgram),snapshot->display_brightness);
+                    std::vector<unsigned char> pixels(400*224*4);
+                    for(unsigned y=0;y<224;++y) for(unsigned x=0;x<400;++x) {
+                        const auto colour=colours[reference.get(x,y)];const auto at=(y*400+x)*4;
+                        pixels[at]=colour.r;pixels[at+1]=colour.g;pixels[at+2]=colour.b;pixels[at+3]=255;
+                    }
+                    bitmap(std::filesystem::path(argv[1])/"source-bg2-reference.bmp",pixels,400,224);
+                    std::cout<<"BG2 audit: effective scroll "<<sx<<','<<sy
+                        <<" horizontal offsets "<<ppu.bg2_horizontal_offsets_enabled
+                        <<" vertical offsets "<<ppu.bg2_vertical_offsets_enabled
+                        <<" scanline scroll "<<ppu.bg2_scanline_scroll_enabled
+                        <<" first scanline y "<<ppu.bg2_scanline_scroll_y[0]<<'\n';
+                    for(unsigned y:{0U,32U,64U,111U,160U,223U})
+                        for(unsigned x:{0U,64U,72U,80U,136U,200U,264U,320U,327U,335U,399U}) {
+                            auto sample=bg2;sample.model={.00625F,0,0,0,0,-.00625F,0,0,0,0,1,0,-.8F,.7F,-2,1};
+                            for(auto& vertex:sample.geometry.vertices) {vertex.uv[0]=float(int(x)-72);vertex.uv[1]=float(y);}
+                            const auto ink=reference.get(x,y);const auto colour=colours[ink];
+                            tile_expected.push_back(ink?(uint32_t(colour.r)|(uint32_t(colour.g)<<8)|(uint32_t(colour.b)<<16)):0U);
+                            tile_cases.push_back(std::move(sample));
+                        }
+                }
                 if(snapshot->flow==starfox::simulation::GameFlowState::intro && !snapshot->meters.extended
                     && snapshot->background_unique_top_rows==224) {
                     live_backgrounds.push_back(intro_star_sphere_packet(ppu,snapshot->display_brightness));
@@ -1624,13 +1808,190 @@ int main(int argc,char** argv) try {
                     }
                 }
                 else bg2.model=sprites.model;
+                std::optional<DrawPacket> photograph;
+                std::vector<DrawPacket> photographic_bodies;
+                if(stage_argument.find("@enhanced-sky")!=std::string_view::npos) {
+                    EnhancedLandscape enhancement(symbols);
+                    const auto loader=[](unsigned,std::string_view relative) {
+                        const auto path=std::filesystem::path(__FILE__).parent_path().parent_path()/relative;
+                        std::ifstream stream(path,std::ios::binary);require(bool(stream),"Missing live sky audit artwork");
+                        return std::vector<uint8_t>{std::istreambuf_iterator<char>(stream),std::istreambuf_iterator<char>()};
+                    };
+                    photograph=enhancement.prepare(*snapshot,game,loader);
+                    require(photograph.has_value(),"Requested enhanced sky family has not migrated");
+                    if(stage_argument.find("@weather")!=std::string_view::npos) {
+                        const auto& palette=snapshot->ppu->cgram;
+                        std::cout<<"Weather endpoint inks 1/14/25: "<<palette[1]<<','<<palette[14]<<','<<palette[25]<<'\n';
+                        const bool fog=palette[14]==(21|(25<<5)|(30<<10)) && palette[25]==(21|(25<<5)|(31<<10));
+                        const bool clear=palette[1]==(29|(25<<5)|(15<<10)) && palette[14]==4
+                            && palette[25]==(11|(8<<5)|(6<<10));
+                        require(scene_ticks<=2600?fog:clear,"Natural VR weather replay missed authored palette endpoint");
+                    }
+                    if(ex_menu_capture) for(const auto& vertex:photograph->geometry.vertex_view())
+                        for(unsigned c=0;c<3;++c) require(vertex.odd_color[c]==0
+                            && vertex.color[c]==float(snapshot->display_brightness)/15.F*(ex_menu_choice==26?.85F:ex_menu_choice==32?.94F:1.F),
+                            "Menu photograph inherited a stale gameplay palette");
+                    const auto reused=enhancement.prepare(*snapshot,game,loader);
+                    require(reused->geometry.shared_texels==photograph->geometry.shared_texels
+                        && reused->geometry.shared_vertices==photograph->geometry.shared_vertices,"Unchanged live sky was rebuilt");
+                    if(enhancement.scrolling_pattern()) {
+                        require(enhancement.pattern_panorama(*reused),"Pattern interpolation lost its uploaded packet");
+                        auto previous=*snapshot;
+                        auto ppu=std::make_shared<starfox::simulation::SnesPpuState>(*snapshot->ppu);
+                        ppu->bg2_scroll_x=uint16_t((unsigned(ppu->bg2_scroll_x)+508)&511);previous.ppu=ppu;
+                        const auto start=enhancement.pattern_motion(previous,*snapshot,0);
+                        const auto middle=enhancement.pattern_motion(previous,*snapshot,.5);
+                        const auto end=enhancement.pattern_motion(previous,*snapshot,1);
+                        require(start!=middle && middle!=end && end==photographic_body_motion({128,112}),
+                            "Pattern scroll snapped instead of interpolating");
+                        previous.flow=starfox::simulation::GameFlowState::game_over;
+                        require(enhancement.pattern_motion(previous,*snapshot,0)==end,
+                            "Pattern interpolated across a scene transition");
+                        std::cout<<"Photographic panorama: wrapped scroll interpolates without texture uploads\n";
+                    }
+                    photographic_bodies=enhancement.bodies();
+                    const auto storm_id=symbols.find("BG_6_4"),storm_base=symbols.find("BGLISTS");
+                    if((ex_menu_capture && ex_menu_choice==3)
+                        || (snapshot->meters.extended && !storm_id.empty() && !storm_base.empty()
+                            && snapshot->background_id==uint16_t(storm_id.front()-storm_base.front()))) {
+                        require(photographic_bodies.size()==2,"Storm moons missing or repeated");
+                        require(photographic_bodies[0].geometry.shared_texels==photographic_bodies[1].geometry.shared_texels,
+                            "Storm moons uploaded duplicate crater images");
+                        auto tinted=*snapshot;
+                        auto palette=std::make_shared<starfox::simulation::SnesPpuState>(*snapshot->ppu);
+                        for(unsigned ink=74;ink<=79;++ink) palette->cgram[ink]=31;
+                        tinted.ppu=palette;
+                        (void)enhancement.prepare(tinted,game,loader);
+                        for(size_t i=0;i<2;++i) {
+                            const auto& body=enhancement.bodies()[i];
+                            require(body.geometry.shared_texels==photographic_bodies[i].geometry.shared_texels,
+                                "Storm palette change reuploaded crater image");
+                            for(const auto& vertex:body.geometry.vertex_view())
+                                require(vertex.color[1]==0 && vertex.color[2]==0,
+                                    "Storm moon ignored its live palette");
+                        }
+                        (void)enhancement.prepare(*snapshot,game,loader);
+                        photographic_bodies=enhancement.bodies();
+                        std::cout<<"Storm moons: two shared images, native centers, live palette\n";
+                    }
+                    if(ex_menu_capture && (ex_menu_choice==1 || ex_menu_choice==4 || ex_menu_choice==5
+                        || ex_menu_choice==10 || ex_menu_choice==12)) {
+                        require(photographic_bodies.size()==(ex_menu_choice==10?2:1),
+                            "Enhanced preview lost its unique landmark");
+                        for(const auto& body:photographic_bodies)
+                            require(!body.geometry.vertex_view().empty(),"Preview landmark mask selected no pixels");
+                    }
+                    if(!ex_menu_capture && snapshot->meters.extended && !storm_base.empty())
+                        for(const auto label:{"BG_5_1","BG_6_1","BG_5_5","BG_7_5"}) {
+                            const auto id=symbols.find(label);
+                            if(!id.empty() && snapshot->background_id==uint16_t(id.front()-storm_base.front())) {
+                                require(photographic_bodies.size()==1
+                                    && !photographic_bodies.front().geometry.vertex_view().empty(),
+                                    "Enhanced gameplay lost its luminous landmark");
+                                if(std::string_view(label)=="BG_5_1" || std::string_view(label)=="BG_6_1")
+                                    require(snapshot->landscape_atlas_origin+112==352,
+                                        "Snow receiver includes native mountain rows");
+                            }
+                        }
+                    if(snapshot->background_orbital_planet) {
+                        require(photographic_bodies.size()==(snapshot->background_orbital_entry?2:1),"Orbital surface/moon missing or repeated");
+                        require(photographic_bodies.front().geometry.vertex_view().front().odd_color[3]==4,
+                            "Orbital surface is using the clamped landscape projection");
+                    }
+                    if(snapshot->background_ex_city_planets) {
+                        require(photographic_bodies.size()==starfox::render::city_moons.size(),"City moons are missing or repeated");
+                        for(const auto& body:photographic_bodies)
+                            require(body.geometry.shared_texels==photographic_bodies.front().geometry.shared_texels,
+                                "City moons allocated duplicate images");
+                    }
+                    (void)enhancement.prepare(*snapshot,game,loader);
+                    for(size_t i=0;i<photographic_bodies.size();++i)
+                        require(photographic_bodies[i].geometry.shared_vertices==enhancement.bodies()[i].geometry.shared_vertices
+                            && photographic_bodies[i].geometry.shared_texels==enhancement.bodies()[i].geometry.shared_texels,
+                            "Unchanged photographic moon was rebuilt");
+                    auto faded=*snapshot;faded.display_brightness=0;
+                    const auto dark=enhancement.prepare(faded,game,loader);
+                    require(dark && dark->geometry.shared_texels==photograph->geometry.shared_texels,
+                        "Display fade reloaded photographic pixels");
+                    for(const auto& vertex:dark->geometry.vertex_view()) for(unsigned c=0;c<3;++c)
+                        require(vertex.color[c]==0 && vertex.odd_color[c]==0,"Photographic sky ignored display blackout");
+                    for(size_t i=0;i<photographic_bodies.size();++i) {
+                        const auto vertices=photographic_bodies[i].geometry.vertex_view();
+                        if(!vertices.empty() && (vertices.front().texture[3]&backdrop_texture_flag)==backdrop_texture_flag)
+                            require(photographic_bodies[i].geometry.shared_texels==enhancement.bodies()[i].geometry.shared_texels,
+                                "Moon fade reuploaded the master");
+                        else require(enhancement.bodies()[i].geometry.texel_view()[13]==15,"Native saucer ignored display blackout");
+                        for(const auto& vertex:enhancement.bodies()[i].geometry.vertex_view()) for(unsigned c=0;c<3;++c)
+                            require(vertex.color[c]==0,"Photographic moon ignored display blackout");
+                    }
+                    auto excluded=*snapshot;auto tunnel=std::make_shared<starfox::simulation::SnesPpuState>(*snapshot->ppu);
+                    tunnel->tunnel_scene=true;excluded.ppu=tunnel;
+                    require(!enhancement.prepare(excluded,game,loader),"Photographic replacement erased tunnel scene");
+                    (void)enhancement.prepare(*snapshot,game,loader);
+                    if(enhancement.moving_body()) {
+                        const bool faces=snapshot->background_ex_face_planets || (ex_menu_capture && ex_menu_choice==18);
+                        const auto cloud_id=symbols.find("BG_1_4"),cloud_route_id=symbols.find("BG_1_14"),
+                            background_base=symbols.find("BGLISTS");
+                        const bool clouds=(ex_menu_capture && ex_menu_choice==20)
+                            || (!ex_menu_capture && !background_base.empty()
+                                && ((!cloud_id.empty() && snapshot->background_id==uint16_t(cloud_id.front()-background_base.front()))
+                                    || (game.experience()==starfox::simulation::Experience::starfox_ex && !cloud_route_id.empty()
+                                        && snapshot->background_id==uint16_t(cloud_route_id.front()-background_base.front()))));
+                        require(photographic_bodies.size()==(faces?starfox::render::face_planet_regions.size():clouds?2:1),"Unique planet is missing or repeated");
+                        const auto previous=history.previous();
+                        for(size_t body=0;body<photographic_bodies.size();++body) for(unsigned phase=0;phase<=8;++phase) {
+                            const auto motion=enhancement.body_motion(*previous,*snapshot,double(phase)/8,body);
+                            for(unsigned column=0;column<3;++column) {
+                                float norm=0;for(unsigned row=0;row<3;++row) norm+=motion[column*4+row]*motion[column*4+row];
+                                require(std::abs(norm-1)<.00001F,"Unique body motion changes scale");
+                            }
+                        }
+                        auto a=*snapshot,b=*snapshot;
+                        auto p=std::make_shared<starfox::simulation::SnesPpuState>(*snapshot->ppu),q=std::make_shared<starfox::simulation::SnesPpuState>(*snapshot->ppu);
+                        p->bg2_horizontal_offsets_enabled=q->bg2_horizontal_offsets_enabled=false;
+                        p->bg2_vertical_offsets_enabled=q->bg2_vertical_offsets_enabled=false;
+                        p->bg2_scroll_x=96;q->bg2_scroll_x=112;p->bg2_scroll_y=q->bg2_scroll_y=100;
+                        a.ppu=p;b.ppu=q;
+                        const auto motion_vertices=enhancement.bodies().front().geometry.shared_vertices;
+                        const auto motion_texels=enhancement.bodies().front().geometry.shared_texels;
+                        const auto yaw=[](const Matrix4& m) {return std::atan2(-m[8],m[10]);};
+                        const auto start=yaw(enhancement.body_motion(a,b,0)),end=yaw(enhancement.body_motion(a,b,1));
+                        const auto middle=yaw(enhancement.body_motion(a,b,.5));
+                        require(std::abs(start-end)>.001F && middle>std::min(start,end) && middle<std::max(start,end),
+                            "Celestial scroll did not interpolate between source frames");
+                        require(enhancement.bodies().front().geometry.shared_vertices==motion_vertices
+                            && enhancement.bodies().front().geometry.shared_texels==motion_texels,
+                            "Celestial interpolation replaced geometry or pixels");
+                    }
+                    enhancement.retain_native_ground(bg2,*snapshot->ppu);
+                    if(!enhancement.full_sphere()) {
+                        photograph->model=landscape_camera_motion(*snapshot,*snapshot,1.);
+                        for(auto& body:photographic_bodies) body.model=photograph->model;
+                        require(photograph->model==bg2.model,"Enhanced sky and ground use different motion matrices");
+                    } else if(snapshot->flow!=starfox::simulation::GameFlowState::game_over)
+                        require(bg2.geometry.vertex_view().empty(),"Full sky retained duplicate native background");
+                    std::cout<<"Enhanced live backdrop: "<<snapshot->background_id<<" cached image/geometry; "
+                        <<(snapshot->flow==starfox::simulation::GameFlowState::game_over?"native foreground retained"
+                            :enhancement.full_sphere()?"native background replaced":"native ground retained")<<'\n';
+                    std::cout<<"Photographic unique bodies: "<<photographic_bodies.size()<<'\n';
+                }
+                if(!photograph && snapshot->flow==starfox::simulation::GameFlowState::game_over)
+                    live_backgrounds.push_back(game_over_star_sphere_packet(*snapshot->ppu,snapshot->display_brightness,
+                        snapshot->background_colour_subtract));
+                if(photograph && snapshot->flow==starfox::simulation::GameFlowState::game_over) {
+                    live_backgrounds.push_back(std::move(*photograph));photograph.reset();
+                }
                 live_backgrounds.push_back(std::move(bg2));
-                if(!ppu.tunnel_scene && snapshot->background_orbital_entry) {
+                if(photograph) {
+                    live_backgrounds.push_back(std::move(*photograph));
+                    live_backgrounds.insert(live_backgrounds.end(),photographic_bodies.begin(),photographic_bodies.end());
+                }
+                if(!photograph && !ppu.tunnel_scene && snapshot->background_orbital_entry) {
                     auto planet_options=options;
                     planet_options.scroll_override=std::array<int16_t,2>{0,312};
                     live_backgrounds.push_back(unique_planet_packet(ppu,planet_options,{336,320,56,64}));
                 }
-                if(!ppu.tunnel_scene && snapshot->background_ex_city_planets) {
+                if(!photograph && !ppu.tunnel_scene && snapshot->background_ex_city_planets) {
                     auto planet_options=options;
                     planet_options.scroll_override=std::array<int16_t,2>{0,248};
                     auto planet=unique_planet_packet(ppu,planet_options,{384,208,56,48});
@@ -3635,6 +3996,33 @@ int main(int argc,char** argv) try {
         "Restoring changed vertex/payload failed to replace both");
     std::cout<<"Independent vertex/payload uploads: payload-only 0/1, vertex-only 1/0, restore 1/1 passed\n";
     {
+        VulkanDrawPackets immutable_scene;
+        std::array<DrawPacket,1> immutable{packets[1]};
+        auto& mesh=immutable[0].geometry;
+        mesh.shared_texels=std::make_shared<const std::vector<uint32_t>>(std::move(mesh.texels));
+        mesh.texels.clear();
+        require(immutable_scene.initialize(device,vkGetDeviceProcAddr,memory_properties,targets.render_pass(),immutable),immutable_scene.status().c_str());
+        require(immutable_scene.uploaded_texture_buffers()==1,"Initial immutable payload was not uploaded");
+        auto moved=immutable;moved[0].model[12]+=.1F;
+        require(moved[0].geometry.texel_view().data()==mesh.texel_view().data(),"Packet copy duplicated immutable pixels");
+        require(immutable_scene.initialize(device,vkGetDeviceProcAddr,memory_properties,targets.render_pass(),moved),immutable_scene.status().c_str());
+        require(immutable_scene.reused_packets()==1 && immutable_scene.uploaded_texture_buffers()==0,"Transform change uploaded immutable pixels");
+        moved[0].geometry.vertices[0].position[0]+=.1F;
+        require(immutable_scene.initialize(device,vkGetDeviceProcAddr,memory_properties,targets.render_pass(),moved),immutable_scene.status().c_str());
+        require(immutable_scene.uploaded_vertex_buffers()==1 && immutable_scene.uploaded_texture_buffers()==0,"Vertex change uploaded immutable pixels");
+        auto changed=*mesh.shared_texels;changed[0]^=0x00ffffffU;
+        moved[0].geometry.shared_texels=std::make_shared<const std::vector<uint32_t>>(std::move(changed));
+        require(immutable_scene.initialize(device,vkGetDeviceProcAddr,memory_properties,targets.render_pass(),moved),immutable_scene.status().c_str());
+        require(immutable_scene.uploaded_vertex_buffers()==0 && immutable_scene.uploaded_texture_buffers()==1,"Replaced immutable payload was not uploaded independently");
+        auto invalid=moved;invalid[0].geometry.texels.push_back(0);
+        require(!immutable_scene.initialize(device,vkGetDeviceProcAddr,memory_properties,targets.render_pass(),invalid)
+            && immutable_scene.size()==1,"Ambiguous shared/owned texels replaced live scene");
+        invalid=moved;invalid[0].geometry.shared_texels=std::make_shared<const std::vector<uint32_t>>();
+        require(!immutable_scene.initialize(device,vkGetDeviceProcAddr,memory_properties,targets.render_pass(),invalid)
+            && immutable_scene.size()==1,"Truncated shared texels replaced live scene");
+        std::cout<<"Immutable texture payloads: retained identity, independent uploads and rejection passed\n";
+    }
+    {
         starfox::simulation::SnesPpuState ground_ppu{};ground_ppu.main_screen=2;ground_ppu.background_mode=2;
         const auto sky=landscape_sphere_packet(ground_ppu,{},112.F);
         VulkanDrawPackets ground_scene;
@@ -3658,6 +4046,97 @@ int main(int argc,char** argv) try {
     require(!packet_scene.initialize(device,vkGetDeviceProcAddr,memory_properties,targets.render_pass(),invalid_packets)
         && packet_scene.size()==2,"Invalid texture replaced the live GPU scene");
     auto row_fixture=packets;
+    {
+        auto raw=packets;auto& mesh=raw[0].geometry;
+        mesh.vertices.resize(6,mesh.vertices.front());mesh.texels.assign(14,0);
+        for(auto& v:mesh.vertices) {v.texture[0]=v.texture[1]=v.texture[2]=0;v.texture[3]=gpu_connected_grid_flag;}
+        require(packet_scene.initialize(device,vkGetDeviceProcAddr,memory_properties,targets.render_pass(),raw),
+            "Valid raw compute grid rejected");
+        std::vector<uint32_t> unwritten(connected_grid_output_words);
+        require(!packet_scene.readback_connected_grid(0,unwritten),"Unprepared compute grid exposed undefined storage");
+        require(packet_scene.allocated_grid_outputs()==1 && packet_scene.reused_grid_outputs()==0,
+            "First grid arena allocation not recorded");
+        mesh.texels[3]=mesh.texels[7]=mesh.texels[11]=32767;
+        const starfox::simulation::MatrixQ15 matrix{32767,0,0,0,32767,0,0,0,32767};
+        const std::array<int16_t,3> cameras[]{{0,-600,0},{31,-600,31},{255,-600,255},
+            {256,-600,256},{-1,-600,-1},{-32768,-600,32767},{32767,32767,-32768},{0,-32768,0}};
+        std::vector<uint32_t> current(connected_grid_output_words);
+        for(const auto& position:cameras) {
+            for(unsigned axis=0;axis<3;++axis) mesh.texels[axis]=uint32_t(int32_t(position[axis]));
+            require(packet_scene.initialize(device,vkGetDeviceProcAddr,memory_properties,targets.render_pass(),raw),
+                "Changed raw grid update failed");
+            require(packet_scene.allocated_grid_outputs()==0 && packet_scene.reused_grid_outputs()==1
+                && packet_scene.uploaded_vertex_buffers()==0,"Grid camera update reallocated output or vertex storage");
+            require(!packet_scene.readback_connected_grid(0,unwritten),"Updated source exposed the preceding frame's output");
+            check(vkResetCommandPool(device,pool,0),"Reset grid producer");
+            VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+            check(vkBeginCommandBuffer(copy,&begin),"Begin grid producer");
+            require(packet_scene.record_compute(copy),"Record retained grid output");
+            check(vkEndCommandBuffer(copy),"End grid producer");
+            VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};submit.commandBufferCount=1;submit.pCommandBuffers=&copy;
+            check(vkQueueSubmit(queue,1,&submit,VK_NULL_HANDLE),"Submit retained grid");
+            check(vkQueueWaitIdle(queue),"Wait retained grid");
+            require(packet_scene.readback_connected_grid(0,current),"Read retained grid output");
+            starfox::timing::RenderTransform camera;camera.x=position[0];camera.y=position[1];camera.z=position[2];
+            const auto expected=starfox::render::project_source_grid(camera,matrix,224,192);
+            size_t visible=0;
+            for(unsigned i=0;i<225;++i) {
+                const auto offset=connected_grid_output_words-225*4+i*4;
+                if(!current[offset+3]) continue;
+                require(visible<expected.count,"GPU grid exposed a rejected point");
+                const auto& point=expected.points[visible++];
+                require(int32_t(current[offset])==point.x && int32_t(current[offset+1])==point.y
+                    && int32_t(current[offset+2])==point.depth,"Retained grid projection differs after camera update");
+            }
+            require(visible==expected.count,"Retained grid lost projected points");
+            auto invalid=raw;invalid[0].geometry.texels.pop_back();
+            require(!packet_scene.initialize(device,vkGetDeviceProcAddr,memory_properties,targets.render_pass(),invalid)
+                && packet_scene.readback_connected_grid(0,unwritten) && unwritten==current,
+                "Failed grid replacement corrupted the completed prior output");
+        }
+        require(packet_scene.initialize(device,vkGetDeviceProcAddr,memory_properties,targets.render_pass(),raw)
+            && packet_scene.reused_grid_outputs()==1 && packet_scene.allocated_grid_outputs()==0
+            && packet_scene.uploaded_texture_buffers()==0,"Unchanged grid uploaded inputs or reallocated arena");
+        std::cout<<"Connected-grid arena: eight camera/wrap updates match CPU, zero output/vertex reallocations; failed updates preserve output\n";
+        {
+            auto pipeline=std::make_shared<VulkanConnectedGridPipeline>();
+            require(pipeline->initialize(device,vkGetDeviceProcAddr,VK_NULL_HANDLE),pipeline->status().c_str());
+            const auto benchmark=[&](bool reuse) {
+                std::unique_ptr<VulkanConnectedGrid> previous;
+                auto words=mesh.texels;
+                const auto started=std::chrono::steady_clock::now();
+                for(unsigned frame=0;frame<128;++frame) {
+                    words[0]=frame;
+                    auto next=std::make_unique<VulkanConnectedGrid>();
+                    require(next->initialize(device,vkGetDeviceProcAddr,memory_properties,words,pipeline,reuse?previous.get():nullptr),next->status().c_str());
+                    require(next->reused_output()==(reuse && frame!=0),"Grid benchmark did not exercise intended allocation path");
+                    if(reuse && previous) require(next->buffer()==previous->buffer(),"Grid output handle changed during reuse");
+                    previous=std::move(next);
+                }
+                return std::chrono::duration<double,std::micro>(std::chrono::steady_clock::now()-started).count()/128;
+            };
+            const auto fresh=benchmark(false),retained=benchmark(true);
+            std::cout<<"Connected-grid setup: fresh arena "<<fresh<<" us, retained arena "<<retained
+                <<" us/update; "<<connected_grid_output_words*4<<" output bytes retained (CPU/Vulkan setup only, not GPU time or FPS)\n";
+        }
+        require(packet_scene.initialize(device,vkGetDeviceProcAddr,memory_properties,targets.render_pass(),packets),packet_scene.status().c_str());
+        for(unsigned failure=0;failure<8;++failure) {
+            auto invalid=raw;auto& bad=invalid[0].geometry;
+            switch(failure) {
+            case 0: bad.texels.pop_back();break;
+            case 1: bad.texels.push_back(0);break;
+            case 2: bad.texels[0]=32768;break;
+            case 3: bad.texels[1]=uint32_t(-32769);break;
+            case 4: bad.vertices[0].texture[3]=0;break;
+            case 5: bad.vertices[0].uv[0]=std::numeric_limits<float>::infinity();break;
+            case 6: bad.vertices[0].texture[1]=1;break;
+            case 7: bad.line_vertices={bad.vertices[0],bad.vertices[1]};break;
+            }
+            require(!packet_scene.initialize(device,vkGetDeviceProcAddr,memory_properties,targets.render_pass(),invalid)
+                && packet_scene.size()==2,"Malformed compute grid replaced working scene");
+        }
+        std::cout<<"Raw compute-grid validation: eight malformed packets rejected, prior scene preserved\n";
+    }
     auto& row_mesh=row_fixture[0].geometry;
     row_mesh.texels.assign(390,0);
     for(unsigned row=0;row<192;++row) row_mesh.texels[row*2]=389;
@@ -3688,7 +4167,7 @@ int main(int argc,char** argv) try {
             "Connected-grid validation failure mutated retained uploads");
     }
     std::cout<<"Connected-grid rows: 11 malformed payloads rejected, retained uploads unchanged\n";
-    for(unsigned failure=0;failure<6;++failure) {
+    for(unsigned failure=0;failure<9;++failure) {
         auto invalid=packets;auto& mesh=invalid[0].geometry;
         mesh.texels.assign(9,0xffffffffU);
         for(auto& v:mesh.vertices) {v.texture[0]=0;v.texture[1]=v.texture[2]=15;v.texture[3]=1028;}
@@ -3699,6 +4178,9 @@ int main(int argc,char** argv) try {
         case 3: mesh.vertices[0].texture[1]=16;break;
         case 4: mesh.vertices[0].texture[2]=14;break;
         case 5: mesh.vertices[0].texture[3]|=512;break;
+        case 6: mesh.vertices[0].texture[3]|=134217728U;mesh.vertices[0].group_a[1]=std::numeric_limits<float>::infinity();break;
+        case 7: mesh.vertices[0].texture[3]=134217728U|1024U;break;
+        case 8: mesh.vertices[0].texture[3]|=134217728U;mesh.vertices[0].group_b[0]=std::numeric_limits<float>::quiet_NaN();break;
         }
         require(!packet_scene.initialize(device,vkGetDeviceProcAddr,memory_properties,targets.render_pass(),invalid)
             && packet_scene.size()==2,"Invalid packed glyph replaced working scene");
@@ -3706,13 +4188,13 @@ int main(int argc,char** argv) try {
             && packet_scene.reused_packets()==2 && packet_scene.uploaded_packets()==0,
             "Packed glyph rejection mutated retained uploads");
     }
-    std::cout<<"Packed glyphs: six malformed payloads rejected transactionally\n";
+    std::cout<<"Packed glyphs: nine malformed payloads rejected transactionally\n";
     for(unsigned bad=0;bad<6;++bad) {
         auto invalid=packets;auto& mesh=invalid[0].geometry;
         mesh.vertices[0].texture[0]=0;mesh.vertices[0].texture[3]=8;
         mesh.texels.assign(272+16384,0);mesh.texels[5]=4;
         if(bad<4) {
-            constexpr uint32_t priorities[]{3,259,512,UINT32_MAX};
+            constexpr uint32_t priorities[]{3,259,1024,UINT32_MAX};
             mesh.texels[7]=priorities[bad];
         } else mesh.texels[14]=bad==4?257U:UINT32_MAX;
         require(!packet_scene.initialize(device,vkGetDeviceProcAddr,memory_properties,targets.render_pass(),invalid)
@@ -3861,7 +4343,12 @@ int main(int argc,char** argv) try {
     VulkanSpanPipeline axis_reduction;
     VulkanSourceModel axis_graphics_model;
     VulkanSourceScene axis_graphics_scene;
-    for(unsigned sample=startup_menu?12U:0U;sample<(sbs_fixture?2U:startup_menu?14U:span_draw_start+40);++sample) {
+    const unsigned photo_start=span_draw_start+40;
+    VulkanDrawPackets photo_scene;
+    std::array<unsigned,3> photo_zenith{};
+    std::shared_ptr<const std::vector<uint32_t>> weather_texture;
+    std::array<float,3> weather_expected{};
+    for(unsigned sample=photographic_sky?photo_start+14:startup_menu?12U:0U;sample<(sbs_fixture?2U:startup_menu?14U:photo_start+(photographic_sky?20:68));++sample) {
         const unsigned eye=sample%2;
         const bool cartridge_sample=argc>=4 && sample>=12 && sample<14;
         const int visibility_case=sample>=visibility_start && sample<visibility_start+12?int((sample-visibility_start)/2):-1;
@@ -3873,7 +4360,141 @@ int main(int argc,char** argv) try {
         const int circle_case=sample>=circle_start && sample<decal_start?int((sample-circle_start)/2):-1;
         const int decal_case=sample>=decal_start && sample<shutter_start?int((sample-decal_start)/2):-1;
         const int shutter_case=sample>=shutter_start && sample<span_draw_start?int((sample-shutter_start)/2):-1;
-        const int span_draw_case=sample>=span_draw_start?int((sample-span_draw_start)/2):-1;
+        const int span_draw_case=sample>=span_draw_start && sample<photo_start?int((sample-span_draw_start)/2):-1;
+        const int photo_case=sample>=photo_start?int((sample-photo_start)/2):-1;
+        if(photo_case>=0 && eye==0) {
+            starfox::render::BackdropImage image;
+            image.width=2;image.height=1;image.pixels={0xff0000ffU,0xffff0000U};
+            if(photo_case>=3 && photo_case<=5) {
+                image.width=image.height=64;image.pixels.resize(4096);
+                for(unsigned y=0;y<64;++y) for(unsigned x=0;x<64;++x)
+                    image.pixels[y*64+x]=((x+y)&1)?0xffffffffU:0xff000000U;
+            }
+            if(photo_case==6) image.pixels[1]=0x00ff0000U;
+            if(photo_case>=7 && photo_case<10) {
+                if(photographic_sky) {
+                    std::ifstream stream(photographic_file,std::ios::binary);
+                    require(bool(stream),"Cannot read photographic landscape fixture");
+                    const std::vector<uint8_t> bytes{std::istreambuf_iterator<char>(stream),std::istreambuf_iterator<char>()};
+                    image=starfox::render::BackdropImage::decode(bytes);
+                    image.prepare_zenith();
+                } else {
+                    image.width=256;image.height=128;image.pixels.resize(256*128);
+                    for(unsigned y=0;y<128;++y) for(unsigned x=0;x<256;++x)
+                        image.pixels[y*256+x]=0xff804020U+(y<<8);
+                }
+            }
+            if(photo_case>=10) image.pixels={0xffc3c3c3U,0xffc3c3c3U};
+            if(photo_case>=12 && photo_case<15) {
+                const uint32_t colour=photo_case==12?0xff0c2878U:photo_case==13?0xff78280cU:0xffc8c8c8U;
+                image.pixels={colour,colour};
+            }
+            DrawPacket photo;
+            photo.geometry.shared_texels=make_backdrop_texture(image,photo_case!=2);
+            const float corners[6][2]{{-.4F,.4F},{.4F,.4F},{.4F,-.4F},{-.4F,.4F},{.4F,-.4F},{-.4F,-.4F}};
+            for(const auto& corner:corners) {
+                SceneVertex vertex{};vertex.position[0]=corner[0];vertex.position[1]=corner[1];vertex.position[2]=-2;
+                vertex.texture[1]=image.width-1;vertex.texture[2]=image.height-1;
+                vertex.texture[3]=backdrop_texture_flag|(photo_case==5?2U:0U);
+                vertex.color[0]=vertex.color[1]=vertex.color[2]=photo_case==4?.5F:1.F;vertex.color[3]=1;
+                if(photo_case==4) {vertex.odd_color[0]=-32.F/255.F;vertex.odd_color[2]=32.F/255.F;}
+                vertex.uv[0]=photo_case==1 || photo_case==2?-.25F:.5F;vertex.uv[1]=.5F;
+                if(photo_case>=3 && photo_case<=5) {vertex.uv[0]=corner[0]*64;vertex.uv[1]=corner[1]*64;}
+                photo.geometry.vertices.push_back(vertex);
+            }
+            if(photo_case>=7 && photo_case<10) photo=photographic_landscape_packet(make_landscape_texture(image));
+            if(photo_case>=10 && photo_case<12) {
+                if(photo_case==10) weather_texture=photo.geometry.shared_texels;
+                else photo.geometry.shared_texels=weather_texture;
+                std::array<uint16_t,16> palette{};
+                for(unsigned i=1;i<16;++i) palette[i]=uint16_t(photo_case==10?(i<9?0x7fff:0x4210)
+                    :((i*2)&31)|(((31-i)&31)<<5)|((i&31)<<10));
+                weather_expected=starfox::render::backdrop_ramp_colour({195,195,195},starfox::render::titania_cloud_ramp(palette));
+                for(auto& v:photo.geometry.vertices) {
+                    float* ramp[]{v.visibility_a,v.visibility_b,v.visibility_c,v.group_a,v.group_b,v.group_c};
+                    for(unsigned i=0;i<16;++i) ramp[i/3][i%3]=float(i?palette[i]:1);
+                }
+            }
+            if(photo_case>=12 && photo_case<15) {
+                std::array<uint16_t,16> palette{};
+                std::array<uint32_t,16> ramp{};ramp[0]=2;
+                for(unsigned i=1;i<15;++i) {
+                    palette[i]=uint16_t(((i*2)&31)|(((31-i)&31)<<5)|((i&31)<<10));
+                    for(unsigned c=0;c<3;++c) {
+                        const auto v=(palette[i]>>(c*5))&31;
+                        ramp[i]|=((v<<3)|(v>>2))<<(c*8);
+                    }
+                }
+                const auto pixel=image.pixels[0];
+                weather_expected=starfox::render::backdrop_ramp_colour(
+                    {float(pixel&255),float((pixel>>8)&255),float((pixel>>16)&255)},ramp);
+                for(auto& v:photo.geometry.vertices) {
+                    float* fields[]{v.visibility_a,v.visibility_b,v.visibility_c,v.group_a,v.group_b,v.group_c};
+                    for(unsigned i=0;i<16;++i) fields[i/3][i%3]=float(i?palette[i]:2);
+                }
+            }
+            if(photo_case>=19) {
+                const bool limb=photo_case>=22;
+                const unsigned light=(photo_case-19)%3==0?50:(photo_case-19)%3==1?120:230;
+                const uint32_t pixel=0xff000000U|light|(light<<8)|(light<<16);
+                image.pixels={pixel,pixel};photo.geometry.shared_texels=make_backdrop_texture(image);
+                const bool city=photo_case>=25,blue=photo_case>=28;
+                const bool orbital=photo_case>=31;
+                std::array<uint16_t,16> palette{};palette[0]=orbital?8:city?(blue?7:6):limb?5:4;
+                for(unsigned i=1;i<16;++i) palette[i]=uint16_t(((31-i*2)&31)|((i*2&31)<<5)|((i&31)<<10));
+                const unsigned shades=orbital?7:city?(blue?1:2):limb?14:13;
+                const float shade=1+shades*(1-float(light)/(limb?255:240));
+                const unsigned a=unsigned(shade),b=std::min(a+1,shades+1);
+                for(unsigned c=0;c<3;++c) {
+                    const auto channel=[&](unsigned i) {const auto v=(palette[i]>>(c*5))&31;return float((v<<3)|(v>>2));};
+                    weather_expected[c]=std::lerp(channel(a),channel(b),shade-a);
+                }
+                for(auto& v:photo.geometry.vertices) {
+                    float* fields[]{v.visibility_a,v.visibility_b,v.visibility_c,v.group_a,v.group_b,v.group_c};
+                    for(unsigned i=0;i<16;++i) fields[i/3][i%3]=palette[i];
+                }
+            }
+            if(photo_case>=15 && photo_case<18) {
+                std::array<uint32_t,16> ramp{};ramp[5]=1;
+                const float u=photo_case==15?.1F:photo_case==16?.5F:.9F;
+                for(auto& v:photo.geometry.vertices) {
+                    v.uv[0]=u;v.visibility_a[0]=3;
+                    v.visibility_a[1]=uint16_t(27|(20<<5)|(31<<10));
+                    v.visibility_a[2]=uint16_t(1|(2<<5)|(8<<10));
+                }
+                // Oracle uses exact expanded BGR555, not approximate RGB constants.
+                const auto expand=[](unsigned value) {return (value<<3)|(value>>2);};
+                ramp[1]=expand(27)|(expand(20)<<8)|(expand(31)<<16);
+                ramp[3]=expand(1)|(expand(2)<<8)|(expand(8)<<16);
+                weather_expected=starfox::render::BackdropImage::moon_colour({195,195,195},{u*.5F,2.5F},ramp);
+            }
+            if(photo_case==0) {
+                VulkanDrawPackets shared;std::array repeated{photo,photo,photo};
+                require(shared.initialize(device,vkGetDeviceProcAddr,memory_properties,targets.render_pass(),repeated),shared.status().c_str());
+                require(shared.uploaded_texture_buffers()==1,"Shared photograph uploaded once per body");
+                repeated[1].geometry.vertices[0].color[0]=.5F;
+                require(shared.initialize(device,vkGetDeviceProcAddr,memory_properties,targets.render_pass(),repeated),shared.status().c_str());
+                require(shared.uploaded_texture_buffers()==0,"Palette change reuploaded a shared photograph");
+            }
+            if(photo_case==18) {
+                auto under=photo;
+                image.pixels={0xffff0000U,0xffff0000U};under.geometry.shared_texels=make_backdrop_texture(image);
+                image.pixels={0x800000ffU,0x800000ffU};photo.geometry.shared_texels=make_backdrop_texture(image);
+                const std::array layers{under,photo};weather_expected={128,0,127};
+                require(photo_scene.initialize(device,vkGetDeviceProcAddr,memory_properties,targets.render_pass(),layers,{},false),photo_scene.status().c_str());
+            } else require(photo_scene.initialize(device,vkGetDeviceProcAddr,memory_properties,targets.render_pass(),std::span(&photo,1)),photo_scene.status().c_str());
+            if(photo_case==11) require(photo_scene.uploaded_texture_buffers()==0,"Weather reuploaded photographic pixels");
+            auto invalid=photo;invalid.geometry.texels.push_back(0);
+            require(!photo_scene.initialize(device,vkGetDeviceProcAddr,memory_properties,targets.render_pass(),std::span(&invalid,1)),"Mixed photo storage accepted");
+            if(photo_case==11) {
+                invalid=photo;invalid.geometry.vertices[0].visibility_b[0]=32768;
+                require(!photo_scene.initialize(device,vkGetDeviceProcAddr,memory_properties,targets.render_pass(),std::span(&invalid,1)),"Invalid cloud palette accepted");
+            }
+            invalid=photo;
+            invalid.geometry.vertices.assign(photo.geometry.vertex_view().begin(),photo.geometry.vertex_view().end());
+            invalid.geometry.shared_vertices.reset();invalid.geometry.vertices[0].texture[1]=UINT32_MAX;
+            require(!photo_scene.initialize(device,vkGetDeviceProcAddr,memory_properties,targets.render_pass(),std::span(&invalid,1)),"Overflowed photo extent accepted");
+        }
         const bool depth_enabled=sample<2 || sample>=4;
         if(sample==0) {
             require(packet_scene.initialize(device,vkGetDeviceProcAddr,memory_properties,targets.render_pass(),packets,keys),packet_scene.status().c_str());
@@ -4072,6 +4693,10 @@ int main(int argc,char** argv) try {
                 std::span<const DrawPacket>(&surround,1),{},false),packet_scene.status().c_str());
         }
         XrView view{XR_TYPE_VIEW};view.pose.orientation.w=1;view.pose.position.x=eye?.032F:-.032F;
+        if(photo_case>=8 && photo_case<10) {
+            const float half_yaw=photo_case==8?std::numbers::pi_v<float>*.25F:std::numbers::pi_v<float>*.5F;
+            view.pose.orientation.y=std::sin(half_yaw);view.pose.orientation.w=std::cos(half_yaw);
+        }
         if(gameplane_sprite && billboard_case>=0) {
             const float angle=std::array<float,4>{.17F,.39F,-.23F,-.51F}[billboard_case];
             view.pose.orientation={0,0,std::sin(angle),std::cos(angle)};
@@ -4094,13 +4719,23 @@ int main(int argc,char** argv) try {
                 const float yaw=(296.F-128.F)/256.F;
                 view.pose.orientation={0,-std::sin(yaw*.5F),0,std::cos(yaw*.5F)};
             }
-            else if(direction.ends_with("@planet-focus")) {
+            else if(direction.ends_with("@planet-focus") || direction.ends_with("@moon-focus")) {
                 require(!live_backgrounds.empty(),"Planet-focus capture needs a background");
-                const auto vertices=live_backgrounds.back().geometry.vertex_view();
+                const auto moon=std::find_if(live_backgrounds.rbegin(),live_backgrounds.rend(),[](const auto& packet) {
+                    const auto v=packet.geometry.vertex_view();return v.size()==6 && (v.front().texture[3]&backdrop_texture_flag)==backdrop_texture_flag;
+                });
+                const bool focus_moon=direction.ends_with("@moon-focus");
+                require(!focus_moon || moon!=live_backgrounds.rend(),"Moon-focus capture needs a photographic body");
+                const auto& body=focus_moon?*moon:live_backgrounds.back();
+                const auto vertices=body.geometry.vertex_view();
                 require(vertices.size()==6,"Planet-focus capture needs one six-vertex planet patch");
-                const float x=(vertices[0].position[0]+vertices[2].position[0])*.5F;
-                const float y=(vertices[0].position[1]+vertices[2].position[1])*.5F;
-                const float z=(vertices[0].position[2]+vertices[2].position[2])*.5F;
+                float center[3]{};
+                for(unsigned row=0;row<3;++row) {
+                    center[row]=body.model[12+row];
+                    for(unsigned col=0;col<3;++col) center[row]+=body.model[col*4+row]
+                        *(vertices[0].position[col]+vertices[2].position[col])*.5F;
+                }
+                const auto [x,y,z]=std::array{center[0],center[1],center[2]};
                 const float yaw=std::atan2(x,-z)*.5F,pitch=std::atan2(y,std::hypot(x,z))*.5F;
                 view.pose.orientation={std::sin(pitch)*std::cos(yaw),-std::cos(pitch)*std::sin(yaw),
                     std::sin(pitch)*std::sin(yaw),std::cos(pitch)*std::cos(yaw)};
@@ -4109,7 +4744,7 @@ int main(int argc,char** argv) try {
                 || direction.ends_with("@height-equivalent"),"Unknown landscape direction");
         }
         view.fov={-.7F,.7F,.7F,-.7F};
-        if(cartridge_sample && explicit_stage && grid_mode.ends_with("@island-focus"))
+        if(cartridge_sample && explicit_stage && (grid_mode.ends_with("@island-focus") || grid_mode.ends_with("@moon-focus")))
             view.fov={-.12F,.12F,.12F,-.12F};
         auto camera=eye_camera(view,1,.05F);require(camera.has_value(),"Invalid eye camera");
         if(cartridge_sample && explicit_stage && grid_mode.find("@effect-sepia")!=std::string_view::npos)
@@ -4384,6 +5019,9 @@ int main(int argc,char** argv) try {
             if(cartridge_sample && explicit_stage
                 && std::string_view(argv[4]).find("@background-only")!=std::string_view::npos)
                 return; // Diagnostic isolation, never a gameplay rendering option.
+            if(photo_case>=0) {
+                require(photo_scene.record(cmd,extent,*camera),"Record filtered photographic artwork");return;
+            }
             if(sample<6 || cartridge_sample || line_case>=0 || axis_case>=0 || tile_case>=0 || decal_case>=0) {
                 require(!packet_scene.record_range(cmd,extent,*camera,SIZE_MAX,1),"Overflowed draw start accepted");
                 require(!packet_scene.record_range(cmd,extent,*camera,0,SIZE_MAX),"Overflowed draw count accepted");
@@ -4410,6 +5048,7 @@ int main(int argc,char** argv) try {
             if(cartridge_sample && cartridge_lines.count())
                 require(line_pipeline.record_model(cmd,extent,cartridge_lines.buffer(),cartridge_lines.count(),*camera,model,cartridge_textures.descriptor()),"Record model lines");
         },[&](VkCommandBuffer command,VkExtent2D) {
+            if(packet_scene.size()) require(packet_scene.record_compute(command),"Packet pre-render compute failed");
             if(cartridge_sample && (live_compute || resident_model) && eye==0)
                 require(live_compute_scene.record_compute(command),"Live scene pre-render compute failed");
             if(span_draw_case>=14 && span_draw_case<17 && eye==0)
@@ -4424,6 +5063,21 @@ int main(int argc,char** argv) try {
             require(complete!=VulkanEyeCommands::Completion::error,"GPU submission failed");
             require(std::chrono::steady_clock::now()<deadline,"GPU submission timed out");
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        if(connected_expected && cartridge_sample) {
+            std::vector<uint32_t> actual(connected_grid_output_words);
+            require(packet_scene.readback_connected_grid(0,actual),"Read completed connected-grid compute rows");
+            const auto& expected=connected_expected->geometry.texels;
+            for(size_t row=0;row<192;++row) {
+                const auto count=actual.at(row*2+1);
+                require(count==expected.at(row*2+1),"GPU connected-grid row count differs from CPU");
+                for(size_t entry=0;entry<count;++entry) {
+                    auto a=actual.at(actual.at(row*2)+entry),b=expected.at(expected.at(row*2)+entry);
+                    for(unsigned word=0;word<5;++word)
+                        require(actual.at(a+word)==expected.at(b+word),"GPU connected-grid primitive differs from CPU");
+                }
+            }
+            std::cout<<"Connected-grid GPU rows match independent CPU projection/binning, eye "<<eye<<'\n';
         }
         check(vkResetCommandPool(device,pool,0),"Reset copy pool");
         VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};check(vkBeginCommandBuffer(copy,&begin),"Begin copy");
@@ -4572,6 +5226,33 @@ int main(int argc,char** argv) try {
             std::cout<<"Circle blend "<<circle_case<<" eye "<<eye<<": center color and untouched exterior passed\n";
             continue;
         }
+        if(photo_case>=0) {
+            constexpr unsigned expected[7][3]{{128,0,128},{0,0,255},{255,0,0},{128,128,128},{32,64,96},{55,55,55},{128,0,0}};
+            if(photo_case==7 && eye==0) for(unsigned c=0;c<3;++c) photo_zenith[c]=pixels[c];
+            unsigned count=0;
+            for(unsigned y=0;y<height;++y) for(unsigned x=0;x<width;++x) {
+                const auto offset=(y*width+x)*4;
+                if(!pixels[offset] && !pixels[offset+1] && !pixels[offset+2]) continue;
+                ++count;
+                if(photo_case<7) for(unsigned c=0;c<3;++c)
+                    require(std::abs(int(pixels[offset+c])-int(expected[photo_case][c]))<=1,"Filtered artwork pixel mismatch");
+                if(photo_case>=10) for(unsigned c=0;c<3;++c)
+                    require(std::abs(float(pixels[offset+c])-weather_expected[c])<=1.1F,"Weather GPU/CPU shade mapping mismatch");
+                if(photo_case>=7 && photo_case<10) require(y<=height/2,"Photographic sky covered the ground");
+                if(photo_case>=7 && photo_case<10 && y<height/8) for(unsigned c=0;c<3;++c)
+                    require(std::abs(int(pixels[offset+c])-int(photo_zenith[c]))<=1,"Photographic zenith changes with eye/longitude/LOD");
+            }
+            require(count>100,"Photographic test produced no visible surface");
+            if(photo_case>=7 && photo_case<10) require(count>=width*(height/2-1),"Photographic sky has coverage holes");
+            if(photo_case>=10) require(count>100,"Weather palette fixture is blank");
+            if(photo_case>=7 && photo_case<10 && argc>=2) {
+                const std::vector<unsigned char> capture(pixels,pixels+width*height*4);
+                bitmap(std::filesystem::path(argv[1])/("photo-landscape-"+std::to_string(photo_case-7)+"-eye-"+std::to_string(eye)+".bmp"),capture,width,height);
+            }
+            vkUnmapMemory(device,*read_memory);
+            std::cout<<"Filtered artwork "<<photo_case<<" eye "<<eye<<": bilinear/mip/palette/alpha sample passed\n";
+            continue;
+        }
         uint64_t sum=0,green=0,red=0,blue=0,wrong_pattern=0,lit=0,linear_gray=0;
         uint64_t wrong_tile=0;
         for(uint32_t y=0;y<height;++y) for(uint32_t x=0;x<width;++x) {
@@ -4658,11 +5339,11 @@ int main(int argc,char** argv) try {
         if(cartridge_sample) {
             if(live) {
                 if(tiles) require(tiles_empty?lit==0:(green>100 && green==lit),"GPU tile decoding/transparency mismatch");
-                if(projected_text) require(green>100 && green==lit,"Projected text GPU glyph/colour coverage mismatch");
+                if(projected_text) require(scaled_text_hidden?lit==0:(green>100 && green==lit),"Projected text GPU glyph/colour coverage mismatch");
                 if(shadows) require(shadows_off?lit==0:(green>10 && green==lit),"Source shadow GPU coverage/colour mismatch");
                 if(particles) {
+                    std::cout<<"Eye "<<eye<<" particles: "<<green<<" green dot pixels, "<<red<<" red trail pixels, "<<blue<<" blue pixels\n";
                     require(green>=4 && red>10 && blue==0,"Particle GPU dots/trails/filtering mismatch");
-                    std::cout<<"Eye "<<eye<<" particles: "<<green<<" green dot pixels, "<<red<<" red trail pixels\n";
                 }
                 if(dust) {
                     std::cout<<"Eye "<<eye<<" dust: "<<green<<" green, "<<lit<<" lit pixels\n";
@@ -4700,7 +5381,7 @@ int main(int argc,char** argv) try {
                 const bool blackout_rear=menu_blackout_capture && (direction.ends_with("@rear")
                     || direction.ends_with("@left") || direction.ends_with("@right"));
                 if(blackout_rear) require(lit==0,"Native blackout menu surround must be entirely black");
-                require(tile_suite || tiles_empty || shadows_off || black_tunnel_rear || blackout_rear || lit>0,"Live game models produced a blank GPU image");
+                require(tile_suite || tiles_empty || shadows_off || scaled_text_hidden || black_tunnel_rear || blackout_rear || lit>0,"Live game models produced a blank GPU image");
                 std::cout<<"Eye "<<eye<<" live scene: "<<live_packets.size()<<" model packets, "<<lit<<" lit pixels\n";
                 if(terminal_ground_colour) {
                     for(unsigned y=height-16;y<height;++y) for(unsigned x=width/4;x<width*3/4;++x)
@@ -4738,7 +5419,9 @@ int main(int argc,char** argv) try {
         centroid[eye]=double(sum)/green;
         std::cout<<"Eye "<<eye<<": "<<green<<" green pixels, "<<red<<" red pixels, centroid "<<centroid[eye]<<'\n';
     }
-    if(startup_menu) {
+    if(photographic_sky) {
+        std::cout<<"Photographic landscape front/side/rear captured in both eyes; synthetic triangle suite not selected.\n";
+    } else if(startup_menu) {
         std::cout<<"Localized startup layout captured in both eyes; synthetic triangle suite not selected.\n";
     } else {
         if(sbs_fixture) {

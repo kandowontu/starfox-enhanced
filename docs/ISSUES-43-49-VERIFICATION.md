@@ -1,5 +1,275 @@
 # Requested issue verification
 
+## Current first-corridor proof — September 24
+
+The current Windows executable was rerun in the first Titania corridor at
+frame 180 with saved visual enhancements disabled. Original 16:9 and EX 32:9
+each produced GPU and Software final-presentation captures. Both GPU captures
+were visually inspected: the authored ceiling and floor continue to the outer
+edges, with the dark walls and foreground ships remaining visible. In each
+pair the RGB images differ only in the live FPS counter rectangle; masking
+that rectangle makes the images byte-identical. The harness confirmed
+`tunnel=1 inatunnel=1` rather than the later water/exit scene.
+
+Proof: `tmp/issue48-goal-current-original-{gpu,software}/presentation.bmp`
+and `tmp/issue48-goal-current-ex-{gpu,software}/presentation.bmp`.
+This is current desktop scene proof, not physical Android or natural-route
+acceptance. GitHub #48 remains open. A live September 24 issue recheck found
+#43/#46/#47/#49 closed and #44/#48 open.
+
+## Remote recheck — September 23
+
+Read all six requested issues again using the repository's GitHub API access.
+43/46/47/49 are closed; 44/48 remain open. Latest comments on 44 still describe
+native Steam Deck Linux failure versus working Proton 9. Latest comments on 48
+still identify the first Titania corridor before the corrected exit. No newer
+physical confirmation was present, and no comments or states were changed.
+Existing local evidence below must not be presented as hardware acceptance.
+
+## Fresh remote status — September 20 evening
+
+Current #48 corridor recheck: tightened the fixture to disable saved ground/
+sky options, materials, manipulations and FSR explicitly. Original 16:9 GPU
+and software final captures at `tmp/issue48-current-{gpu,cpu}-sep20` are
+byte-identical (SHA256 D7F1DC323910E2F46312185B4229890F199B1604699DCEC4D6676B4017F11071).
+GPU presentation inspected: ceiling/floor extend to both sides, without
+duplicating the tunnel, and foreground gameplay is visible. The fixture
+asserts actual first-corridor tunnel state. This is fresh desktop evidence,
+not physical Android confirmation or every corridor phase.
+
+Read current issue state and comments directly from GitHub:
+
+- 43: closed, red tint after death; latest owner comment says fixed in 0.0.6.7.
+- 44: open; latest physical report still distinguishes native Linux Gaming
+  Mode failure from working Windows/Proton 9. Local virtual-device tests are
+  not a substitute for that physical acceptance.
+- 46: now closed. Owner confirmed the Game Over star extension for upcoming
+  0.0.7 at 2026-09-20T22:25:30Z:
+  https://github.com/kandowontu/starfox-enhanced/issues/46#issuecomment-5753116613
+  Earlier statements below that this ticket remains open are historical.
+- 47: closed, with reporter confirmation in 0.0.6.7.
+- 48: open; latest report specifically concerns the FIRST Titania corridor,
+  before the already-corrected exit. Existing local corridor captures below
+  address that scene, but no newer physical Android confirmation is present.
+- 49: closed, documentation packaging report.
+
+No issue state or comments were modified in this audit. Closed tickets do not
+by themselves prove all runtime/platform requirements of the broader goal.
+
+## Steam translated-button isolation — September 20
+
+Extended the actual SDL virtual-device fixture beyond selection checks. For
+each of three Steam virtual-device names, South and Start now travel through
+the selected controller while the simultaneous raw Deck fixture holds East.
+The selected stream must report exactly B/Start, then zero on release; the
+raw duplicate must not leak through. Windows and native Linux runtime-input
+tests pass. Existing duplicate-player suppression and reconnect checks remain.
+This exercises SDL's virtual-device button delivery and application sampling,
+not physical Steam Gaming Mode, metadata substitution, or kernel HID behavior.
+Issue #44 still needs physical reporter/device confirmation.
+
+## Steam virtual transport identity — September 20
+
+Fresh #44 comments still contain no physical confirmation beyond the recorded
+native Gaming Mode failure / Desktop and Proton success. Source inspection of
+the pinned SDL identifies a further selection gap: its public joystick vendor/
+product getters can return Steam metadata's physical-controller IDs, while the
+Linux driver's GUID remains constructed from the kernel input device IDs.
+Checking only the public IDs/name can therefore misclassify the translated
+stream as a raw Deck controller.
+
+The selector now also checks the underlying GUID for Valve's 28de:11ff virtual
+transport before considering raw-Deck duplicate suppression. Existing reported
+ID/name detection remains. Windows and Linux application/input targets rebuild;
+Windows and native Linux input tests pass, including virtual-stream preference, duplicate removal
+and reconnect behavior. This is source-supported selection hardening, not proof
+of the reporter's physical Game Mode fix or a Steam-metadata integration test.
+No launcher settings, system drivers or GitHub issue state were changed.
+
+Follow-up regression: the identity predicate is shared with tests that explicitly
+pair the virtual transport IDs with substituted Deck and Xbox public IDs. Both
+must remain virtual; native Deck/Xbox and unknown IDs must not. Reported virtual
+IDs also work without a transport GUID. Windows and native Linux input tests
+pass. These synthetic identity combinations cover the selection decision, not
+Steam's metadata delivery or physical Game Mode behavior.
+
+## ScaleFX/stereo interaction coverage — September 20
+
+Extended the Game Over harness with explicit filter/FPS controls and pinned
+FSR, reflections, software shadows and AA. Original and EX now pass the full
+six-path matrix at 16:9, 4x rendering, ScaleFX and 240 presentation FPS:
+GPU late stars, CPU late stars, forced mono failure, forced stereo failure,
+successful Half SBS and successful Full SBS. Mono/fallback captures remain
+byte-identical; both stereo eyes contain widened margin stars and have the
+requested packed dimensions. EX Full SBS was visually inspected.
+Evidence: `tmp/game-over-scalefx-sbs-sep20` (12 final frames and logs).
+This adds combined-feature coverage for #46/ScaleFX/SBS, not physical-device
+acceptance or exhaustive animation coverage. No issue was closed or release made.
+
+## #44 native controller diagnostics (September 19)
+
+Latest reporter comments still distinguish broken native Linux Gaming Mode from
+working Desktop Mode and Windows/Proton 9. No new physical-device confirmation
+of the local fix. Windows runtime input tests pass after this recheck.
+Native Linux application and input tests also build; input tests pass. A
+two-frame Linux software smoke run exits successfully and emits the new scan
+line (`joysticks=0 selected=0 steam-virtual=1 hidapi=1 deck-hidapi=1`) on this
+controller-free host. No physical Deck acceptance is implied.
+
+Desktop now supports `STARFOX_TRACE_INPUT=1` at startup and controller hotplug:
+it logs enumerated joystick names/vendor/product IDs, whether SDL recognizes
+them as gamepads, which are selected, and the effective Steam-virtual/HIDAPI
+settings. It does not log serial numbers or button presses. Linux launch option:
+`STARFOX_TRACE_INPUT=1 %command%` (capture the application's standard error).
+This is diagnostic evidence gathering, not a claimed new control fix. It lets
+a physical follow-up distinguish missing enumeration/mapping from wrong device
+selection without guessing from A/Start behavior alone.
+
+## #48 complementary final-presentation coverage (September 19)
+
+The Titania harness now captures the final presented frame in addition to the
+indexed game framebuffer, and explicitly disables software shadows, reflections
+and AA so saved settings cannot contaminate renderer comparisons.
+Current effects-check executable: Original 16:9 and EX 32:9 corridor captures
+each match GPU/software byte-for-byte. Both final images were inspected; widened
+scenery is present and gameplay models remain visible. Evidence directories:
+`tmp/tunnel-final-ORIGINAL-16_9-{GPU,SOFTWARE}-sep19` and
+`tmp/tunnel-final-EX-32_9-{GPU,SOFTWARE}-sep19`, `presentation.bmp` in each.
+Hashes respectively: D2ECD3F73D63A82AC2A6E378FD4E9AF6F446D7678CB8EC3BABAB8D89D7E92562
+and 35CD5F791346E03B689803992F2F74C984C1B398AFE000D68EC95EA4DBDC8521.
+These complement the preceding Original 32:9/EX 16:9 samples, not every tunnel,
+natural route or physical platform. No GitHub issue was closed by this check.
+
+Fresh GitHub #44 comments still distinguish native Linux Gaming Mode failure
+from working Windows-under-Proton input. Local native tests cannot establish
+physical Deck acceptance. #46 remains open with no new reporter confirmation.
+
+## #48 widescreen tunnel choice implemented (September 19)
+
+User explicitly selected extending the ceiling/floor, superseding the earlier
+solid-margin-only requirement below. Desktop BG2 now widens one authored
+cross-section across the viewport, without repeating it. Native 256-wide
+sampling stays unchanged. The low-priority background includes the widened
+section; foreground priority retains its native sampling/coverage so expanded
+walls cannot erase gameplay models. Transparent outside material uses the
+source wall colour. CPU and portable GPU implementations updated together.
+
+Original 32:9 captures in `tmp/titania-wide-unclipped-{gpu,software}-sep19`
+match byte-for-byte; GPU image visually inspected with extended ceiling/floor,
+player/enemy models and HUD visible. EX 16:9 capture is retained at
+`tmp/titania-wide-unclipped-ex-sep19`. Four focused tests pass, including
+Original/EX source tunnel phases and split-priority extension regression.
+Current Windows executable rebuilt; no release or physical Android acceptance.
+Earlier `titania-extended`, `titania-wide-section` and `titania-ceiling-final`
+captures are intermediate experiments, NOT final evidence.
+
+## Steam Deck overlapping device names (September 19)
+
+The physical-device duplicate filter now excludes positively identified Steam
+Input devices before examining their names. Previously a Valve virtual device
+named `Steam Deck Virtual Controller` matched both categories and was erased,
+potentially leaving no controller at all. Regression coverage now exercises
+three virtual names, preferred selection, multiplayer duplicate removal and
+fallback after disconnection. Fresh Windows and native Linux runtime input
+tests pass (0.45s and 0.02s respectively).
+
+The bundled SDL source confirms that the existing
+`SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD` environment variable is the
+actual virtual-device filtering control, rather than an SDL hint. This source
+and simulated-device evidence does not prove that issue #44's physical Gaming
+Mode/system-button problem is fully resolved; that acceptance remains open.
+
+## Game Over successful stereo coverage (September 19)
+
+`tools/check_game_over_gpu.ps1` now pins DLSS, language, 2D filtering and
+Enhanced Lighting rather than inheriting saved preferences. In addition to
+GPU/CPU late-star and mono/stereo failure comparisons, it exercises successful
+Half and Full SBS presentation, verifies packed dimensions, rejects stereo
+fallback, and checks nonblack margin stars separately for both eyes.
+
+Original and EX pass at 32:9/2x in `tmp/game-over-sbs-current-sep19`.
+Mono/GPU/CPU/forced fallback images are byte-identical; successful Half SBS is
+1600x448 and Full SBS 3200x448, with actual extended stars in both eyes. The
+EX Full SBS image was visually inspected. This improves local #46 evidence;
+it does not claim physical Quest/Index or Android acceptance or close the issue.
+
+## Titania first-corridor capture correction (September 19)
+
+The corridor capture now enters the authored BG_2_3C command, separately from
+the existing BG_2_3B water fixture. It does not advance the extra 30,000 map
+distance used to reach the water exit. Frames and GPU/software renderer are
+selectable, and the capture checks actual INATUNNEL and tunnel classification.
+
+Important correction: an initial Mode 2 assertion was wrong. BGS.ASM initializes
+Mode 2, but its VOFF info then invokes WORLD.ASM's VOFSOFFPLEASE, which explicitly
+writes Mode 1. Trace PC $03EB83 identifies that authored write; BG remains $99
+and the corridor map still has its 5,000-distance wait. The old failed assertion
+did NOT demonstrate that the scene had advanced to water. Temporary direct
+background calls and CPU tracing were removed after establishing this.
+
+Current final captures (180 presentations, neutral effects) are byte-identical
+between GPU and software for each pair:
+- Original 16:9: `tmp/titania-corridor-final-16-sep19/titania.bmp` and
+  `tmp/titania-corridor-software-16-sep19/titania.bmp`.
+- Original 32:9: `tmp/titania-corridor-final-32-sep19/titania.bmp` and
+  `tmp/titania-corridor-software-32-sep19/titania.bmp`.
+- EX 16:9: `tmp/titania-corridor-ex-16-sep19/titania.bmp` and
+  `tmp/titania-corridor-ex-software-16-sep19/titania.bmp`.
+
+Inspected images show the central tunnel cross-section with matching solid
+green outer walls, no repeated corridor artwork, and wide HUD placement.
+This follows the user's solid-border/no-duplicate tunnel requirement; it does
+not widen the authored ceiling/floor cross-section. Do not call the reporter's
+different request for a wider corridor resolved on the basis of CPU/GPU parity.
+The water fixture also still passes (`tmp/titania-water-final-sep19`). These
+are Windows captures, not a new Android-device confirmation. No issue mutation.
+
+## Live issue recheck (September 19)
+
+Re-read all six requested issue bodies and comments through GitHub:
+- #43 is now CLOSED; the owner identified 0.0.6.7 as the fix.
+- #44 remains OPEN. September 18–19 reports narrow it to Steam Deck native
+  Linux/Game Mode: desktop launch works, and the Windows build under Proton 9
+  detects the controller. A SteamOS laptop with a PS3 controller also works.
+  Existing local virtual-device enumeration fixes are not physical confirmation.
+- #46 remains OPEN; no additional comments change the Game Over starfield task.
+- #47 remains OPEN, but the reporter explicitly confirms correction in 0.0.6.7
+  (September 17). This is external evidence for the original Android report.
+- #48 remains OPEN. The reporter confirms the ending-zone improvement on Android
+  software rendering, but separately reports the FIRST corridor section remains
+  4:3. Audit that section, not just the already-confirmed exit area.
+- #49 remains CLOSED.
+
+No issues were closed or commented on by this audit. These facts supersede the
+older all-open/no-new-comments status elsewhere in the chronological notes.
+
+## Setup controller routing (September 18)
+
+Related #53 symptoms match a setup/gameplay mapping inconsistency: desktop
+south/A defaults to SNES B, which some main-page actions accept but graphics
+pages reject and Options interprets as Back. Setup now uses fixed navigation
+with south Confirm/east Back on desktop, independent of gameplay bindings and
+face-button swap. Existing fixed Switch navigation is preserved. Keyboard
+setup uses arrows/X/Z/Enter; gameplay mappings are unchanged.
+Windows and Linux runtime-input tests verify the distinction with virtual
+gamepad buttons; Windows executable rebuild succeeds. The reporter's physical
+Bazzite input and complete menu flow still need acceptance, so #53 is not closed.
+
+## Steam virtual-controller enumeration follow-up (September 14)
+
+For #44 and the related #57 Game Mode report, inspected the bundled SDL
+gamepad filter: it rejects Steam virtual VID/PID devices unless environment
+variable SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD is true. Our priority
+logic could not select a controller already filtered from SDL_GetGamepads.
+configure_native_gamepad_support now defaults this variable to 1 before input
+initialization, without overriding any explicit launcher/user value. No forced
+raw-HID access or Steam system-button interception was added.
+
+Windows and WSL/Linux runtime-input suites pass, including new default/explicit
+opt-out checks and existing virtual Deck/Steam preference, mapping and remap
+fixtures. Physical Steam Deck Game Mode confirmation is still outstanding;
+these synthetic tests do not prove the reporter's session is fixed.
+
 ## Reproducible current GPU handoff (September 13)
 
 `tools/package_pc_quest.ps1` installs into a fresh unique directory, adds the

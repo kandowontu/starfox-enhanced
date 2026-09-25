@@ -1,4 +1,5 @@
 #include "starfox/simulation/game_simulation.hpp"
+#include "starfox/render/environment_effects.hpp"
 #include "starfox/assets/bps.hpp"
 #include "starfox/state/archive.hpp"
 #include "starfox/state/container.hpp"
@@ -66,6 +67,10 @@ std::vector<std::uint8_t> GameSimulation::save_state() const {
     transfer_host_state(a, *this);
     a(objects_.save_state(), map_.save_state(), particles_.save_state(), dust_.save_state());
     a(infinite_lives_,host_god_mode_override_);
+    a(manipulation_,manipulation_intensity_);
+    a(material_);
+    a(environment_);
+    a(planet_select_cheat_,planet_cheat_active_);
     return state::pack(0x47414d01U, assets::crc32(rom_->bytes()), a.bytes());
 }
 
@@ -79,11 +84,24 @@ std::unique_ptr<GameSimulation> GameSimulation::restored_state(
     const bool legacy_cheats_menu=a.empty();
     if(!a.empty()) a(result->infinite_lives_); // Older archives default OFF.
     if(!a.empty()) a(result->host_god_mode_override_);
+    if(!a.empty()) a(result->manipulation_,result->manipulation_intensity_);
+    else if(render::manipulation(static_cast<render::Effect>(result->effect_))) {
+        result->manipulation_=result->effect_;result->effect_=0;
+        result->manipulation_intensity_=result->effect_intensity_;
+    }
+    if(!a.empty()) a(result->material_);
+    else if(render::material(static_cast<render::Effect>(result->effect_))) {
+        result->material_=result->effect_;result->effect_=0;
+    }
+    if(!a.empty()) a(result->environment_);
+    if(!a.empty()) a(result->planet_select_cheat_,result->planet_cheat_active_);
     a.finish();
     // Before Infinite Lives was added, row five was Back. Preserve the
     // action selected by older archives rather than enabling a new cheat.
     if(legacy_cheats_menu && result->pregame_page_==PregamePage::cheats
         && result->pregame_selection_==5U) result->pregame_selection_=6U;
+    result->effect_=render::canonical_effect(result->effect_);
+    result->world_effect_=render::canonical_effect(result->world_effect_);
     auto valid_enum = [](auto value, auto last) {
         return static_cast<unsigned>(value) <= static_cast<unsigned>(last);
     };
@@ -103,6 +121,9 @@ std::unique_ptr<GameSimulation> GameSimulation::restored_state(
         || result->default_laser_ > 2U || result->music_volume_ > 100U
         || result->sfx_volume_ > 100U || result->effect_intensity_ > 100U
         || result->world_effect_intensity_ > 100U || result->language_ >= 6U
+        || !render::valid_manipulation(result->manipulation_) || result->manipulation_intensity_>100
+        || !render::valid_material(result->material_)
+        || !render::valid_environment(result->environment_)
         || !render::selectable_effect(result->effect_, false)
         || !render::selectable_effect(result->world_effect_, true)
         || result->rtx_lighting_ > 3U || result->bloom_ > 3U
@@ -130,6 +151,12 @@ std::unique_ptr<GameSimulation> GameSimulation::restored_state(
     // Output-device selection belongs to the current session, not the saved
     // cartridge timeline. Preserve it without invalidating existing archives.
     result->stereo_output_ = stereo_output_;
+    result->dlss_mode_ = dlss_mode_;
+    result->fsr1_mode_ = fsr1_mode_;
+    result->fsr1_menu_ = fsr1_menu_;
+    result->reflective_surfaces_ = reflective_surfaces_;
+    result->neural_filter_available_ = neural_filter_available_;
+    result->neural_filter_requested_ = neural_filter_requested_;
     return result;
 }
 

@@ -4,6 +4,8 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_gpu.h>
 #include <cstring>
+#include <bit>
+#include <cmath>
 #include <stdexcept>
 #if defined(STARFOX_ENABLE_XBRZ)
 #include "shaders/generated/effects_portable_1.hpp"
@@ -22,8 +24,18 @@ struct Parameters {
     Uint32 bloom_model,bloom_world,bloom_width,bloom_height,filter,highlight_filter,overlay_filter,pad3;
     Uint32 shadow_width,shadow_height;Sint32 shadow_y;Uint32 shadow_enabled;
     std::array<Uint32,192> window_rows{};
+    std::array<Uint32,256> environment_classes{};
+    std::array<Uint32,4> environment_modes{};
+    std::array<float,4> environment_motion{};
+    std::array<float,4> environment_plane{};
+    std::array<float,4> backdrop_projection{};
+    std::array<std::array<float,4>,2> backdrop_keep{};
+    std::array<std::array<float,4>,2> backdrop_palette{};
+    std::array<Uint32,16> backdrop_ramp{};
+    std::array<float,4> scroll_fraction{};
+    std::array<std::array<float,4>,2> ground_gradient{};
 };
-static_assert(sizeof(Parameters)==912);
+static_assert(sizeof(Parameters)==2176);
 static_assert(sizeof(SurfaceSample)==20 && offsetof(SurfaceSample,valid)==17);
 }
 struct SdlGpuEffects::Impl {
@@ -33,11 +45,25 @@ struct SdlGpuEffects::Impl {
     Uint32 last_staging_upload{};
     SDL_GPUBuffer* buffers[5]{};Uint32 buffer_sizes[5]{};
     SDL_GPUBuffer* input_buffers[6]{};
+    // Each filtered layer is consumed before the next ordered filter enqueue.
     GpuScaleFx scalefx;
     std::vector<Uint8> overlay_payload;
+    SDL_GPUBuffer* backdrop_buffer{};
+    Uint32 backdrop_capacity{};
+    BackdropUploadCache backdrop_pixels;
     SDL_GPUTexture *images[2]{},*snapshots[2]{},*bloom[4]{},*native{},*side{},*dummy_read{},*dummy_write[4]{};
     SDL_GPUTexture* capture{};
+    struct History {
+        SDL_GPUTexture* textures[2]{};
+        unsigned index{},key{};
+        Uint32 width{},height{},scale{};
+        std::uint64_t epoch{};
+        double time{};
+        bool valid{};
+    };
+    std::array<History,3> histories{};
     bool capture_pending{};
+    bool overlay_debug_captured{};
     Uint32 width{},height{},scale{};std::string status{"SDL GPU effects not initialized"};
     bool failed{};
     ~Impl() {
@@ -46,6 +72,7 @@ struct SdlGpuEffects::Impl {
         if(fence) {SDL_WaitForGPUFences(device,true,&fence,1);SDL_ReleaseGPUFence(device,fence);}
         release_textures();
         for(auto* b:buffers) if(b) SDL_ReleaseGPUBuffer(device,b);
+        if(backdrop_buffer) SDL_ReleaseGPUBuffer(device,backdrop_buffer);
         if(upload) SDL_ReleaseGPUTransferBuffer(device,upload);
         if(download) SDL_ReleaseGPUTransferBuffer(device,download);
         if(pipeline) SDL_ReleaseGPUComputePipeline(device,pipeline);
@@ -53,11 +80,12 @@ struct SdlGpuEffects::Impl {
     void finish() {
         if(fence) {require(SDL_WaitForGPUFences(device,true,&fence,1));SDL_ReleaseGPUFence(device,fence);fence=nullptr;}
     }
-    void release_textures() {
+    void release_textures(bool release_history=true) {
         const auto release=[&](SDL_GPUTexture*& t){if(t) SDL_ReleaseGPUTexture(device,t);t=nullptr;};
         for(auto& t:images) release(t);
         for(auto& t:snapshots) release(t);
         for(auto& t:bloom) release(t);
+        if(release_history) for(auto& history:histories) {for(auto& t:history.textures)release(t);history.valid=false;}
         for(auto& t:dummy_write) release(t);
         release(native);release(side);release(dummy_read);release(capture);
         capture_pending=false;
@@ -75,13 +103,20 @@ struct SdlGpuEffects::Impl {
         if(formats&SDL_GPU_SHADERFORMAT_SPIRV) {
             info.format=SDL_GPU_SHADERFORMAT_SPIRV;info.code=portable_shader::spirv;
             info.code_size=sizeof(portable_shader::spirv);info.entrypoint="main";
-        } else if(formats&SDL_GPU_SHADERFORMAT_MSL) {
+        }
+#if defined(__APPLE__)
+        else if(formats&SDL_GPU_SHADERFORMAT_MSL) {
             info.format=SDL_GPU_SHADERFORMAT_MSL;info.code=reinterpret_cast<const Uint8*>(portable_shader::metal);
             info.code_size=sizeof(portable_shader::metal)-1;info.entrypoint="main0";
-        } else if(formats&SDL_GPU_SHADERFORMAT_DXIL) {
+        }
+#endif
+#if defined(_WIN32)
+        else if(formats&SDL_GPU_SHADERFORMAT_DXIL) {
             info.format=SDL_GPU_SHADERFORMAT_DXIL;info.code=portable_shader::dxil;
             info.code_size=sizeof(portable_shader::dxil);info.entrypoint="main";
-        } else throw std::runtime_error("SDL GPU effects require SPIR-V, Metal or DXIL");
+        }
+#endif
+        else throw std::runtime_error("SDL GPU effects require a supported native shader format");
         info.num_readonly_storage_textures=6;info.num_readonly_storage_buffers=6;
         info.num_readwrite_storage_textures=4;info.num_uniform_buffers=1;
         info.threadcount_x=info.threadcount_y=8;info.threadcount_z=1;
@@ -90,7 +125,9 @@ struct SdlGpuEffects::Impl {
     }
     void resize(const Framebuffer& frame) {
         if(width==frame.stored_width() && height==frame.stored_height() && scale==frame.draw_scale()) return;
-        release_textures();width=height=scale=0;
+        // Overlay/filter work can use a different extent between temporal
+        // frames. History owns its own dimensions and is checked by apply().
+        release_textures(false);width=height=scale=0;
         const auto w=frame.stored_width(),h=frame.stored_height(),s=frame.draw_scale();
         for(auto& t:images) t=texture(w,h);
         dummy_read=texture(1,1);
@@ -111,6 +148,8 @@ struct SdlGpuEffects::Impl {
         const auto full=std::uint64_t(width)*height*4;
         for(auto* t:images) if(t) total+=full;
         for(auto* t:snapshots) if(t) total+=full;
+        for(const auto& history:histories) for(auto* t:history.textures) if(t)
+            total+=std::uint64_t(history.width)*history.height*16;
         if(side) total+=full;
         if(capture) total+=full;
         if(native && scale) total+=std::uint64_t(width/scale)*(height/scale)*4;
@@ -184,6 +223,9 @@ struct SdlGpuEffects::Impl {
                 || overlay->frame->width()!=frame.width() || overlay->frame->height()!=frame.height()
                 || s.overlay_palette.empty() || s.overlay_palette.size()>256)
                 throw std::runtime_error("Invalid subtractive overlay");
+            if(overlay->resident.pixels && (overlay->resident.device!=device
+                || overlay->resident.width!=frame.width() || overlay->resident.height!=frame.height()))
+                throw std::runtime_error("Invalid resident subtractive overlay");
         }
         for(const auto* overlay:{&s.host_overlay,&s.confirmation_overlay})
             if(*overlay && ((*overlay)->width>6144 || (*overlay)->height>6144
@@ -192,15 +234,56 @@ struct SdlGpuEffects::Impl {
         if(s.circle) {
             const auto& c=*s.circle;
             const auto absolute=[](std::int32_t v) {return v<0?-std::int64_t(v):std::int64_t(v);};
-            if(c.radius<0 || c.radius>16383
-                || absolute(c.x)+frame.stored_width()>16383
-                || absolute(c.y)+frame.stored_height()>16383
+            if(c.radius<0 || c.radius>GpuEffectSettings::Circle::exact_limit
+                || absolute(c.x)+frame.stored_width()>GpuEffectSettings::Circle::exact_limit
+                || absolute(c.y)+frame.stored_height()>GpuEffectSettings::Circle::exact_limit
                 || c.red>31 || c.green>31 || c.blue>31)
                 throw std::runtime_error("GPU circle outside exact integer range");
         }
         finish();resize(frame);capture_pending=false;
+        auto& history_state=histories[std::min(s.persistence_slot,2U)];
+        auto& history=history_state.textures;
+        auto& history_valid=history_state.valid;
+        auto& history_index=history_state.index;
+        auto& history_key=history_state.key;
+        auto& history_epoch=history_state.epoch;
+        auto& history_time=history_state.time;
+        const bool persistence=s.persistence_mode>0 && s.persistence_mode<=2
+            && (s.persistence_models || s.persistence_world) && s.persistence_intensity
+            && std::isfinite(s.presentation_seconds);
+        if(!persistence && !s.preserve_persistence) {
+            for(auto& state:histories) {
+                for(auto& t:state.textures) {if(t)SDL_ReleaseGPUTexture(device,t);t=nullptr;}
+                state.valid=false;
+            }
+        } else if(persistence) {
+            if(history_state.width!=width || history_state.height!=height || history_state.scale!=scale) {
+                for(auto& t:history) {if(t)SDL_ReleaseGPUTexture(device,t);t=nullptr;}
+                history_valid=false;
+            }
+            history_state.width=width;history_state.height=height;history_state.scale=scale;
+            for(auto& t:history) if(!t)t=texture(width,height,true);
+        }
         ensure_optional_textures(s,has_overlays);
         const Uint32 bytes=width*height*4;
+        struct OverlayDebug {
+            SDL_GPUDevice* device{};
+            std::array<SDL_GPUTexture*,4> images{};
+            SDL_GPUTransferBuffer* download{};
+            ~OverlayDebug() {
+                for(auto* t:images) if(t) SDL_ReleaseGPUTexture(device,t);
+                if(download) SDL_ReleaseGPUTransferBuffer(device,download);
+            }
+        };
+        std::unique_ptr<OverlayDebug> debug;
+        const char* debug_path=SDL_getenv("STARFOX_TEST_OVERLAY_DEBUG");
+        if(debug_path && !overlay_debug_captured && s.filter==5 && s.subtractive_overlays[0]
+            && s.subtractive_overlays[1] && s.subtractive_overlays[0]->brightness==30) {
+            debug=std::make_unique<OverlayDebug>();debug->device=device;
+            for(auto& t:debug->images) t=texture(width,height);
+            SDL_GPUTransferBufferCreateInfo info{SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,bytes*4,0};
+            debug->download=SDL_CreateGPUTransferBuffer(device,&info);require(debug->download);
+        }
         Parameters p{width,height,scale,0,s.hdr,s.chromatic,s.smoothing,s.model_effect,s.world_effect,
             s.model_intensity,s.world_intensity,s.anti_aliasing,0,0,0,0,0,0,0,0,0,0,0,0,
             s.bloom_model,s.bloom_world,(width+2*scale-1)/(2*scale),(height+2*scale-1)/(2*scale),
@@ -213,16 +296,18 @@ struct SdlGpuEffects::Impl {
         if(glow && !(s.bloom_model || s.bloom_world)) throw std::runtime_error("Missing bloom settings");
         std::span<const Uint8> data[5]{frame.layer_tags(),frame.pixels(),{},s.shadow_mask,
             s.setup_overlay?s.setup_overlay->frame->pixels():std::span<const Uint8>{}};
-        Uint32 palette_offset{},overlay_offsets[2]{};
+        Uint32 palette_offset{},overlay_offsets[2]{},backdrop_upload_offset{},backdrop_upload_size{};
+        const BackdropImage* backdrop=s.environment.modes[2]?s.environment.backdrop:nullptr;
         if(has_overlays) {
-            // Share the auxiliary upload with setup ink; the source palette and
-            // indices stay compact. No CPU RGBA expansion/filtering is needed.
+            // Share the auxiliary upload with setup ink and the source palette.
+            // Resident overlays bind packed GPU indices directly; only legacy
+            // CPU overlays append index bytes. Neither needs CPU RGBA expansion.
             overlay_payload.assign(data[4].begin(),data[4].end());
             overlay_payload.resize((overlay_payload.size()+3)&~std::size_t(3),0);
             palette_offset=Uint32(overlay_payload.size());
             for(const auto& c:s.overlay_palette)
                 overlay_payload.insert(overlay_payload.end(),{c.r,c.g,c.b,c.a});
-            for(unsigned i=0;i<2;++i) if(s.subtractive_overlays[i]) {
+            for(unsigned i=0;i<2;++i) if(s.subtractive_overlays[i] && !s.subtractive_overlays[i]->resident.pixels) {
                 overlay_payload.resize((overlay_payload.size()+3)&~std::size_t(3),0);
                 overlay_offsets[i]=Uint32(overlay_payload.size());
                 const auto& pixels=s.subtractive_overlays[i]->frame->pixels();
@@ -230,7 +315,23 @@ struct SdlGpuEffects::Impl {
             }
             data[4]=overlay_payload;
         }
-        if((s.lighting || model) && s.surfaces && !s.surfaces->empty()) {
+        if(backdrop) {
+            const auto& sky=*backdrop;
+            if(!sky.width || !sky.height || sky.width>8192 || sky.height>8192 || sky.pixels.size()!=std::size_t(sky.width)*sky.height)
+                throw std::runtime_error("Invalid enhanced backdrop");
+            // Sealed assets use stable identities; mutable callers compare
+            // contents, never addresses. Scroll/style never require reupload.
+            if(!backdrop_buffer || !backdrop_pixels.matches(sky))
+                backdrop_upload_size=Uint32(sky.pixels.size()*4);
+            if(backdrop_upload_size>backdrop_capacity) {
+                if(backdrop_buffer) SDL_ReleaseGPUBuffer(device,backdrop_buffer);
+                backdrop_buffer=nullptr;
+                SDL_GPUBufferCreateInfo info{SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ,backdrop_upload_size,0};
+                backdrop_buffer=SDL_CreateGPUBuffer(device,&info);require(backdrop_buffer);
+                backdrop_capacity=backdrop_upload_size;
+            }
+        }
+        if((s.lighting || model || s.resident_reflection.buffer) && s.surfaces && !s.surfaces->empty()) {
             const auto& surface=*s.surfaces;p.lighting=s.lighting;p.surface_width=surface.width();p.surface_height=surface.height();
             p.surface_x=s.surface_x;p.surface_y=s.surface_y;
             p.min_x=std::max(1,p.surface_x+int(surface.minimum_x()));p.min_y=std::max(1,p.surface_y+int(surface.minimum_y()));
@@ -259,6 +360,13 @@ struct SdlGpuEffects::Impl {
                 throw std::runtime_error("Invalid packed resident shadow stride");
             p.shadow_enabled=s.resident_shadow.packed_row_bytes?3:2;data[3]={};
         }
+        if(s.resident_reflection.buffer) {
+            const auto& r=s.resident_reflection;
+            if(r.device!=device || !r.width || !r.height || r.width>width
+                || r.row_bytes!=std::uint64_t(r.width)*4
+                || (!resident && !s.environment.ray_water && (!s.surfaces || s.surfaces->empty())))
+                throw std::runtime_error("Incompatible resident reflection input");
+        }
         Uint32 offsets[5]{},sizes[5]{},total=resident?0U:(bytes+255)&~255U;
         for(unsigned i=0;i<5;++i) {
             // Resident composition already supplies these bindings. Do not
@@ -273,6 +381,10 @@ struct SdlGpuEffects::Impl {
                 buffers[i]=SDL_CreateGPUBuffer(device,&info);require(buffers[i]);buffer_sizes[i]=sizes[i];
             }
         }
+        if(backdrop_upload_size) {
+            backdrop_upload_offset=total;
+            total+=(backdrop_upload_size+255)&~255U;
+        }
         last_staging_upload=total;
         if(total) transfer(upload,upload_size,total,SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD);
         if(!present) transfer(download,download_size,bytes*3,SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD);
@@ -285,6 +397,8 @@ struct SdlGpuEffects::Impl {
             // Only DWORD padding is uploaded; alignment gaps are never read.
             std::memset(mapped+offsets[i]+data[i].size(),0,sizes[i]-data[i].size());
         }
+        if(backdrop_upload_size)
+            std::memcpy(mapped+backdrop_upload_offset,backdrop->pixels.data(),backdrop_upload_size);
         if(total) SDL_UnmapGPUTransferBuffer(device,upload);
         command=SDL_AcquireGPUCommandBuffer(device);require(command);
         auto* pass=SDL_BeginGPUCopyPass(command);require(pass);
@@ -300,6 +414,11 @@ struct SdlGpuEffects::Impl {
             SDL_GPUTransferBufferLocation a{upload,offsets[i]};SDL_GPUBufferRegion b{buffers[i],0,sizes[i]};
             SDL_UploadToGPUBuffer(pass,&a,&b,false);
             input_buffers[i==4?5:i]=buffers[i];
+        }
+        if(backdrop_upload_size) {
+            SDL_GPUTransferBufferLocation a{upload,backdrop_upload_offset};
+            SDL_GPUBufferRegion b{backdrop_buffer,0,backdrop_upload_size};
+            SDL_UploadToGPUBuffer(pass,&a,&b,false);
         }
         if(resident) {
             input_buffers[0]=input_buffers[1]=static_cast<SDL_GPUBuffer*>(resident->packed);
@@ -322,9 +441,27 @@ struct SdlGpuEffects::Impl {
             }
             run(14);
         }
+        if(s.resident_reflection.buffer && s.reflection_intensity) {
+            const auto& r=s.resident_reflection;auto reflection=p;
+            reflection.shadow_width=r.width;reflection.shadow_height=r.height;
+            reflection.shadow_y=s.reflection_offset_y;
+            reflection.pad0=int(std::min(s.reflection_intensity,100U));
+            reflection.pad1=0;
+            reflection.overlay_filter=s.reflection_material?1:0;
+            auto* saved=input_buffers[3];input_buffers[3]=static_cast<SDL_GPUBuffer*>(r.buffer);
+            dispatch(reflection,30,images[current],images[1-current]);current=1-current;
+            input_buffers[3]=saved;
+        }
+        // Isolated artwork owns its final pixels, not the model metadata below
+        // it. Illuminate the scene before placing portraits/briefing text.
+        if(has_overlays && p.lighting) run(6);
         for(unsigned i=0;i<2;++i) if(s.subtractive_overlays[i]) {
             auto overlay=p;
+            auto* saved_shadow=input_buffers[3];
+            if(s.subtractive_overlays[i]->resident.pixels)
+                input_buffers[3]=static_cast<SDL_GPUBuffer*>(s.subtractive_overlays[i]->resident.pixels);
             overlay.pad0=int(overlay_offsets[i]);overlay.pad1=int(palette_offset);
+            overlay.pad3=s.subtractive_overlays[i]->resident.pixels?1:0;
             overlay.lighting=Uint32(s.overlay_palette.size());
             overlay.hdr=30-std::min(s.subtractive_overlays[i]->brightness,30U);
             overlay.overlay_filter=1;
@@ -336,8 +473,11 @@ struct SdlGpuEffects::Impl {
                     input_buffers[4]=static_cast<SDL_GPUBuffer*>(result.buffer);
                 }
                 dispatch(overlay,14,images[current],side);
+                if(debug) copy(side,debug->images[i+2]);
             }
             dispatch(overlay,29,images[current],images[1-current],p.filter?side:nullptr);current=1-current;
+            if(debug) copy(images[current],debug->images[i]);
+            input_buffers[3]=saved_shadow;
         }
         if(s.background_subtract) {
             auto fade=p;
@@ -366,6 +506,7 @@ struct SdlGpuEffects::Impl {
             fade.min_x=f.left;fade.min_y=f.top;fade.max_x=f.right;fade.max_y=f.bottom;
             fade.hdr=std::min(f.isolate_amount,31U);fade.chromatic=std::min(f.level_amount,31U);
             fade.pad0=(f.isolate?1:0)|(f.level?2:0);
+            if(f.coverage) {fade.pad0|=4;std::copy(f.rows.begin(),f.rows.end(),fade.window_rows.begin());}
             dispatch(fade,27,images[current],images[1-current]);current=1-current;
         }
         if(s.window_mask) {
@@ -386,7 +527,7 @@ struct SdlGpuEffects::Impl {
             dispatch(shutter,18,images[current],images[1-current]);current=1-current;
         };
         apply_horizontal_wipe();
-        if(p.lighting) run(6);
+        if(p.lighting && !has_overlays) run(6);
         if(p.hdr) run(1);
         if(p.chromatic) run(2);
         if(p.shadow_enabled && s.shadow_before_style) run(15);
@@ -404,8 +545,56 @@ struct SdlGpuEffects::Impl {
             overlay.surface_width=h.width;overlay.surface_height=h.height;
             dispatch(overlay,24,images[current],images[1-current]);current=1-current;
         }
+        if(s.environment.active()) {
+            auto env=p;env.environment_classes=s.environment.classes;
+            env.environment_modes=s.environment.modes;env.environment_motion=s.environment.motion;env.environment_plane=s.environment.plane;env.scroll_fraction=s.environment.scroll_fraction;
+            env.ground_gradient=s.environment.ground_gradient;
+            env.backdrop_projection=s.environment.backdrop_projection;env.backdrop_keep=s.environment.backdrop_keep;
+            env.backdrop_palette=s.environment.backdrop_palette;
+            env.backdrop_ramp=s.environment.backdrop_ramp;
+            env.overlay_filter=s.environment.water_reflections && !s.environment.ray_water?1:0;
+            env.surface_width=backdrop?backdrop->width:0;
+            env.surface_height=backdrop?backdrop->height:0;
+            env.surface_x=0;
+            auto* saved_setup=input_buffers[5];
+            if(backdrop) input_buffers[5]=backdrop_buffer;
+            dispatch(env,31,images[current],images[1-current]);current=1-current;
+            input_buffers[5]=saved_setup;
+            if(s.environment.ray_water && s.resident_reflection.buffer) {
+                const auto& r=s.resident_reflection;
+                env.shadow_width=r.width;env.shadow_height=r.height;env.shadow_y=s.reflection_offset_y;
+                env.pad0=100;env.pad1=1;
+                auto* saved=input_buffers[3];input_buffers[3]=static_cast<SDL_GPUBuffer*>(r.buffer);
+                dispatch(env,30,images[current],images[1-current]);current=1-current;
+                input_buffers[3]=saved;
+            }
+        }
+        // Diagnostic for mobile Vulkan drivers which appear to reuse the
+        // environment output before the following bloom extraction sees it.
+        if(const auto* barrier=std::getenv("STARFOX_GPU_STAGE_BARRIER"); barrier && s.environment.active()
+            && (p.bloom_model || p.bloom_world)) {
+            if(std::string_view(barrier)=="2") {
+                require(SDL_SubmitGPUCommandBuffer(command));command=nullptr;
+            } else {
+                auto* completed=SDL_SubmitGPUCommandBufferAndAcquireFence(command);
+                command=nullptr;require(completed);
+                require(SDL_WaitForGPUFences(device,true,&completed,1));
+                SDL_ReleaseGPUFence(device,completed);
+            }
+            command=SDL_AcquireGPUCommandBuffer(device);require(command);
+        }
         if(p.smoothing) run(3);
+        if(decorative_material(static_cast<Effect>(s.material))) {
+            auto material=p;material.model=s.material;material.world=0;material.model_intensity=100;
+            dispatch(material,4,images[current],images[1-current]);current=1-current;
+        }
         if(p.model || p.world) run(4);
+        if(spatial_manipulation(static_cast<Effect>(s.manipulation)) && s.manipulation_intensity) {
+            auto manipulation=p;
+            manipulation.model=s.manipulation;manipulation.world=0;
+            manipulation.model_intensity=s.manipulation_intensity;
+            dispatch(manipulation,4,images[current],images[1-current]);current=1-current;
+        }
         if(p.bloom_model || p.bloom_world) {
             copy(images[current],snapshots[0]);
             dispatch(p,7,images[current],nullptr,nullptr,nullptr,bloom[0]);
@@ -429,6 +618,20 @@ struct SdlGpuEffects::Impl {
             dispatch(overlay,25,images[current],images[1-current]);current=1-current;
         }
         if(s.touch_controls) run(26);
+        if(persistence) {
+            const unsigned key=s.persistence_mode|(s.persistence_models?4U:0U)|(s.persistence_world?8U:0U);
+            const bool reset=!history_valid || key!=history_key || s.scene_epoch!=history_epoch
+                || s.presentation_seconds<history_time || s.presentation_seconds-history_time>1.;
+            const float decay=reset?0.f:s.persistence_mode==2?1.f:
+                float(std::exp2(-(s.presentation_seconds-history_time)/.35));
+            auto temporal=p;
+            temporal.pad0=std::bit_cast<Sint32>(decay);
+            temporal.pad1=int(std::min(s.persistence_intensity,100U));
+            temporal.chromatic=(s.persistence_models?1U:0U)|(s.persistence_world?2U:0U)|(reset?4U:0U);
+            dispatch(temporal,32,images[current],images[1-current],history[history_index],nullptr,history[1-history_index]);
+            current=1-current;history_index=1-history_index;
+            history_valid=true;history_key=key;history_epoch=s.scene_epoch;history_time=s.presentation_seconds;
+        }
         if(present) {
             if(!capture) capture=texture(width,height);
             copy(images[current],capture);capture_pending=true;
@@ -444,7 +647,26 @@ struct SdlGpuEffects::Impl {
             if(s.bloom_base) download_texture(snapshots[0],bytes);
             if(s.bloom_glow) download_texture(snapshots[1],bytes*2);
         }
+        if(debug) {
+            auto* pass=SDL_BeginGPUCopyPass(command);require(pass);
+            for(unsigned i=0;i<4;++i) {
+                SDL_GPUTextureRegion region{debug->images[i],0,0,0,0,0,width,height,1};
+                SDL_GPUTextureTransferInfo destination{debug->download,bytes*i,0,0};
+                SDL_DownloadFromGPUTexture(pass,&region,&destination);
+            }
+            SDL_EndGPUCopyPass(pass);
+        }
         fence=SDL_SubmitGPUCommandBufferAndAcquireFence(command);command=nullptr;require(fence);
+        if(backdrop_upload_size) backdrop_pixels.remember(*backdrop);
+        if(debug) {
+            finish();auto* data=static_cast<Uint8*>(SDL_MapGPUTransferBuffer(device,debug->download,false));require(data);
+            for(unsigned i=0;i<4;++i) {
+                auto* surface=SDL_CreateSurfaceFrom(width,height,SDL_PIXELFORMAT_RGBA32,data+bytes*i,width*4);require(surface);
+                const auto path=std::string(debug_path)+"-"+std::to_string(i)+".bmp";
+                SDL_SaveBMP(surface,path.c_str());SDL_DestroySurface(surface);
+            }
+            SDL_UnmapGPUTransferBuffer(device,debug->download);overlay_debug_captured=true;
+        }
         if(!present) {
             // Keep input untouched until all requested snapshots succeed.
             if(p.bloom_model || p.bloom_world) {if(s.bloom_base) read(*s.bloom_base,bytes);if(s.bloom_glow) read(*s.bloom_glow,bytes*2);}

@@ -128,13 +128,14 @@ std::int32_t mosaic_coordinate(
 
 } // namespace
 
-std::uint8_t tunnel_wall_index(const simulation::SnesPpuState& ppu) noexcept {
-    constexpr unsigned row=112;
+std::uint8_t tunnel_border_index(const simulation::SnesPpuState& ppu,
+    unsigned screen_y,unsigned screen_x) noexcept {
+    const unsigned row=std::min(screen_y,223U);
     const unsigned width=(ppu.bg2_screen_size&1U)?64U:32U;
     const unsigned height=(ppu.bg2_screen_size&2U)?64U:32U;
     const unsigned edge=ppu.bg2_tile_size_16?16U:8U;
-    const unsigned x=unsigned(ppu.bg2_horizontal_offsets_enabled
-        ?ppu.bg2_horizontal_offsets[row]:ppu.bg2_scroll_x)&(width*edge-1);
+    const unsigned x=(screen_x+unsigned(ppu.bg2_horizontal_offsets_enabled
+        ?ppu.bg2_horizontal_offsets[row]:ppu.bg2_scroll_x))&(width*edge-1);
     const unsigned y=(row+unsigned(ppu.bg2_scanline_scroll_enabled
         ?ppu.bg2_scanline_scroll_y[row]:ppu.bg2_scroll_y))&(height*edge-1);
     const unsigned tx=x/edge,ty=y/edge;
@@ -153,6 +154,10 @@ std::uint8_t tunnel_wall_index(const simulation::SnesPpuState& ppu) noexcept {
     return result;
 }
 
+std::uint8_t tunnel_wall_index(const simulation::SnesPpuState& ppu) noexcept {
+    return tunnel_border_index(ppu,112,0);
+}
+
 void BackgroundRenderer::draw_bg1(
     const simulation::SnesPpuState& ppu,
     Framebuffer& target,
@@ -160,7 +165,9 @@ void BackgroundRenderer::draw_bg1(
     std::int32_t horizontal_origin,
     bool extend_horizontal,
     std::uint32_t horizontal_inset,
-    bool transparent_cgram_black) const noexcept {
+    bool transparent_cgram_black,
+    bool mosaic_staging_inset,
+    bool text_outline) const noexcept {
     if ((ppu.main_screen & 0x01U) == 0U
         || (ppu.background_mode != 1U && ppu.background_mode != 2U
             && ppu.background_mode != 3U)) return;
@@ -174,6 +181,28 @@ void BackgroundRenderer::draw_bg1(
         value %= modulus;
         return value < 0 ? value + modulus : value;
     };
+    const auto outline_sample=[&](int x,int y) {
+        if(y<0 || y>=int(target.height()) || x+horizontal_origin<0
+            || x+horizontal_origin>=int(target.width())) return false;
+        if(!extend_horizontal) {
+            const int inset=int(std::min(horizontal_inset,128U));
+            const int step=mosaic_staging_inset && (ppu.mosaic&1U)?(ppu.mosaic>>4U)+1:1;
+            if(x<((inset+step-1)/step)*step
+                || x>=std::min(256,((256-inset+step-1)/step)*step)) return false;
+        }
+        x=wrap(mosaic_coordinate(x,ppu.mosaic,1)+ppu.bg1_scroll_x,width_pixels);
+        y=wrap(mosaic_coordinate(y,ppu.mosaic,1)+ppu.bg1_scroll_y,height_pixels);
+        const unsigned tx=unsigned(x)/tile_edge,ty=unsigned(y)/tile_edge;
+        const auto tile=vram_word(ppu,ppu.bg1_screen_base
+            +((tx>>5)+(ty>>5)*pages_wide)*1024+(ty&31)*32+(tx&31));
+        if(!selected_priority(tile,priority)) return false;
+        const auto sample=tile_sample(tile,x,y,ppu.bg1_tile_size_16);
+        const auto ink=ppu.background_mode==3
+            ?tile_pixel_8bpp(ppu,ppu.bg1_character_base,sample.tile,sample.x,sample.y)
+            :tile_pixel_4bpp(ppu,ppu.bg1_character_base,sample.tile,sample.x,sample.y);
+        const unsigned index=ppu.background_mode==3?ink:((tile>>10)&7)*16+ink;
+        return ink && !(transparent_cgram_black && !(ppu.cgram[index]&32767));
+    };
     for (std::uint32_t screen_y = 0; screen_y < target.height(); ++screen_y) {
         const auto sample_y = mosaic_coordinate(
             static_cast<std::int32_t>(screen_y), ppu.mosaic, 0x01U);
@@ -182,15 +211,20 @@ void BackgroundRenderer::draw_bg1(
         const auto tile_y = static_cast<std::uint32_t>(source_y) / tile_edge;
         const auto inset = static_cast<std::int32_t>(
             std::min(horizontal_inset, 128U));
+        const int step=mosaic_staging_inset && (ppu.mosaic&1U)?(ppu.mosaic>>4U)+1:1;
+        const int left_inset=((inset+step-1)/step)*step;
+        const int right_limit=std::min(256,((256-inset+step-1)/step)*step);
         const auto first_x = extend_horizontal ? 0U
             : static_cast<std::uint32_t>(std::max(
-                horizontal_origin + inset, 0));
+                horizontal_origin + left_inset, 0));
         const auto final_x = extend_horizontal ? target.width()
             : std::min(target.width(), static_cast<std::uint32_t>(
-                std::max(horizontal_origin + 256 - inset, 0)));
+                std::max(horizontal_origin + right_limit, 0)));
         for (auto screen_x = first_x; screen_x < final_x; ++screen_x) {
             const auto logical_x = static_cast<std::int32_t>(screen_x)
                 - horizontal_origin;
+            if(ppu.tunnel_scene && extend_horizontal && priority==TilePriorityPass::high
+                && (logical_x<0 || logical_x>=256)) continue;
             const auto sample_x = mosaic_coordinate(
                 logical_x, ppu.mosaic, 0x01U);
             const auto source_x = wrap(sample_x
@@ -201,24 +235,41 @@ void BackgroundRenderer::draw_bg1(
                 + (tile_y & 31U) * 32U + (tile_x & 31U);
             const auto tile = vram_word(ppu,
                 static_cast<std::uint32_t>(ppu.bg1_screen_base) + entry);
-            if (!selected_priority(tile, priority)) continue;
+            const bool selected=selected_priority(tile,priority);
+            if (!selected && !text_outline) continue;
             const auto sample = tile_sample(
                 tile, source_x, source_y, ppu.bg1_tile_size_16);
-            const auto colour = ppu.background_mode == 3U
+            const auto colour = !selected?0:ppu.background_mode == 3U
                 ? tile_pixel_8bpp(ppu, ppu.bg1_character_base, sample.tile,
                     sample.x, sample.y)
                 : tile_pixel_4bpp(ppu, ppu.bg1_character_base, sample.tile,
                     sample.x, sample.y);
             if (colour != 0U) {
-                const auto indexed_colour = ppu.background_mode == 3U ? colour
+                auto indexed_colour = ppu.background_mode == 3U ? colour
                     : static_cast<std::uint8_t>(
                         ((tile >> 10U) & 7U) * 16U + colour);
                 if (transparent_cgram_black
                     && (ppu.cgram[indexed_colour] & 0x7fffU) == 0U) {
+                    if(text_outline && (outline_sample(logical_x-1,int(screen_y))
+                        || outline_sample(logical_x+1,int(screen_y))
+                        || outline_sample(logical_x,int(screen_y)-1)
+                        || outline_sample(logical_x,int(screen_y)+1))) target.set(int(screen_x),int(screen_y),255);
                     continue;
+                }
+                if(text_outline) {
+                    const auto c=ppu.cgram[indexed_colour];
+                    const unsigned r=c&31,g=(c>>5)&31,b=(c>>10)&31;
+                    // Sum alone treats dark brown/red/blue as bright text.
+                    // Keep vivid highlights, but lift low-luminance letters.
+                    if(r+g+b<=24 || 54*r+183*g+19*b<16*256) indexed_colour=254;
                 }
                 target.set(static_cast<std::int32_t>(screen_x),
                     static_cast<std::int32_t>(screen_y), indexed_colour);
+            } else if(text_outline && (outline_sample(logical_x-1,int(screen_y))
+                || outline_sample(logical_x+1,int(screen_y))
+                || outline_sample(logical_x,int(screen_y)-1)
+                || outline_sample(logical_x,int(screen_y)+1))) {
+                target.set(int(screen_x),int(screen_y),255);
             }
         }
     }
@@ -235,7 +286,9 @@ void BackgroundRenderer::draw_bg2(
     bool wrap_horizontal,
     bool transparent_cgram_black,
     std::uint32_t single_occurrence_top_rows,
-    std::span<const BackgroundUniqueRegion> unique_regions) const noexcept {
+    std::span<const BackgroundUniqueRegion> unique_regions,
+    bool ending_star_extension, bool game_over_star_extension,
+    std::uint32_t sky_source_min) const noexcept {
     if ((ppu.main_screen & 0x02U) == 0U) return;
     const auto width_tiles = (ppu.bg2_screen_size & 1U) != 0U ? 64U : 32U;
     const auto height_tiles = (ppu.bg2_screen_size & 2U) != 0U ? 64U : 32U;
@@ -487,15 +540,24 @@ void BackgroundRenderer::draw_bg2(
             const auto logical_x = static_cast<std::int32_t>(screen_x)
                 - horizontal_origin;
             if (ppu.tunnel_scene && extend_horizontal
+                && priority == TilePriorityPass::high
                 && (logical_x < 0 || logical_x >= 256)) {
-                // Tunnel art is a closed, cartridge-width cross-section.
-                // Fill only the background; models/HUD still render wide.
-                target.set(static_cast<std::int32_t>(screen_x),
-                    static_cast<std::int32_t>(screen_y), wall_colour);
+                // The low pass already widens the full tunnel cross-section.
+                // Do not paint a second, wrapped high-priority copy over it.
                 continue;
             }
+            if (ppu.tunnel_scene && extend_horizontal
+                && priority != TilePriorityPass::high
+                && (logical_x < 0 || logical_x >= 256)) {
+                // Widen one authored cross-section rather than tiling tunnels.
+                // Transparent outer texels retain the closed side-wall colour.
+                target.set(static_cast<std::int32_t>(screen_x),
+                    static_cast<std::int32_t>(screen_y), wall_colour);
+            }
             const auto sample_x = mosaic_coordinate(
-                logical_x, ppu.mosaic, 0x02U);
+                ppu.tunnel_scene && extend_horizontal && priority!=TilePriorityPass::high
+                    ? std::clamp(logical_x, 0, 255) : logical_x,
+                ppu.mosaic, 0x02U);
             const auto sampled_screen_x = std::clamp(
                 sample_x + horizontal_origin,
                 static_cast<std::int32_t>(first_x),
@@ -509,9 +571,12 @@ void BackgroundRenderer::draw_bg2(
             // scanline/HDMA writes. Invalid entries still use that register.
             const auto current_scroll_y = tile_scroll_y != no_column_scroll
                 ? tile_scroll_y : register_scroll_y;
-            const auto source_y = wrap(
+            auto source_y = wrap(
                 sample_y + current_scroll_y,
                 height_pixels);
+            if(expanded_mode2 && screen_y<144U && (logical_x<0 || logical_x>=256)
+                && sky_source_min<unsigned(height_pixels) && source_y<int(sky_source_min))
+                source_y=int(sky_source_min);
             const auto column_index = screen_x - first_x;
             if (!previous_ground_source_y.empty()) {
                 const auto previous_source_y =
@@ -535,8 +600,30 @@ void BackgroundRenderer::draw_bg2(
                     continue;
                 }
             }
+            auto unwrapped_source_x = sample_x + row_scroll_x;
+            if ((ending_star_extension || game_over_star_extension) && extend_horizontal
+                && (logical_x < 0 || logical_x >= 256)
+                && (game_over_star_extension || unwrapped_source_x < 0 || unwrapped_source_x >= width_pixels)) {
+                // The upper-left 256x128 of BG_CRED contains only stars.
+                // Keep the entire first atlas occurrence intact (nebulae
+                // included), then extend using stable 32x32 star patches.
+                // Hash world cells, not frame/time, to avoid shimmer.
+                const auto cell_x = static_cast<std::uint32_t>(unwrapped_source_x) >> 5U;
+                const auto cell_y = static_cast<std::uint32_t>(sample_y + current_scroll_y) >> 5U;
+                auto seed = cell_x * 0x9e3779b9U ^ cell_y * 0x85ebca6bU;
+                seed ^= seed >> 16U; seed *= 0x7feb352dU; seed ^= seed >> 15U;
+                unwrapped_source_x = static_cast<std::int32_t>((seed & 7U) * 32U)
+                    + (unwrapped_source_x & 31);
+                source_y = static_cast<std::int32_t>(((seed >> 3U) & 3U) * 32U)
+                    + ((sample_y + current_scroll_y) & 31);
+                if(game_over_star_extension) {
+                    // BG_AND combines the dense stars and Andross in one
+                    // atlas. Only rows 0..31 and 160..223 are star-only.
+                    const auto patch=(seed>>3U)%3U;
+                    source_y=int(patch?128U+patch*32U:0U)+((sample_y+current_scroll_y)&31);
+                }
+            }
             const auto tile_y = static_cast<std::uint32_t>(source_y) / tile_edge;
-            const auto unwrapped_source_x = sample_x + row_scroll_x;
             // Scanline scrolling also drives open water (Titania). It is not
             // evidence of a closed tunnel. Actual tunnel margins were handled
             // above via tunnel_scene; water continues its edge material below.
@@ -583,7 +670,8 @@ void BackgroundRenderer::draw_bg2(
             const auto entry = page * 0x400U
                 + (tile_y & 31U) * 32U + (tile_x & 31U);
             const auto tile = cached_tilemap_word(entry);
-            if (!selected_priority(tile, priority)) {
+            if (!selected_priority(tile, ppu.tunnel_scene && extend_horizontal
+                    && priority==TilePriorityPass::low ? TilePriorityPass::all : priority)) {
                 if (!last_opaque_ground.empty() && screen_y >= 144U) {
                     const auto ground = last_opaque_ground[screen_x - first_x];
                     if (ground != 0U) {
@@ -613,14 +701,30 @@ void BackgroundRenderer::draw_bg2(
                 // the map. Anchor the unique occurrence around the view.
                 const auto unique_source_x = sample_x + unique_scroll_x;
                 for (const auto& region : unique_regions) {
-                    if (extend_horizontal
+                    const bool suppress_every=region.replacement_x_offset>=0 && (region.replacement_x_offset
+                        & BackgroundUniqueRegion::suppress_every_copy)!=0;
+                    const bool suppress_all=region.replacement_x_offset>=0 && (region.replacement_x_offset
+                        & BackgroundUniqueRegion::suppress_all_side_copies)!=0;
+                    const auto replacement_offset=(suppress_all || suppress_every)
+                        ?region.replacement_x_offset&~(BackgroundUniqueRegion::suppress_all_side_copies|BackgroundUniqueRegion::suppress_every_copy)
+                        :region.replacement_x_offset;
+                    if ((suppress_every || (extend_horizontal
                         && (logical_x < 0 || logical_x >= 256)
-                        && (unique_source_x < 0 || unique_source_x >= width_pixels)
+                        && (suppress_all || unique_source_x < 0 || unique_source_x >= width_pixels)))
                         && source_x >= region.left && source_x < region.right
                         && source_y >= region.top && source_y < region.bottom
                         && indexed_colour >= region.first_colour
                         && indexed_colour <= region.last_colour) {
                         indexed_colour = region.replacement_colour;
+                        if(replacement_offset) {
+                            const auto replacement_x=wrap(source_x+replacement_offset,width_pixels);
+                            const auto rx=std::uint32_t(replacement_x)/tile_edge;
+                            const auto replacement_entry=((rx>>5U)+(tile_y>>5U)*pages_wide)*0x400U
+                                +(tile_y&31U)*32U+(rx&31U);
+                            const auto replacement_tile=cached_tilemap_word(replacement_entry);
+                            const auto ink=cached_character_pixel(tile_sample(replacement_tile,replacement_x,source_y,ppu.bg2_tile_size_16));
+                            indexed_colour=ink?std::uint8_t(((replacement_tile>>10U)&7U)*16U+ink):region.replacement_colour;
+                        }
                         break;
                     }
                 }

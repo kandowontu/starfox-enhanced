@@ -1,0 +1,59 @@
+#version 460
+#extension GL_EXT_ray_query : require
+
+layout(local_size_x = 64) in;
+layout(set = 0, binding = 0) uniform accelerationStructureEXT scene;
+layout(set = 0, binding = 1, std430) buffer Output { uint shade[]; } output_mask;
+layout(set = 0, binding = 2, std140) uniform Parameters {
+    vec4 extent_focal;
+    vec4 center_ground;
+    vec4 ground_point;
+    vec4 ground_normal;
+    vec4 lights[8];
+} p;
+
+float closest_hit(vec3 origin, vec3 direction, float minimum, float maximum) {
+    rayQueryEXT ray;
+    rayQueryInitializeEXT(ray, scene, gl_RayFlagsOpaqueEXT,
+                          0xff, origin, minimum, direction, maximum);
+    while (rayQueryProceedEXT(ray)) {}
+    return rayQueryGetIntersectionTypeEXT(ray, true)
+        == gl_RayQueryCommittedIntersectionTriangleEXT
+        ? rayQueryGetIntersectionTEXT(ray, true) : maximum;
+}
+
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    uint width = uint(p.extent_focal.x);
+    uint height = uint(p.extent_focal.y);
+    if (id >= width * height) return;
+    uint x = id % width;
+    uint y = id / width;
+    vec3 direction = vec3((float(x) + 0.5 - p.center_ground.x) / p.extent_focal.z,
+                          (float(y) + 0.5 - p.center_ground.y) / p.extent_focal.w, 1.0);
+    float receiver = closest_hit(vec3(0.0), direction, 1.0, 65536.0);
+    if (p.center_ground.z > 0.5) {
+        float denominator = dot(direction, p.ground_normal.xyz);
+        if (abs(denominator) > 1.0e-10) {
+            float ground = dot(p.ground_point.xyz, p.ground_normal.xyz) / denominator;
+            if (ground > 1.0 && ground < receiver) receiver = ground;
+        }
+    }
+    if (receiver >= 65536.0) {
+        output_mask.shade[id] = 0;
+        return;
+    }
+    vec3 point = direction * receiver;
+    float bias = max(0.1, receiver * 1.0e-5);
+    uint blocked = 0;
+    for (uint sample_index = 0; sample_index < 8; ++sample_index) {
+        rayQueryEXT shadow;
+        rayQueryInitializeEXT(shadow, scene,
+            gl_RayFlagsOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT,
+            0xff, point, bias, p.lights[sample_index].xyz, 65536.0);
+        while (rayQueryProceedEXT(shadow)) {}
+        blocked += uint(rayQueryGetIntersectionTypeEXT(shadow, true)
+            != gl_RayQueryCommittedIntersectionNoneEXT);
+    }
+    output_mask.shade[id] = 160u * blocked / 8u;
+}

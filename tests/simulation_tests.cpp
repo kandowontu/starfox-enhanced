@@ -454,14 +454,18 @@ int main(int argc, char** argv) {
         const auto origin = static_cast<std::int32_t>((width - 256U) / 2U);
         background_renderer.draw_bg2(tunnel_ppu, -8, 0, tunnel_frame,
             starfox::render::TilePriorityPass::all, origin, true);
-        require(tunnel_frame.get(origin + 8, 0) == 1U,
-                "solid tunnel margins changed the native scene");
+        starfox::render::Framebuffer tunnel_native{256U,8U};
+        tunnel_native.clear(42U);
+        background_renderer.draw_bg2(tunnel_ppu,-8,0,tunnel_native);
         for (unsigned y = 0; y < 8U; ++y) {
             for (unsigned x = 0; x < width; ++x) {
-                if (x >= static_cast<unsigned>(origin)
-                    && x < static_cast<unsigned>(origin + 256)) continue;
-                require(tunnel_frame.get(x, y) == 0U,
-                        "tunnel graphics leaked into a solid widescreen margin");
+                // The authored 256px aperture is never horizontally scaled.
+                // Outside it, continue only the edge ceiling/floor material.
+                const auto source_x=std::clamp<int>(int(x)-origin,0,255);
+                const auto native=tunnel_native.get(source_x,y);
+                if(native==42U) continue; // Transparent texel: underlying layer/wall.
+                require(tunnel_frame.get(x,y)==native,
+                        "tunnel aperture stretched or lost its edge ceiling/floor");
             }
         }
     }
@@ -3627,6 +3631,46 @@ int main(int argc, char** argv) {
         }
 
         {
+            // Exercise the cartridge's real flying-bomb -> explosion path.
+            // Forcing NULLSHAPE/NUKEEXP_STRAT skips EX's native detonation
+            // routine and cannot prove that it protects the player.
+            starfox::simulation::GameSimulation live_nuke{upstream_rom,upstream_symbols,"LEVEL1_1"};
+            live_nuke.set_god_mode(true);
+            for(unsigned tick=0;tick<360;++tick) static_cast<void>(live_nuke.tick({}));
+            live_nuke.map().write_native_byte(upstream_symbols.find("SPECIALDELAY").front(),1U);
+            const auto player=live_nuke.player();
+            const auto health=live_nuke.objects().at(player).health;
+            std::vector<std::pair<starfox::simulation::ObjectHandle,std::uint8_t>> parts;
+            for(const auto* name:{"PCBOXOBJ_B","PCBOXOBJ_LW","PCBOXOBJ_RW"}) {
+                const auto pointer=live_nuke.map().read_native_word(upstream_symbols.find(name).front());
+                const auto base=upstream_symbols.find("ALBLKS").front();
+                const auto stride=upstream_symbols.find("AL_SIZE").front();
+                require(pointer>=base && (pointer-base)%stride==0,"invalid native player collision pointer");
+                const auto handle=static_cast<starfox::simulation::ObjectHandle>((pointer-base)/stride+1);
+                require(live_nuke.objects().is_active(handle),"inactive native player collision part");
+                parts.emplace_back(handle,live_nuke.objects().at(handle).health);
+            }
+            static_cast<void>(live_nuke.tick({static_cast<starfox::input::ButtonMask>(starfox::input::right_shoulder|starfox::input::a),starfox::input::a,0}));
+            const auto bomb_shape=static_cast<std::uint16_t>(upstream_symbols.find("NUKE").front());
+            auto bomb=starfox::simulation::ObjectHandle{};
+            for(const auto handle:live_nuke.objects().active_handles())
+                if(live_nuke.objects().at(handle).shape==bomb_shape) bomb=handle;
+            require(bomb!=0,"real God Nuke fixture did not fire a bomb");
+            bool detonated=false;
+            for(unsigned tick=0;tick<120;++tick) {
+                static_cast<void>(live_nuke.tick({}));
+                detonated|=!live_nuke.objects().is_active(bomb) || live_nuke.objects().at(bomb).shape!=bomb_shape;
+                require(live_nuke.objects().is_active(player)
+                    && live_nuke.objects().at(player).health==health,
+                    ("native God Nuke damaged player at tick "+std::to_string(tick)).c_str());
+                for(const auto& [handle,hp]:parts)
+                    require(live_nuke.objects().is_active(handle) && live_nuke.objects().at(handle).health==hp,
+                        "native God Nuke damaged a player collision part");
+            }
+            require(detonated,"real God Nuke fixture never detonated");
+        }
+
+        {
             starfox::simulation::GameSimulation debris_game{
                 upstream_rom, upstream_symbols, "LEVEL1_1"};
             debris_game.set_god_mode(true);
@@ -4248,8 +4292,9 @@ int main(int argc, char** argv) {
         game.map().write_native_byte(opening_address,4);
         require(!game.dialogue_state().meter_visible,"meter appeared during portrait opening");
         game.map().write_native_byte(opening_address,5);
-        game.map().write_native_byte(count_address,0);
-        require(!game.dialogue_state().meter_visible,"meter remained during portrait closing");
+        // A zero lifetime with the fully open animation is still the last
+        // speaking submission; actual closing is checked by the source-bitmap
+        // comms timing fixture rather than synthesizing post-call counters.
         game.map().write_native_byte(count_address,20);
         game.map().write_native_byte(friend_address,0);
         require(!game.dialogue_state().meter_visible,"Fox inherited a teammate meter");
@@ -5984,6 +6029,11 @@ int main(int argc, char** argv) {
             const auto page_number = upstream_symbols.find("PAGENUMBER").front();
             const auto ex_god_mode = upstream_symbols.find("GODMODE").front();
             const auto pgbg = upstream_symbols.find("PGBG").front();
+            for(unsigned column=0;column<32;++column) {
+                const auto& vram=title_game.map().ppu_state().vram;
+                require(vram[0x5f40+2*column]==0x11 && vram[0x5f41+2*column]==0x41,
+                    "EX menu inherited the outgoing scene's vertical offset instead of the cartridge title handoff");
+            }
             const auto vmap2 = upstream_symbols.find("VMAP2").front();
             const auto displayed_bitmap_base = static_cast<std::uint16_t>(
                 title_game.map().read_native_word(vmap2) & 0xf000U);
@@ -6542,6 +6592,28 @@ int main(int argc, char** argv) {
                     && largest_planet_radius > 32U,
                 "planet selection skipped or mistimed its Fox/Pepper presentation");
 
+        {
+            using namespace starfox::input;
+            starfox::simulation::GameSimulation cheat_game{upstream_rom,upstream_symbols,"PLANETSELECT"};
+            for(unsigned i=0;i<8;++i) cheat_game.present_frame();
+            cheat_game.set_planet_select_cheat(true);
+            const auto stage_address=upstream_symbols.find("STAGE").front();
+            static_cast<void>(cheat_game.tick({x,x,0}));
+            require(cheat_game.map().read_native_word(stage_address)==0,"X alone changed cheat stage");
+            constexpr auto chord=ButtonMask(x|y);
+            static_cast<void>(cheat_game.tick({chord,chord,0}));
+            static_cast<void>(cheat_game.tick({right,right,0}));
+            require(cheat_game.map().read_native_word(stage_address)==1,"planet cheat failed to select the next source stage");
+            static_cast<void>(cheat_game.tick({b,b,0}));
+            require(cheat_game.flow_state()==starfox::simulation::GameFlowState::planet_select,"B launched planet cheat");
+            auto resumed=cheat_game.restored_state(cheat_game.save_state());
+            static_cast<void>(resumed->tick({a,a,0}));
+            require(resumed->flow_state()==starfox::simulation::GameFlowState::planet_travel
+                && resumed->map().read_native_word(stage_address)==1,"A lost selected cheat stage");
+            static_cast<void>(cheat_game.tick({start,start,0}));
+            require(cheat_game.flow_state()==starfox::simulation::GameFlowState::planet_travel
+                && cheat_game.map().read_native_word(stage_address)==1,"START lost selected cheat stage");
+        }
         starfox::simulation::GameSimulation planet_sprite_game{
             upstream_rom, upstream_symbols, "PLANETSELECT"};
         for (std::size_t frame = 0U; frame < 8U; ++frame) {
@@ -6604,6 +6676,20 @@ int main(int argc, char** argv) {
         }
         require(route_is_hidden && route_is_visible_again,
                 "planet route did not preserve its source blinking cadence");
+
+        // #70: a shorter route must not reuse a prior route tile in the
+        // terminator slot at (0,0). Exercise changing courses, not fresh entry.
+        for(unsigned course=0;course<3;++course) {
+            static_cast<void>(planet_sprite_game.tick({0,starfox::input::right,0}));
+            for(unsigned phase=0;phase<12;++phase) {
+                planet_sprite_game.present_frame();
+                starfox::render::Framebuffer route_ink{256,224};
+                sprite_renderer.draw_objects(planet_sprite_game.map().ppu_state(),route_ink);
+                for(int y=0;y<8;++y) for(int x=0;x<8;++x)
+                    require(route_ink.get(x,y)==0U,
+                        "route selection leaked an unused line sprite at the top left");
+            }
+        }
 
         static_cast<void>(planet_sprite_game.tick(
             {0, starfox::input::start, 0}));
@@ -6734,17 +6820,30 @@ int main(int argc, char** argv) {
             level_cheat.set_selected_level(21U);
             require(level_cheat.selected_level_name() == "LEVEL2_1", "route/stage selection was lost");
             level_cheat.set_default_laser(1U);
-            static_cast<void>(level_cheat.tick({0, starfox::input::start, 0}));
+            starfox::audio::Spc700Audio selected_level_audio;
+            bool selected_level_heard_audio = false;
+            const auto tick_selected_level = [&](const starfox::input::TickInput& control) {
+                for (unsigned phase=0;phase<3;++phase) level_cheat.present_frame();
+                const auto result=level_cheat.tick(control);
+                const auto pcm=selected_level_audio.render_logic_tick(result.audio_port_writes);
+                level_cheat.synchronize_apu_output_ports(selected_level_audio.output_ports());
+                selected_level_heard_audio |= std::any_of(pcm.begin(),pcm.end(),
+                    [](std::int16_t sample){return sample!=0;});
+            };
+            tick_selected_level({0, starfox::input::start, 0});
             for (unsigned i = 0; i < 60U && level_cheat.flow_state()
                     == starfox::simulation::GameFlowState::pregame_menu; ++i)
-                static_cast<void>(level_cheat.tick({}));
+                tick_selected_level({});
             require(level_cheat.flow_state() == starfox::simulation::GameFlowState::gameplay,
                 "level cheat did not launch gameplay after the menu fade");
             require(level_cheat.map().read_native_byte(upstream_symbols.find("CURRENTLEVEL").front()) == 1U,
                 "level cheat launched with the wrong route state");
-            static_cast<void>(level_cheat.tick({}));
+            tick_selected_level({});
             require((level_cheat.map().read_native_byte(upstream_symbols.find("PSHIPFLAGS2").front()) & 1U) != 0U,
                 "level select lost its default laser upgrade");
+            for(unsigned i=0;i<150U;++i) tick_selected_level({});
+            require(selected_level_audio.driver_loaded() && selected_level_heard_audio,
+                "level-select route 2 gameplay lost its SPC music and effects");
         }
         const auto select_menu_action = [](starfox::simulation::GameSimulation& menu,
             starfox::simulation::PregamePage page, unsigned action,
@@ -6795,6 +6894,28 @@ int main(int argc, char** argv) {
                     && preview.preview_requested(), "BACK must restore submenu entry and preserve preview");
             }
             require(preview.bloom() == 0U, "Bloom must default Off");
+            require(!preview.neural_filter_available() && !preview.neural_filter_requested(),
+                "optional neural filter must default absent/off");
+            preview.configure_neural_filter(true,false);
+            preview.set_fsr1_menu(true);
+            preview.set_dlss_mode(2);
+            select_menu_action(preview,starfox::simulation::PregamePage::three_d,30U);
+            static_cast<void>(preview.tick({starfox::input::a,starfox::input::a,0}));
+            require(preview.fsr1_mode()==1 && preview.dlss_mode()==2,"AMD menu changed DLSS instead of FSR1");
+            static_cast<void>(preview.tick({starfox::input::a,0,0}));
+            require(preview.fsr1_mode()==1,"held A repeated FSR1 selection");
+            static_cast<void>(preview.tick({0,0,starfox::input::a}));
+            preview.set_fsr1_menu(false);
+            static_cast<void>(preview.tick({0,starfox::input::right,0}));
+            require(preview.dlss_mode()==3 && preview.fsr1_mode()==1,"adapter change lost independent quality selection");
+            select_menu_action(preview,starfox::simulation::PregamePage::three_d,31U);
+            static_cast<void>(preview.tick({starfox::input::a,starfox::input::a,0}));
+            require(preview.neural_filter_requested(),"neural filter did not toggle on press");
+            static_cast<void>(preview.tick({starfox::input::a,0,0}));
+            require(preview.neural_filter_requested(),"held A toggled neural filter");
+            static_cast<void>(preview.tick({0,0,starfox::input::a}));
+            select_menu_action(preview,starfox::simulation::PregamePage::three_d,23U);
+            preview.configure_neural_filter(false,false);
             for (auto page : {starfox::simulation::PregamePage::two_d,
                     starfox::simulation::PregamePage::three_d}) {
                 select_menu_action(preview, page, 23U);
@@ -7084,10 +7205,61 @@ int main(int argc, char** argv) {
             "removed Enhanced Shadows option remains in menu navigation");
         select_menu_action(boot_game, starfox::simulation::PregamePage::three_d, 29U, &boot_audio);
         require(!boot_game.ray_tracing(), "hardware ray tracing must default Off");
+        require(!boot_game.reflective_surfaces(),"reflections must default Off");
+        boot_game.set_reflective_surfaces(3);
+        require(!boot_game.reflective_surfaces(),"reflections enabled without ray tracing");
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.ray_tracing(), "ray tracing must enable enhanced shadows");
+        boot_game.set_reflective_surfaces(9);
+        require(boot_game.reflective_surfaces()==3,"reflection intensity did not clamp");
         drive_boot({0, starfox::input::left, 0});
         require(!boot_game.ray_tracing(), "ray tracing did not toggle back Off");
+        require(!boot_game.reflective_surfaces(),"disabling ray tracing left reflections on");
+        select_menu_action(boot_game, starfox::simulation::PregamePage::three_d, 32U, &boot_audio);
+        drive_boot({0,starfox::input::a,0});
+        require(!boot_game.reflective_surfaces(),"reflection menu ignored ray-tracing dependency");
+        boot_game.set_ray_tracing(true);
+        for(unsigned level=1;level<=4;++level) {
+            drive_boot({0,starfox::input::right,0});
+            require(boot_game.reflective_surfaces()==level%4U,"reflection menu failed intensity cycle");
+        }
+        drive_boot({0,starfox::input::left,0});
+        require(boot_game.reflective_surfaces()==3,"reflection menu failed reverse cycle");
+        drive_boot({starfox::input::a,0,0});
+        require(boot_game.reflective_surfaces()==3,"holding A repeated reflection action");
+        boot_game.set_ray_tracing(false);
+        boot_game.set_renderer_mode(starfox::simulation::RendererMode::software);
+        boot_game.set_material(static_cast<std::uint8_t>(starfox::render::Effect::pearl));
+        require(!boot_game.active_material(),"material activated in software renderer");
+        boot_game.set_renderer_mode(starfox::simulation::RendererMode::gpu);
+        require(!boot_game.active_material(),"material activated without ray tracing");
+        boot_game.set_ray_tracing(true);
+        require(!boot_game.active_material(),"material activated without reflective surfaces");
+        boot_game.set_reflective_surfaces(2);
+        require(boot_game.active_material()==boot_game.material(),"material did not activate with RT and reflections");
+        boot_game.set_reflective_surfaces(0);
+        require(!boot_game.active_material() && boot_game.material()!=0,"disabled reflection lost material preference");
+        boot_game.set_material(0);boot_game.set_ray_tracing(false);
+        boot_game.set_renderer_mode(starfox::simulation::RendererMode::software);
+        require(!boot_game.enhanced_shadows(),"software shadows must default Off");
+        boot_game.set_reflective_surfaces(2);
+        require(boot_game.reflective_surfaces()==2,"software reflections incorrectly require hardware ray tracing");
+        select_menu_action(boot_game,starfox::simulation::PregamePage::three_d,29U,&boot_audio);
+        drive_boot({0,starfox::input::a,0});
+        require(boot_game.enhanced_shadows() && !boot_game.ray_tracing(),"software shadow menu changed GPU ray tracing");
+        drive_boot({starfox::input::a,0,0});
+        require(boot_game.enhanced_shadows(),"holding A repeated software shadow action");
+        drive_boot({0,starfox::input::a,0});
+        require(!boot_game.enhanced_shadows() && boot_game.reflective_surfaces()==2,"software shadows disabled independent reflections");
+        select_menu_action(boot_game,starfox::simulation::PregamePage::three_d,32U,&boot_audio);
+        drive_boot({0,starfox::input::right,0});
+        require(boot_game.reflective_surfaces()==3,"software reflection menu did not cycle");
+        boot_game.set_renderer_mode(starfox::simulation::RendererMode::gpu);
+        require(!boot_game.reflective_surfaces(),"software selection bypassed GPU ray-tracing requirement");
+        boot_game.set_renderer_mode(starfox::simulation::RendererMode::software);
+        require(boot_game.reflective_surfaces()==3,"renderer switching lost software reflection preference");
+        boot_game.set_reflective_surfaces(0);
+        boot_game.set_renderer_mode(starfox::simulation::RendererMode::gpu);
         select_menu_action(boot_game, starfox::simulation::PregamePage::three_d, 27U, &boot_audio);
         require(boot_game.chromatic_aberration() == 0U, "chromatic aberration must default Off");
         for (unsigned level=1; level<=4; ++level) {
@@ -7107,7 +7279,7 @@ int main(int argc, char** argv) {
         drive_boot({0, starfox::input::left, 0});
         require(boot_game.effect() == 0U, "model effects did not cycle backwards");
         drive_boot({0, starfox::input::left, 0});
-        require(boot_game.effect() == starfox::render::effect_count - 1U,
+        require(boot_game.effect() == starfox::render::next_effect(0,false,true),
             "model selector did not wrap to the newest style");
         drive_boot({0, starfox::input::right, 0});
         require(boot_game.effect() == 0U, "model selector did not wrap back to Off");
@@ -7119,13 +7291,14 @@ int main(int argc, char** argv) {
         require(boot_game.pregame_selection() == 13U,
                 "pre-game cursor did not reach WORLD EFFECTS");
         drive_boot({0, starfox::input::a, 0});
-        require(boot_game.world_effect() == 2U && boot_game.effect() == 0U,
+        require(boot_game.world_effect() == starfox::render::next_effect(0,true,false) && boot_game.effect() == 0U,
             "world effect changed model effect");
-        boot_game.set_world_effect(starfox::render::effect_count - 1U);
+        const auto last_world_effect=starfox::render::next_effect(0,true,true);
+        boot_game.set_world_effect(last_world_effect);
         drive_boot({0, starfox::input::right, 0});
         require(boot_game.world_effect() == 0U, "world selector did not wrap back to Off");
         drive_boot({0, starfox::input::left, 0});
-        require(boot_game.world_effect() == starfox::render::effect_count - 1U,
+        require(boot_game.world_effect() == last_world_effect,
             "world selector did not wrap to the newest style");
         boot_game.set_world_effect(2U);
         drive_boot({0, starfox::input::down, 0});
@@ -7137,6 +7310,10 @@ int main(int argc, char** argv) {
                     == starfox::simulation::PregamePage::options
                     && boot_game.pregame_selection() == 0U,
                 "OPTIONS did not open its second pre-game page");
+        boot_game.return_to_pregame_options();
+        require(boot_game.pregame_page() == starfox::simulation::PregamePage::options
+                    && boot_game.pregame_selection() == 3U,
+                "HUD editor return did not select CUSTOMIZE SCREEN in OPTIONS");
         select_menu_action(boot_game, starfox::simulation::PregamePage::options, 9U, &boot_audio);
         require(boot_game.stereo_output()==0U,"Stereo output did not default OFF");
         drive_boot({0, starfox::input::left, 0});
@@ -7183,6 +7360,10 @@ int main(int argc, char** argv) {
         drive_boot({0, starfox::input::down, 0});
         drive_boot({0, starfox::input::a, 0});
         require(boot_game.infinite_lives(), "infinite lives did not enable");
+        drive_boot({0, starfox::input::a, 0});
+        drive_boot({0, starfox::input::down, 0});
+        drive_boot({0, starfox::input::a, 0});
+        require(boot_game.planet_select_cheat(),"planet select cheat did not enable");
         drive_boot({0, starfox::input::a, 0});
         drive_boot({0, starfox::input::down, 0});
         drive_boot({starfox::input::a, starfox::input::a, 0});
@@ -7813,6 +7994,7 @@ int main(int argc, char** argv) {
             starfox::render::Framebuffer source_face{32,40};
             text_renderer.draw_face(7,0,0,source_face);
             starfox::render::Framebuffer corrected_face{64,50,scale};
+            corrected_face.enable_layer_tags(true);
             text_renderer.draw_face(7,10,5,corrected_face,112,false,true);
             const auto edge=[scale](unsigned x) {return (x*scale*7+3)/6;};
             const auto left=42*scale-edge(32);
@@ -7825,7 +8007,17 @@ int main(int argc, char** argv) {
                 }
                 require(corrected_face.get_stored(sx,sy)==expected,
                     "widescreen portrait aspect correction changed source pixels, height or right edge");
+                if(expected) require(corrected_face.layer_stored(sx,sy)==starfox::render::PixelLayer::two_d,
+                    "aspect-corrected comms portrait is incorrectly tagged as a model");
             }
+            starfox::render::RasterCommands portrait_commands;
+            portrait_commands.reset(corrected_face.stored_width(),corrected_face.stored_height());
+            corrected_face.record_to(&portrait_commands);
+            text_renderer.draw_face(7,10,5,corrected_face,112,false,true);
+            corrected_face.record_to(nullptr);
+            require(!portrait_commands.commands.empty(),"portrait GPU fixture recorded nothing");
+            for(const auto& command:portrait_commands.commands)
+                require(command.tag==unsigned(starfox::render::PixelLayer::two_d),"recorded portrait is effect-eligible");
         }
         starfox::render::Framebuffer compact_text{256, 224};
         text_renderer.draw_ascii(":",10,10,compact_text);

@@ -7,6 +7,8 @@
 #include <unordered_map>
 #include <limits>
 #include <cstdlib>
+#include <cmath>
+#include <optional>
 
 namespace starfox::render {
 
@@ -17,7 +19,25 @@ struct ObjectPresentationSnapshot {
     std::uint32_t strategy_address{};
     std::uint8_t type{};
     std::uint64_t generation{};
+    std::uint8_t explosion_progress{};
 };
+
+// Destruction advances once per source frame. Interpolate only an existing
+// entity's advancing counter; never blend a newly recycled slot or a reset.
+inline std::optional<double> interpolate_explosion_progress(
+    const ObjectPresentationSnapshot* previous,
+    const ObjectPresentationSnapshot& current,double alpha) noexcept {
+    if(!previous || !current.explosion_progress
+        || previous->generation!=current.generation
+        || previous->shape!=current.shape
+        || previous->strategy_address!=current.strategy_address
+        || previous->type!=current.type
+        || previous->explosion_progress>current.explosion_progress
+        || current.explosion_progress-previous->explosion_progress>4
+        || alpha<=0.0 || alpha>=1.0) return std::nullopt;
+    return std::lerp(double(previous->explosion_progress),
+        double(current.explosion_progress),alpha);
+}
 
 using ObjectSnapshotMap = std::unordered_map<simulation::ObjectHandle,
     ObjectPresentationSnapshot>;
@@ -102,7 +122,8 @@ inline ObjectSnapshotMap capture_object_snapshots(
                 simulation::wrap16(-static_cast<std::int32_t>(transform.roll))));
         result.emplace(handle, ObjectPresentationSnapshot{transform, matrix,
             object.shape, object.strategy_address, object.type,
-            objects.generation(handle)});
+            objects.generation(handle),
+            static_cast<std::uint8_t>((object.flags & 0x01U) != 0U ? object.count : 0U)});
     }
     return result;
 }

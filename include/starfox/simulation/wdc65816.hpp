@@ -144,6 +144,9 @@ public:
         std::span<const std::uint8_t> bytes) noexcept;
     void upload_oam(std::uint32_t source, std::size_t length);
     void begin_superfx_bitmap_frame();
+    // Phase at the most recent face submission, before the source changes
+    // its opening/lifetime counters. Empty for old states/not-yet-drawn faces.
+    [[nodiscard]] std::optional<bool> dialogue_speaking(bool alternate) const noexcept;
     // Submit the source 224x192 Super FX bitmap through FOXIRQ's exact two
     // VRAM transfers and buffer swap. Native front-end text is CPU-drawn
     // into this bitmap even when model geometry is host-rendered.

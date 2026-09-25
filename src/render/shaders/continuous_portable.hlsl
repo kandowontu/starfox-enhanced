@@ -134,7 +134,10 @@ void main(uint3 id:SV_DispatchThreadID) {
                 }
                 if(c==1) direction=-abs(direction);
                 int rounded=direction<0?-int(floor(-direction+0.5)):int(floor(direction+0.5));
-                float offset=float((rounded*int(n.translation.w))>>2);
+                float phase=n.translation.w;
+                int low=int(floor(phase)),high=int(ceil(phase));
+                float offset=lerp(float((rounded*low)>>2),
+                    float((rounded*high)>>2),phase-float(low));
                 if(hasExactCamera)exactCamera[c]=sf_add(exactCamera[c],precise_value(offset,0));
                 precise float2 moved=rounded64(add2(float2(camera[c],residual[c]),float2(offset,0)));
                 camera[c]=moved.x;residual[c]=moved.y;
@@ -167,6 +170,31 @@ void main(uint3 id:SV_DispatchThreadID) {
                     precise float2 numerator=multiply2(float2(camera[c],residual[c]),float2(p.translation.w,0));
                     precise float2 projected=divide2(numerator,float2(depth,camera.z==0?0:residual.z));
                     value=add2(float2(p.vanish[c],0),projected);
+                    // The source rounds each binary64 multiply/divide/add.
+                    // Compensated float pairs retain an unrounded remainder
+                    // which can cross a half-pixel after screen clipping.
+                    // Pay for software-double only at a raster tie boundary.
+                    if(value.y!=0 && value.x!=0 && frac(value.x*8)==0) {
+                        Pose low=poses[v.pose+2];
+                        Sf64 exactCamera[3];
+                        for(uint axis=0;axis<3;++axis) {
+                            Sf64 xterm=sf_mul(sf_from_float_bits(asuint(v.coordinate.x)),
+                                precise_value(p.row0[axis],low.row0[axis]));
+                            Sf64 yterm=sf_mul(sf_from_float_bits(asuint(v.coordinate.y)),
+                                precise_value(p.row1[axis],low.row1[axis]));
+                            Sf64 zterm=sf_mul(sf_from_float_bits(asuint(v.coordinate.z)),
+                                precise_value(p.row2[axis],low.row2[axis]));
+                            Sf64 translation=sf_add(sf_add(sf_from_float_bits(asuint(p.translation[axis])),
+                                sf_from_float_bits(asuint(low.translation[axis]))),
+                                sf_from_float_bits(asuint(low.vanish[axis])));
+                            exactCamera[axis]=sf_add(sf_add(sf_add(xterm,yterm),zterm),translation);
+                        }
+                        Sf64 divisor=exactCamera[2];
+                        if(sf_zero(divisor))divisor=sf_from_float_bits(asuint(1.f));
+                        Sf64 exact=sf_add(precise_value(p.vanish[c],0),
+                            sf_div(sf_mul(exactCamera[c],precise_value(p.translation.w,0)),divisor));
+                        if(sf_valid(exact))value=precise_parts(exact);
+                    }
                 }
                 screen[c]=value.x+value.y;
                 if(p.vanish.z>0 || p.vanish.w==2) {

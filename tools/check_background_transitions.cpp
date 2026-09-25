@@ -53,6 +53,11 @@ int main(int argc,char** argv) try {
         const auto& ppu=game.map().ppu_state();
         if(const auto name=background_names.find(game.map().background());name!=background_names.end()
             && (name->second=="BG_5_1I" || name->second=="BG_5_1E")) {
+            if(ppu.bg2_scanline_scroll_enabled)
+                throw std::runtime_error("Orbital planet horizon inherited checkerboard tunnel scanlines");
+        }
+        if(const auto name=background_names.find(game.map().background());name!=background_names.end()
+            && (name->second=="BG_5_1I" || name->second=="BG_5_1E")) {
             const auto override=game.map().peek_background_scroll_override();
             const std::pair<int,int> scroll{override?(*override)[0]:ppu.bg2_scroll_x,
                 override?(*override)[1]:ppu.bg2_scroll_y};

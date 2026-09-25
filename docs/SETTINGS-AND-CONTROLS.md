@@ -37,11 +37,9 @@ keeping full-height text and all main-page entries visible without scrolling.
 Enhanced Lighting, HDR Effect, Ray Tracing, Chromatic Aberration, Model Effects,
 and Model Effect Intensity. B or BACK returns to
 the corresponding main-page entry; live Preview stays active in either submenu.
-`MODEL EFFECTS` and `WORLD EFFECTS` independently offer OFF,
-INK, NEON, MONOCHROME, DITHERED, SEPIA,
-THERMAL, NIGHT VISION, PASTEL, COMIC, and VAPORWAVE. The newer styles add warm
-vintage tones, a false-color heat palette, green scanlines, soft colors,
-halftone shading, and a purple/cyan palette respectively. CEL-DRAWN is model-only;
+`MODEL EFFECTS` and `WORLD EFFECTS` independently offer drawn, retro, colour,
+and stylized looks. The latest effects are DUOTONE, TRITONE, WOODCUT, X-RAY,
+POP ART, IRIDESCENT, CRT PHOSPHOR, NOIR, UV GLOW, and TOPOGRAPHIC. CEL-DRAWN is model-only;
 BLUEPRINT is world-only. World effects
 cover the ground, sky, scenery and stars. Each graphics submenu provides its
 effect intensity from 0–100% in 10% steps. Controller Remap remains in Options. All effect choices
@@ -104,13 +102,21 @@ workers. Higher render scales require more processing time and memory.
 Enhanced Lighting and Anti-Aliasing remain independent options. For diagnostics,
 `STARFOX_2D_FILTER_DEBUG=1` highlights filtered framebuffer pixels in magenta.
 
-`CUSTOMIZE SCREEN` opens a mouse-driven captured native-gameplay HUD preview
-using the game's actual HUD artwork. Lives, Shield, Bombs/Boost, Comms, and the
+`CUSTOMIZE SCREEN` opens a captured native-gameplay HUD preview using the
+game's actual HUD artwork. It accepts mouse drag on desktop and finger drag
+on iOS/Android. Lives, Shield, Bombs/Boost, Comms, and the
 Boss Health bar can each be dragged independently; `RESET` (or Y) restores the
 current display mode's defaults. Layouts are independent for 4:3,
 16:9, 16:10, 21:9, and 32:9, with separate Original and Star Fox EX layouts
-for every size. They save automatically to
+for every size. `APPLY` saves them to
 `hud-layout.cfg` beside the desktop executable.
+On iOS/Android, `CUSTOMIZE BUTTON LAYOUT` opens the same frozen gameplay preview
+with the touch controls visible. Drag the D-pad or the four face buttons as
+groups; pinch either group to resize all of its buttons together. L, R,
+Select, and Start can be moved and resized individually. `APPLY` saves the
+layout in `touch-layout.cfg` in platform storage; `CANCEL` restores the previous
+layout. The visible buttons and their touch targets use the same window-space
+coordinates, so changing game resolution does not offset input.
 Game pace, render FPS, display mode, renderer, graphics choices, MSU-1 music,
 rumble, music/SFX volumes, God Mode, the FPS counter, and crosshair colour
 also persist in

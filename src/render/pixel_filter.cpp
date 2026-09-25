@@ -416,7 +416,6 @@ void apply_two_d_filter(
                 scale_edge(factor, source, filtered, width, height, y_first, y_last);
             }
         });
-
     const auto filtered_width = static_cast<std::size_t>(width) * factor;
     workers.parallel_rows(stored_height,
         [&](std::uint32_t slice_first, std::uint32_t slice_last) {

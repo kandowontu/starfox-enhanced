@@ -1,4 +1,5 @@
 #include "starfox/simulation/wdc65816.hpp"
+#include "starfox/simulation/irq_palette.hpp"
 
 #include "starfox/assets/decrunch.hpp"
 #include "starfox/assets/bps.hpp"
@@ -129,6 +130,9 @@ struct Wdc65816::Impl {
     std::uint16_t vram3_address{};
     std::uint16_t vram3_length{};
     std::uint32_t game_palette{};
+    std::uint32_t ex_color_trip{};
+    std::array<IrqPaletteCycle,3> ex_palette_cycles{};
+    TitlePaletteCycle ex_title_cycle{};
     std::array<std::uint32_t, 6> ending_scroll_saved{};
     std::array<std::uint32_t, 6> ending_scroll_requested{};
     std::uint32_t ending_text_pointer{}, ending_text_vram{}, ending_text_buffer{};
@@ -157,6 +161,8 @@ struct Wdc65816::Impl {
     std::uint32_t mcalc_circle{};
     std::uint32_t mcopyface{};
     std::uint32_t mcopyface2{};
+    std::array<std::uint32_t,2> dialogue_count{},dialogue_animation{};
+    std::array<std::optional<bool>,2> dialogue_speaking{};
     std::uint32_t mgprintstr{};
     std::uint32_t mkrisdivu3115{};
     std::uint32_t mcalcperc{};
@@ -227,6 +233,8 @@ struct Wdc65816::Impl {
     std::uint32_t background3_scroll{};
     std::uint32_t background_horizontal_mode{};
     std::uint8_t background_rotate_mode{};
+    std::uint32_t current_background{};
+    std::array<std::uint16_t,2> ex_orbital_backgrounds{};
     std::uint32_t tunnel_previous_z{};
     std::uint32_t tunnel_scroll_override{};
     std::uint32_t tunnel_hdma_enable{};
@@ -339,6 +347,11 @@ struct Wdc65816::Impl {
                 throw std::runtime_error{"invalid saved MSU register"};
             core.pending_interrupts.store(interrupts,std::memory_order_relaxed);
         }
+        // Append-only extension: older CPU snapshots retain counter-based
+        // presentation until the next native face submission.
+        if constexpr (std::same_as<Archive,state::Reader>) {
+            if (!archive.empty()) archive(dialogue_speaking);
+        } else archive(dialogue_speaking);
     }
 
     bool service_zero_projection(std::uint32_t pc) {
@@ -568,6 +581,9 @@ struct Wdc65816::Impl {
               symbols, "VRAM3LEN", kRetailVram3Length))),
           game_palette(find_symbol_or(
               symbols, "GAMEPALBUFF", kRetailGamePalette)),
+          ex_color_trip(find_symbol(symbols,"COLORTRIP")),
+          ex_palette_cycles(ex_irq_palette_cycles([&](const std::string& name){return find_symbol(symbols,name.c_str());})),
+          ex_title_cycle(ex_title_palette_cycle([&](const std::string& name){return find_symbol(symbols,name.c_str());})),
           ending_scroll_saved{
               find_symbol(symbols, "BG1HOFSBAK"), find_symbol(symbols, "BG1VOFSBAK"),
               find_symbol(symbols, "BG2HOFSBAK"), find_symbol(symbols, "BG2VOFSBAK"),
@@ -605,6 +621,8 @@ struct Wdc65816::Impl {
           mcalc_circle(find_rom_symbol(symbols, "MCALC_CIRCLE")),
           mcopyface(find_rom_symbol(symbols, "MCOPYFACE")),
           mcopyface2(find_rom_symbol(symbols, "MCOPYFACE2")),
+          dialogue_count{find_symbol(symbols,"MSG_COUNT1"),find_symbol(symbols,"MSG_COUNT12")},
+          dialogue_animation{find_symbol(symbols,"MSG_COUNT2"),find_symbol(symbols,"MSG_COUNT22")},
           mgprintstr(find_rom_symbol(symbols, "MGPRINTSTR")),
           mkrisdivu3115(find_rom_symbol(symbols, "MKRISDIVU3115")),
           mcalcperc(find_rom_symbol(symbols, "MCALCPERC")),
@@ -715,6 +733,14 @@ struct Wdc65816::Impl {
         background3_scroll = find_symbol(symbols, "BG3SCROLL");
         background_horizontal_mode = find_symbol(symbols, "HPOSJMP");
         background_rotate_mode = static_cast<std::uint8_t>(find_symbol(symbols, "ROTATE_HOF"));
+        current_background = find_symbol(symbols, "CURRENTBG");
+        const auto background_lists = find_symbol(symbols, "BGLISTS");
+        const std::array orbital_names{"BG_5_1I", "BG_5_1E"};
+        for (unsigned i=0;i<orbital_names.size();++i) {
+            const auto address=find_symbol(symbols,orbital_names[i]);
+            if(address && background_lists && (address&0xff0000U)==(background_lists&0xff0000U))
+                ex_orbital_backgrounds[i]=static_cast<std::uint16_t>(address-background_lists);
+        }
         tunnel_previous_z = find_symbol(symbols, "OLDVIEWPOSZ");
         tunnel_scroll_override = find_symbol(symbols, "BG2VOFSOVERRIDE");
         tunnel_hdma_enable = find_symbol(symbols, "HDMAEN_GC");
@@ -882,6 +908,10 @@ struct Wdc65816::Impl {
 
     template<class Read>
     void refresh_background_metadata(Read read8) {
+        const auto background=current_background
+            ? unsigned(read8(current_background))|(unsigned(read8(current_background+1))<<8) : 0U;
+        const bool orbital_background=background!=0
+            && std::find(ex_orbital_backgrounds.begin(),ex_orbital_backgrounds.end(),background)!=ex_orbital_backgrounds.end();
         // INATUNNEL also marks Macbeth's underground terrain. Its ROTATE_HOF
         // landscape remains expandable; tunnel/nograd cross-sections do not.
         // Water uses mode 2 and likewise must not inherit solid tunnel margins.
@@ -890,6 +920,10 @@ struct Wdc65816::Impl {
                 && read8(background_horizontal_mode) == background_rotate_mode)
             && (ppu.background_mode == 1U || ppu.background_mode == 2U);
         ppu.bg2_scanline_scroll_enabled = tunnel_flag != 0U
+            // EX's carrier/boss uses INATUNNEL for scene behaviour even while
+            // showing a continuous orbital atlas, not checkerboard tunnel
+            // pages. Alternating 24/280 offsets tear that horizon into strips.
+            && !orbital_background
             && (ppu.background_mode == 1U || ppu.background_mode == 2U)
             && tunnel_tables != 0U && tunnel_previous_z != 0U
             && tunnel_hdma_enable != 0U && read8(tunnel_flag) != 0U
@@ -2314,13 +2348,25 @@ struct Wdc65816::Impl {
             draw_teammate_meter(true);
             return;
         }
+        if ((mcopyface != 0U && address == mcopyface)
+            || (mcopyface2 != 0U && address == mcopyface2)) {
+            const unsigned channel=address==mcopyface2 ? 1U : 0U;
+            if(dialogue_count[channel] && dialogue_animation[channel]) {
+                // DISPLAYFACE precedes INC on opening and DEC on the last
+                // speaking update. Post-call counters are one frame ahead
+                // of the bitmap that actually reached the display.
+                // The source counters live in low WRAM. Reading the host
+                // array avoids disturbing the emulated CPU's bus latch.
+                dialogue_speaking[channel]=wram[dialogue_count[channel]&0xffffU]!=0U
+                    && wram[dialogue_animation[channel]&0xffffU]>=5U;
+            }
+            return;
+        }
         // These routines update only the source bitmap/window. Their visible
         // output is composed by the PC renderer from the state that the
         // surrounding 65C816 routines maintain, so completion is immediate
         // just as it is for the other translated Super FX entry points.
         if ((mcalc_circle != 0U && address == mcalc_circle)
-            || (mcopyface != 0U && address == mcopyface)
-            || (mcopyface2 != 0U && address == mcopyface2)
             // SHOWVIEW_L's draw-list transform/sort is represented by the
             // host's fixed-point view/cull pass and draw_order_ construction.
             || (mallrotzsort != 0U && address == mallrotzsort)
@@ -2515,6 +2561,17 @@ struct Wdc65816::Impl {
             wram[0] = 14U;
             break;
         case 14U: {
+            // Restore EX FOXIRQ3's ordered animated palette overlays.
+            apply_ex_irq_palette_cycles(ex_palette_cycles,
+                ex_color_trip && wram[static_cast<std::uint16_t>(ex_color_trip)],
+                [&](auto a){return wram[static_cast<std::uint16_t>(a)];},
+                [&](auto a,auto v){wram[static_cast<std::uint16_t>(a)]=v;},
+                [&](auto table,auto destination){copy_bus_to_cgram(table,destination*2U,32U);});
+            apply_ex_title_palette_cycle(ex_title_cycle,
+                ex_color_trip && wram[static_cast<std::uint16_t>(ex_color_trip)],
+                [&](auto a){return wram[static_cast<std::uint16_t>(a)];},
+                [&](auto a,auto v){wram[static_cast<std::uint16_t>(a)]=v;},
+                [&](auto table,auto destination){copy_bus_to_cgram(table,destination*2U,32U);});
             // FOXIRQ3 submits OAM and swaps the two bitmap screens before
             // releasing FOXYTRANS. Input edges are already written directly
             // by GameSimulation at the same source-frame boundary.
@@ -2875,6 +2932,10 @@ void Wdc65816::tick_ending_video_phase() {
 
 void Wdc65816::tick_background_video_phase() {
     impl_->tick_background_video_phase();
+}
+
+std::optional<bool> Wdc65816::dialogue_speaking(bool alternate) const noexcept {
+    return impl_->dialogue_speaking[alternate ? 1U : 0U];
 }
 
 void Wdc65816::refresh_background_metadata() {

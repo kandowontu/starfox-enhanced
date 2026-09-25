@@ -59,6 +59,8 @@ std::vector<render::RenderPose> interpolate_scene_poses(const GameSceneSnapshot&
             transform.y+=std::lerp(double(previous.view_float_y),double(current.view_float_y),alpha);
         auto rotation=render::interpolate_object_rotation(before,now,object_alpha,rules.discrete_rotation_shape);
         auto pose=item.source_pose;
+        pose.explosion_phase=render::interpolate_explosion_progress(
+            old==previous.transforms.end()?nullptr:&old->second,now,object_alpha);
         if(shadows) {
             rotation[1]=rotation[4]=rotation[7]=0;
             auto source_rotation=item.presentation.rotation_matrix;

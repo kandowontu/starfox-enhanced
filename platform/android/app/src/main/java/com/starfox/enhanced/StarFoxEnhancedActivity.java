@@ -20,6 +20,11 @@ public final class StarFoxEnhancedActivity extends SDLActivity {
     protected void onResume() {
         super.onResume();
         hideSystemBars();
+        // The controller can be absent until the decor attaches. Retry after
+        // attachment, including when returning from Android's document picker.
+        getWindow().getDecorView().post(() -> {
+            if (!isDestroyed() && !isFinishing()) hideSystemBars();
+        });
     }
 
     @Override
@@ -42,7 +47,7 @@ public final class StarFoxEnhancedActivity extends SDLActivity {
         }
         if (Build.VERSION.SDK_INT >= 30) {
             window.setDecorFitsSystemWindows(false);
-            final WindowInsetsController controller = window.getInsetsController();
+            final WindowInsetsController controller = window.getDecorView().getWindowInsetsController();
             if (controller != null) {
                 controller.setSystemBarsBehavior(
                     WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
