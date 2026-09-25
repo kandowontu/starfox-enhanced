@@ -4,6 +4,10 @@ A native C++/SDL3 port of [UltraStarFox](https://github.com/Sunlitspace542/ultra
 with **Original Star Fox** and **Star Fox EX** experiences, high-frame-rate
 presentation, widescreen support, and optional visual enhancements.
 
+**AI disclosure:** This project is made with AI assistance, including OpenAI
+Codex and AI tools used for programming, testing, documentation and some visual
+assets.
+
 **[Download 0.0.8](https://github.com/kandowontu/starfox-enhanced/releases/tag/v0.0.8)** ·
 [Changelog](https://github.com/kandowontu/starfox-enhanced/blob/main/docs/RELEASE-0.0.8.md) ·
 [Settings and controls](https://github.com/kandowontu/starfox-enhanced/blob/main/docs/SETTINGS-AND-CONTROLS.md) ·
@@ -160,8 +164,3 @@ interpolated. Visual parity remains an ongoing effort.
 See [Credits](CREDITS.md) for Nintendo/Argonaut, EX, UltraStarFox and port
 contributors, and [Third-party notices](THIRD_PARTY_NOTICES.md) for dependencies
 and licenses.
-
-**AI-assisted development:** OpenAI Codex and other AI tools have been used to
-assist with programming, debugging, tests, documentation and some visual asset
-creation. The project maintainer directs and reviews the work; generated asset
-sources are identified in their accompanying notes where applicable.
