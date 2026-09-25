@@ -10,9 +10,13 @@ from pathlib import Path
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--chunk-bytes", type=int, default=0,
+                        help="split large literals and assemble resources lazily")
     parser.add_argument(
         "--resource", action="append", default=[], metavar="ID=PATH")
     args = parser.parse_args()
+    if args.chunk_bytes < 0 or (args.chunk_bytes and args.chunk_bytes > 8192):
+        parser.error("--chunk-bytes must be between 1 and 8192")
 
     resources: list[tuple[int, bytes]] = []
     for item in args.resource:
@@ -26,6 +30,7 @@ def main() -> int:
         '#include "starfox/assets/embedded.hpp"',
         "",
         "#include <stdexcept>",
+        *(["#include <vector>"] if args.chunk_bytes else []),
         "",
         "namespace starfox::assets {",
         "namespace {",
@@ -36,17 +41,37 @@ def main() -> int:
         # retain every byte (including NUL) without that compilation overhead.
         # Always escape every byte: a following hexadecimal character must not
         # extend the preceding escape. The implicit terminator is not exposed.
-        lines.append(f"const unsigned char r{identifier}[] =")
-        for offset in range(0, len(payload), 256):
-            chunk = payload[offset : offset + 256]
-            lines.append('    "' + ''.join(f"\\x{value:02x}" for value in chunk) + '"')
-        if not payload:
-            lines.append('    ""')
-        lines.append(";")
+        if args.chunk_bytes:
+            for part, offset in enumerate(range(0, len(payload), args.chunk_bytes)):
+                lines.append(f"const unsigned char r{identifier}_{part}[] =")
+                for block in range(offset, min(offset + args.chunk_bytes, len(payload)), 256):
+                    chunk = payload[block : min(block + 256, offset + args.chunk_bytes)]
+                    lines.append('    "' + ''.join(f"\\x{value:02x}" for value in chunk) + '"')
+                lines.append(";")
+        else:
+            lines.append(f"const unsigned char r{identifier}[] =")
+            for offset in range(0, len(payload), 256):
+                chunk = payload[offset : offset + 256]
+                lines.append('    "' + ''.join(f"\\x{value:02x}" for value in chunk) + '"')
+            if not payload:
+                lines.append('    ""')
+            lines.append(";")
     lines.extend(["}", "", "std::span<const std::uint8_t> embedded_asset(int identifier) {"])
     lines.append("    switch (identifier) {")
-    for identifier, _ in resources:
-        lines.append(f"    case {identifier}: return {{r{identifier}, sizeof(r{identifier}) - 1}};")
+    for identifier, payload in resources:
+        if args.chunk_bytes:
+            lines.extend([
+                f"    case {identifier}: {{",
+                "        static const std::vector<std::uint8_t> data = [] {",
+                "            std::vector<std::uint8_t> result;",
+                f"            result.reserve({len(payload)});"])
+            for part, _ in enumerate(range(0, len(payload), args.chunk_bytes)):
+                lines.extend([
+                    f"            const auto* begin{part} = reinterpret_cast<const std::uint8_t*>(r{identifier}_{part});",
+                    f"            result.insert(result.end(), begin{part}, begin{part} + sizeof(r{identifier}_{part}) - 1);"])
+            lines.extend(["            return result;", "        }();", "        return {data};", "    }"])
+        else:
+            lines.append(f"    case {identifier}: return {{r{identifier}, sizeof(r{identifier}) - 1}};")
     lines.extend([
         "    default: throw std::runtime_error{\"embedded Star Fox asset resource is missing\"};",
         "    }",

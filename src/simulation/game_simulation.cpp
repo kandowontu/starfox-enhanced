@@ -1622,17 +1622,22 @@ bool GameSimulation::launch_selected_level() {
     const auto level=selected_level_name();
     const auto address=rom_symbol(level);
     if (!starfox_ex_cartridge_ && selected_level_ % 10U > 1U) {
-        // Retail stage banks are overlays, not complete SPC images. The
-        // normal route has already loaded its first-stage bank, which carries
-        // common effects (including the laser) into later stages. A pre-game
-        // level shortcut skips that upload; seed it before the selected map's
-        // initializer installs its own bank.
-        const auto route = selected_level_ / 10U - 1U;
-        const auto sound_bank = "DO_BGM_" + std::to_string(route) + "0";
-        Wdc65816Registers registers;
-        registers.status = 0x24U;
-        map_.call_native_routine(rom_symbol(sound_bank), registers,
-            50'000'000U, true);
+        // Retail stage banks are cumulative SPC overlays. For example 3-5
+        // omits the sound1 samples uploaded at 3-1, including the e-laser.
+        // Rebuild the route's preceding bank state in progression order before
+        // the selected map initializer uploads its own stage bank.
+        const auto route = selected_level_ / 10U;
+        const auto stage = selected_level_ % 10U;
+        for (unsigned prior_stage = 0U; prior_stage < stage; ++prior_stage) {
+            const auto sound_bank = "DO_BGM_" + std::to_string(route)
+                + std::to_string(prior_stage);
+            const auto addresses = symbols_->find(sound_bank);
+            if (addresses.empty()) continue;
+            Wdc65816Registers registers;
+            registers.status = 0x24U;
+            map_.call_native_routine(addresses.front(), registers,
+                50'000'000U, true);
+        }
     }
     configure_route_for_map(level);
     pending_map_=address;

@@ -17,7 +17,7 @@ permissions:
 jobs:
   windows-x64:
     name: Windows x64 runtime and standalone asset builder
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
       - name: Configure and build
@@ -384,11 +384,22 @@ jobs:
           ANDROID_RELEASE_KEYSTORE: ${{ secrets.ANDROID_RELEASE_KEYSTORE }}
           ANDROID_RELEASE_PASSWORD: ${{ secrets.ANDROID_RELEASE_PASSWORD }}
         run: |
-          test -n "$ANDROID_RELEASE_KEYSTORE"
-          test -n "$ANDROID_RELEASE_PASSWORD"
           export ANDROID_RELEASE_KEYSTORE_PATH="$RUNNER_TEMP/starfox-release.p12"
           umask 077
-          printf '%s' "$ANDROID_RELEASE_KEYSTORE" | base64 --decode > "$ANDROID_RELEASE_KEYSTORE_PATH"
+          if [[ -n "$ANDROID_RELEASE_KEYSTORE" && -n "$ANDROID_RELEASE_PASSWORD" ]]; then
+            printf '%s' "$ANDROID_RELEASE_KEYSTORE" | base64 --decode > "$ANDROID_RELEASE_KEYSTORE_PATH"
+          elif [[ "$GITHUB_REPOSITORY" != 'kandowontu/starfox-enhanced' ]]; then
+            export ANDROID_RELEASE_PASSWORD="$(openssl rand -hex 24)"
+            keytool -genkeypair -noprompt -storetype PKCS12 \
+              -keystore "$ANDROID_RELEASE_KEYSTORE_PATH" \
+              -storepass "$ANDROID_RELEASE_PASSWORD" -keypass "$ANDROID_RELEASE_PASSWORD" \
+              -alias starfox-enhanced -keyalg RSA -keysize 3072 -validity 2 \
+              -dname 'CN=Star Fox Enhanced private validation build'
+            echo 'STARFOX_VALIDATION_SIGNING=1' >> "$GITHUB_ENV"
+          else
+            echo 'Official Android signing secrets are missing' >&2
+            exit 1
+          fi
           chmod +x tools/build_android.sh platform/android/gradlew
           tools/build_android.sh "$GITHUB_WORKSPACE" debug
       - name: Verify APK payload
@@ -399,7 +410,9 @@ jobs:
           python3 tools/check_android_package.py "$apk" --source-root "$GITHUB_WORKSPACE"
           "${ANDROID_HOME}/build-tools/35.0.0/aapt" dump badging "${apk}"
           "${ANDROID_HOME}/build-tools/35.0.0/apksigner" verify --print-certs "${apk}" > "$RUNNER_TEMP/signing-certificate.txt"
-          grep -Fqi '50bcb41f7a02c2e9bb0f68a74b1f6e14f7317fedc69d2c6fd70a165f87800fc0' "$RUNNER_TEMP/signing-certificate.txt"
+          if [[ "${STARFOX_VALIDATION_SIGNING:-}" != 1 ]]; then
+            grep -Fqi '50bcb41f7a02c2e9bb0f68a74b1f6e14f7317fedc69d2c6fd70a165f87800fc0' "$RUNNER_TEMP/signing-certificate.txt"
+          fi
           unzip -l "${apk}" | grep -q 'lib/arm64-v8a/libmain.so'
           unzip -l "${apk}" | grep -q 'lib/arm64-v8a/libSDL3.so'
           cp "${apk}" StarFoxEnhanced-0.0.8-android-arm64.apk
@@ -440,11 +453,22 @@ jobs:
           ANDROID_RELEASE_KEYSTORE: ${{ secrets.ANDROID_RELEASE_KEYSTORE }}
           ANDROID_RELEASE_PASSWORD: ${{ secrets.ANDROID_RELEASE_PASSWORD }}
         run: |
-          test -n "$ANDROID_RELEASE_KEYSTORE"
-          test -n "$ANDROID_RELEASE_PASSWORD"
           export ANDROID_RELEASE_KEYSTORE_PATH="$RUNNER_TEMP/starfox-quest-release.p12"
           umask 077
-          printf '%s' "$ANDROID_RELEASE_KEYSTORE" | base64 --decode > "$ANDROID_RELEASE_KEYSTORE_PATH"
+          if [[ -n "$ANDROID_RELEASE_KEYSTORE" && -n "$ANDROID_RELEASE_PASSWORD" ]]; then
+            printf '%s' "$ANDROID_RELEASE_KEYSTORE" | base64 --decode > "$ANDROID_RELEASE_KEYSTORE_PATH"
+          elif [[ "$GITHUB_REPOSITORY" != 'kandowontu/starfox-enhanced' ]]; then
+            export ANDROID_RELEASE_PASSWORD="$(openssl rand -hex 24)"
+            keytool -genkeypair -noprompt -storetype PKCS12 \
+              -keystore "$ANDROID_RELEASE_KEYSTORE_PATH" \
+              -storepass "$ANDROID_RELEASE_PASSWORD" -keypass "$ANDROID_RELEASE_PASSWORD" \
+              -alias starfox-enhanced -keyalg RSA -keysize 3072 -validity 2 \
+              -dname 'CN=Star Fox Enhanced private validation build'
+            echo 'STARFOX_VALIDATION_SIGNING=1' >> "$GITHUB_ENV"
+          else
+            echo 'Official Quest signing secrets are missing' >&2
+            exit 1
+          fi
           chmod +x tools/build_android.sh platform/android/gradlew
           tools/build_android.sh "$GITHUB_WORKSPACE" release quest
       - name: Verify and package Quest APK
@@ -455,7 +479,9 @@ jobs:
           "${ANDROID_HOME}/build-tools/35.0.0/aapt" dump badging "$apk" > "$RUNNER_TEMP/quest-badging.txt"
           grep -Fq "package: name='com.starfox.enhanced.quest'" "$RUNNER_TEMP/quest-badging.txt"
           "${ANDROID_HOME}/build-tools/35.0.0/apksigner" verify --print-certs "$apk" > "$RUNNER_TEMP/quest-certificate.txt"
-          grep -Fqi '50bcb41f7a02c2e9bb0f68a74b1f6e14f7317fedc69d2c6fd70a165f87800fc0' "$RUNNER_TEMP/quest-certificate.txt"
+          if [[ "${STARFOX_VALIDATION_SIGNING:-}" != 1 ]]; then
+            grep -Fqi '50bcb41f7a02c2e9bb0f68a74b1f6e14f7317fedc69d2c6fd70a165f87800fc0' "$RUNNER_TEMP/quest-certificate.txt"
+          fi
           mkdir -p quest-package
           cp "$apk" quest-package/
           cp tools/package/QUEST-START-HERE.txt quest-package/START-HERE.txt

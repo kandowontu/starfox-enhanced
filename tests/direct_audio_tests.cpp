@@ -124,9 +124,9 @@ void check_original_selected_level_bank(const starfox::assets::RomImage& rom,
         selected->synchronize_apu_output_ports(audio.output_ports());
     }
     require(selected->flow_state() == starfox::simulation::GameFlowState::gameplay
-            && selected->map().apu_upload_generation() >= 2U
+            && selected->map().apu_upload_generation() >= 6U
             && audio.driver_loaded(),
-        "level 3-5 shortcut skipped its common or stage sound bank");
+        "level 3-5 shortcut skipped one or more preceding sound banks");
     for (int tick = 0; tick < 40; ++tick) (void)audio.render_logic_tick({});
     constexpr std::array laser{starfox::simulation::ApuPortWrite{3U, 0x35U, 0U}};
     bool heard_laser{};
@@ -140,6 +140,20 @@ void check_original_selected_level_bank(const starfox::assets::RomImage& rom,
             [](std::int16_t sample) { return sample != 0; });
     }
     require(heard_laser, "level 3-5 shortcut silenced the laser effect");
+    // Enemy e-lasers use a different effect family ($44-$48). The stage 3-5
+    // bank alone does not include the sound1 samples from earlier stages.
+    constexpr std::array e_laser{starfox::simulation::ApuPortWrite{3U, 0x44U, 0U}};
+    bool heard_e_laser{};
+    for (int tick = 0; tick < 24; ++tick) {
+        (void)audio.render_logic_tick(tick == 0
+            ? std::span<const starfox::simulation::ApuPortWrite>{e_laser}
+            : std::span<const starfox::simulation::ApuPortWrite>{});
+        heard_e_laser = heard_e_laser || std::any_of(
+            audio.last_effect_samples().begin(),
+            audio.last_effect_samples().end(),
+            [](std::int16_t sample) { return sample != 0; });
+    }
+    require(heard_e_laser, "level 3-5 shortcut silenced the e-laser effect");
 }
 
 } // namespace

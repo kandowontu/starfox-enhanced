@@ -866,11 +866,19 @@ if(STARFOX_BUILD_RUNTIME)
         find_package(Python3 REQUIRED COMPONENTS Interpreter)
         set(STARFOX_GENERATED_EMBEDDED_ASSETS
             "${CMAKE_CURRENT_BINARY_DIR}/generated/embedded_assets.cpp")
+        set(STARFOX_EMBED_CHUNK_ARGS)
+        if(WINDOWS_STORE)
+            # MSVC runs out of heap when concatenating a multi-megabyte BMP
+            # into one string literal. Preserve the bytes but assemble them
+            # lazily from bounded literals on UWP.
+            list(APPEND STARFOX_EMBED_CHUNK_ARGS --chunk-bytes 8192)
+        endif()
         add_custom_command(
             OUTPUT "${STARFOX_GENERATED_EMBEDDED_ASSETS}"
             COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_runtime_assets.py"
                 --output "${STARFOX_GENERATED_EMBEDDED_ASSETS}"
+                ${STARFOX_EMBED_CHUNK_ARGS}
                 --resource "101=${STARFOX_ORIGINAL_PATCH_FILE}"
                 --resource "102=${STARFOX_SYMBOLS_FILE}"
                 --resource "108=${STARFOX_EX_PATCH_FILE}"
