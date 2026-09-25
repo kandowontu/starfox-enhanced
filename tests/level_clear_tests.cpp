@@ -80,6 +80,8 @@ ClearTimeline run_clear(const starfox::assets::RomImage& rom,
             phases_this_tick = 0;
             static_cast<void>(game->tick({})); ++ticks;
             const auto result = game->stage_results_state();
+            if(!ex && game->flow_state()==GameFlowState::stage_results)
+                require(!game->dialogue_state().active,std::string{test.clear}+" retained gameplay communication during retail tally");
             const auto exit = game->map().read_native_byte(addr("CLB2"));
             if (result.active && exit != 0 && !(ex && exit == 2))
                 require(!result.visible, std::string{test.clear} + " redisplays score/avatars after the hide signal");
@@ -213,17 +215,22 @@ unsigned check_colony_exit(const starfox::assets::RomImage& rom,
 } // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 3) return 2;
+    if (argc != 3 && argc != 4) return 2;
     try {
         const auto rom = starfox::assets::RomImage::load(argv[1]);
         const auto symbols = starfox::assets::SymbolMap::load(argv[2]);
         const auto ex = !symbols.find("NOCROSSHAIRPLS").empty();
-        if (ex) check_ship_selection_scratch(rom, symbols);
-        require(check_colony_exit(rom, symbols, ex, 20) == check_colony_exit(rom, symbols, ex, 120),
-            "colony corridor timing changed with presentation FPS");
+        if(argc==3) {
+            if (ex) check_ship_selection_scratch(rom, symbols);
+            require(check_colony_exit(rom, symbols, ex, 20) == check_colony_exit(rom, symbols, ex, 120),
+                "colony corridor timing changed with presentation FPS");
+        } else require(std::any_of(std::begin(cases),std::end(cases),[&](auto test) {
+            return std::string_view(test.clear)==argv[3] && (!test.ex_only || ex);
+        }),"Unknown clear-case filter");
         bool failed = false;
         for (const auto test : cases) {
             if (test.ex_only && !ex) continue;
+            if(argc==4 && std::string_view(test.clear)!=argv[3]) continue;
             try {
                 const auto baseline = run_clear(rom, symbols, test, ex, 20);
                 for (const auto fps : {30U, 60U, 90U, 120U, 240U, 360U, 480U})

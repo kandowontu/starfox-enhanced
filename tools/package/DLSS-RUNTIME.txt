@@ -1,0 +1,17 @@
+OPTIONAL NVIDIA DLSS RUNTIME
+
+This folder is part of Star Fox Enhanced's Windows x64 distribution.
+Keep it beside starfox_pc.exe. No separate download or installer is required.
+Select DLSS in 3D OPTIONS when using a compatible NVIDIA GPU and D3D12.
+DLSS defaults to OFF; unsupported systems retain normal rendering.
+
+The NVIDIA binaries are unmodified, separately licensed components, not
+covered by the game's source-code license. Their use and distribution are
+subject to nvngx_dlss.license.txt, Streamline-LICENSE.txt and the accompanying
+third-party notices. These components are provided only with this application,
+not as a standalone SDK. Do not remove their proprietary notices.
+
+This package does not include RenoDX, ReShade, or the DLSS5 neural-rendering
+add-on. DLSS5 (EXP.) appears only with a separately installed, compatible
+experimental add-on and explicit startup configuration. Its ON/OFF preference
+requires restarting the game; this package alone does not provide that effect.

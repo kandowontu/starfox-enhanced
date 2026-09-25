@@ -3,6 +3,7 @@
 #include "starfox/vr/scene_material.hpp"
 #include "starfox/render/software_renderer.hpp"
 #include <memory>
+#include <algorithm>
 namespace starfox::vr {
 struct ShapeDrawRange {
     std::size_t source_face{};
@@ -33,6 +34,17 @@ struct ShapeBatch {
         return shared_line_vertices?std::span<const SceneVertex>(*shared_line_vertices):std::span<const SceneVertex>(line_vertices);
     }
     std::vector<uint32_t> texels; // Packed RGBA, transparent source index zero.
+    // Immutable artwork can be retained across source frames without copying
+    // its pixels. As with vertices, owned and shared storage are exclusive.
+    std::shared_ptr<const std::vector<uint32_t>> shared_texels;
+    std::span<const uint32_t> texel_view() const noexcept {
+        return shared_texels?std::span<const uint32_t>(*shared_texels):std::span<const uint32_t>(texels);
+    }
+    bool same_texels(const ShapeBatch& other) const noexcept {
+        if((shared_texels && !texels.empty()) || (other.shared_texels && !other.texels.empty())) return false;
+        const auto a=texel_view(),b=other.texel_view();
+        return a.size()==b.size() && (a.data()==b.data() || std::equal(a.begin(),a.end(),b.begin()));
+    }
     std::vector<ShapeDrawRange> line_ranges;
     std::vector<ShapeDrawRange> ranges;
     std::vector<DeferredFace> deferred;

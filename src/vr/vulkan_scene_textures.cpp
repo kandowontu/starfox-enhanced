@@ -1,4 +1,5 @@
 #include "starfox/vr/vulkan_scene_textures.hpp"
+#include "starfox/vr/backdrop_texture.hpp"
 #include <cstring>
 #include <stdexcept>
 namespace starfox::vr {
@@ -23,7 +24,7 @@ bool VulkanSceneTextures::initialize(VkDevice device,PFN_vkGetDeviceProcAddr get
     const VkPhysicalDeviceMemoryProperties& properties,std::span<const uint32_t> texels) {
     close();
     try {
-        if(!device || !get || texels.empty() || texels.size()>4'000'000 || properties.memoryTypeCount>VK_MAX_MEMORY_TYPES)
+        if(!device || !get || texels.empty() || texels.size()>backdrop_texture_word_limit || properties.memoryTypeCount>VK_MAX_MEMORY_TYPES)
             throw std::runtime_error("Invalid scene texture upload");
         // Resolve cleanup operations before creating anything.
         entry<PFN_vkDestroyDescriptorPool>(get,device,"vkDestroyDescriptorPool");

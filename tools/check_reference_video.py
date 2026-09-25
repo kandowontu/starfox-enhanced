@@ -45,6 +45,12 @@ def main():
                         help="Read a WRAM byte offset after execution (read-only diagnostic)")
     parser.add_argument("--observe-cpu", action="store_true",
                         help="Read CPU registers using the optional local observer bridge")
+    parser.add_argument("--observe-bg2", action="store_true",
+                        help="Read BG2 registers using the optional read-only local observer bridge")
+    parser.add_argument("--background-only", action="store_true",
+                        help="Diagnostic: use core layer visibility to show BG2 only; no ROM/RAM changes")
+    parser.add_argument("--expect-blank", action="store_true",
+                        help="Require an entirely black diagnostic frame (EX background 99)")
     args = parser.parse_args()
     if not 1 <= args.frames <= 10000:
         parser.error("frames must be in 1..10000")
@@ -64,7 +70,20 @@ def main():
             raise RuntimeError("Reference core does not include the read-only CPU observer")
         observer.argtypes = [C.c_uint]
         observer.restype = C.c_uint32
+    cgram_observer = None
+    if args.observe_bg2:
+        cgram_observer = getattr(core, "retro_debug_cgram_word", None)
+        if cgram_observer is not None:
+            cgram_observer.argtypes = [C.c_uint]
+            cgram_observer.restype = C.c_uint32
     pixel_format = 0
+    bg2_observer = None
+    if args.observe_bg2:
+        bg2_observer = getattr(core, "retro_debug_bg2_word", None)
+        if bg2_observer is None:
+            raise RuntimeError("Reference core does not include the read-only BG2 observer")
+        bg2_observer.argtypes = [C.c_uint]
+        bg2_observer.restype = C.c_uint32
     captured = None
     video_frames = 0
     current_frame = 0
@@ -107,6 +126,10 @@ def main():
             return False
         if command == 15:  # RETRO_ENVIRONMENT_GET_VARIABLE
             variable = C.cast(data, C.POINTER(Variable))
+            if args.background_only and variable[0].key in (
+                    b"snes9x_layer_1", b"snes9x_layer_3", b"snes9x_layer_4", b"snes9x_layer_5"):
+                variable[0].value = b"disabled"
+                return True
             if variable[0].key in defaults:
                 variable[0].value = defaults[variable[0].key]
                 return True
@@ -192,12 +215,18 @@ def main():
         core.retro_set_controller_port_device(0, 1)  # RETRO_DEVICE_JOYPAD
         print(f"Reference defaults: {len(defaults)} options; Super FX clock "
               + defaults.get(b"snes9x_overclock_superfx", b"unavailable").decode())
+        if args.background_only:
+            print("Reference diagnostic: only BG2 visible (core layer settings)")
         for current_frame in range(1, args.frames + 1):
             core.retro_run()
         if observer is not None:
             names = ("PC", "A", "X", "Y", "P", "S", "NMI", "IRQ", "WAI", "V", "flags")
             print("Reference CPU: " + " ".join(f"{name}={observer(index):06x}"
                                                for index, name in enumerate(names)))
+        if cgram_observer is not None:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.with_suffix(".cgram").write_bytes(b"".join(
+                int(cgram_observer(index)).to_bytes(2, "little") for index in range(256)))
         if args.watch:
             core.retro_get_memory_size.argtypes = [C.c_uint]
             core.retro_get_memory_size.restype = C.c_size_t
@@ -209,6 +238,11 @@ def main():
                 raise RuntimeError("Reference does not expose expected SNES WRAM")
             ram = C.string_at(pointer, size)
             print("WRAM: " + " ".join(f"{offset:05x}={ram[offset]:02x}" for offset in args.watch))
+        if bg2_observer is not None:
+            names = ("mode", "x", "y", "map", "size", "characters", "tile16",
+                     "offset_x", "offset_y", "offset_map", "vertical_word", "horizontal_word")
+            print("Reference BG2: " + " ".join(f"{name}={bg2_observer(index)}"
+                                               for index, name in enumerate(names)))
         if captured is None:
             raise RuntimeError("Reference core emitted no software video")
         width, height, pitch, fmt, raw = captured
@@ -225,11 +259,14 @@ def main():
                     rgb.extend((((value >> (green_bits + 5)) & 31) * 255 // 31,
                                 ((value >> 5) & ((1 << green_bits) - 1)) * 255 // ((1 << green_bits) - 1),
                                 (value & 31) * 255 // 31))
-        if not any(rgb):
+        if args.expect_blank and any(rgb):
+            raise RuntimeError("Expected an entirely black reference frame")
+        if not any(rgb) and not args.expect_blank:
             raise RuntimeError("Reference emitted an entirely black final frame")
         args.output.parent.mkdir(parents=True, exist_ok=True)
         Image.frombytes("RGB", (width, height), bytes(rgb)).save(args.output)
-        print(f"Reference video: {video_frames} callbacks, {width}x{height}, format {fmt}; nonblank capture {args.output}")
+        print(f"Reference video: {video_frames} callbacks, {width}x{height}, format {fmt}; "
+              f"{'expected blank' if args.expect_blank else 'nonblank'} capture {args.output}")
         if b"snes9x_overclock_superfx" in defaults:
             print("Reference Super FX clock: " + defaults[b"snes9x_overclock_superfx"].decode())
     finally:

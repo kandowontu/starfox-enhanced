@@ -1365,6 +1365,8 @@ inline constexpr unsigned char spirv[]={
 127,0,0,0,85,7,0,0,248,0,2,0,85,7,0,0,249,0,2,0,127,0,0,0,248,0,2,0,127,0,0,0,
 253,0,1,0,56,0,1,0
 };
+#if defined(_WIN32)
+
 inline constexpr unsigned char dxil[]={
 68,88,66,67,25,210,52,254,104,152,80,252,4,171,11,142,45,241,59,236,1,0,0,0,72,68,0,0,7,0,0,0,
 60,0,0,0,76,0,0,0,92,0,0,0,108,0,0,0,108,1,0,0,32,15,0,0,60,15,0,0,83,70,73,48,
@@ -1914,6 +1916,9 @@ inline constexpr unsigned char dxil[]={
 32,184,26,130,29,49,104,0,16,4,131,143,71,3,17,13,96,51,48,70,52,8,70,52,24,209,96,68,131,218,12,102,
 9,210,3,0,0,0,0,0
 };
+#endif
+
+#if defined(__APPLE__)
 
 inline constexpr char metal[]=R"SFXMETAL(
 #include <metal_stdlib>
@@ -3690,4 +3695,5 @@ kernel void main0(device type_StructuredBuffer_v4int& clipped [[buffer(1)]], dev
 }
 
 )SFXMETAL";
+#endif
 }

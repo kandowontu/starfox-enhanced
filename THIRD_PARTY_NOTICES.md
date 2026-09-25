@@ -1,5 +1,23 @@
 # Third-party notices
 
+## AMD FidelityFX Super Resolution 1
+
+The FSR1 EASU/RCAS implementation in `third_party/fsr1` is from
+[AMD GPUOpen](https://github.com/GPUOpen-Effects/FidelityFX-FSR), pinned to
+commit `a21ffb8f6c13233ba336352bdff293894c706575`.
+Copyright (c) 2021 Advanced Micro Devices, Inc. All rights reserved.
+Distributed under the MIT license, reproduced in `third_party/fsr1/LICENSE.txt`
+and the upstream headers. This component is independent of NVIDIA DLSS.
+
+## Optional Windows x64 NVIDIA DLSS runtime
+
+Windows x64 releases include unmodified production runtime binaries from
+[NVIDIA Streamline 2.14.1](https://github.com/NVIDIA-RTX/Streamline/releases/tag/v2.14.1).
+These are separately licensed components, not relicensed under the game's
+source license. Full NVIDIA RTX SDK terms, Streamline copyright/license and
+third-party notices accompany them in the `dlss` folder. DLSS is optional and
+defaults to off. ReShade, RenoDX and DLSS5 add-on binaries are not included.
+
 ## RetroCPU
 
 Source: <https://github.com/achaulk/retro_cpu>

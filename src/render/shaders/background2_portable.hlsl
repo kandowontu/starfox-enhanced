@@ -1,4 +1,5 @@
 #include "geometry_fp64.hlsli"
+#include "raster_jitter.hlsli"
 StructuredBuffer<uint> memory : register(t0,space0);
 RWStructuredBuffer<uint> pixels : register(u0,space1);
 RWStructuredBuffer<uint> prepared : register(u1,space1);
@@ -9,7 +10,8 @@ cbuffer Settings : register(b0,space2) {
     int clipRight,mosaic;uint tileEdge,priority;
     uint tag,enabled,transparentBlack,flags;
     uint singleRows,regionCount;int registerX,registerY;
-    uint terrainFirst,terrainLast,terrainPad0,terrainPad1;
+    uint terrainFirst,terrainLast,logicalWidth,logicalHeight;
+    float2 rasterJitter;uint skySourceMin,jitterPadding;
 };
 uint readByte(uint address) {address&=65535u;return (memory[address>>2]>>((address&3u)*8u))&255u;}
 uint readWord(uint address) {address=(address&32767u)*2u;return readByte(address)|(readByte(address+1u)<<8u);}
@@ -96,27 +98,37 @@ int columnScroll(int screenX,bool expanded) {
 }
 void put(uint x,uint y,uint colour,bool covered,bool terrain) {
     uint value=covered?(colour|(tag<<8)|0x04000000u|(terrain?0x08000000u:0)):0;
-    for(uint by=0;by<scale;++by) for(uint bx=0;bx<scale;++bx) pixels[(y*scale+by)*width+x*scale+bx]=value;
+    uint2 first=(uint2(x,y)*uint2(width,height)+uint2(logicalWidth,logicalHeight)-1)/uint2(logicalWidth,logicalHeight);
+    uint2 last=((uint2(x,y)+1)*uint2(width,height)+uint2(logicalWidth,logicalHeight)-1)/uint2(logicalWidth,logicalHeight);
+    if(any(rasterJitter!=0)) {
+        first=uint2(clamp(int2(jitterCeil(int(x),width,logicalWidth,rasterJitter.x,true),jitterCeil(int(y),height,logicalHeight,rasterJitter.y,true)),0,int2(width,height)));
+        last=uint2(clamp(int2(jitterCeil(int(x+1),width,logicalWidth,rasterJitter.x,true),jitterCeil(int(y+1),height,logicalHeight,rasterJitter.y,true)),0,int2(width,height)));
+        if(x==0) first.x=0;if(y==0) first.y=0;
+        if(x+1==logicalWidth) last.x=width;if(y+1==logicalHeight) last.y=height;
+    }
+    for(uint by=first.y;by<last.y;++by) for(uint bx=first.x;bx<last.x;++bx) pixels[by*width+bx]=value;
 }
 void put(uint x,uint y,uint colour,bool covered) {put(x,y,colour,covered,false);}
 [numthreads(64,1,1)]
 void main(uint3 id:SV_DispatchThreadID) {
     if(!phase) {if(!id.x) prepare();return;}
-    uint x=id.x;if(x>=width/scale) return;
+    uint x=id.x;if(x>=logicalWidth) return;
     bool extend=(flags&1u)!=0,wrapX=(flags&2u)!=0,tunnel=(flags&32u)!=0;
-    bool expanded=extend && width/scale>256 && (flags&4u),ground=expanded && height/scale>192;
-    int logicalX=int(x)-originX,sampleX=mosaicAt(logicalX);
+    bool expanded=extend && logicalWidth>256 && (flags&4u),ground=expanded && logicalHeight>192;
+    int logicalX=int(x)-originX,sampleX=mosaicAt(tunnel && extend && priority!=2u?clamp(logicalX,0,255):logicalX);
     bool outside=logicalX<0 || logicalX>=256;
     uint mapWidth=tilesWide*tileEdge,mapHeight=tilesHigh*tileEdge;
-    int columnY=columnScroll(int(x),expanded),previous=-1;uint lastGround=0;bool wrapped=false,lastTerrain=false;
-    for(uint y=0;y<height/scale;++y) {
+    int columnY=columnScroll(tunnel && extend?sampleX+originX:int(x),expanded),previous=-1;uint lastGround=0;bool wrapped=false,lastTerrain=false;
+    for(uint y=0;y<logicalHeight;++y) {
         put(x,y,0,false);
         if(!enabled || int(x)<clipLeft || int(x)>=clipRight) continue;
-        if(tunnel && extend && outside) {put(x,y,prepared[6],true);continue;}
+        if(tunnel && extend && outside && priority==2u) continue;
+        if(tunnel && extend && outside && priority!=2u) put(x,y,prepared[6],true);
         int sampleY=mosaicAt(int(y));
         int rowX=(flags&8u) && sampleY>=0 && sampleY<224?asint(memory[16640u+uint(sampleY)]):scrollX;
         int rowY=(flags&16u)?asint(memory[16864u+uint(clamp(sampleY,0,223))]):scrollY;
         uint sourceY=uint(sampleY+(columnY!=-2147483647?columnY:rowY))&(mapHeight-1);
+        if(expanded && y<144 && outside && skySourceMin<mapHeight) sourceY=max(sourceY,skySourceMin);
         if(ground) {
             if(y>=144 && previous>=0 && int(sourceY)<previous && previous-int(sourceY)>int(mapHeight/2)) wrapped=true;
             previous=int(sourceY);
@@ -124,6 +136,17 @@ void main(uint3 id:SV_DispatchThreadID) {
         }
         int unwrappedX=sampleX+rowX;
         bool outMap=unwrappedX<0 || unwrappedX>=int(mapWidth);
+        if((flags&384u) && extend && outside && (outMap || (flags&256u))) {
+            uint cellX=uint(unwrappedX)>>5u;
+            int worldY=sampleY+(columnY!=-2147483647?columnY:rowY);
+            uint cellY=uint(worldY)>>5u;
+            uint seed=cellX*0x9e3779b9u ^ cellY*0x85ebca6bu;
+            seed^=seed>>16u;seed*=0x7feb352du;seed^=seed>>15u;
+            unwrappedX=int((seed&7u)*32u)+(unwrappedX&31);
+            sourceY=((seed>>3u)&3u)*32u+(uint(worldY)&31u);
+            if(flags&256u) {uint patch=(seed>>3u)%3u;sourceY=(patch?128u+patch*32u:0u)+(uint(worldY)&31u);}
+            outMap=false;
+        }
         if(!wrapX && outMap) continue;
         if(singleRows && y<singleRows && outside && outMap) {put(x,y,prepared[5],true);continue;}
         uint sourceX=uint(unwrappedX)&(mapWidth-1);
@@ -131,16 +154,28 @@ void main(uint3 id:SV_DispatchThreadID) {
             int waterX=int(uint(128+rowX)&(mapWidth-1))+sampleX-128;sourceX=uint(clamp(waterX,0,int(mapWidth)-1));
         }
         uint tile=tileAt(sourceX,sourceY);
-        if(priority && (((tile>>13)&1u)!=(priority==2u?1u:0u))) {if(ground && y>=144 && lastGround) put(x,y,lastGround,true,lastTerrain);continue;}
+        if(priority && !(tunnel && extend && priority==1u) && (((tile>>13)&1u)!=(priority==2u?1u:0u))) {if(ground && y>=144 && lastGround) put(x,y,lastGround,true,lastTerrain);continue;}
         uint ink=tileInk(tile,sourceX,sourceY);
         if(!ink) {if(ground && y>=144 && lastGround) put(x,y,lastGround,true,lastTerrain);continue;}
         uint colour=((tile>>10)&7u)*16u+ink;
         int uniqueX=sampleX+int(uint(rowX+int(mapWidth/2))&(mapWidth-1))-int(mapWidth/2);
-        if(extend && outside && (uniqueX<0 || uniqueX>=int(mapWidth))) for(uint r=0;r<regionCount;++r) {
+        if((extend && outside) || (flags&512u)) for(uint r=0;r<regionCount;++r) {
             uint base=17088u+r*8u;
-            if(int(sourceX)>=asint(memory[base]) && int(sourceY)>=asint(memory[base+1])
+            int offset=asint(memory[base+7]);bool suppressAll=offset>=0 && (offset&0x40000000)!=0;
+            bool suppressEvery=offset>=0 && (offset&0x20000000)!=0;
+            if(suppressAll || suppressEvery) offset=offset&~0x60000000;
+            if((suppressEvery || (extend && outside && (suppressAll || uniqueX<0 || uniqueX>=int(mapWidth))))
+                && int(sourceX)>=asint(memory[base]) && int(sourceY)>=asint(memory[base+1])
                 && int(sourceX)<asint(memory[base+2]) && int(sourceY)<asint(memory[base+3])
-                && colour>=memory[base+4] && colour<=memory[base+5]) {colour=memory[base+6];break;}
+                && colour>=memory[base+4] && colour<=memory[base+5]) {
+                colour=memory[base+6];
+                if(offset!=0) {
+                    uint rx=uint(int(sourceX)+offset)&(mapWidth-1);
+                    uint rt=tileAt(rx,sourceY),ri=tileInk(rt,rx,sourceY);
+                    if(ri) colour=((rt>>10)&7u)*16u+ri;
+                }
+                break;
+            }
         }
         if(transparentBlack && !(memory[16384u+colour]&32767u)) continue;
         bool terrain=!tunnel && sourceY>=terrainFirst && sourceY<terrainLast;

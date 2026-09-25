@@ -1,5 +1,50 @@
 # Ending regression pass — 2026-09-04
 
+## September 20: boss-roll sky strip (#69)
+
+Reproduced the reported 16-line sky strip above a fully closed boss wipe:
+`tmp/issue69-before/000450.bmp` (and adjacent captures). Boss backgrounds
+reach row zero, but the presentation window mask covered only the 192-line
+Super FX viewport beginning at row 16. Boss-roll presentation now applies
+the existing full-height wipe mapping, shared by software and GPU paths.
+
+`tools/check_boss_roll_wipe.ps1` executes FINALMAP_END with fixture route
+history, prerolls 1800 source ticks and captures the boss dossier at 60 Hz/16:9.
+The original September 20 frame-451 all-black result was superseded when the
+native ending loop's missing `M_WINB` logic snapshot was restored: it had
+masked an authentic partial circular opening as a fully closed frame. The
+current check expects the source $55 window and its partial aperture, not
+black. At frames 1/451 both SOFTWARE and GPU have respectively 41,216/12,521
+nonblack pixels, with byte-identical captures and no GPU-to-CPU fallback.
+Evidence: `tmp/boss-roll-wipe-sep24/{SOFTWARE,GPU}-{1,451}-final.bmp`.
+This verifies the local window geometry; every boss/cartridge/platform still
+needs visual acceptance.
+
+## September 19: title corruption after ending (#68)
+
+Reproduced in a new regression that continues beyond the existing #35 intro
+handoff. After the full ending, Start and the intro skip, title BG2 scroll was
+0 instead of a fresh title's 257. CREDITS sets BG2VOFSOVERRIDE; the native
+RESTART clears it through INITIALISE_RAM, which the host's bounded handoff
+does not execute. INITIALISE_L alone does not clear that flag.
+
+The Original ending restart now explicitly retires this fixed-scroll override
+before entering the intro. The active final-score screen retains its override;
+EX's separate credits-menu path is unchanged. Original and EX ending tests
+pass (2/2, 68.14 s), including both pacing/route fixtures. The new assertions
+check the post-restart title scroll against a fresh title and reject leaked
+scanline scrolling. Windows app rebuilt successfully.
+
+Actual software runtime proof: `tmp/issue68-title-fixed/title.bmp`, visually
+inspected after FINALMAP_END, 8000 preroll ticks, Start held from presentation
+0 through 239, and capture at 720. Trace confirms title flow, BG2 scroll 257,
+no tunnel state; logo/portraits are intact with no reported scattered tiles.
+This starts at the post-Andross continuation, not a complete campaign run.
+No issue closure or release was performed.
+
+Native Linux application/ending test also rebuild successfully; the expanded
+Original ending suite passes there (72.94 s), independently of Windows.
+
 ## Source defects addressed
 
 - Native object dispatch must enter with both X and Y identifying the object.

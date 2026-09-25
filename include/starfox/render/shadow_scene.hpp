@@ -42,6 +42,7 @@ class Scene {
     std::vector<PreparedTriangle> prepared_;
     std::vector<Node> nodes_;
     bool ready_{};
+    bool reflection_materials_{};
     std::uint64_t generation_{};
 
     std::size_t build_node(std::size_t begin, std::size_t end) {
@@ -72,6 +73,8 @@ class Scene {
         return index;
     }
 public:
+    void capture_reflection_materials(bool value) { reflection_materials_=value; }
+    bool reflection_materials() const { return reflection_materials_; }
     // Explicit 16-byte lanes shared with portable compute shaders. Bounds are
     // rounded outward so converting the BVH to float cannot discard a caster.
     struct GpuNode {
@@ -165,21 +168,24 @@ public:
 
     // Exact camera-ray receiver depth. Unlike average face depth, this stays
     // on sloped surfaces and selects the closest of overlapping polygons.
-    std::optional<double> nearest(Vec3 origin, Vec3 direction,
-        double minimum_distance=0.05, double maximum_distance=65536.0) const {
+    struct Hit { double distance; std::size_t triangle; };
+    std::optional<Hit> nearest_hit(Vec3 origin, Vec3 direction,
+        double minimum_distance=0.05, double maximum_distance=65536.0,
+        bool reflection_only=false) const {
         if (!ready_ || nodes_.empty()) return {};
         std::array<std::size_t,64> stack;
         stack[0]=0;
         std::size_t size=1;
-        std::optional<double> result;
+        std::optional<Hit> result;
         while (size) {
             const auto& node=nodes_[stack[--size]];
             if (!node.bounds.hit(origin,direction,minimum_distance,maximum_distance)) continue;
             if (node.count) {
                 for (auto i=node.begin;i<node.begin+node.count;++i) {
+                    if (reflection_only && !triangles_[i].reflection_valid) continue;
                     const auto hit=intersect(origin,direction,prepared_[i],
                         minimum_distance,maximum_distance);
-                    if (hit) { result=hit; maximum_distance=*hit; }
+                    if (hit) { result=Hit{*hit,i}; maximum_distance=*hit; }
                 }
             } else {
                 // Visit the likely nearer half first so an early receiver
@@ -191,6 +197,11 @@ public:
             }
         }
         return result;
+    }
+    std::optional<double> nearest(Vec3 origin, Vec3 direction,
+        double minimum_distance=0.05, double maximum_distance=65536.0) const {
+        const auto hit=nearest_hit(origin,direction,minimum_distance,maximum_distance);
+        return hit?std::optional<double>{hit->distance}:std::nullopt;
     }
 };
 } // namespace starfox::render::shadows

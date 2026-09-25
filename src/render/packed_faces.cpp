@@ -29,7 +29,8 @@ std::vector<ContinuousTransformPose> pack_continuous_fragments(PackedProjection&
         for(unsigned kind=0;kind<2;++kind) poses[base+kind].vanish[2]=float(base+5);
         auto normal=normal_projection.continuous_poses[1],low=normal_projection.continuous_poses[3];
         normal.row0[3]=float(face.normal.x);normal.row1[3]=float(face.normal.y);normal.row2[3]=float(face.normal.z);
-        normal.translation[3]=float(pose.explosion_progress);
+        normal.translation[3]=float(pose.explosion_phase.value_or(
+            double(pose.explosion_progress)));
         normal.vanish[3]=pose.use_rotation_matrix && !pose.subpixel_projection?1.f:0.f;
         if(normal.vanish[3]==1) for(unsigned c=0;c<3;++c) {
             normal.row0[c]=float(pose.rotation_matrix[c]);normal.row1[c]=float(pose.rotation_matrix[3+c]);normal.row2[c]=float(pose.rotation_matrix[6+c]);
@@ -113,7 +114,7 @@ static PackedFaces pack_faces_impl(const assets::Shape& shape,const PackedBsp& b
         command.even=std::uint8_t(settings.colour_index_base+material.colour.even);
         command.odd=std::uint8_t(settings.colour_index_base+material.colour.odd);
         command.dither=material.colour.dither;
-        command.tag=std::uint32_t(PixelLayer::three_d);
+        command.tag=std::uint32_t(pose.terrain_geometry?PixelLayer::terrain_geometry:pose.world_geometry?PixelLayer::world_geometry:PixelLayer::three_d);
         if(primitive==PackedPrimitive::polygon) command.reserved1=(pose.cel_mode?1U:0U)|(std::uint32_t(pose.wireframe_mode)<<1)|((pose.wobble_mode&2U)!=0?65536U:0U);
         if(primitive==PackedPrimitive::polygon && (pose.wobble_mode&1U)!=0) command.reserved1|=262144U;
         if(primitive==PackedPrimitive::polygon && pose.wave_mode && !pose.cel_mode

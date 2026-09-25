@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cmath>
+#include <cstdint>
 #include <optional>
 
 namespace starfox::render::shadows {
@@ -15,7 +16,13 @@ inline double dot(Vec3 a, Vec3 b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
 inline Vec3 cross(Vec3 a, Vec3 b) {
     return {a.y*b.z-a.z*b.y, a.z*b.x-a.x*b.z, a.x*b.y-a.y*b.x};
 }
-struct Triangle { Vec3 a, b, c; };
+struct Triangle {
+    Vec3 a, b, c;
+    // Optional flat material for the inexpensive CPU reflection pass. GPU
+    // geometry packing explicitly exports positions only and is unchanged.
+    std::uint8_t reflection_even{}, reflection_odd{};
+    bool reflection_valid{};
+};
 struct PreparedTriangle {
     Vec3 origin, edge1, edge2;
     double scale;

@@ -37,7 +37,7 @@ int main()try{
         auto* polys=reinterpret_cast<const Four*>(raw);auto* corners=reinterpret_cast<const Four*>(raw+64);auto* materials=reinterpret_cast<const Command*>(raw+64+2048);
         for(U slot=0;slot<4;++slot){bool valid=fixture!=2 && fixture!=4 && slot!=2 && !(slot==1 && (fixture==1 || fixture==3));if(!valid){if(polys[slot][1]!=0 || materials[slot].has_surface!=0)throw std::runtime_error("invalid occurrence retained stale output");continue;}
             const bool textured=slot<2;if(polys[slot]!=Four{slot*32,3,7,U(textured)})throw std::runtime_error("polygon expansion mismatch");
-            for(U c=0;c<3;++c){auto coord=textured?uv[slot*4+c]:std::array<U,2>{0,0};if(corners[slot*32+c]!=Four{sourceCorners[c][0],coord[0],coord[1],0})throw std::runtime_error("UV expansion mismatch");}
+            for(U c=0;c<3;++c){auto coord=textured?uv[slot*4+c]:std::array<U,2>{0,0};if(corners[slot*32+c]!=Four{sourceCorners[c][0],coord[0],coord[1],1})throw std::runtime_error("UV/source-face expansion mismatch");}
             const auto& m=materials[slot];if(m.even!=decoded[slot][0] || m.odd!=decoded[slot][1] || m.tag!=(textured?4U:0U) || m.surface!=sourceMaterials[0].surface || m.has_surface!=1 || m.textured!=U(textured))throw std::runtime_error("material expansion mismatch");
             if(textured && (m.texture_offset!=textures[slot][0] || m.reserved0!=U(-3) || m.reserved1!=7))throw std::runtime_error("texture scroll mismatch");}
         SDL_UnmapGPUTransferBuffer(d,download);

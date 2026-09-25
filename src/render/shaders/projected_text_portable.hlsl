@@ -1,4 +1,5 @@
 #include "geometry_fp64.hlsli"
+#include "raster_jitter.hlsli"
 // Two passes: stage 0 projects one immutable text object; stage 1 fills pixels.
 // The caller must end the first compute pass before dispatching the second.
 // Glyph rows are uint32, sixteen per character; zero rows preserve blank tokens.
@@ -10,6 +11,7 @@
     uint width,height;
     uint scale,count;int characterSize;uint colour;
     float eyeX,convergence;uint stage,tag;
+    uint referenceWidth,referenceHeight;float2 rasterJitter;
 };
 Sf64 num(float x) {return sf_from_float_bits(asuint(x));}
 Sf64 raw(uint2 x) {return sf_make(x.x,x.y);}
@@ -33,8 +35,8 @@ void main(uint3 id:SV_DispatchThreadID) {
         Sf64 px=sf_div(sf_mul(raw(ownerX),focal),z);
         if(eyeX!=0) px=sf_add(px,sf_mul(num(float(256*scale)*eyeX),
             sf_sub(sf_div(num(1),num(convergence)),sf_div(num(1),z))));
-        int cx=int(width/2)+truncateText(px);
-        int cy=int(height/2)+truncateText(sf_div(sf_mul(raw(ownerY),focal),z));
+        int cx=int(referenceWidth/2)+truncateText(px);
+        int cy=int(referenceHeight/2)+truncateText(sf_div(sf_mul(raw(ownerY),focal),z));
         pixels[0]=asuint(cx-dimension*int(count)/2);
         pixels[1]=asuint(cy-dimension/2);pixels[2]=uint(dimension);pixels[3]=1;
         return;
@@ -42,8 +44,12 @@ void main(uint3 id:SV_DispatchThreadID) {
     if(id.x>=width*height) return;
     uint pixel=0;
     if(pixels[3]!=0) {
-        int x=int(id.x%width)-asint(pixels[0]);
-        int y=int(id.x/width)-asint(pixels[1]);
+        int x=int((id.x%width)*referenceWidth/width)-asint(pixels[0]);
+        int y=int((id.x/width)*referenceHeight/height)-asint(pixels[1]);
+        if(any(rasterJitter!=0)) {
+            x=jitterFloor(id.x%width,referenceWidth,width,rasterJitter.x,true)-asint(pixels[0]);
+            y=jitterFloor(id.x/width,referenceHeight,height,rasterJitter.y,true)-asint(pixels[1]);
+        }
         int dimension=int(pixels[2]);
         if(x>=0 && y>=0 && y<dimension && uint(x/dimension)<count) {
             uint glyph=uint(x/dimension),column=uint((x%dimension)*16/dimension);

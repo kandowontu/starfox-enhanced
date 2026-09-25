@@ -8,7 +8,7 @@ android {
         applicationId 'com.starfox.enhanced.quest'
         minSdk 29
         targetSdk 35
-        versionCode 2
+        versionCode 12
         versionName '0.0.6.7-vr-dev'
         externalNativeBuild {
             cmake {
@@ -29,7 +29,27 @@ android {
             excludes += ['**/libandroid.so', '**/liblog.so']
         }
     }
-    externalNativeBuild { cmake { path file('../../CMakeLists.txt') } }
+    externalNativeBuild {
+        cmake {
+            path file('../../CMakeLists.txt')
+            // The default .cxx/RelWithDebInfo path made Vulkan-Headers'
+            // FetchContent stamp exceed Ninja's Windows 260-character limit.
+            // Keep staging inside ignored build/, with an optional short-path
+            // override for checkouts whose parent directory is even longer.
+            buildStagingDirectory file(System.getenv('STARFOX_QUEST_BUILD_ROOT') ?: '../../build/q')
+        }
+    }
+    signingConfigs {
+        permanent {
+            if (System.getenv('ANDROID_RELEASE_KEYSTORE_PATH')) {
+                storeFile file(System.getenv('ANDROID_RELEASE_KEYSTORE_PATH'))
+                storePassword System.getenv('ANDROID_RELEASE_PASSWORD')
+                keyAlias 'starfox-enhanced'
+                keyPassword System.getenv('ANDROID_RELEASE_PASSWORD')
+                storeType 'PKCS12'
+            }
+        }
+    }
     buildTypes {
         debug {
             // The source simulation is too expensive at -O0 for headset timing.
@@ -41,7 +61,12 @@ android {
                 }
             }
         }
-        release { minifyEnabled false }
+        release {
+            minifyEnabled false
+            if (System.getenv('ANDROID_RELEASE_KEYSTORE_PATH')) {
+                signingConfig signingConfigs.permanent
+            }
+        }
     }
 }
 dependencies {

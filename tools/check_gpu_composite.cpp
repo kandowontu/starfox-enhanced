@@ -2,6 +2,7 @@
 #include "starfox/render/gpu_scene.hpp"
 #include "starfox/render/sdl_gpu_effects.hpp"
 #include "starfox/render/colour_math.hpp"
+#include "starfox/render/pixel_filter.hpp"
 #include <SDL3/SDL.h>
 #include <iostream>
 #include <stdexcept>
@@ -52,7 +53,7 @@ struct SplitTextures {
 };
 bool reference_subtractive(starfox::render::SdlGpuEffects& gpu,void* device,
     const starfox::render::Framebuffer& ink,std::span<const starfox::render::Rgba8> palette,
-    unsigned scale,unsigned filter,unsigned brightness,std::vector<uint8_t>& pixels) {
+    unsigned scale,unsigned filter,unsigned brightness,std::vector<uint8_t>& pixels,bool independent_cpu=false) {
     using namespace starfox::render;
     Framebuffer frame(ink.width(),ink.height(),scale);frame.enable_layer_tags(true);
     std::vector<uint8_t> filtered;
@@ -65,7 +66,16 @@ bool reference_subtractive(starfox::render::SdlGpuEffects& gpu,void* device,
             filtered[i+2]=palette[index].b;filtered[i+3]=255;
         }
         GpuEffectSettings settings;settings.filter=filter;settings.overlay_filter=true;
-        if(!gpu.apply(device,frame,filtered,settings)) return false;
+        if(!independent_cpu && !gpu.apply(device,frame,filtered,settings)) return false;
+        if(independent_cpu) {
+            PixelFilterScratch scratch;RowWorkers workers;
+            std::vector<std::uint32_t> independent;
+            if(!filter_overlay_layer(TwoDFilter::scalefx,ink,palette,scale,independent,scratch,workers)) return false;
+            for(std::size_t i=0;i<independent.size();++i) {
+                const auto c=independent[i];
+                filtered[i*4]=c>>16;filtered[i*4+1]=c>>8;filtered[i*4+2]=c;filtered[i*4+3]=c>>24;
+            }
+        }
     }
     for(unsigned y=0;y<frame.stored_height();++y) for(unsigned x=0;x<frame.stored_width();++x) {
         const auto i=(std::size_t(y)*frame.stored_width()+x)*4;
@@ -110,16 +120,244 @@ void reference_touch(std::vector<uint8_t>& pixels,int w,int h,unsigned scale) {
     box(w*36/100,h-20,w*47/100,h-7,{205,215,230});box(w*53/100,h-20,w*64/100,h-7,{205,215,230});
 }
 }
-int main() {
+int main(int argc,char** argv) {
     using namespace starfox::render;
-    if(!SDL_Init(SDL_INIT_VIDEO)) return 1;
+    if(!SDL_Init(SDL_INIT_VIDEO)) {std::cerr<<"SDL video initialization failed: "<<SDL_GetError()<<'\n';return 1;}
     struct Lifetime {~Lifetime(){SDL_Quit();}} lifetime;
     GpuRaster raster;GpuScene overlays;GpuComposite composite;SdlGpuEffects effects,referenceEffects;
     shadows::PortableShadows residentShadows;
+    if(argc==3) {
+        std::array<std::optional<Framebuffer>,2> layers;
+        Palette256 colours{};unsigned next=1;
+        for(unsigned layer=0;layer<2;++layer) {
+            auto* source=SDL_LoadBMP(argv[layer+1]);if(!source) return 110;
+            auto* image=SDL_ConvertSurface(source,SDL_PIXELFORMAT_RGBA32);SDL_DestroySurface(source);
+            if(!image) return 111;
+            layers[layer].emplace(image->w,image->h);
+            for(int y=0;y<image->h;++y) for(int x=0;x<image->w;++x) {
+                const auto* p=static_cast<const uint8_t*>(image->pixels)+y*image->pitch+x*4;
+                if(!(p[0]|p[1]|p[2])) continue;
+                unsigned index=1;
+                while(index<next && (colours[index].r!=p[0] || colours[index].g!=p[1] || colours[index].b!=p[2])) ++index;
+                if(index==next) {if(next==256) return 112;colours[next++]={p[0],p[1],p[2],255};}
+                layers[layer]->set(x,y,index);
+            }
+            SDL_DestroySurface(image);
+        }
+        Framebuffer frame(layers[0]->width(),layers[0]->height(),2);frame.enable_layer_tags(true);
+        RasterCommands empty;empty.reset(frame.stored_width(),frame.stored_height());
+        if(!raster.render(empty,frame,nullptr)) return 113;
+        GpuEffectSettings s;s.filter=5;s.overlay_palette=colours;
+        SurfaceBuffer emptySurfaces(frame.stored_width(),frame.stored_height());
+        s.lighting=3;s.surfaces=&emptySurfaces;
+        for(unsigned i=0;i<2;++i) s.subtractive_overlays[i]=GpuEffectSettings::SubtractiveOverlay{&*layers[i],30};
+        std::vector<uint8_t> pixels;expand_rgba(frame,pixels,colours);
+        for(unsigned repeat=0;repeat<3;++repeat) {
+            expand_rgba(frame,pixels,colours);
+            if(!effects.apply(raster.resident_output().device,frame,pixels,s)) return 114;
+        }
+        auto* image=SDL_CreateSurfaceFrom(frame.stored_width(),frame.stored_height(),SDL_PIXELFORMAT_RGBA32,pixels.data(),frame.stored_width()*4);
+        if(!image) return 115;
+        const auto output=std::string(argv[1])+"-filtered.bmp";
+        const bool saved=SDL_SaveBMP(image,output.c_str());SDL_DestroySurface(image);
+        return saved?0:116;
+    }
+    {
+        Framebuffer empty(8,8);SurfaceBuffer normals(8,8);
+        std::vector<std::uint8_t> rgba;
+        for(unsigned released=0;released<2;++released) {
+            if(composite.readback(empty,rgba,&normals) || raster.readback(empty,&normals)
+                || overlays.readback(empty,&normals) || residentShadows.readback(rgba)) {
+                std::cerr<<"Uninitialized/released GPU readback must be rejected";return 98;
+            }
+            composite.release_device();raster.release_device();overlays.release_device();residentShadows.release_device();
+        }
+    }
     shadows::Scene shadowScene;
     shadowScene.add({{-10,-10,40},{10,-10,40},{0,10,45}});shadowScene.build();
     Palette256 palette;
     for(unsigned i=0;i<256;++i) palette[i]={std::uint8_t(i),std::uint8_t(i*7),std::uint8_t(255-i),std::uint8_t(i*13)};
+    {
+        Framebuffer base(400,224,2),portrait(400,224),text(400,224),deviceFrame(1,1);
+        base.enable_layer_tags(true);
+        RasterCommands empty;empty.reset(1,1);
+        if(!raster.render(empty,deviceFrame,nullptr)) {std::cerr<<"Composition fixture device setup failed: "<<raster.status()<<'\n';return 107;}
+        Palette256 colours{};for(auto& c:colours) c.a=255;
+        // Exactly representable channels avoid UNORM/float edge-choice noise
+        // and give an independent CPU oracle for separated transparent layers.
+        for(unsigned i=1;i<9;++i) colours[i]={uint8_t(i&1?255:0),uint8_t(i&2?255:0),uint8_t(i&4?255:0),255};
+        for(unsigned y=80;y<160;++y) for(unsigned x=88;x<136;++x) portrait.set(x,y,1+(x*3+y*7)%8);
+        for(unsigned y=39;y<51;++y) for(unsigned x=120;x<260;++x) if((x+y)%3) text.set(x,y,2);
+        GpuEffectSettings s;s.filter=5;s.overlay_palette=colours;
+        s.subtractive_overlays[0]=GpuEffectSettings::SubtractiveOverlay{&portrait,30};
+        s.subtractive_overlays[1]=GpuEffectSettings::SubtractiveOverlay{&text,30};
+        SurfaceBuffer normals(base.stored_width(),base.stored_height());
+        for(unsigned y=0;y<base.stored_height();++y) for(unsigned x=0;x<base.stored_width();++x)
+            normals.set(x,y,{-1,0,0,100},0);
+        s.lighting=3;s.surfaces=&normals;
+        std::vector<std::uint8_t> pixels;expand_rgba(base,pixels,colours);
+        auto independent=pixels;
+        for(const auto& layer:s.subtractive_overlays)
+            if(!reference_subtractive(referenceEffects,raster.resident_output().device,*layer->frame,colours,2,5,30,independent,true)) return 117;
+        for(unsigned repeat=0;repeat<6;++repeat) {
+            expand_rgba(base,pixels,colours);
+            if(!effects.apply(raster.resident_output().device,base,pixels,s)) return 108;
+            if(pixels!=independent) {
+                std::cerr<<"ScaleFX separated overlays differ from independent CPU oracle on repetition "<<repeat;return 109;
+            }
+        }
+    }
+    {
+        // A real resident frame can carry a uniform CPU backing layer: all
+        // color-zero pixels with the background tag. Repeated frames must
+        // retain that GPU buffer without another full-image upload, then
+        // invalidate it after one ordinary foreground write.
+        GpuComposite cached;
+        Framebuffer blank(31,25),read(31,25);
+        blank.enable_layer_tags(true);
+        std::fill(blank.layer_tags().begin(),blank.layer_tags().end(),
+            static_cast<std::uint8_t>(PixelLayer::background));
+        LayerCompositeSettings plain;
+        std::vector<std::uint8_t> first,second,changed,restored;
+        const auto image_bytes=blank.pixels().size()*4U;
+        if(!cached.compose(raster.resident_output(),1,blank,{},plain,palette)
+            || cached.last_cpu_upload_bytes()!=0U
+            || cached.last_palette_upload_bytes()!=1024U
+            || !cached.readback(read,first)) return 118;
+        if(!cached.compose(raster.resident_output(),1,blank,{},plain,palette)
+            || cached.last_cpu_upload_bytes()!=0U
+            || cached.last_palette_upload_bytes()!=0U
+            || !cached.readback(read,second) || second!=first) return 119;
+        blank.set_stored(7,9,53,PixelLayer::two_d);
+        if(!cached.compose(raster.resident_output(),1,blank,{},plain,palette)
+            || cached.last_cpu_upload_bytes()!=image_bytes
+            || !cached.readback(read,changed) || changed==first) return 120;
+        blank.set_stored(7,9,0,PixelLayer::background);
+        if(!cached.compose(raster.resident_output(),1,blank,{},plain,palette)
+            || cached.last_cpu_upload_bytes()!=0U
+            || !cached.readback(read,restored) || restored!=first) return 121;
+        if(!cached.compose(raster.resident_output(),1,blank,{},plain,palette)
+            || cached.last_cpu_upload_bytes()!=0U) return 122;
+        std::vector<std::uint8_t> covered(blank.pixels().size());
+        covered[5]=1;
+        if(!cached.compose(raster.resident_output(),1,blank,covered,plain,palette)
+            || cached.last_cpu_upload_bytes()!=image_bytes) return 123;
+        covered[5]=0;
+        if(!cached.compose(raster.resident_output(),1,blank,covered,plain,palette)
+            || cached.last_cpu_upload_bytes()!=0U) return 124;
+        if(!cached.compose(raster.resident_output(),1,blank,covered,plain,palette)
+            || cached.last_cpu_upload_bytes()!=0U) return 125;
+        blank.layer_tags()[5]=static_cast<std::uint8_t>(PixelLayer::two_d);
+        if(!cached.compose(raster.resident_output(),1,blank,covered,plain,palette)
+            || cached.last_cpu_upload_bytes()!=image_bytes) return 126;
+        blank.layer_tags()[5]=static_cast<std::uint8_t>(PixelLayer::background);
+        if(!cached.compose(raster.resident_output(),1,blank,covered,plain,palette)
+            || cached.last_cpu_upload_bytes()!=0U) return 127;
+        std::fill(blank.pixels().begin(),blank.pixels().end(),53);
+        std::fill(blank.layer_tags().begin(),blank.layer_tags().end(),
+            static_cast<std::uint8_t>(PixelLayer::two_d));
+        auto altered_palette=palette;
+        if(!cached.compose(raster.resident_output(),1,blank,{},plain,altered_palette)
+            || cached.last_cpu_upload_bytes()!=0U
+            || cached.last_palette_upload_bytes()!=0U
+            || !cached.readback(read,first)) return 128;
+        altered_palette[53]={255,17,82,255};
+        if(!cached.compose(raster.resident_output(),1,blank,{},plain,altered_palette)
+            || cached.last_cpu_upload_bytes()!=0U
+            || cached.last_palette_upload_bytes()!=1024U
+            || !cached.readback(read,second) || second==first) return 129;
+        blank.set_stored(1,1,52,PixelLayer::two_d);
+        blank.set_stored(29,23,54,PixelLayer::two_d);
+        if(!cached.compose(raster.resident_output(),1,blank,{},plain,altered_palette)
+            || cached.last_cpu_upload_bytes()!=image_bytes
+            || cached.last_palette_upload_bytes()!=0U
+            || !cached.readback(read,changed) || changed==second) return 130;
+        blank.set_stored(1,1,51,PixelLayer::two_d);
+        blank.set_stored(29,23,55,PixelLayer::two_d);
+        if(!cached.compose(raster.resident_output(),1,blank,{},plain,altered_palette)
+            || cached.last_cpu_upload_bytes()!=8U
+            || !cached.readback(read,restored) || restored==changed) return 131;
+        std::vector<std::uint8_t> after_late(blank.pixels().size());
+        after_late[27]=1;
+        if(!cached.compose(raster.resident_output(),1,blank,{},plain,altered_palette,
+            nullptr,nullptr,after_late) || cached.last_cpu_upload_bytes()!=4U) return 132;
+        after_late[27]=0;
+        if(!cached.compose(raster.resident_output(),1,blank,{},plain,altered_palette,
+            nullptr,nullptr,after_late) || cached.last_cpu_upload_bytes()!=4U) return 133;
+        blank.set_stored(29,1,52,PixelLayer::two_d);
+        blank.set_stored(1,2,54,PixelLayer::two_d);
+        if(!cached.compose(raster.resident_output(),1,blank,{},plain,altered_palette)
+            || cached.last_cpu_upload_bytes()!=16U) return 134;
+        blank.set_stored(29,1,51,PixelLayer::two_d);
+        blank.set_stored(1,2,55,PixelLayer::two_d);
+        if(!cached.compose(raster.resident_output(),1,blank,{},plain,altered_palette)
+            || cached.last_cpu_upload_bytes()!=16U) return 135;
+        GpuComposite fragmented;
+        Framebuffer tall(31,160);tall.enable_layer_tags(true);
+        std::fill(tall.layer_tags().begin(),tall.layer_tags().end(),
+            static_cast<std::uint8_t>(PixelLayer::background));
+        if(!fragmented.compose(raster.resident_output(),1,tall,{},plain,palette)
+            || fragmented.last_cpu_upload_bytes()!=0U) return 136;
+        for(unsigned row=0;row<140;row+=2) tall.set_stored(0,row,53,PixelLayer::two_d);
+        if(!fragmented.compose(raster.resident_output(),1,tall,{},plain,palette)
+            || fragmented.last_cpu_upload_bytes()!=tall.pixels().size()*4U) return 137;
+
+        // Full-height cartridge side strips have a compact GPU constant
+        // representation; one changed row must return to the packed upload.
+        Framebuffer striped(31,25),stripeRead(31,25);
+        striped.enable_layer_tags(true);
+        std::vector<std::uint8_t> stripeCoverage(striped.pixels().size());
+        for(unsigned y=0;y<striped.stored_height();++y)
+            for(unsigned x:{2U,3U,4U,25U,26U,27U}) {
+                striped.set_stored(x,y,53,PixelLayer::background);
+                stripeCoverage[std::size_t(y)*striped.stored_width()+x]=1;
+            }
+        GpuComposite stripeComposite;
+        std::vector<std::uint8_t> stripeImage,stripeRepeat,stripeChanged,stripeRestored;
+        if(!stripeComposite.compose(raster.resident_output(),1,striped,stripeCoverage,plain,palette)
+            || stripeComposite.last_cpu_upload_bytes()!=0U
+            || !stripeComposite.readback(stripeRead,stripeImage)) return 138;
+        if(!stripeComposite.compose(raster.resident_output(),1,striped,stripeCoverage,plain,palette)
+            || stripeComposite.last_cpu_upload_bytes()!=0U
+            || !stripeComposite.readback(stripeRead,stripeRepeat)
+            || stripeRepeat!=stripeImage) return 139;
+        striped.set_stored(3,4,54,PixelLayer::background);
+        if(!stripeComposite.compose(raster.resident_output(),1,striped,stripeCoverage,plain,palette)
+            || stripeComposite.last_cpu_upload_bytes()!=striped.pixels().size()*4U
+            || !stripeComposite.readback(stripeRead,stripeChanged)
+            || stripeChanged==stripeImage) return 140;
+        striped.set_stored(3,4,53,PixelLayer::background);
+        if(!stripeComposite.compose(raster.resident_output(),1,striped,stripeCoverage,plain,palette)
+            || stripeComposite.last_cpu_upload_bytes()!=0U
+            || !stripeComposite.readback(stripeRead,stripeRestored)
+            || stripeRestored!=stripeImage) return 141;
+        const auto* previousCache=std::getenv("STARFOX_DISABLE_CPU_UPLOAD_CACHE");
+        const bool hadPreviousCache=previousCache!=nullptr;
+        const std::string previousCacheValue=hadPreviousCache?previousCache:"";
+#if defined(_WIN32)
+        if(_putenv_s("STARFOX_DISABLE_CPU_UPLOAD_CACHE","1")!=0) return 142;
+#else
+        if(setenv("STARFOX_DISABLE_CPU_UPLOAD_CACHE","1",1)!=0) return 142;
+#endif
+        GpuComposite stripeReference;
+        std::vector<std::uint8_t> referenceImage;
+        const bool referenceReady=stripeReference.compose(raster.resident_output(),1,striped,stripeCoverage,plain,palette)
+            && stripeReference.last_cpu_upload_bytes()==striped.pixels().size()*4U
+            && stripeReference.readback(stripeRead,referenceImage);
+#if defined(_WIN32)
+        _putenv_s("STARFOX_DISABLE_CPU_UPLOAD_CACHE",hadPreviousCache?previousCacheValue.c_str():"");
+#else
+        if(hadPreviousCache) setenv("STARFOX_DISABLE_CPU_UPLOAD_CACHE",previousCacheValue.c_str(),1);
+        else unsetenv("STARFOX_DISABLE_CPU_UPLOAD_CACHE");
+#endif
+        if(!referenceReady || referenceImage!=stripeImage) {
+            std::cerr<<"Stripe reference mismatch: ready="<<referenceReady
+                <<" bytes="<<stripeReference.last_cpu_upload_bytes()
+                <<" status="<<stripeReference.status()
+                <<" image="<<referenceImage.size()<<'/'<<stripeImage.size()<<'\n';
+            return 143;
+        }
+    }
     unsigned cases=0;
     for(unsigned sourceScale:{1U,2U,4U}) for(unsigned scale:{1U,2U,4U})
     for(int offset:{-7,0,3}) for(unsigned mosaic:{0U,0x31U}) for(bool clipped:{false,true}) {
@@ -147,7 +385,11 @@ int main() {
             const auto i=std::size_t(y)*cpu.stored_width()+x;
             // Includes black and unchanged background writes that comparison-
             // based foreground detection would miss.
-            const auto colour=(x%2)?cpu.pixels()[i]:0;
+            const int native_y=int(y)-(offset+2)*int(scale),native_x=int(x)-offset*int(scale);
+            const auto colour=sourceScale==scale && native_x>=0 && native_y>=0
+                && native_x<int(native.stored_width()) && native_y<int(native.stored_height())
+                ? native.get_stored(native_x,native_y) // Explicit same-palette HUD/model collision.
+                : (x%2)?cpu.pixels()[i]:0;
             coverage[i]=1;cpu.set_stored(x,y,colour,PixelLayer::two_d);expected.set_stored(x,y,colour,PixelLayer::two_d);
         }
         if(!std::equal(coverage.begin(),coverage.end(),cpu.write_coverage().begin())) return 9;
@@ -158,6 +400,10 @@ int main() {
         std::vector<std::uint8_t> rgba,reference;
         SurfaceBuffer surface(cpu.stored_width(),cpu.stored_height());
         if(!composite.readback(actual,rgba,&surface)) {std::cerr<<composite.status();return 4;}
+        for(unsigned y=0;y<actual.stored_height();++y) for(unsigned x=0;x<actual.stored_width();++x)
+            if(coverage[std::size_t(y)*actual.stored_width()+x] && surface.get(x,y).valid) {
+                std::cerr<<"CPU foreground inherited hidden model lighting";return 99;
+            }
         if(offset==0 && mosaic==0 && !clipped) {
             Framebuffer base(23,17,sourceScale),world(23,17,sourceScale);base.enable_layer_tags(true);world.enable_layer_tags(true);
             for(unsigned y=0;y<base.stored_height();++y) for(unsigned x=0;x<base.stored_width();++x)
@@ -175,6 +421,64 @@ int main() {
         expand_rgba(expected,reference,palette);
         if(expected.pixels()!=actual.pixels() || expected.layer_tags()!=actual.layer_tags() || reference!=rgba) {
             std::cerr<<"Composition mismatch sourceScale="<<sourceScale<<" scale="<<scale<<" offset="<<offset<<" mosaic="<<mosaic<<" clip="<<clipped;return 5;
+        }
+        // Independent output sampling keeps authored clipping, mosaic, layer
+        // offsets and covered-black HUD writes in the original canvas.
+        if(offset==3) {
+            constexpr unsigned rw=19,rh=13;
+            GpuComposite reduced;Framebuffer reducedFrame(rw,rh);reducedFrame.enable_layer_tags(true);
+            if(!reduced.compose(raster.resident_output(),sourceScale,cpu,coverage,settings,palette,
+                nullptr,nullptr,{},false,{native.stored_width(),native.stored_height(),rw,rh})) {
+                std::cerr<<reduced.status();return 90;
+            }
+            std::vector<std::uint8_t> reducedRgba;
+            if(!reduced.readback(reducedFrame,reducedRgba)) return 91;
+            for(unsigned y=0;y<rh;++y) for(unsigned x=0;x<rw;++x) {
+                const auto from=(y*cpu.stored_height()/rh)*cpu.stored_width()+x*cpu.stored_width()/rw;
+                const auto to=y*rw+x;
+                if(reducedFrame.pixels()[to]!=actual.pixels()[from]
+                    || reducedFrame.layer_tags()[to]!=actual.layer_tags()[from]) return 92;
+                for(unsigned c=0;c<4;++c) if(reducedRgba[to*4+c]!=rgba[from*4+c]) return 93;
+            }
+            if(scale==1 && sourceScale==1 && !mosaic && !clipped) {
+                RasterCommands layerCommands;layerCommands.reset(rw,rh);
+                for(unsigned y=0;y<rh;++y) for(unsigned x=0;x<rw;++x) {
+                    RasterCommand c;c.left=x;c.right=x+1;c.top=y;c.bottom=y+1;
+                    c.even=c.odd=32+(x+y*7)%127;c.tag=unsigned(PixelLayer::background);layerCommands.add(c);
+                }
+                GpuScene layerScene;const std::array<GpuSceneDraw,1> layerDraws{GpuRasterDraw{&layerCommands}};
+                if(!layerScene.render_resident(raster.resident_output().device,rw,rh,layerDraws)) return 94;
+                const auto layerOutput=layerScene.resident_output();
+                // Native-size composition must preserve every native sample,
+                // even when its authored reference canvas is larger.
+                LayerCompositeSettings nativeOnly;
+                if(!reduced.compose(layerOutput,1,cpu,{},nativeOnly,palette,
+                    nullptr,nullptr,{},false,{cpu.stored_width(),cpu.stored_height(),rw,rh})
+                    || !reduced.readback(reducedFrame,reducedRgba)) return 97;
+                for(unsigned y=0;y<rh;++y) for(unsigned x=0;x<rw;++x)
+                    if(reducedFrame.pixels()[y*rw+x]!=32+(x+y*7)%127) {
+                        std::cerr<<"Native reference double-rounding at "<<x<<","<<y;return 98;
+                    }
+                const GpuCompositeBackground bg{layerOutput};
+                LayerCompositeSettings noNative;noNative.clip_left=noNative.clip_right=0;
+                // Check both native-size consumption and enlargement back to
+                // the reference canvas (the non-DLSS fallback path). Neither
+                // may double-round through the CPU reference coordinates.
+                for(const auto extent:std::array<std::array<unsigned,2>,3>{{{rw,rh},{31,25},{37,29}}})
+                for(bool lateLayer:{false,true}) {
+                    Framebuffer layerFrame(extent[0],extent[1]);layerFrame.enable_layer_tags(true);
+                    if(!reduced.compose(raster.resident_output(),1,cpu,{},noNative,palette,
+                        lateLayer?&layerOutput:nullptr,lateLayer?nullptr:&bg,{},false,
+                        {native.stored_width(),native.stored_height(),extent[0],extent[1]})
+                        || !reduced.readback(layerFrame,reducedRgba)) return 95;
+                    for(unsigned y=0;y<extent[1];++y) for(unsigned x=0;x<extent[0];++x)
+                        if(layerFrame.pixels()[y*extent[0]+x]
+                            !=32+((x*rw/extent[0])+(y*rh/extent[1])*7)%127) {
+                            std::cerr<<"Reduced layer coordinate mismatch, late="<<lateLayer
+                                <<" output="<<extent[0]<<"x"<<extent[1];return 96;
+                        }
+                }
+            }
         }
         {
             RasterCommands bg;bg.reset(cpu.stored_width(),cpu.stored_height());
@@ -329,6 +633,21 @@ int main() {
         if(result!=reference) {std::cerr<<"Resident effects mismatch case "<<cases;return 8;}
         if(effects.last_staging_upload_bytes()!=0) {std::cerr<<"Resident effects uploaded placeholder data";return 53;}
         {
+            SdlGpuEffects backdropEffects;
+            BackdropImage sky;sky.width=16;sky.height=16;sky.pixels.assign(256,0xff553311);
+            GpuEffectSettings skySettings;auto& env=skySettings.environment;
+            env.backdrop=&sky;env.modes[2]=1;env.motion[0]=1000;env.plane[3]=1;
+            for(unsigned iteration=0;iteration<3;++iteration) {
+                if(iteration==2) std::fill(sky.pixels.begin(),sky.pixels.end(),0xff224466);
+                auto wanted=rgba;apply_environment(env,actual,wanted);
+                if(!backdropEffects.apply_resident(composite.output(),cpu,result,skySettings)
+                    || result!=wanted) {std::cerr<<"Resident backdrop cache pixels mismatch";return 110;}
+                if(backdropEffects.last_staging_upload_bytes()!=(iteration==1?0u:1024u)) {
+                    std::cerr<<"Resident backdrop reuploaded unchanged image";return 111;
+                }
+            }
+        }
+        {
             SplitTextures split(raster.resident_output().device,cpu.stored_width(),cpu.stored_height());
             for(bool bloom:{false,true}) {
                 auto separated=bloom?s:GpuEffectSettings{};separated.surfaces=&surface;
@@ -412,11 +731,17 @@ int main() {
                 std::cerr<<"Resident shutter mismatch case "<<cases;return 16;
             }
         }
+        for(unsigned circle_shape=0;circle_shape<4;++circle_shape)
         for(unsigned flags=0;flags<8;++flags) {
             GpuEffectSettings disk;
-            const GpuEffectSettings::Circle c{int(10*scale),int(8*scale),int(17*scale),
+            GpuEffectSettings::Circle c{int(10*scale),int(8*scale),int(17*scale),
                 int(2*scale),int(3*scale),int(29*scale),int(24*scale),
                 31,9,0,bool(flags&1),bool(flags&2),bool(flags&4)};
+            if(circle_shape==1) {c.radius=65535*int(scale);c.x=int(10*scale)-c.radius;}
+            // Exact 3/4/5 tangent plus neighboring pixels exercises low-limb
+            // carries and inclusivity, rather than an entirely filled screen.
+            if(circle_shape==2) {c.radius=65535;c.x=int(10*scale)-39321;c.y=int(8*scale)-52428;}
+            if(circle_shape==3) {c.radius=1048000;c.x=int(10*scale)-628800;c.y=int(8*scale)-838400;}
             disk.circle=c;
             expand_rgba(expected,reference,palette);
             for(unsigned y=0;y<cpu.stored_height();++y) for(unsigned x=0;x<cpu.stored_width();++x) {
@@ -434,7 +759,7 @@ int main() {
                 }
             }
             if(!effects.apply_resident(composite.output(),cpu,result,disk) || result!=reference) {
-                std::cerr<<"Resident circle mismatch case "<<cases<<" flags="<<flags;return 17;
+                std::cerr<<"Resident circle mismatch case "<<cases<<" shape="<<circle_shape<<" flags="<<flags;return 17;
             }
         }
         for(unsigned amount:{1U,15U,31U,255U}) for(bool protect:{false,true}) {
@@ -521,14 +846,46 @@ int main() {
             if(!effects.apply(raster.resident_output().device,actual,uploaded,overlay) || uploaded!=reference) {
                 std::cerr<<"Uploaded subtractive overlay mismatch case "<<cases<<" filter "<<filter;return 36;
             }
+            std::array<GpuRaster,2> residentLayers;
+            for(unsigned layer=0;layer<2;++layer) {
+                const auto& frame=*overlay.subtractive_overlays[layer]->frame;
+                RasterCommands commands;commands.reset(frame.width(),frame.height());
+                RasterCommand c;c.right=frame.width();c.bottom=frame.height();
+                c.textured=5;c.texture_offset=commands.snapshot(frame.pixels());
+                c.u_mask=frame.width();c.v_mask=frame.height();c.du=c.dv=1;c.reserved0=1;
+                commands.add(c);
+                if(!residentLayers[layer].render_resident(raster.resident_output().device,commands,false)) return 101;
+                overlay.subtractive_overlays[layer]->resident=residentLayers[layer].resident_output();
+            }
+            for(unsigned uploadedLayer=0;uploadedLayer<2;++uploadedLayer) {
+                auto mixed=overlay;mixed.subtractive_overlays[uploadedLayer]->resident={};
+                if(!effects.apply_resident(composite.output(),cpu,result,mixed) || result!=reference) {
+                    std::cerr<<"Mixed GPU/uploaded overlay mismatch "<<cases;return 105;
+                }
+            }
+            // Empty the CPU copies: resident input must be authoritative.
+            portrait.clear();text.clear();
+            if(!effects.apply_resident(composite.output(),cpu,result,overlay) || result!=reference) {
+                std::cerr<<"GPU overlay input mismatch case "<<cases<<" filter "<<filter<<" brightness "<<brightness;return 102;
+            }
+            expand_rgba(expected,uploaded,palette);
+            if(!effects.apply(raster.resident_output().device,actual,uploaded,overlay) || uploaded!=reference) return 106;
+            if(cases==0 && filter==0 && brightness==0) {
+                SdlGpuEffects invalidExtent,invalidDevice;
+                auto invalid=overlay;invalid.subtractive_overlays[0]->resident.width++;
+                if(invalidExtent.apply_resident(composite.output(),cpu,result,invalid)) return 103;
+                invalid=overlay;invalid.subtractive_overlays[0]->resident.device=nullptr;
+                if(invalidDevice.apply_resident(composite.output(),cpu,result,invalid)) return 104;
+            }
         }
-        for(unsigned mode=0;mode<4;++mode) for(unsigned amount:{0U,7U,31U,255U}) {
+        for(unsigned mode=0;mode<8;++mode) for(unsigned amount:{0U,7U,31U,255U}) {
             GpuEffectSettings fade;
             fade.planet_fade=GpuEffectSettings::PlanetFade{3,4,13,17,amount,amount/2,bool(mode&1),bool(mode&2)};
+            if(mode&4) {fade.planet_fade->coverage=true;fade.planet_fade->rows.fill(0x155U);}
             std::vector<std::uint8_t> reference;expand_rgba(expected,reference,palette);
             for(unsigned y=0;y<cpu.stored_height();++y) for(unsigned x=0;x<cpu.stored_width();++x) {
                 const int lx=int(x/scale),ly=int(y/scale);
-                const bool inside=lx>=3 && lx<=13 && ly>=4 && ly<=17;
+                const bool inside=lx>=3 && lx<=13 && ly>=4 && ly<=17 && (!(mode&4) || ((0x155U>>(lx-3))&1U));
                 const auto i=(std::size_t(y)*cpu.stored_width()+x)*4;
                 for(unsigned channel=0;channel<3;++channel) {
                     auto subtract=[&](unsigned value) {
@@ -733,8 +1090,8 @@ int main() {
         }
     }
     std::cout<<cases<<" GPU composition cases match native pixels/tags/RGBA, late-overlay coverage/ownership/recovery, resident effects/shadows and early shadow/filter ordering exactly; "
-        <<cases*4<<" horizontal shutter, "<<cases*8<<" circle, "<<cases*8<<" background fade and "
-        <<cases*16<<" colour math cases (resident/uploaded), "<<cases*16<<" planet fade cases (resident/uploaded), "<<cases*16<<" cartridge window and "
+        <<cases*4<<" horizontal shutter, "<<cases*32<<" circle (including wide/tangent), "<<cases*8<<" background fade and "
+        <<cases*16<<" colour math cases (resident/uploaded), "<<cases*64<<" planet fade cases (resident/uploaded), "<<cases*16<<" cartridge window and "
         <<cases*12<<" host/panel and "<<cases*6<<" setup overlay cases (resident/uploaded), "
         <<cases*18<<" two-layer subtractive overlay cases (resident/uploaded), "<<cases
         <<" resident touch cases, "<<cases*2<<" direct model/glow split cases, plus 9 full-size setup/touch and deferred planet/briefing composition cases pass\n";

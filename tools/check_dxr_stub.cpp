@@ -21,5 +21,9 @@ int main() try {
             && !backend.export_ready_fence_handle());
     }
     require(!backend.readback_resident(mask) && mask.empty());
+    starfox::render::RayMaterials materials;std::array<std::uint32_t,256> palette{};
+    require(!backend.render_reflections(scene,camera,materials,palette,0,mask) && mask.empty());
+    DxrShadows::ReflectionInput reflection{&materials,palette,0};
+    require(!backend.render_resident(scene,camera,light,{},nullptr,nullptr,true,true,&reflection));
     std::cout<<"Unsupported DXR declines cleanly; no resources/handles or stale readback\n";
 } catch(const std::exception& error) {std::cerr<<error.what()<<'\n';return 1;}

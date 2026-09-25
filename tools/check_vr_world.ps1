@@ -2,9 +2,13 @@ param(
     [ValidateSet('ORIGINAL','EX','BOTH')][string]$Experience='BOTH',
     [ValidateRange(1,10000)][int]$Ticks=600,
     [string]$Executable='build/vr-dev/starfox_vr_runtime_check.exe',
-    [switch]$VerifyGeometryCache
+    [switch]$VerifyGeometryCache,
+    [switch]$RayAudit,
+    [string]$OutputDirectory=''
 )
 $ErrorActionPreference='Stop'
+if($RayAudit -and $VerifyGeometryCache) {throw 'RayAudit and VerifyGeometryCache are separate diagnostic modes'}
+if($OutputDirectory) {New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null}
 $passed=0
 $failed=@()
 foreach($variant in @('ORIGINAL','EX')) {
@@ -18,15 +22,21 @@ foreach($variant in @('ORIGINAL','EX')) {
     foreach($level in $levels) {
         $arguments=@('--preflight',$rom,$symbols,$level,$Ticks)
         if($VerifyGeometryCache) {$arguments+='--verify-geometry-cache'}
+        if($RayAudit) {$arguments+=@('--ray-audit','--preflight-invulnerable')}
         $output=& $Executable @arguments 2>&1
         $code=$LASTEXITCODE
+        if($OutputDirectory) {$output | Out-File -LiteralPath (Join-Path $OutputDirectory "$variant-$level.log") -Encoding utf8}
+        if($RayAudit -and $code -eq 0 -and (($output -join "`n") -notmatch 'Ray input audit: compute accepted=\d+ rejected=0 legacy ordinary=0')) {
+            $code=1
+            Write-Output "Incomplete/rejected GPU model migration: $variant/$level"
+        }
         if($code -ne 0) {
             $failed+="$variant/$level"
             Write-Output "FAIL $variant/$level (exit $code)"
             Write-Output $output
         } else {
             ++$passed
-            Write-Output "PASS $variant/$level ($Ticks source ticks, models/dust/grid assembly only)"
+            Write-Output "PASS $variant/$level ($Ticks source ticks, source assembly/input preparation only)"
         }
     }
 }

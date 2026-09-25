@@ -1,6 +1,7 @@
 #include "starfox/vr/game_input.hpp"
 #include "starfox/vr/game_frame_driver.hpp"
 #include "starfox/vr/source_models.hpp"
+#include "starfox/vr/vulkan_compute_ray_scene.hpp"
 #include "starfox/simulation/game_simulation.hpp"
 #include "starfox/audio/spc700_audio.hpp"
 #include "starfox/render/grid_projection.hpp"
@@ -13,6 +14,28 @@
 #include <iostream>
 #include <stdexcept>
 int main(int argc,char** argv) try {
+    {
+        using namespace starfox::input;
+        starfox::vr::MenuStick stick;
+        if(stick.sample(.9F,.55F)!=right || stick.sample(.55F,.9F)!=right)
+            throw std::runtime_error("Menu gesture switched axis while held");
+        if(stick.sample(.2F,.2F)!=0 || stick.sample(.55F,.9F)!=up)
+            throw std::runtime_error("Neutral did not release menu axis lock");
+        stick.reset();
+        if(stick.sample(.8F,.8F)!=0 || stick.sample(-.9F,.3F)!=left)
+            throw std::runtime_error("Ambiguous diagonal selected a menu action");
+        starfox::vr::VrControls controls;controls.steer={.9F,.55F};
+        starfox::vr::VrGameInput menu,flight;
+        menu.sample(controls,true);flight.sample(controls);
+        if(menu.consume().held!=right || flight.consume().held!=(right|up))
+            throw std::runtime_error("Menu cardinal filtering affected flight diagonals");
+        menu.sample(controls,true);
+        if(menu.consume().pressed) throw std::runtime_error("Held menu stick generated another press");
+        menu.reset();controls.steer={0,0};menu.sample(controls,true);(void)menu.consume();
+        controls.steer={0,-.8F};menu.sample(controls,true);
+        if(menu.consume().pressed!=down) throw std::runtime_error("Menu input failed after reset");
+        std::cout<<"VR menu cardinal gestures and unchanged flight diagonals passed\n";
+    }
     if(argc!=3) throw std::runtime_error("Usage: starfox_vr_game_input_check ROM SYMBOLS");
     const auto rom=starfox::assets::RomImage::load(argv[1]);
     const auto symbols=starfox::assets::SymbolMap::load(argv[2]);
@@ -253,7 +276,7 @@ int main(int argc,char** argv) try {
         if(tick%3==0) expected|=y;
         if(tick>=10 && tick<15) expected|=x;
         if(tick==17 || tick==19) expected|=left_shoulder;
-        if(tick==25) expected|=select;
+        if(tick==25) expected|=starfox::input::select;
         // Presentation polls multiple times, but source input advances once.
         for(unsigned poll=0;poll<12;++poll) {vr_input.sample(controls);pad_input.sample(expected);}
         const auto a=vr_input.consume(),b=pad_input.consume();
@@ -521,6 +544,13 @@ int main(int argc,char** argv) try {
         const auto shared_grid=source_models.assemble_grid_gpu(fixture);
         auto moved_grid=fixture;moved_grid.camera.x=16;
         const auto shared_moved=source_models.assemble_grid_gpu(moved_grid);
+        auto one_unit=fixture;one_unit.camera.x=1;
+        const auto half_unit=source_models.assemble_grid_interpolated(fixture,one_unit,.5,false,256,true);
+        if(half_unit.geometry.texels.size()!=15
+            || std::bit_cast<float>(half_unit.geometry.texels[12])!=-0.5F
+            || std::bit_cast<float>(half_unit.geometry.texels[13])!=0.F
+            || std::bit_cast<float>(half_unit.geometry.texels[14])!=0.F)
+            throw std::runtime_error("GPU VR grid discarded fractional camera motion");
         if(!shared_grid.geometry.shared_vertices || !shared_grid.geometry.vertices.empty()
             || shared_grid.geometry.shared_vertices!=shared_moved.geometry.shared_vertices)
             throw std::runtime_error("GPU grid camera update copied immutable vertices");
@@ -621,13 +651,13 @@ int main(int argc,char** argv) try {
                 const auto interpolated=source_models.assemble_connected_grid_interpolated(
                     interpolation_start,interpolation_end,double(phase)/16);
                 auto reference=interpolation_end;reference.camera.x=int16_t(phase);
-                const auto direct=source_models.assemble_connected_grid_binned(reference);
+                const auto direct=source_models.assemble_connected_grid_gpu(reference);
                 if(!starfox::vr::same_draw_geometry(std::span(&interpolated,1),std::span(&direct,1)))
                     throw std::runtime_error("Connected-grid interpolation changes source endpoint or camera quantization");
             }
             auto transition=interpolation_start;transition.flow=starfox::simulation::GameFlowState::intro;
             const auto snapped=source_models.assemble_connected_grid_interpolated(transition,interpolation_end,0.);
-            const auto final=source_models.assemble_connected_grid_binned(interpolation_end);
+            const auto final=source_models.assemble_connected_grid_gpu(interpolation_end);
             if(!starfox::vr::same_draw_geometry(std::span(&snapped,1),std::span(&final,1)))
                 throw std::runtime_error("Connected grid interpolated across transition");
             const auto points=starfox::render::project_source_grid(
@@ -753,6 +783,8 @@ int main(int argc,char** argv) try {
             if(vertex_index+6>geometry.vertices.size()) throw std::runtime_error("Projected text glyph count mismatch");
             const auto offset=geometry.vertices[vertex_index].texture[0];
             if((geometry.vertices[vertex_index].texture[3]&1024U)==0
+                || (geometry.vertices[vertex_index].texture[3]&134217728U)==0
+                || geometry.vertices[vertex_index].group_a[0]!=127 || geometry.vertices[vertex_index].group_a[1]!=512
                 || offset+9>geometry.texels.size() || geometry.texels.at(offset)!=0xff00ff00U)
                 throw std::runtime_error("Projected text packed glyph header mismatch");
             for(unsigned y=0;y<16;++y) for(unsigned x=0;x<16;++x) {
@@ -767,9 +799,13 @@ int main(int argc,char** argv) try {
         item.object.colour_table=0;
         if(!source_models.assemble(fixture).packets[0].geometry.vertices.empty()) throw std::runtime_error("Uninitialized text pointer rendered");
         item.object.colour_table=static_cast<uint16_t>(message);item.object.texture_scroll_x=128;
-        if(!source_models.assemble(fixture).packets[0].geometry.vertices.empty()) throw std::runtime_error("Nonpositive projected text size rendered");
+        const auto zero_size=source_models.assemble(fixture);
+        if(zero_size.packets[0].geometry.vertices.empty() || zero_size.packets[0].geometry.vertices[0].group_a[0]!=-1)
+            throw std::runtime_error("Nonpositive text size not sent to GPU rejection gate");
         item.object.texture_scroll_x=0;item.source_pose.z=127;
-        if(!source_models.assemble(fixture).packets[0].geometry.vertices.empty()) throw std::runtime_error("Projected text near-depth gate ignored");
+        const auto near_text=source_models.assemble(fixture);
+        if(near_text.packets[0].geometry.vertices.empty() || near_text.packets[0].geometry.vertices[0].group_a[1]!=127)
+            throw std::runtime_error("Projected text near depth not sent to GPU rejection gate");
     }
     {
         auto fixture=*retained_scene;fixture.objects.resize(1);fixture.shadows_enabled=true;fixture.shadow_height=300;
@@ -803,6 +839,43 @@ int main(int argc,char** argv) try {
             || source_models.assemble(fixture).packets.size()!=1)
             throw std::runtime_error("True-colour shadow position or exclusive pass mismatch");
     }
+    if(!symbols.find("M_NANMODE").empty()) {
+        starfox::vr::SourceModels compute(rom,symbols,true,true);
+        auto fixture=*retained_scene;fixture.objects.resize(1);fixture.shadows_enabled=false;
+        fixture.camera={};fixture.view_matrix={32767,0,0,0,32767,0,0,0,32767};
+        auto& item=fixture.objects.front();
+        item.object.shape=static_cast<uint16_t>(symbols.find("MYSHIP_4").at(0));
+        item.object.strategy_flags={};item.object.colour_table=0;
+        item.source_pose={};item.source_pose.z=item.source_pose.source_depth=1000;
+        item.presentation.transform={0,0,1000,0,0,0};
+        item.presentation.rotation_matrix=fixture.view_matrix;
+        fixture.transforms.clear();fixture.transforms[item.handle]=item.presentation;
+        const auto accepted_compute=[](const auto& assembled) {
+            starfox::vr::VulkanComputeRayScene::Plan plan;
+            starfox::vr::SourceRayCoverage coverage;
+            return assembled.pending.empty() && assembled.compute_fallbacks.empty()
+                && assembled.compute_models.size()==1
+                && starfox::vr::VulkanComputeRayScene::plan(assembled.compute_models,256,plan)
+                && starfox::vr::VulkanComputeRayScene::coverage(assembled.compute_models,plan,coverage);
+        };
+        for(const auto* table:{"NAN_C","FIREBODY_C","BLUELAVABODY_C","STEALTH_C","TREVORTEX_C"}) {
+            fixture.colour_table_override=static_cast<uint16_t>(symbols.find(table).at(0));
+            const auto assembled=compute.assemble(fixture);
+            if(!accepted_compute(assembled))
+                throw std::runtime_error(std::string("EX alternate material left GPU model path: ")+table);
+        }
+        fixture.colour_table_override.reset();
+        for(unsigned mode=0;mode<4;++mode) {
+            item.source_pose.wobble_mode=mode==0?1:0;
+            item.source_pose.wave_mode=mode==1;
+            item.source_pose.cel_mode=mode==2;
+            item.source_pose.wireframe_mode=mode==3?1:0;
+            item.source_pose.wave_offset=97;
+            const auto assembled=compute.assemble(fixture);
+            if(!accepted_compute(assembled))
+                throw std::runtime_error("EX alternate geometry left GPU model path: "+std::to_string(mode));
+        }
+    }
     if(retained_scene->particles!=vr_game.particles().particles())
         throw std::runtime_error("Scene snapshot omitted source particle state");
     {
@@ -821,16 +894,17 @@ int main(int argc,char** argv) try {
         if(!result.pending.empty() || result.packets.size()!=1)
             throw std::runtime_error("Owner particles still deferred");
         const auto& geometry=result.packets.front().geometry;
-        if(geometry.vertices.size()!=6 || geometry.line_vertices.size()!=2 || !geometry.texels.empty())
-            throw std::runtime_error("Particle owner/life/near-depth filtering mismatch");
-        if(geometry.vertices[0].position[0]!=30 || geometry.vertices[2].billboard[0]!=4
-            || geometry.vertices[2].billboard[1]!=-4 || geometry.vertices[0].color[1]!=1
-            || geometry.line_vertices[0].position[0]!=10 || geometry.line_vertices[1].position[0]!=30)
-            throw std::runtime_error("Particle geometry, palette or dot dimensions mismatch");
+        if(geometry.vertices.size()!=12 || geometry.line_vertices.size()!=2 || !geometry.texels.empty())
+            throw std::runtime_error("Particle owner/life filtering or GPU near-depth submission mismatch");
+        if(geometry.vertices[0].group_a[0]!=10 || geometry.vertices[0].group_b[0]!=30
+            || geometry.vertices[2].billboard[0]!=1 || geometry.vertices[2].billboard[1]!=-1
+            || geometry.vertices[0].color[1]!=1 || geometry.vertices[0].texture[3]!=0x80000004U
+            || geometry.line_vertices[0].group_c[2]!=1 || geometry.line_vertices[1].group_c[2]!=2)
+            throw std::runtime_error("Particle GPU endpoints, palette or corner template mismatch");
         const auto interpolated=source_models.assemble_interpolated(fixture,fixture,.5);
-        if(interpolated.packets.size()!=1 || interpolated.packets[0].geometry.vertices[0].position[0]!=20
-            || interpolated.packets[0].geometry.line_vertices[1].position[0]!=20)
-            throw std::runtime_error("Particle interpolation mismatch");
+        if(interpolated.packets.size()!=1 || interpolated.packets[0].geometry.vertices[0].group_c[0]!=.5F
+            || interpolated.packets[0].geometry.line_vertices[1].group_c[0]!=.5F)
+            throw std::runtime_error("Particle GPU interpolation parameter mismatch");
         if(fixture.particles!=saved_particles || retained_scene->particles!=vr_game.particles().particles())
             throw std::runtime_error("Particle packet assembly mutated retained state");
     }

@@ -1,5 +1,17 @@
 # Remaining EX span migration
 
+## September 19 current-state correction
+
+The historical connection blockers below are superseded. `SourceModels` now
+prepares warp inputs and expanded primitive templates for live compute models;
+`VulkanSourceModel` owns and records `VulkanWarpBindings` in its producer chain.
+The current native Vulkan scene checker exercises resident warp bindings through
+PRNG/material/expansion/clip/spans, including graphics, and passed again during
+the September 19 particle migration verification. See GPU-MIGRATION-STATUS.md
+for current evidence and limits. This is not universal EX mode/scene acceptance;
+do not restart implementation of these already-connected components based on
+the older September 11 notes below.
+
 Source audit: 2026-09-11. This is an implementation handoff, not a completion claim.
 
 ## Latest palette work

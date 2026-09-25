@@ -130,6 +130,9 @@ struct RenderTransform {
 
 // Scroll registers wrap at the source's address width, not necessarily at
 // 16 bits. In particular CALCBGSCROLL masks BG2's vertical phase to 9 bits.
+[[nodiscard]] double interpolate_fractional_scroll(
+    std::uint16_t previous, std::uint16_t current, double alpha,
+    std::uint16_t mask) noexcept;
 [[nodiscard]] std::uint16_t interpolate_wrapped_scroll(
     std::uint16_t previous, std::uint16_t current, double alpha,
     std::uint16_t mask) noexcept;

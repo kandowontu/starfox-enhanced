@@ -99,7 +99,7 @@ GpuTemporalResampled GpuTemporalInputs::resample(void* device,void* command,void
     return {};
 }
 void* GpuTemporalInputs::restore_hud(void* device,void* command,void* original,void* reconstructed,
-    void* packed,std::uint32_t width,std::uint32_t height) {
+    void* packed,std::uint32_t width,std::uint32_t height,bool preserve_artwork) {
     if(!impl_) impl_=std::make_unique<Impl>();
 #if defined(STARFOX_SDL_GPU_EFFECTS)
     try {
@@ -126,7 +126,7 @@ void* GpuTemporalInputs::restore_hud(void* device,void* command,void* original,v
             impl_->hud_texture=SDL_CreateGPUTexture(d,&info);if(!impl_->hud_texture) throw std::runtime_error(SDL_GetError());
             impl_->hud_width=width;impl_->hud_height=height;
         }
-        auto* cb=static_cast<SDL_GPUCommandBuffer*>(command);Uint32 constants[]{width,height,0,0};
+        auto* cb=static_cast<SDL_GPUCommandBuffer*>(command);Uint32 constants[]{width,height,preserve_artwork?1U:0U,0};
         SDL_PushGPUComputeUniformData(cb,0,constants,sizeof(constants));
         SDL_GPUStorageTextureReadWriteBinding out{};out.texture=impl_->hud_texture;
         auto* pass=SDL_BeginGPUComputePass(cb,&out,1,nullptr,0);if(!pass) throw std::runtime_error(SDL_GetError());
@@ -138,7 +138,7 @@ void* GpuTemporalInputs::restore_hud(void* device,void* command,void* original,v
         return impl_->hud_texture;
     } catch(const std::exception& e) {impl_->status=e.what();}
 #else
-    (void)device;(void)command;(void)original;(void)reconstructed;(void)packed;(void)width;(void)height;
+    (void)device;(void)command;(void)original;(void)reconstructed;(void)packed;(void)width;(void)height;(void)preserve_artwork;
 #endif
     return nullptr;
 }

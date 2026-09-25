@@ -19,6 +19,15 @@ TransformSnapshot relative_birth_snapshot(const TransformSnapshot& sample,
         previous_owner.pitch, previous_owner.yaw, previous_owner.roll};
 }
 
+double interpolate_fractional_scroll(std::uint16_t previous,
+    std::uint16_t current, double alpha, std::uint16_t mask) noexcept {
+    const auto period = static_cast<std::int32_t>(mask) + 1;
+    auto delta = (static_cast<std::int32_t>(current) - previous) & mask;
+    if (delta >= period / 2) delta -= period;
+    const double value = double(previous & mask) + delta * std::clamp(alpha, 0.0, 1.0);
+    return value - std::floor(value / period) * period;
+}
+
 std::uint16_t interpolate_wrapped_scroll(std::uint16_t previous,
     std::uint16_t current, double alpha, std::uint16_t mask) noexcept {
     const auto period = static_cast<std::int32_t>(mask) + 1;

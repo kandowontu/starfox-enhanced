@@ -1,4 +1,6 @@
 #include "starfox/vr/draw_packet.hpp"
+#include "starfox/vr/backdrop_texture.hpp"
+#include "starfox/vr/enhanced_landscape.hpp"
 #include "starfox/vr/packed_vram.hpp"
 #include "starfox/vr/source_span_model.hpp"
 #include "starfox/vr/scene_interpolation.hpp"
@@ -22,6 +24,260 @@ namespace {void require(bool value,const std::source_location& where=std::source
     if(!value) throw std::runtime_error("Native draw packet assertion failed at line "+std::to_string(where.line()));
 }}
 int main() try {
+    {
+        const auto settled=vr::photographic_scroll_correction(12,-8,1);
+        const auto neutral=vr::photographic_body_motion({128,112});require(settled==neutral);
+        require(vr::photographic_scroll_correction(-508,508,0)==vr::photographic_scroll_correction(4,-4,0));
+        float previous=1;
+        for(unsigned phase=0;phase<=8;++phase) {
+            const auto correction=vr::photographic_scroll_correction(12,0,phase/8.);
+            require(correction[2]>=0 && correction[2]<=previous);previous=correction[2];
+        }
+        bool rejected=false;
+        try{(void)vr::photographic_scroll_correction(0,0,std::numeric_limits<double>::quiet_NaN());}
+        catch(const std::invalid_argument&){rejected=true;}require(rejected);
+    }
+    {
+        render::BackdropImage limb,surface;
+        limb.width=surface.width=limb.height=surface.height=2;
+        limb.pixels.assign(4,0xff123456U);surface.pixels.assign(4,0xffabcdefU);
+        limb.seal_for_upload();surface.seal_for_upload();
+        const auto texture=vr::make_orbital_texture(limb,surface);
+        require(vr::backdrop_texture_valid(*texture,1024,1536));
+        const auto base=(*texture)[4];
+        require((*texture)[base+256*1024+512]==0xff123456U);
+        require((*texture)[base+1024*1024+512]==0xffabcdefU);
+        require(texture->size()<2'100'000);
+        const auto pattern=vr::make_pattern_sky_texture(limb);
+        require(vr::backdrop_texture_valid(*pattern,2048,1024));
+        require((*pattern)[(*pattern)[4]+512*2048+1024]==0xff123456U);
+        surface.pixels.clear();bool rejected=false;
+        try{(void)vr::make_orbital_texture(limb,surface);}
+        catch(const std::invalid_argument&){rejected=true;}require(rejected);
+    }
+    {
+        render::BackdropImage image;image.width=image.height=4;image.pixels.assign(16,0xffabcdefU);
+        const auto texture=vr::make_backdrop_texture(image);
+        vr::PhotographicLandscape options;options.orbital_surface=true;
+        bool rejected=false;try{(void)vr::photographic_landscape_packet(texture,options);}
+        catch(const std::invalid_argument&){rejected=true;}require(rejected);
+        options.full_sphere=true;const auto globe=vr::photographic_landscape_packet(texture,options);
+        unsigned top=0,bottom=0;
+        for(const auto& v:globe.geometry.vertex_view()) {require(v.odd_color[3]==4);top+=v.position[1]>0;bottom+=v.position[1]<0;}
+        require(top && bottom);
+        options.latitude_uv=true;rejected=false;try{(void)vr::photographic_landscape_packet(texture,options);}
+        catch(const std::invalid_argument&){rejected=true;}require(rejected);
+    }
+    {
+        simulation::SnesPpuState ppu;ppu.main_screen=2;ppu.background_mode=2;
+        ppu.bg2_character_base=0;ppu.bg2_screen_base=0x1000;
+        ppu.vram[0x2000]=1;ppu.vram[0x2001]=12; // Tile 1, bank 3.
+        for(unsigned y=0;y<8;++y) {ppu.vram[32+y*2+1]=128;ppu.vram[48+y*2]=128;}
+        vr::BackgroundTileOptions options;options.scroll_override=std::array<int16_t,2>{0,0};
+        std::array<bool,256> keep{};keep[54]=true;keep[0]=true;
+        for(bool large:{false,true}) for(bool flip:{false,true}) {
+            ppu.bg2_tile_size_16=large;ppu.vram[0x2001]=uint8_t(12|(flip?64:0));
+            const unsigned width=large?16:8;
+            const auto body=vr::landscape_landmark_packet(ppu,options,{0,0,width,8},keep);
+            require(body.geometry.vertices.size()==48 && body.geometry.texels[3]==0 && body.geometry.texels[4]==0);
+            for(const auto& v:body.geometry.vertices) require(v.uv[0]>=(flip?width-1:0)
+                && v.uv[0]<=(flip?width:1) && v.uv[1]>=0 && v.uv[1]<=8);
+            ppu.cgram[54]=32767;
+            const auto recoloured=vr::landscape_landmark_packet(ppu,options,{0,0,width,8},keep);
+            require(body.geometry.vertices==recoloured.geometry.vertices);
+        }
+        keep.fill(false);
+        require(vr::landscape_landmark_packet(ppu,options,{0,0,8,8},keep).geometry.vertices.empty());
+    }
+    {
+        render::BackdropImage master;master.width=master.height=2;master.pixels.assign(4,0xffffffffU);master.seal_for_upload();
+        simulation::SnesPpuState ppu;ppu.bg2_character_base=0;ppu.bg2_screen_base=0x1000;ppu.bg2_screen_size=3;
+        // A black (ink 15) limb is opaque, but the empty first tile is space.
+        for(unsigned i=32;i<64;++i) ppu.vram[i]=255;
+        for(unsigned y=40;y<44;++y) for(unsigned x=20;x<30;++x) {
+            const unsigned entry=(x/32+y/32*2)*1024+(y%32)*32+x%32;
+            ppu.vram[0x2000+entry*2]=(x==20 && y==40)?0:1;
+        }
+        render::CloudLimbAtlas atlas;const auto& image=atlas.image(master,master,ppu);
+        const auto key=image.immutable_upload_key;
+        const auto texture=vr::make_cloud_body_texture(image,atlas,true);
+        require(vr::backdrop_texture_valid(*texture,320,128) && (*texture)[2]==0);
+        const auto pixel=[&](unsigned x,unsigned y){return (*texture)[(*texture)[4]+y*320+x];};
+        require((pixel(8,8)>>24)==0 && (pixel(80,80)>>24)==255 && (pixel(80,80)&0xffffffU)==0);
+        ppu.cgram[95]=32767;require(atlas.image(master,master,ppu).immutable_upload_key==key);
+        vr::PhotographicBody options;options.diameter={80,32};options.palette[0]=5;options.palette[15]=32767;
+        const auto body=vr::photographic_body_packet(texture,options);
+        require(body.geometry.vertex_view()[0].visibility_a[0]==5);
+    }
+    {
+        render::BackdropImage image;image.width=image.height=2;
+        image.pixels.assign(4,0xff123456U);
+        const auto texture=vr::make_celestial_texture(image,{31,29,1216,1209});
+        require((*texture)[2]==0 && vr::backdrop_texture_valid(*texture,512,512));
+        require(((*texture)[(*texture)[4]]>>24)==0
+            && (*texture)[(*texture)[4]+256*512+256]==0xff123456U);
+        vr::PhotographicBody options;options.center={376,80};options.palette_shift={-.1F,.2F,0};
+        const auto placed=vr::photographic_body_packet(texture,options);
+        options.center={128,112};const auto centered=vr::photographic_body_packet(texture,options);
+        const auto transform=vr::photographic_body_motion({376,80});
+        for(unsigned i=0;i<6;++i) for(unsigned row=0;row<3;++row) {
+            float actual=transform[12+row];for(unsigned c=0;c<3;++c)
+                actual+=transform[c*4+row]*centered.geometry.vertex_view()[i].position[c];
+            require(std::abs(actual-placed.geometry.vertex_view()[i].position[row])<.00001F);
+        }
+        require(placed.geometry.vertex_view()[0].odd_color[0]==-.1F);
+        bool rejected=false;
+        try {(void)vr::make_celestial_texture(image,{30,20,20,10});}catch(const std::invalid_argument&) {rejected=true;}
+        require(rejected);
+    }
+    {
+        render::BackdropImage master;master.width=master.height=4;master.pixels.assign(16,0xffffffffU);
+        const auto solid=vr::make_moon_texture(master,false),haze=vr::make_moon_texture(master,true);
+        require((*solid)[2]==0 && vr::backdrop_texture_valid(*solid,512,512));
+        const auto at=[](const auto& texture,unsigned x,unsigned y){return (*texture)[(*texture)[4]+y*512+x];};
+        require((at(solid,0,0)>>24)==0 && (at(solid,256,400)>>24)==255);
+        require((at(haze,256,80)>>24)==255 && (at(haze,256,400)>>24)==0);
+        require((at(haze,256,80)&255)>(at(haze,256,200)&255));
+        vr::PhotographicBody options;options.center={280,64};options.two_tone=true;options.bright=32767;
+        const auto body=vr::photographic_body_packet(solid,options);
+        const auto vertices=body.geometry.vertex_view();require(vertices.size()==6);
+        const auto length=[](const auto& a,const auto& b) {
+            double sum=0;for(unsigned c=0;c<3;++c) sum+=std::pow(a.position[c]-b.position[c],2);return std::sqrt(sum);
+        };
+        require(std::abs(length(vertices[0],vertices[1])-7)<.0001
+            && std::abs(length(vertices[1],vertices[2])-7)<.0001);
+        for(const auto& v:vertices) require(v.visibility_a[0]==3 && v.visibility_a[1]==32767 && v.odd_color[3]==0);
+        options.diameter[0]=0;bool rejected=false;
+        try {(void)vr::photographic_body_packet(solid,options);}catch(const std::invalid_argument&) {rejected=true;}
+        require(rejected);
+    }
+    {
+        simulation::SnesPpuState ppu;ppu.background_mode=1;ppu.main_screen=2;
+        ppu.bg2_character_base=0;ppu.bg2_screen_base=0x1000;ppu.cgram[1]=32767;
+        // One white 4x4 ring encloses four opaque black pixels. Everything
+        // outside it is black too, but must expose the surrounding starfield.
+        ppu.vram[0x2000]=1;
+        for(unsigned y=0;y<8;++y) {
+            const uint8_t white=(y==2 || y==5)?0x3c:(y==3 || y==4)?0x24:0;
+            ppu.vram[32+y*2]=white;ppu.vram[32+y*2+1]=uint8_t(~white);
+            ppu.vram[y*2+1]=255;
+        }
+        const auto vertices=vr::game_over_foreground_vertices(ppu);
+        require(vertices.size()==24);
+        for(const auto& v:vertices) require(v.position[0]>=2 && v.position[0]<=6
+            && v.position[1]>=2 && v.position[1]<=6 && v.texture[3]==8);
+        const auto original=ppu;
+        const auto linear=vr::game_over_foreground_vertices(ppu,true);
+        require(linear.size()==vertices.size() && linear[0].texture[3]==10 && ppu==original);
+    }
+    {
+        simulation::SnesPpuState ppu;ppu.background_mode=1;
+        ppu.cgram[1]=31|(20<<5)|(10<<10);
+        vr::BackgroundTileOptions options;options.colour_subtract=12;
+        const auto background=vr::background_tile_payload(ppu,vr::BackgroundLayer::bg2,options);
+        const auto foreground=vr::background_tile_payload(ppu,vr::BackgroundLayer::bg1,options);
+        require(background[17]==0xff00429cU && foreground[17]==0xff52a5ffU);
+        const auto stars=vr::game_over_star_sphere_packet(ppu,15,12);
+        require(stars.geometry.shared_vertices && stars.geometry.texels[7]==512
+            && stars.geometry.texels[17]==background[17]);
+        options.colour_subtract=31;
+        const auto black=vr::background_tile_payload(ppu,vr::BackgroundLayer::bg2,options);
+        require(black[17]==0xff000000U && ppu.cgram[1]==(31|(20<<5)|(10<<10)));
+        options.colour_subtract=32;bool rejected=false;
+        try {(void)vr::background_tile_payload(ppu,vr::BackgroundLayer::bg2,options);}
+        catch(const std::invalid_argument&) {rejected=true;}
+        require(rejected);
+    }
+    {
+        render::BackdropImage image;image.width=3;image.height=1;
+        image.pixels={0xff0000ffU,0x00ff0000U,0xff0000ffU};
+        const auto texture=vr::make_backdrop_texture(image);
+        require(vr::backdrop_texture_valid(*texture,3,1));
+        require((*texture)[1]==2 && (*texture)[2]==1);
+        require((*texture)[(*texture)[4]+1]==0); // Transparent blue cannot bleed.
+        require(texture->back()==0xaa0000aaU); // All three odd-width texels included.
+        auto invalid=*texture;invalid[7]=UINT32_MAX;
+        require(!vr::backdrop_texture_valid(invalid,3,1));
+        invalid=*texture;invalid.pop_back();require(!vr::backdrop_texture_valid(invalid,3,1));
+        invalid=*texture;invalid.push_back(0);require(!vr::backdrop_texture_valid(invalid,3,1));
+        invalid=*texture;invalid[1]=14;require(!vr::backdrop_texture_valid(invalid,3,1));
+        require(!vr::backdrop_texture_valid(*texture,4,1));
+        require((*vr::make_backdrop_texture(image,false))[2]==0);
+        const auto landscape=vr::photographic_landscape_packet(texture);
+        require(landscape.geometry.shared_texels==texture && landscape.geometry.vertices.empty());
+        unsigned horizon_vertices=0;float minimum_u=100,maximum_u=-100;
+        for(const auto& vertex:landscape.geometry.vertex_view()) {
+            require(vertex.position[1]>=0 && vertex.uv[1]>=0 && vertex.uv[1]<=1);
+            require(vertex.texture[3]==vr::backdrop_texture_flag);
+            minimum_u=std::min(minimum_u,vertex.uv[0]);maximum_u=std::max(maximum_u,vertex.uv[0]);
+            if(vertex.position[1]==0) {require(std::abs(vertex.uv[1]-1.F)<.00001F);++horizon_vertices;}
+        }
+        require(horizon_vertices>0 && std::abs(maximum_u-minimum_u-6.F)<.00001F);
+        auto options=vr::PhotographicLandscape{};options.vertical_scale=0;
+        bool invalid_projection=false;
+        try {(void)vr::photographic_landscape_packet(texture,options);}catch(const std::invalid_argument&) {invalid_projection=true;}
+        require(invalid_projection);
+        options=vr::PhotographicLandscape{};options.palette_shift={-.1F,.2F,0};
+        options.horizontal_scale=2;options.repeats=12;
+        options.cloud_palette[0]=1;options.cloud_palette[1]=32767;options.cloud_palette[15]=1234;
+        const auto shifted=vr::photographic_landscape_packet(texture,options);
+        for(const auto& vertex:shifted.geometry.vertex_view()) {
+            require(vertex.odd_color[0]==-.1F && vertex.odd_color[1]==.2F);
+            require(vertex.visibility_a[0]==1 && vertex.visibility_a[1]==32767 && vertex.group_c[0]==1234);
+        }
+        vr::EnhancedLandscape enhancement(assets::SymbolMap{});
+        vr::DrawPacket native;
+        auto native_vertices=std::make_shared<std::vector<vr::SceneVertex>>(9);
+        for(unsigned i=0;i<9;++i) (*native_vertices)[i].position[1]=i<3?1.F:-1.F;
+        (*native_vertices)[6].position[1]=0; // Preserve a horizon-touching ground face.
+        native.geometry.shared_vertices=native_vertices;native.geometry.shared_texels=texture;
+        auto unchanged_native=native;
+        enhancement.retain_native_ground(native,simulation::SnesPpuState{});
+        require(native.geometry.vertex_view().size()==6 && native.geometry.shared_texels==texture);
+        enhancement.retain_native_ground(unchanged_native,simulation::SnesPpuState{});
+        require(native.geometry.shared_vertices==unchanged_native.geometry.shared_vertices);
+        require(native_vertices->size()==9); // Source snapshot remains immutable.
+        options.full_sphere=true;options.horizon_v=.5F;
+        const auto surround=vr::photographic_landscape_packet(texture,options);
+        unsigned upper=0,lower=0;
+        for(const auto& vertex:surround.geometry.vertex_view()) {
+            upper+=vertex.position[1]>0;lower+=vertex.position[1]<0;
+            require(vertex.uv[1]>=0 && vertex.uv[1]<=1);
+        }
+        require(upper>0 && upper==lower && surround.geometry.vertex_view().size()==64*32*6);
+        options.latitude_uv=true;
+        const auto stars=vr::photographic_landscape_packet(texture,options);
+        unsigned interior=0;
+        for(const auto& vertex:stars.geometry.vertex_view()) interior+=vertex.uv[1]>0 && vertex.uv[1]<1;
+        require(interior>stars.geometry.vertex_view().size()*9/10); // Not squeezed into a horizon band.
+        render::BackdropImage panorama;panorama.width=64;panorama.height=16;
+        panorama.pixels.resize(64*16);
+        for(unsigned y=0;y<16;++y) for(unsigned x=0;x<64;++x) panorama.pixels[y*64+x]=0xff000000U+x;
+        const auto seamless=vr::make_landscape_texture(panorama);
+        require(vr::backdrop_texture_valid(*seamless,62,16));
+        const auto base=(*seamless)[4];
+        for(unsigned x=1;x<62;++x) require((*seamless)[base+x]==(*seamless)[base]);
+        for(unsigned level=0;level<(*seamless)[1];++level) {
+            const auto record=4+3*level;
+            for(unsigned x=0;x<(*seamless)[record+1];++x)
+                require((*seamless)[(*seamless)[record]+x]==(*seamless)[base]);
+        }
+        require((*seamless)[base+15*62]==panorama.pixels[15*64+62]);
+        require((*seamless)[base+15*62+20]==panorama.pixels[15*64+20]);
+        for(unsigned x=0;x<64;++x) panorama.pixels[15*64+x]=0xff00ff00U;
+        const auto spherical=vr::make_landscape_texture(panorama,true);
+        const auto stars_texture=vr::make_landscape_texture(panorama,true,true);
+        require((*stars_texture)[5]==62 && (*stars_texture)[6]==31
+            && vr::backdrop_texture_valid(*stars_texture,62,31));
+        for(unsigned level=0;level<(*spherical)[1];++level) {
+            const auto record=4+3*level,w=(*spherical)[record+1],h=(*spherical)[record+2];
+            if(h>1) for(unsigned x=0;x<w;++x)
+                require((*spherical)[(*spherical)[record]+(h-1)*w+x]==0xff00ff00U);
+        }
+        image.width=4097;
+        bool rejected=false;try {(void)vr::make_backdrop_texture(image);}catch(const std::invalid_argument&) {rejected=true;}
+        require(rejected);
+    }
     {
         simulation::ObjectPool pool;const auto key=pool.allocate_after();
         vr::SourceModelPackets packets;packets.handles={key};packets.packets.resize(1);
@@ -82,6 +338,14 @@ int main() try {
         try {static_cast<void>(vr::tunnel_surround_packet({NAN,0,0,1}));}
         catch(const std::invalid_argument&) {rejected=true;}
         require(rejected);
+        const auto layered=vr::tunnel_surround_packet(
+            {.1F,.2F,.3F,1},{.7F,.6F,.5F,1},{.8F,.9F,1.F,1});
+        require(layered.geometry.vertices.size()==54);
+        require(layered.geometry.vertices[0].color[0]==.1F
+            && layered.geometry.vertices[12].color[0]==.7F
+            && layered.geometry.vertices[18].color[0]==.8F
+            && layered.geometry.vertices[42].color[0]==.7F
+            && layered.geometry.vertices[48].color[0]==.8F);
     }
     {
         assets::Shape shape;shape.vertices={{0,0,-20},{2,0,30},{-2,0,30},{0,0,5}};
@@ -190,6 +454,11 @@ int main() try {
             require(transforms.size()==model.bsp.faces.size()*6+4);
             require(projection.continuous_vertices.size()==5 && projection.visibility_faces.size()==1);
             require(transforms[4].translation[3]==7 && transforms[10].translation[3]==7);
+            broken_pose.explosion_phase=6.5;
+            auto smooth_projection=model.projection;auto smooth_fragments=model.faces;
+            const auto smooth=render::pack_continuous_fragments(smooth_projection,
+                smooth_fragments,model.bsp,broken_pose,{},false);
+            require(smooth[4].translation[3]==6.5F && smooth[10].translation[3]==6.5F);
             require(transforms[0].vanish[2]==5 && transforms[6].vanish[2]==11);
             require(fragments.corners[0][0]==0 && fragments.corners[3][0]==3);
             require(projection.continuous_vertices[3].pose==model.projection.continuous_vertices[0].pose+6);
@@ -1041,6 +1310,23 @@ int main() try {
         ambiguous=shared;ambiguous.geometry.line_vertices.resize(2);
         require(!vr::same_draw_geometry(std::span(&ambiguous,1),std::span(&shared,1)));
         require(shared.geometry.line_view()[0].position[0]==0);
+        owned={};owned.geometry.texels={12,34,56};
+        shared=owned;
+        shared.geometry.shared_texels=std::make_shared<const std::vector<uint32_t>>(owned.geometry.texels);
+        shared.geometry.texels.clear();
+        require(vr::same_draw_geometry(std::span(&owned,1),std::span(&shared,1)));
+        copy=shared;
+        require(copy.geometry.texel_view().data()==shared.geometry.texel_view().data());
+        require(copy.geometry.same_texels(shared.geometry));
+        owned.geometry.texels[1]=78;
+        require(!vr::same_draw_geometry(std::span(&owned,1),std::span(&shared,1)));
+        ambiguous=shared;ambiguous.geometry.texels.push_back(12);
+        require(!vr::same_draw_geometry(std::span(&ambiguous,1),std::span(&shared,1)));
+        require(!shared.geometry.same_texels(ambiguous.geometry));
+        require(shared.geometry.texel_view()[1]==34);
+        owned={};shared={};
+        shared.geometry.shared_texels=std::make_shared<const std::vector<uint32_t>>();
+        require(owned.geometry.same_texels(shared.geometry));
     }
     {
         for(float distance:{1.F,2.F,8.F}) for(float vx:{112.F,128.F,160.F})
@@ -1237,7 +1523,14 @@ int main() try {
         auto previous=item.presentation;previous.transform.x=0;old.transforms[2]=previous;
         const auto halfway=vr::interpolate_scene_poses(old,now,.5,{});
         require(std::abs(halfway[0].x-50.*32767/32768)<.01 && halfway[0].source_depth==999);
+        old.transforms[2].explosion_progress=4;
+        now.objects[0].presentation.explosion_progress=5;
+        now.transforms[2]=now.objects[0].presentation;
+        now.objects[0].source_pose.explosion_progress=5;
+        require(vr::interpolate_scene_poses(old,now,.5,{})[0].explosion_phase==4.5);
+        require(!vr::interpolate_scene_poses(old,now,1,{})[0].explosion_phase);
         old.transforms[2].generation=2;
+        require(!vr::interpolate_scene_poses(old,now,.5,{})[0].explosion_phase);
         require(std::abs(vr::interpolate_scene_poses(old,now,.5,{})[0].x-100.*32767/32768)<.01);
         now.player=1;old.transforms[1]=previous;now.transforms[1]=item.presentation;
         now.objects[0].object.strategy_address=123;now.objects[0].presentation.transform.x=900;
@@ -1400,6 +1693,11 @@ int main() try {
             require(vertex.group_c[0]==1 && vertex.group_c[1]==256);
             require(vertex.group_a[2]==float(pose.z));
         }
+        pose.explosion_phase=.5;
+        require(vr::build_draw_packet(shape,pose,palette,0,1,false,256,exploded,error));
+        require(!exploded.geometry.vertices.empty()
+            && exploded.geometry.vertices.front().group_c[0]==.5F);
+        pose.explosion_phase.reset();
     }
     pose.explosion_progress=0;
     pose.effect_clip_left=10;pose.effect_clip_right=20;rejected();pose.effect_clip_right=0;

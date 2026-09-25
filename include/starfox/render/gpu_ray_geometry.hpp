@@ -16,6 +16,12 @@ struct GpuRayGeometryTarget {
     std::uint32_t vertex_capacity{},first_vertex{};
     bool cycle{};
 };
+struct GpuRayMaterialTarget {
+    void* buffer{};
+    std::uint32_t byte_capacity{},byte_offset{};
+    bool cycle{};
+};
+struct GpuRayMaterialLookup {void* buffer{};std::uint32_t face_count{};};
 class GpuRayGeometry {
 public:
     GpuRayGeometry();~GpuRayGeometry();
@@ -30,6 +36,22 @@ public:
     // storage-read/write buffer must hold vertex_capacity float4 records.
     void* enqueue(void* device,void* command,void* points,void* residuals,
         void* triangles,const GpuRayGeometrySettings&,const GpuRayGeometryTarget* target=nullptr);
+    // Pack already-resolved occurrence materials. Topology holds three corner
+    // indices and a material slot; polygons/corners/96-byte commands retain the
+    // producer's slot ordering. Output is triangle_count 64-byte RayMaterials.
+    // Topology face bit 31 instead selects a source face: XYZ become local
+    // corner ordinals, and corner.w must carry source-face+1. The last emitted
+    // occurrence wins; a face without an emitted occurrence remains invalid.
+    // Reserved=1 marks an invalid record, never an opaque black substitute.
+    // Optional target writes directly into a 16-byte-aligned scene subrange.
+    // The caller owns its storage-read/write buffer and actual capacity.
+    // reject_all emits invalid records without reading inputs (non-null dummy
+    // bindings still required); used for known non-polygon reflection surfaces.
+    void* enqueue_materials(void* device,void* command,void* topology,void* corners,
+        void* polygons,void* materials,std::uint32_t triangle_count,std::uint32_t corner_count,
+        std::uint32_t material_count,std::uint32_t texel_count,std::uint32_t texel_base=0,
+        const GpuRayMaterialTarget* target=nullptr,bool reject_all=false,
+        const GpuRayMaterialLookup* lookup=nullptr);
     void release_device() noexcept;
     const std::string& status() const noexcept;
 private:

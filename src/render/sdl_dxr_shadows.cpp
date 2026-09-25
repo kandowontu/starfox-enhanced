@@ -21,6 +21,7 @@ namespace starfox::render::shadows {
 struct SdlDxrShadows::Impl {
     std::string status{"Native SDL DXR unavailable"};
     GpuShadowOutput output{};
+    std::uint32_t bytes_per_pixel{1};
 #if defined(STARFOX_NATIVE_SDL_DXR)
     SDL_GPUDevice* device{};
     SDL_GPUBuffer* buffer{};
@@ -96,16 +97,22 @@ struct SdlDxrShadows::Impl {
         require(producer->available(),producer->status().c_str());
         device=source;
     }
-    DxrShadows::ResidentGeometry copy_geometry(const GpuScene::RayGeometryOutput& source) {
+    DxrShadows::ResidentGeometry copy_geometry(const GpuScene::RayGeometryOutput& source,bool include_materials) {
         require(source.complete && source.device==device && source.buffer && source.vertex_count
             && source.vertex_count%3==0 && source.vertex_count<=UINT32_MAX/16U,"Invalid resident caster geometry");
         if(vulkan.bridge) require(vulkan_geometry_bridge && vulkan_geometry_bridge->version==1
             && vulkan_geometry_bridge->copy_to_external && vulkan_geometry_bridge->signal_timeline,"Vulkan geometry bridge unavailable");
         else require(geometry_bridge && geometry_bridge->version==1 && geometry_bridge->copy_to_external && geometry_bridge->signal_fence,
             "D3D12 geometry bridge unavailable");
-        auto target=producer->prepare_shared_geometry(source.vertex_count);
+        const auto bytes=include_materials && source.material_offset?std::uint64_t(source.material_offset)+std::uint64_t(source.vertex_count/3)*64:
+            std::uint64_t(source.vertex_count)*16U;
+        require(bytes<=UINT32_MAX && (!source.material_offset || (source.material_offset%16==0
+            && source.material_offset>=std::uint64_t(source.vertex_count)*16)),"Invalid resident material range");
+        // Shared allocation remains vertex-sized; pad to whole triangles while
+        // retaining the actual BLAS vertex count below.
+        auto target=producer->prepare_shared_geometry(Uint32((bytes+47)/48*3));
         require(target.resource,"DXR geometry allocation failed");
-        const auto bytes=std::uint64_t(source.vertex_count)*16U;
+        target.vertex_count=source.vertex_count;
         if(target.resource!=geometry_source || bytes!=geometry_bytes) {
             if(vulkan.bridge) vulkan_geometry.open(*producer,bytes,true);
             else {
@@ -141,11 +148,16 @@ struct SdlDxrShadows::Impl {
         return target;
     }
     void render(const Scene& scene,Camera camera,Vec3 light,std::optional<ReceiverPlane> plane,
-        const GpuScene::RayGeometryOutput* geometry) {
+        const GpuScene::RayGeometryOutput* geometry,const DxrShadows::ReflectionInput* reflection=nullptr) {
         output={};finish();
         DxrShadows::ResidentGeometry resident_geometry;
-        if(geometry) resident_geometry=copy_geometry(*geometry);
-        if(!producer->render_resident(scene,camera,light,plane,geometry?&resident_geometry:nullptr,nullptr,true,true))
+        if(geometry) resident_geometry=copy_geometry(*geometry,reflection!=nullptr);
+        auto bound_reflection=reflection?*reflection:DxrShadows::ReflectionInput{};
+        if(reflection && geometry && geometry->material_offset) {
+            bound_reflection.resident_materials=resident_geometry.resource;
+            bound_reflection.resident_material_offset=geometry->material_offset;
+        }
+        if(!producer->render_resident(scene,camera,light,plane,geometry?&resident_geometry:nullptr,nullptr,true,true,reflection?&bound_reflection:nullptr))
             throw std::runtime_error("DXR producer: "+producer->status());
         if(!vulkan.bridge && !ready_fence) {
             HANDLE shared=static_cast<HANDLE>(producer->export_ready_fence_handle());
@@ -154,6 +166,7 @@ struct SdlDxrShadows::Impl {
             CloseHandle(shared);require(SUCCEEDED(hr),"Native producer fence import failed");
         }
         auto source=producer->resident_output();
+        bytes_per_pixel=source.bytes_per_pixel;
         const auto bytes=std::uint64_t(source.row_bytes)*source.height;
         require(bytes && bytes<=std::numeric_limits<Uint32>::max(),"Native mask too large");
         // Opening a shared handle may create a different COM wrapper. Its
@@ -202,7 +215,7 @@ struct SdlDxrShadows::Impl {
         status=geometry?"GPU-resident SDL geometry and DXR shadows":"GPU-resident SDL DXR shadows";
     }
     void read(std::vector<std::uint8_t>& pixels) {
-        require(output.buffer,"No resident DXR mask");finish();
+        require(device && buffer && output.buffer==buffer && capacity,"No resident DXR mask");finish();
         if(!download) {
             SDL_GPUTransferBufferCreateInfo info{};info.usage=SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD;info.size=capacity;
             download=SDL_CreateGPUTransferBuffer(device,&info);require(download,SDL_GetError());
@@ -212,9 +225,10 @@ struct SdlDxrShadows::Impl {
         SDL_GPUBufferRegion source{buffer,0,capacity};SDL_GPUTransferBufferLocation target{download,0};
         SDL_DownloadFromGPUBuffer(pass,&source,&target);SDL_EndGPUCopyPass(pass);
         fence=SDL_SubmitGPUCommandBufferAndAcquireFence(command);command=nullptr;require(fence,SDL_GetError());finish();
-        pixels.resize(std::size_t(output.width)*output.height);
+        const auto row=std::size_t(output.width)*bytes_per_pixel;
+        pixels.resize(row*output.height);
         const auto* data=static_cast<const std::uint8_t*>(SDL_MapGPUTransferBuffer(device,download,false));require(data,SDL_GetError());
-        for(unsigned y=0;y<output.height;++y) std::memcpy(pixels.data()+std::size_t(y)*output.width,data+std::size_t(y)*output.packed_row_bytes,output.width);
+        for(unsigned y=0;y<output.height;++y) std::memcpy(pixels.data()+std::size_t(y)*row,data+std::size_t(y)*output.packed_row_bytes,row);
         SDL_UnmapGPUTransferBuffer(device,download);
     }
 #endif
@@ -234,7 +248,30 @@ bool SdlDxrShadows::request_vulkan_interop(std::uint32_t properties) {
     (void)properties;return false;
 #endif
 }
-GpuShadowOutput SdlDxrShadows::output() const {return impl_->output;}
+GpuShadowOutput SdlDxrShadows::output() const {return impl_->bytes_per_pixel==1?impl_->output:GpuShadowOutput{};}
+GpuReflectionOutput SdlDxrShadows::reflection_output() const {
+    const auto& o=impl_->output;
+    return impl_->bytes_per_pixel==4?GpuReflectionOutput{o.device,o.buffer,o.width,o.height,o.packed_row_bytes}:GpuReflectionOutput{};
+}
+bool SdlDxrShadows::render_reflections(void* device,Camera camera,const GpuScene::RayGeometryOutput& geometry,
+    std::span<const std::uint32_t,256> palette,std::uint32_t environment,float roughness,std::uint32_t metallic,
+    std::span<const std::uint32_t> environment_cube,std::uint32_t face_size,std::array<float,9> environment_rotation,
+    const GpuBackgroundDraw* background,std::optional<ReceiverPlane> ground,float background_eye_x,const RayWater* water) {
+    impl_->output={};
+#if defined(STARFOX_NATIVE_SDL_DXR)
+    if(!geometry.complete || !geometry.materials || (!geometry.material_offset
+        && geometry.materials->triangles.size()*3!=geometry.vertex_count)) return false;
+    try {
+        if(impl_->device && impl_->device!=device) release_device();
+        if(!impl_->device) impl_->initialize(static_cast<SDL_GPUDevice*>(device));
+        DxrShadows::ReflectionInput reflection{geometry.materials,palette,environment,roughness,metallic,environment_cube,face_size,environment_rotation,background,ground,background_eye_x};
+        reflection.water=water;
+        impl_->render(Scene{},camera,{0,1,0},{},&geometry,&reflection);return true;
+    }catch(const std::exception& error){const std::string message=error.what();release_device();impl_->status=message;}
+#endif
+    (void)device;(void)camera;(void)geometry;(void)palette;(void)environment;(void)roughness;(void)metallic;
+    (void)environment_cube;(void)face_size;(void)environment_rotation;(void)background;(void)ground;(void)background_eye_x;(void)water;return false;
+}
 const std::string& SdlDxrShadows::status() const {return impl_->status;}
 void SdlDxrShadows::release_device() noexcept {impl_.reset(new Impl);}
 bool SdlDxrShadows::render_resident(void* device,const Scene& scene,Camera camera,Vec3 light,std::optional<ReceiverPlane> plane,

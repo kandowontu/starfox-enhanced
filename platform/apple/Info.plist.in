@@ -25,6 +25,9 @@
   <string>${CMAKE_OSX_DEPLOYMENT_TARGET}</string>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <!-- Allow SDL's display link to request ProMotion refresh rates above 60 Hz. -->
+  <key>CADisableMinimumFrameDurationOnPhone</key>
+  <true/>
   <key>UIFileSharingEnabled</key>
   <true/>
   <key>LSSupportsOpeningDocumentsInPlace</key>

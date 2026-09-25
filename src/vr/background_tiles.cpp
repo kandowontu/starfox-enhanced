@@ -1,4 +1,5 @@
 #include "starfox/vr/background_tiles.hpp"
+#include "starfox/vr/backdrop_texture.hpp"
 #include "starfox/vr/packed_vram.hpp"
 #include "starfox/render/palette.hpp"
 #include "starfox/render/background_renderer.hpp"
@@ -9,12 +10,133 @@
 #include <bit>
 
 namespace starfox::vr {
+Matrix4 photographic_scroll_correction(float dx,float dy,double alpha,float horizontal_scale,float vertical_scale) {
+    if(!std::isfinite(dx) || !std::isfinite(dy) || !std::isfinite(alpha)
+        || !std::isfinite(horizontal_scale) || horizontal_scale<=0
+        || !std::isfinite(vertical_scale) || vertical_scale<=0)
+        throw std::invalid_argument("Invalid photographic scroll correction");
+    const float weight=float(1-std::clamp(alpha,0.,1.));
+    const float yaw=std::remainder(dx,512.F)*weight/(512*horizontal_scale);
+    const float pitch=std::atan(-std::remainder(dy,512.F)*weight/(224*vertical_scale));
+    const float sy=std::sin(yaw),cy=std::cos(yaw),sp=std::sin(pitch),cp=std::cos(pitch);
+    return {cy,0,sy,0, -sy*sp,cp,cy*sp,0, -sy*cp,-sp,cy*cp,0, 0,0,0,1};
+}
+Matrix4 photographic_body_motion(std::array<float,2> center) {
+    for(float value:center) if(!std::isfinite(value) || std::abs(value)>4096)
+        throw std::invalid_argument("Invalid photographic body motion");
+    const float yaw=std::atan((center[0]-128)/512),pitch=std::atan((112-center[1])/512);
+    const float sy=std::sin(yaw),cy=std::cos(yaw),sp=std::sin(pitch),cp=std::cos(pitch);
+    return {cy,0,sy,0, -sy*sp,cp,cy*sp,0, -sy*cp,-sp,cy*cp,0, 0,0,0,1};
+}
+DrawPacket photographic_body_packet(std::shared_ptr<const std::vector<uint32_t>> texture,
+    const PhotographicBody& options,bool srgb) {
+    if(!texture || texture->size()<7 || !backdrop_texture_valid(*texture,(*texture)[5],(*texture)[6])
+        || (*texture)[2]!=0 || options.bright>32767 || options.dark>32767)
+        throw std::invalid_argument("Invalid photographic body texture/palette");
+    for(float value:options.center) if(!std::isfinite(value) || std::abs(value)>4096)
+        throw std::invalid_argument("Invalid photographic body center");
+    for(float value:options.diameter) if(!std::isfinite(value) || value<=0 || value>1024)
+        throw std::invalid_argument("Invalid photographic body size");
+    for(float value:options.response) if(!std::isfinite(value) || value<0 || value>4096)
+        throw std::invalid_argument("Invalid photographic body response");
+    for(float value:options.palette_shift) if(!std::isfinite(value) || std::abs(value)>4096)
+        throw std::invalid_argument("Invalid photographic body palette shift");
+    if((options.palette[0]!=0 && (options.palette[0]<4 || options.palette[0]>8)) || (options.palette[0] && options.two_tone)
+        || std::any_of(options.palette.begin()+1,options.palette.end(),[](auto c){return c>32767;}))
+        throw std::invalid_argument("Invalid photographic body shade ramp");
+    DrawPacket packet;packet.geometry.shared_texels=std::move(texture);
+    auto vertices=std::make_shared<std::vector<SceneVertex>>();vertices->reserve(6);
+    const float yaw=std::atan((options.center[0]-128)/512),pitch=std::atan((112-options.center[1])/512);
+    const float sy=std::sin(yaw),cy=std::cos(yaw),sp=std::sin(pitch),cp=std::cos(pitch);
+    for(const auto& corner:std::array<std::array<float,2>,6>{{{0,0},{1,0},{1,1},{0,0},{1,1},{0,1}}}) {
+        const float u=(corner[0]-.5F)*options.diameter[0]*.125F;
+        const float v=(.5F-corner[1])*options.diameter[1]*.125F;
+        SceneVertex vertex{};
+        vertex.position[0]=64*sy*cp+u*cy-v*sy*sp;
+        vertex.position[1]=64*sp+v*cp;
+        vertex.position[2]=-64*cy*cp+u*sy+v*cy*sp;
+        std::copy(corner.begin(),corner.end(),vertex.uv);
+        std::copy(options.response.begin(),options.response.end(),vertex.color);
+        std::copy(options.palette_shift.begin(),options.palette_shift.end(),vertex.odd_color);
+        vertex.texture[1]=(*packet.geometry.shared_texels)[5]-1;
+        vertex.texture[2]=(*packet.geometry.shared_texels)[6]-1;
+        vertex.texture[3]=backdrop_texture_flag|(srgb?2U:0U);
+        if(options.two_tone) {
+            vertex.visibility_a[0]=3;vertex.visibility_a[1]=options.bright;vertex.visibility_a[2]=options.dark;
+        }
+        if(options.palette[0]) {
+            float* ramp[]{vertex.visibility_a,vertex.visibility_b,vertex.visibility_c,vertex.group_a,vertex.group_b,vertex.group_c};
+            for(unsigned i=0;i<16;++i) ramp[i/3][i%3]=options.palette[i];
+        }
+        vertices->push_back(vertex);
+    }
+    packet.geometry.shared_vertices=std::move(vertices);return packet;
+}
+DrawPacket photographic_landscape_packet(std::shared_ptr<const std::vector<uint32_t>> texture,
+    const PhotographicLandscape& options,bool srgb) {
+    if(!texture || texture->size()<7 || !backdrop_texture_valid(*texture,(*texture)[5],(*texture)[6])
+        || !std::isfinite(options.horizon_v) || options.horizon_v<(options.full_sphere?-4:0)
+        || options.horizon_v>(options.full_sphere?4:1)
+        || !std::isfinite(options.vertical_scale) || options.vertical_scale<=0 || options.vertical_scale>16
+        || !std::isfinite(options.horizontal_offset) || std::abs(options.horizontal_offset)>16
+        || !std::isfinite(options.horizontal_scale) || options.horizontal_scale<=0 || options.horizontal_scale>4
+        || options.repeats<1 || options.repeats>16 || (options.latitude_uv && !options.full_sphere)
+        || (options.orbital_surface && (!options.full_sphere || options.latitude_uv)))
+        throw std::invalid_argument("Invalid photographic landscape projection");
+    for(float value:options.response) if(!std::isfinite(value) || value<0 || value>4096)
+        throw std::invalid_argument("Invalid photographic landscape response");
+    for(float value:options.palette_shift) if(!std::isfinite(value) || std::abs(value)>4096)
+        throw std::invalid_argument("Invalid photographic landscape palette shift");
+    if(options.cloud_palette[0]>2 || std::any_of(options.cloud_palette.begin()+1,options.cloud_palette.end(),
+        [](auto colour){return colour>32767;})) throw std::invalid_argument("Invalid photographic cloud palette");
+    DrawPacket packet;packet.geometry.shared_texels=std::move(texture);
+    constexpr unsigned columns=64;
+    const unsigned rows=options.full_sphere?32:16;
+    constexpr float pi=std::numbers::pi_v<float>;
+    auto vertices=std::make_shared<std::vector<SceneVertex>>();vertices->reserve(columns*rows*6);
+    for(unsigned y=0;y<rows;++y) for(unsigned x=0;x<columns;++x) {
+        constexpr unsigned corners[6][2]{{0,0},{1,0},{1,1},{0,0},{1,1},{0,1}};
+        for(const auto& corner:corners) {
+            const float longitude=(float(x+corner[0])/columns*2-1)*pi;
+            const float latitude=(1.F-float(y+corner[1])/rows*(options.full_sphere?2.F:1.F))*pi*.5F;
+            const float radial=64*std::max(0.F,std::cos(latitude));
+            SceneVertex vertex{};
+            vertex.position[0]=radial*std::sin(longitude);vertex.position[1]=64*std::sin(latitude);
+            vertex.position[2]=-radial*std::cos(longitude);
+            const float rear=longitude/pi;
+            // Keep the forward angular scale unchanged. Spread the small
+            // periodic-closure correction toward the rear of the panorama.
+            vertex.uv[0]=options.horizontal_offset+longitude*options.horizontal_scale
+                +(.5F*options.repeats-pi*options.horizontal_scale)*rear*rear*rear;
+            vertex.uv[1]=options.latitude_uv?.5F-latitude/pi
+                :std::clamp(options.horizon_v-vertex.position[1]/std::max(radial,.0001F)*options.vertical_scale,0.F,1.F);
+            vertex.texture[1]=(*packet.geometry.shared_texels)[5]-1;
+            vertex.texture[2]=(*packet.geometry.shared_texels)[6]-1;
+            vertex.texture[3]=backdrop_texture_flag|(srgb?2U:0U);
+            std::copy(options.response.begin(),options.response.end(),vertex.color);
+            std::copy(options.palette_shift.begin(),options.palette_shift.end(),vertex.odd_color);
+            vertex.odd_color[3]=options.orbital_surface?4:options.full_sphere?3:1;
+            float* ramp[]{vertex.visibility_a,vertex.visibility_b,vertex.visibility_c,
+                vertex.group_a,vertex.group_b,vertex.group_c};
+            for(unsigned i=0;i<16;++i) ramp[i/3][i%3]=float(options.cloud_palette[i]);
+            vertices->push_back(vertex);
+        }
+    }
+    packet.geometry.shared_vertices=std::move(vertices);
+    return packet;
+}
 DrawPacket tunnel_surround_packet(const std::array<float,4>& colour) {
-    for(auto value:colour) if(!std::isfinite(value) || value<0 || value>1)
+    return tunnel_surround_packet(colour,colour,colour);
+}
+DrawPacket tunnel_surround_packet(const std::array<float,4>& wall,
+    const std::array<float,4>& ceiling,const std::array<float,4>& floor) {
+    for(const auto& colour:{wall,ceiling,floor}) for(auto value:colour)
+        if(!std::isfinite(value) || value<0 || value>1)
         throw std::invalid_argument("Invalid tunnel surround colour");
     DrawPacket packet;
     const auto quad=[&](std::array<float,3> a,std::array<float,3> b,
-        std::array<float,3> c,std::array<float,3> d) {
+        std::array<float,3> c,std::array<float,3> d,
+        const std::array<float,4>& colour) {
         for(const auto& point:{a,b,c,a,c,d}) {
             SceneVertex vertex{};std::copy(point.begin(),point.end(),vertex.position);
             std::copy(colour.begin(),colour.end(),vertex.color);
@@ -22,15 +144,15 @@ DrawPacket tunnel_surround_packet(const std::array<float,4>& colour) {
         }
     };
     constexpr float l=-1024,r=1280,t=-1024,b=1248,z=4;
-    quad({l,t,0},{0,t,0},{0,b,0},{l,b,0});
-    quad({256,t,0},{r,t,0},{r,b,0},{256,b,0});
-    quad({0,t,0},{256,t,0},{256,0,0},{0,0,0});
-    quad({0,224,0},{256,224,0},{256,b,0},{0,b,0});
-    quad({l,t,z},{r,t,z},{r,b,z},{l,b,z});
-    quad({l,t,0},{l,t,z},{l,b,z},{l,b,0});
-    quad({r,t,0},{r,t,z},{r,b,z},{r,b,0});
-    quad({l,t,0},{r,t,0},{r,t,z},{l,t,z});
-    quad({l,b,0},{r,b,0},{r,b,z},{l,b,z});
+    quad({l,t,0},{0,t,0},{0,b,0},{l,b,0},wall);
+    quad({256,t,0},{r,t,0},{r,b,0},{256,b,0},wall);
+    quad({l,t,0},{r,t,0},{r,0,0},{l,0,0},ceiling);
+    quad({l,224,0},{r,224,0},{r,b,0},{l,b,0},floor);
+    quad({l,t,z},{r,t,z},{r,b,z},{l,b,z},wall);
+    quad({l,t,0},{l,t,z},{l,b,z},{l,b,0},wall);
+    quad({r,t,0},{r,t,z},{r,b,z},{r,b,0},wall);
+    quad({l,t,0},{r,t,0},{r,t,z},{l,t,z},ceiling);
+    quad({l,b,0},{r,b,0},{r,b,z},{l,b,z},floor);
     packet.model=source_layer_matrix(128,112,2).value();
     return packet;
 }
@@ -95,6 +217,18 @@ DrawPacket intro_star_sphere_packet(const simulation::SnesPpuState& ppu,unsigned
     if(!retain_source_scroll) packet.geometry.texels.resize(272+16384);
     return packet;
 }
+DrawPacket game_over_star_sphere_packet(const simulation::SnesPpuState& ppu,
+    unsigned brightness,unsigned colour_subtract,bool srgb) {
+    BackgroundTileOptions options;options.brightness=brightness;options.colour_subtract=colour_subtract;
+    options.transparent_black=true;
+    auto packet=background_tile_packet(ppu,BackgroundLayer::bg2,options,srgb);
+    if(packet.geometry.vertices.empty()) return packet;
+    packet.geometry.vertices.clear();packet.geometry.shared_vertices=sky_vertices(srgb,false);
+    auto& data=packet.geometry.texels;
+    data[7]|=512U; // Stable star-only patches; keep Andross in the native front layer.
+    data[10]=data[12]=0;data[15]=1;data.resize(272+16384);
+    return packet;
+}
 Matrix4 intro_planet_motion(int16_t previous_scroll,int16_t current_scroll,double alpha,float horizon_y) {
     if(!std::isfinite(alpha) || !std::isfinite(horizon_y)) throw std::invalid_argument("Invalid planet motion");
     const int current=uint16_t(current_scroll)&511;
@@ -150,6 +284,45 @@ DrawPacket unique_planet_packet(const simulation::SnesPpuState& ppu,
     auto& data=packet.geometry.texels;
     data[3]=data[4]=data[9]=data[10]=data[11]=data[12]=data[14]=0;data[15]=1;
     data.resize(272+16384);
+    return packet;
+}
+DrawPacket landscape_landmark_packet(const simulation::SnesPpuState& ppu,
+    const BackgroundTileOptions& options,const std::array<unsigned,4>& rectangle,
+    const std::array<bool,256>& keep,bool srgb) {
+    auto packet=unique_planet_packet(ppu,options,rectangle,srgb);
+    if(packet.geometry.vertices.empty()) return packet;
+    const auto corners=packet.geometry.vertices;packet.geometry.vertices.clear();
+    const auto [rx,ry,width,height]=rectangle;
+    const auto word=[&](unsigned a){return unsigned(ppu.vram[a&65535])|(unsigned(ppu.vram[(a+1)&65535])<<8);};
+    const auto selected=[&](unsigned x,unsigned y) {
+        const unsigned edge=ppu.bg2_tile_size_16?16:8;
+        x=(x+rx)&((ppu.bg2_screen_size&1)?64*edge-1:32*edge-1);
+        y=(y+ry)&((ppu.bg2_screen_size&2)?64*edge-1:32*edge-1);
+        const unsigned mx=x/edge,my=y/edge,pages=(ppu.bg2_screen_size&1)?2:1;
+        const unsigned entry=(mx/32+my/32*pages)*1024+(my%32)*32+mx%32;
+        const unsigned tile=word(ppu.bg2_screen_base*2+entry*2);
+        unsigned px=x%edge,py=y%edge;
+        if(tile&0x4000) px=edge-1-px;if(tile&0x8000) py=edge-1-py;
+        const unsigned character=((tile&1023)+(px/8)+(py/8)*16)&1023;
+        const unsigned base=ppu.bg2_character_base*2+character*32+(py%8)*2;
+        unsigned ink=0;
+        for(unsigned bit=0;bit<4;++bit) ink|=((ppu.vram[(base+bit%2+bit/2*16)&65535]>>(7-px%8))&1)<<bit;
+        return ink!=0 && keep[((tile>>10)&7)*16+ink];
+    };
+    for(unsigned y=0;y<height;++y) for(unsigned x=0;x<width;) {
+        if(!selected(x,y)) {++x;continue;}
+        const unsigned left=x;while(x<width && selected(x,y)) ++x;
+        const std::array<std::array<float,2>,4> run{{{float(left)/width,float(y)/height},
+            {float(x)/width,float(y)/height},{float(x)/width,float(y+1)/height},
+            {float(left)/width,float(y+1)/height}}};
+        for(unsigned i:{0U,1U,2U,0U,2U,3U}) {
+            auto vertex=corners[0];const auto [u,v]=run[i];
+            for(unsigned c=0;c<3;++c) vertex.position[c]+=u*(corners[1].position[c]-corners[0].position[c])
+                +v*(corners[5].position[c]-corners[0].position[c]);
+            vertex.uv[0]=float(rx)+u*width;vertex.uv[1]=float(ry)+v*height;
+            packet.geometry.vertices.push_back(vertex);
+        }
+    }
     return packet;
 }
 DrawPacket landscape_sphere_packet(const simulation::SnesPpuState& ppu,
@@ -423,6 +596,42 @@ std::array<float,4> source_backdrop_colour(uint16_t bgr555,unsigned brightness,b
     }
     return result;
 }
+std::vector<SceneVertex> game_over_foreground_vertices(const simulation::SnesPpuState& ppu,bool srgb) {
+    constexpr unsigned width=256,height=224;
+    render::Framebuffer image(width,height);
+    render::BackgroundRenderer{}.draw_bg2(ppu,ppu.bg2_scroll_x,ppu.bg2_scroll_y,image);
+    std::vector<uint8_t> exterior(width*height);
+    std::vector<unsigned> queue;queue.reserve(width*height);
+    const auto visit=[&](unsigned i) {
+        if(!exterior[i] && (ppu.cgram[image.pixels()[i]]&32767U)==0) {
+            exterior[i]=1;queue.push_back(i);
+        }
+    };
+    for(unsigned x=0;x<width;++x) {visit(x);visit((height-1)*width+x);}
+    for(unsigned y=0;y<height;++y) {visit(y*width);visit(y*width+width-1);}
+    for(size_t cursor=0;cursor<queue.size();++cursor) {
+        const auto i=queue[cursor],x=i%width,y=i/width;
+        if(x) visit(i-1);if(x+1<width) visit(i+1);
+        if(y) visit(i-width);if(y+1<height) visit(i+width);
+    }
+    // Horizontal runs avoid a quad per source pixel. All colour/fading still
+    // comes from the original indexed GPU layer, not a baked RGBA replacement.
+    std::vector<SceneVertex> vertices;
+    for(unsigned y=0;y<height;++y) for(unsigned x=0;x<width;) {
+        if(exterior[y*width+x]) {++x;continue;}
+        const unsigned left=x;
+        while(x<width && !exterior[y*width+x]) ++x;
+        const float corners[4][2]{{float(left),float(y)},{float(x),float(y)},
+            {float(x),float(y+1)},{float(left),float(y+1)}};
+        for(unsigned corner:{0U,1U,2U,0U,2U,3U}) {
+            SceneVertex vertex{};
+            vertex.position[0]=vertex.uv[0]=corners[corner][0];
+            vertex.position[1]=vertex.uv[1]=corners[corner][1];
+            vertex.texture[3]=8|(srgb?2:0);vertices.push_back(vertex);
+        }
+    }
+    return vertices;
+}
 DrawPacket background_tile_packet(const simulation::SnesPpuState& ppu,
     BackgroundLayer layer,const BackgroundTileOptions& options,bool srgb) {
     unsigned enable=0;
@@ -432,7 +641,7 @@ DrawPacket background_tile_packet(const simulation::SnesPpuState& ppu,
     case BackgroundLayer::bg3:enable=4;break;
     default:throw std::invalid_argument("Invalid background layer");
     }
-    if(options.priority>2 || options.brightness>15 || options.guard_inset>128
+    if(options.priority>2 || options.brightness>15 || options.colour_subtract>31 || options.guard_inset>128
         || (options.single_occurrence_top_rows>224 && options.single_occurrence_top_rows!=512))
         throw std::invalid_argument("Invalid background packet options");
     const auto bounds=options.horizontal_bounds;
@@ -474,6 +683,7 @@ std::vector<uint32_t> background_tile_payload(const simulation::SnesPpuState& pp
     BackgroundLayer layer,const BackgroundTileOptions& options) {
     if(options.priority>2) throw std::invalid_argument("Invalid background priority");
     if(options.brightness>15) throw std::invalid_argument("Invalid background brightness");
+    if(options.colour_subtract>31) throw std::invalid_argument("Invalid background palette subtraction");
     if(options.guard_inset>128) throw std::invalid_argument("Invalid background guard inset");
     if(options.single_occurrence_top_rows>224 && options.single_occurrence_top_rows!=512)
         throw std::invalid_argument("Invalid unique background row count");
@@ -524,7 +734,13 @@ std::vector<uint32_t> background_tile_payload(const simulation::SnesPpuState& pp
         data[272+16384+row]=uint32_t(int32_t(ppu.bg2_horizontal_offsets[row]));
         data[272+16384+224+row]=uint32_t(int32_t(ppu.bg2_scanline_scroll_y[row]));
     }
-    const auto palette=render::decode_bgr555_palette(ppu.cgram);
+    auto colours=ppu.cgram;
+    if(bg2 && options.colour_subtract) for(auto& colour:colours) {
+        uint16_t dark=0;
+        for(unsigned c=0;c<3;++c) dark|=uint16_t(std::max(0,int((colour>>(c*5))&31)-int(options.colour_subtract))<<(c*5));
+        colour=dark;
+    }
+    const auto palette=render::decode_bgr555_palette(colours);
     for(unsigned i=0;i<256;++i) data[16+i]=uint32_t(palette[i].r)
         |(uint32_t(palette[i].g)<<8)|(uint32_t(palette[i].b)<<16)|0xff000000U;
     pack_vram(ppu.vram,std::span<uint32_t,16384>(data.data()+272,16384));

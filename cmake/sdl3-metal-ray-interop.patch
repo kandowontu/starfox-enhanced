@@ -1,0 +1,72 @@
+diff --git a/src/gpu/metal/SDL_gpu_metal.m b/src/gpu/metal/SDL_gpu_metal.m
+--- a/src/gpu/metal/SDL_gpu_metal.m
++++ b/src/gpu/metal/SDL_gpu_metal.m
+@@ -4630,4 +4630,68 @@ SDL_GPUBootstrap MetalDriver = {
+     METAL_CreateDevice
+ };
+ 
++// Star Fox's native acceleration-structure pass is encoded into an SDL-owned
++// Metal command buffer. Keep SDL's resource tracking on the two shared buffers;
++// the pass never assumes the opaque SDL handles have a public ABI.
++void *SDL_StarfoxMetalDevice(SDL_GPUDevice *device)
++{
++    if (!device || SDL_strcmp(SDL_GetGPUDeviceDriver(device), "metal") != 0) {
++        return NULL;
++    }
++    MetalRenderer *renderer = (MetalRenderer *)device->driverData;
++    return (__bridge void *)renderer->device;
++}
++
++void *SDL_StarfoxMetalCommandBuffer(SDL_GPUCommandBuffer *command)
++{
++    if (!command) {
++        return NULL;
++    }
++    return (__bridge void *)((MetalCommandBuffer *)command)->handle;
++}
++
++void *SDL_StarfoxMetalBuffer(SDL_GPUBuffer *buffer)
++{
++    if (!buffer) {
++        return NULL;
++    }
++    MetalBufferContainer *container = (MetalBufferContainer *)buffer;
++    return container->activeBuffer
++        ? (__bridge void *)container->activeBuffer->handle : NULL;
++}
++
++bool SDL_StarfoxMetalTrackBuffer(SDL_GPUCommandBuffer *command,
++                                SDL_GPUBuffer *buffer)
++{
++    if (!command || !buffer) {
++        return false;
++    }
++    MetalBufferContainer *container = (MetalBufferContainer *)buffer;
++    if (!container->activeBuffer) {
++        return false;
++    }
++    METAL_INTERNAL_TrackBuffer((MetalCommandBuffer *)command,
++                               container->activeBuffer);
++    return true;
++}
++
++bool SDL_StarfoxMetalPrepareWrite(SDL_GPUDevice *device,
++                                  SDL_GPUCommandBuffer *command,
++                                  SDL_GPUBuffer *buffer)
++{
++    if (!device || !command || !buffer ||
++        SDL_strcmp(SDL_GetGPUDeviceDriver(device), "metal") != 0) {
++        return false;
++    }
++    MetalRenderer *renderer = (MetalRenderer *)device->driverData;
++    MetalBufferContainer *container = (MetalBufferContainer *)buffer;
++    MetalBuffer *active = METAL_INTERNAL_PrepareBufferForWrite(renderer,
++                                                               container, true);
++    if (!active) {
++        return false;
++    }
++    METAL_INTERNAL_TrackBuffer((MetalCommandBuffer *)command, active);
++    return true;
++}
++
+ #endif // SDL_GPU_METAL

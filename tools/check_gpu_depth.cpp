@@ -24,6 +24,7 @@ struct Capture {
 Capture download(SDL_GPUDevice* device,SDL_GPUCommandBuffer* command,
     const starfox::render::GpuRasterOutput& output,bool depth) {
     if(!depth) require(!output.geometry_depth,"disabled depth retained previous output");
+    require(output.pixels && output.surfaces && (!depth || output.geometry_depth),"missing capture buffer");
     const Uint32 count=output.width*output.height;
     SDL_GPUTransferBufferCreateInfo info{SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,count*40,0};
     auto* transfer=SDL_CreateGPUTransferBuffer(device,&info);require(transfer,"transfer");
@@ -151,10 +152,10 @@ void check_temporal_textures(SDL_GPUDevice* device) {
     SDL_ReleaseGPUTransferBuffer(device,upload);SDL_ReleaseGPUTransferBuffer(device,readback);
     std::cout<<"Temporal guide textures: 5120 depth/motion samples, packed/explicit terrain masks, jitter/slopes/occlusion/reset passed\n";
 }
-void check_temporal_hud(SDL_GPUDevice* device) {
+void check_temporal_hud(SDL_GPUDevice* device,bool preserve_artwork=true) {
     constexpr Uint32 w=64,h=2,n=w*h;
     std::array<Uint32,n*3> data{};
-    for(unsigned i=0;i<n;++i) {data[i]=(i%5)<<8;data[n+i]=i%7?0xff123456u+i:0xff000000u;data[n*2+i]=0xffcc8844u-i;}
+    for(unsigned i=0;i<n;++i) {data[i]=((i%5)<<8)|(i%2?0x10000000u:0)|(i%3?0:0x08000000u);data[n+i]=i%7?0xff123456u+i:0xff000000u;data[n*2+i]=0xffcc8844u-i;}
     SDL_GPUTransferBufferCreateInfo ti{SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,n*12,0};
     auto* upload=SDL_CreateGPUTransferBuffer(device,&ti);ti.usage=SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD;ti.size=n*4;
     auto* read=SDL_CreateGPUTransferBuffer(device,&ti);require(upload && read,"HUD transfers");
@@ -168,15 +169,18 @@ void check_temporal_hud(SDL_GPUDevice* device) {
     SDL_GPUTextureTransferInfo transfer{upload,n*4,w,h};SDL_GPUTextureRegion region{};region.texture=original;region.w=w;region.h=h;region.d=1;
     SDL_UploadToGPUTexture(pass,&transfer,&region,false);transfer.offset=n*8;region.texture=reconstructed;SDL_UploadToGPUTexture(pass,&transfer,&region,false);SDL_EndGPUCopyPass(pass);
     starfox::render::GpuTemporalInputs converter;
-    auto* output=converter.restore_hud(device,command,original,reconstructed,packed,w,h);require(output,converter.status().c_str());
+    auto* output=converter.restore_hud(device,command,original,reconstructed,packed,w,h,preserve_artwork);require(output,converter.status().c_str());
     require(!converter.restore_hud(device,command,output,reconstructed,packed,w,h),"HUD output alias accepted");
     pass=SDL_BeginGPUCopyPass(command);region.texture=static_cast<SDL_GPUTexture*>(output);transfer={read,0,w,h};SDL_DownloadFromGPUTexture(pass,&region,&transfer);SDL_EndGPUCopyPass(pass);
     auto* fence=SDL_SubmitGPUCommandBufferAndAcquireFence(command);require(fence,"HUD submit");require(SDL_WaitForGPUFences(device,true,&fence,1),"HUD wait");SDL_ReleaseGPUFence(device,fence);
     const auto* pixels=static_cast<const Uint32*>(SDL_MapGPUTransferBuffer(device,read,false));require(pixels,"HUD map");
-    for(unsigned i=0;i<n;++i) require(pixels[i]==data[(i%5==1?n:n*2)+i],"HUD protection changed original/world pixels");
+    for(unsigned i=0;i<n;++i) {
+        const bool preserve=(i%5==1 && i%2==0) || (preserve_artwork && i%5==2 && i%3!=0);
+        require(pixels[i]==data[(preserve?n:n*2)+i],"Artwork/HUD protection changed original/world pixels");
+    }
     SDL_UnmapGPUTransferBuffer(device,read);converter.release_device();SDL_ReleaseGPUTexture(device,original);SDL_ReleaseGPUTexture(device,reconstructed);
     SDL_ReleaseGPUBuffer(device,packed);SDL_ReleaseGPUTransferBuffer(device,upload);SDL_ReleaseGPUTransferBuffer(device,read);
-    std::cout<<"Temporal HUD restoration: 128 exact tagged pixels including opaque black; output alias rejected\n";
+    std::cout<<"Temporal artwork/HUD restoration: 128 exact tagged pixels; terrain and world sprites remain reconstructed; output alias rejected\n";
 }
 void check_temporal_resample(SDL_GPUDevice* device) {
     constexpr Uint32 w=64,h=4,n=w*h;
@@ -230,8 +234,91 @@ int main() try {
     require(device,"device");
     check_temporal_textures(device);
     check_temporal_hud(device);
+    check_temporal_hud(device,false);
     check_temporal_resample(device);
     starfox::render::GpuModel model;
+    {
+        using namespace starfox::render;
+        starfox::assets::Shape sprite;sprite.colour_words={0x8000};
+        starfox::assets::TextureImage texture;texture.descriptor=0x8000;
+        texture.u_mask=texture.v_mask=7;texture.texels.resize(64);
+        for(unsigned i=0;i<64;++i) texture.texels[i]=i%5?std::uint8_t(i+1):0;
+        sprite.textures.push_back(texture);
+        RenderPose p;p.simple_scaled_sprite=true;p.simple_sprite_world_size=100;p.z=300;
+        p.x=-23;p.y=11;p.vanish_x=112;p.vanish_y=96;
+        p.continuous_geometry=p.subpixel_projection=true;
+        RenderSettings s;s.render_scale=2;
+        auto* command=SDL_AcquireGPUCommandBuffer(device);require(command,"billboard reference command");
+        const auto full=download(device,command,model.enqueue(device,command,sprite,p,s,224,192,true),false);
+        for(bool scenePath:{false,true}) {
+            constexpr unsigned w=149,h=127;
+            command=SDL_AcquireGPUCommandBuffer(device);require(command,"billboard scaled command");
+            GpuScene scene;GpuRasterOutput output;
+            if(scenePath) {
+                const std::array<GpuSceneDraw,1> original{GpuModelDraw{&sprite,p,s,true,GpuModelIdentity{1,1,1,1,1},true}};
+                const auto scaled=resize_scene_raster(original,448,384);require(bool(scaled),"billboard scene conversion");
+                output=scene.enqueue_batch(device,command,w,h,*scaled);
+            } else output=model.enqueue(device,command,sprite,p,s,224,192,true,nullptr,nullptr,true,nullptr,nullptr,{}, {w,h});
+            require(output.pixels && output.width==w && output.height==h,"billboard independent output");
+            const auto small=download(device,command,output,true);
+            unsigned covered=0;
+            for(unsigned y=0;y<h;++y) for(unsigned x=0;x<w;++x) {
+                auto expected=full.pixels[(y*384/h)*448+x*448/w];
+                if(scenePath && (expected&0x04000000U)) expected|=0x10000000U;
+                require(small.pixels[y*w+x]==expected,"billboard fractional coverage/texture/palette");
+                {
+                    const auto expected_depth=(expected&0x04000000U)?float(p.z):0.f;
+                    require(small.depths[y*w+x]==expected_depth,"billboard depth/transparent ownership");
+                    require((small.pixels[y*w+x]&0x01000000U)==0,"billboard became a lighting receiver");
+                }
+                covered+=(expected&0x04000000U)!=0;
+            }
+            require(covered>100,"billboard fixture empty");
+            Framebuffer cpu(w,h),world(w,h);world.enable_layer_tags(true);
+            GpuComposite compositor;std::array<Rgba8,256> palette{};LayerCompositeSettings layer;
+            require(compositor.compose(output,1,cpu,{},layer,palette,nullptr,nullptr,{},true),"world sprite compositor");
+            std::vector<std::uint8_t> rgba;
+            require(compositor.readback(world,rgba),"world sprite readback");
+            for(unsigned i=0;i<w*h;++i) {
+                const auto expected=scenePath?small.pixels[i]&255U:0U;
+                require(world.pixels()[i]==expected,"world sprite incorrectly excluded as HUD");
+            }
+        }
+        auto old=p;old.x+=30;old.z=400;
+        command=SDL_AcquireGPUCommandBuffer(device);require(command,"billboard motion command");
+        const auto moving=model.enqueue(device,command,sprite,p,s,224,192,true,nullptr,nullptr,true,nullptr,&old,{}, {149,127});
+        require(moving.motion,"billboard motion missing");
+        const auto movement=download(device,command,moving,true);
+        const auto rect=[&](const RenderPose& q) {
+            const int size=std::clamp(int(std::trunc(q.simple_sprite_world_size*s.focal_length/q.z)),0,240);
+            return std::array<double,3>{double(size),std::round(q.vanish_x)+std::trunc(q.x*s.focal_length/q.z)-size/2,
+                std::round(q.vanish_y)+std::trunc(q.y*s.focal_length/q.z)-size/2};
+        };
+        const auto now_rect=rect(p),old_rect=rect(old);
+        for(unsigned i=0;i<149*127;++i) {
+            const auto& m=movement.motion[i];
+            if(movement.depths[i]==0) {require(m[3]==0,"transparent sprite has motion");continue;}
+            const double x=(i%149+.5)*224/149,y=(i/149+.5)*192/127;
+            const double dx=((x-now_rect[1])*old_rect[0]/now_rect[0]+old_rect[1]-x)*149/224;
+            const double dy=((y-now_rect[2])*old_rect[0]/now_rect[0]+old_rect[2]-y)*127/192;
+            require(m[3]==1 && m[2]==300 && std::abs(m[0]-dx)<.001 && std::abs(m[1]-dy)<.001,"sprite translation/resize motion differs");
+        }
+        auto alternate=texture;alternate.descriptor=0x8001;
+        sprite.textures.push_back(alternate);sprite.colour_words.push_back(0x8001);
+        for(unsigned scenario=0;scenario<4;++scenario) {
+            auto history=old;
+            if(scenario==0) history.colour_frame=100; // Same static texture.
+            if(scenario==1) history.simple_sprite_colour=1; // Different texture.
+            if(scenario==2) history.z=127; // Previously clipped near the camera.
+            if(scenario==3) history.simple_scaled_sprite=false;
+            command=SDL_AcquireGPUCommandBuffer(device);require(command,"sprite history command");
+            const auto output=model.enqueue(device,command,sprite,p,s,224,192,true,nullptr,nullptr,true,nullptr,&history,{}, {149,127});
+            require(bool(output.motion)==(scenario==0),"sprite history accepted invalid correspondence or rejected static texture");
+            const auto checked=download(device,command,output,true);
+            require(checked.pixels==movement.pixels && checked.depths==movement.depths,"history changed current sprite rendering");
+        }
+        std::cout<<"Fractional billboard coverage, depth, translation/resize motion and history invalidation passed\n";
+    }
     // Exact Q15 -identity gives the camera-space plane z = 400 + x/2.
     starfox::assets::Shape shape;
     shape.vertices={{80,60,-360},{-80,60,-440},{0,-70,-400}};
@@ -295,7 +382,48 @@ int main() try {
             require(result.depths[i]==expected,"scene depth did not follow visible painter ownership");
         }
     }
-    SDL_unsetenv_unsafe("STARFOX_TEST_SEPARATE_SCENE_MERGE");scene.release_device();
+    SDL_unsetenv_unsafe("STARFOX_TEST_SEPARATE_SCENE_MERGE");
+    // Beams must not inherit receiver metadata from the model behind them.
+    front_draw.surface_metadata=false;front_draw.emissive=true;
+    const std::array<starfox::render::GpuSceneDraw,2> beam_draws{back_draw,front_draw};
+    {
+        auto* command=SDL_AcquireGPUCommandBuffer(device);require(command,"beam command");
+        const auto output=scene.enqueue_batch(device,command,224,192,beam_draws);
+        require(output.geometry_depth,scene.status().c_str());
+        const auto result=download(device,command,output,true);
+        for(std::size_t i=0;i<result.pixels.size();++i)
+            if(front_capture.pixels[i]&0x04000000U) {
+                require((result.pixels[i]&0x01000000U)==0,"beam inherited receiver metadata");
+                require((result.pixels[i]&255U)==(front_capture.pixels[i]&255U),"beam colour changed");
+                require(result.depths[i]==front_capture.depths[i],"beam lost temporal depth");
+            }
+    }
+    scene.release_device();
+    for(const auto size:{std::array<unsigned,2>{149,127},std::array<unsigned,2>{299,255},std::array<unsigned,2>{533,299}})
+    for(const auto jitter:{std::array<float,2>{0,0},std::array<float,2>{.375f,-.25f}}) {
+        pose.continuous_geometry=true;pose.subpixel_projection=true;
+        auto previous=pose;previous.x-=4;previous.y+=2;
+        starfox::render::RenderSettings settings;settings.render_scale=2;
+        auto* command=SDL_AcquireGPUCommandBuffer(device);require(command,"custom raster command");
+        auto output=model.enqueue(device,command,shape,pose,settings,224,192,true,nullptr,nullptr,true,nullptr,&previous,jitter,size);
+        require(output.width==size[0] && output.height==size[1] && output.motion,model.status().c_str());
+        const auto capture=download(device,command,output,true);std::size_t visible=0;
+        for(std::size_t i=0;i<capture.depths.size();++i) if(capture.depths[i]>0) {
+            ++visible;const auto z=capture.depths[i];const auto& mv=capture.motion[i];
+            require(mv[3]==1,"custom raster motion invalid");
+            require(std::abs(mv[0]+4.f*256*(float(size[0])/224)/z)<.0003f,"custom raster X motion");
+            require(std::abs(mv[1]-2.f*256*(float(size[1])/192)/z)<.0003f,"custom raster Y motion");
+        }
+        require(visible>500,"custom raster geometry empty");
+        starfox::render::GpuModelDraw draw{&shape,pose,settings,true};draw.previous_pose=previous;
+        draw.raster_jitter=jitter;draw.logical_viewport={224,192};
+        starfox::render::GpuScene reduced_scene;const std::array<starfox::render::GpuSceneDraw,1> draws{draw};
+        command=SDL_AcquireGPUCommandBuffer(device);require(command,"reduced scene command");
+        const auto merged=reduced_scene.enqueue_batch(device,command,size[0],size[1],draws);
+        require(merged.motion,reduced_scene.status().c_str());const auto result=download(device,command,merged,true);
+        require(result.pixels==capture.pixels && result.depths==capture.depths && result.motion==capture.motion,"reduced scene transport differs");
+    }
+    std::cout<<"Arbitrary model raster sizes: reduced/nonuniform dimensions and jittered depth/motion passed\n";
     // Motion is derived from the actual model's current planar surface. A
     // covering opaque HUD pixel invalidates it; transparent gaps retain it.
     for(unsigned scale:{1U,2U,4U}) for(bool moving:{false,true})
@@ -369,6 +497,23 @@ int main() try {
                 }
             }
             require(composed.depths[i]==expected_depth && composed.motion[i]==expected,"composed temporal ownership/scale mismatch");
+        }
+        constexpr unsigned rw=299,rh=255;
+        require(compositor.compose(output,scale,final_frame,foreground,layer,palette,nullptr,nullptr,after_late,false,
+            {output.width,output.height,rw,rh}),"fractional temporal compositor");
+        const auto resized=compositor.output();
+        starfox::render::GpuRasterOutput scaled{resized.device,resized.packed,resized.surfaces,rw,rh,0,resized.geometry_depth,resized.motion};
+        command=SDL_AcquireGPUCommandBuffer(device);require(command,"fractional composed readback");
+        const auto reduced=download(device,command,scaled,true);
+        for(unsigned y=0;y<rh;++y) for(unsigned x=0;x<rw;++x) {
+            const auto from=(y*composite.height/rh)*composite.width+x*composite.width/rw;
+            const auto to=y*rw+x;
+            require(reduced.depths[to]==composed.depths[from],"fractional compositor depth ownership");
+            for(unsigned axis=0;axis<4;++axis) {
+                const auto factor=axis==0?float(rw)/composite.width:axis==1?float(rh)/composite.height:1.f;
+                const auto expected=composed.motion[from][axis]*factor;
+                require(std::abs(reduced.motion[to][axis]-expected)<=1e-5f*std::max(1.f,std::abs(expected)),"fractional compositor motion units");
+            }
         }
         compositor.release_device();scene.release_device();
     }

@@ -43,6 +43,14 @@ android {
     buildTypes {
         debug {
             debuggable true
+            // CI ships this debuggable variant. Keep symbols/Java debugging,
+            // but do not run the source simulation and renderer at -O0.
+            externalNativeBuild {
+                cmake {
+                    arguments '-DCMAKE_C_FLAGS_DEBUG=-g -O2',
+                        '-DCMAKE_CXX_FLAGS_DEBUG=-g -O2'
+                }
+            }
             if (System.getenv('ANDROID_RELEASE_KEYSTORE_PATH')) {
                 signingConfig signingConfigs.permanent
             }

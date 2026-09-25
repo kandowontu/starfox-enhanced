@@ -1,4 +1,5 @@
 #include "starfox/render/temporal_projection.hpp"
+#include "starfox/render/temporal_jitter.hpp"
 #include <iostream>
 #include <limits>
 #include <stdexcept>
@@ -10,7 +11,27 @@ std::array<double,4> transform(std::array<double,4> v,const std::array<float,16>
     return out;
 }
 int main() try {
+    for(unsigned i=0;i<64;++i) {
+        const auto j=temporal_jitter(i);require(valid_raster_jitter(j));
+        require(j==temporal_jitter(i+32));
+        for(const auto value:j) require(value>=-.5f && value<=.5f && std::round(value*256)==value*256);
+        require(j!=temporal_jitter(i+1));
+    }
+    require(!valid_raster_jitter({std::numeric_limits<float>::quiet_NaN(),0}));
+    require(!valid_raster_jitter({0,17}));
     unsigned samples=0;
+    // SDK ratios round each axis independently. Preserve the same physical
+    // field of view and clip coordinates at the reduced raster dimensions.
+    for(const auto size:{std::array<unsigned,2>{533,299},{464,260},{400,224}}) {
+        const auto full=temporal_projection(800,448,512,400,224,.1f,100000.f);
+        const auto reduced=temporal_projection(size[0],size[1],512.f*size[0]/800,
+            size[0]*.5f,size[1]*.5f,.1f,100000.f,512.f*size[1]/448);
+        require(bool(full) && bool(reduced));
+        for(unsigned i=0;i<16;++i)
+            require(std::abs(full->view_to_clip[i]-reduced->view_to_clip[i])<1e-6);
+        require(std::abs(full->vertical_fov-reduced->vertical_fov)<1e-6);
+        require(std::abs(full->aspect-reduced->aspect)<1e-6);
+    }
     for(unsigned w:{224u,800u,1600u}) for(unsigned h:{192u,448u,900u})
     for(float focal:{128.f,512.f}) for(float cx:{70.25f,400.f}) {
         auto p=temporal_projection(w,h,focal,cx,93.75f,.1f,100000.f);require(bool(p));

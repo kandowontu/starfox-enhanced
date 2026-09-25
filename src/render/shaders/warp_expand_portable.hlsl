@@ -54,7 +54,9 @@ void main(uint3 id:SV_DispatchThreadID) {
     for(uint c=0;c<polygon.y;++c) {
         uint vertex=sourceCorners[polygon.x+c].x;
         uint2 uv=textured?coordinates[texture.w+c%4U]:uint2(0,0);
-        corners[first+c]=uint4(vertex,uv,0);
+        // Retain source-face identity independently of the occurrence slot.
+        // Zero remains the ordinary (non-warp) corner sentinel.
+        corners[first+c]=uint4(vertex,uv,face+1U);
     }
     polygon.x=first;polygon.w=(polygon.w&~1U)|uint(textured);
     polygons[slot]=polygon;materials[slot]=command;

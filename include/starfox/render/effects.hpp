@@ -34,23 +34,154 @@ inline void apply_effect(Effect model_effect, const Framebuffer& frame,
             if (frame.layer_tags()[i] == std::uint8_t(PixelLayer::two_d)) continue;
             const auto is_world = [](std::uint8_t tag) {
                 return tag == std::uint8_t(PixelLayer::background)
-                    || tag == std::uint8_t(PixelLayer::world_geometry);
+                    || tag == std::uint8_t(PixelLayer::world_geometry)
+                    || tag == std::uint8_t(PixelLayer::terrain_geometry);
             };
             const auto background = is_world(frame.layer_tags()[i]);
             const auto effect = background ? world_effect : model_effect;
             const auto intensity = background ? world_intensity : model_intensity;
-            if (effect == Effect::off || intensity == 0U) continue;
+            // These materials are shaded by actual scene rays, never faked by
+            // the colour-only fallback when ray tracing is unavailable/off.
+            if (effect == Effect::off || effect==Effect::crosshatch || reflective_material(effect) || intensity == 0U) continue;
+            if(spatial_manipulation(effect)) {
+                const auto sample=[&](int sx,int sy,unsigned channel) {
+                    sx=std::clamp(sx,0,int(width)-1);sy=std::clamp(sy,0,int(height)-1);
+                    const auto n=std::size_t(sy)*width+sx;
+                    if(frame.layer_tags()[n]==std::uint8_t(PixelLayer::two_d)
+                        || is_world(frame.layer_tags()[n])!=background) return scratch[i*4+channel];
+                    return scratch[n*4+channel];
+                };
+                std::array<unsigned,8> order{0,1,2,3,4,5,6,7};
+                const auto block=int(x/(step*8)*step*8);
+                if(effect==Effect::pixel_sort) {
+                    const auto brightness=[&](unsigned n) {
+                        return (77*sample(block+int(n*step),y,0)+150*sample(block+int(n*step),y,1)
+                            +29*sample(block+int(n*step),y,2))/256;
+                    };
+                    for(unsigned a=1;a<8;++a) {
+                        const auto key=order[a];
+                        const auto light=brightness(key);
+                        auto b=a;
+                        while(b>0 && brightness(order[b-1])>light) {order[b]=order[b-1];--b;}
+                        order[b]=key;
+                    }
+                }
+                for(unsigned channel=0;channel<3;++channel) {
+                    int sx=x,sy=y;
+                    if(effect==Effect::kaleidoscope) {
+                        sx=std::abs(int(x)*2-int(width)+1);sy=std::abs(int(y)*2-int(height)+1);
+                    } else if(effect==Effect::prism_split) sx+=(int(channel)-1)*int(step)*6;
+                    else if(effect==Effect::pixel_sort) sx=block+int(order[(x/step)%8]*step)+int(x%step);
+                    else if(effect==Effect::shatter) {
+                        const int size=int(step)*16,tx=int(x)/size,ty=int(y)/size;
+                        const int lx=int(x)%size,ly=int(y)%size;
+                        switch((tx*3+ty*5)%4) {
+                        case 0: sx=tx*size+ly;sy=ty*size+size-1-lx;break;
+                        case 1: sx=tx*size+size-1-lx;sy=ty*size+size-1-ly;break;
+                        case 2: sx=tx*size+size-1-ly;sy=ty*size+lx;break;
+                        default: break;
+                        }
+                    } else if(effect==Effect::melt) {
+                        const unsigned column=x/(step*3);
+                        const int drip=int(((column*13)^(column>>1))%32)*int(step);
+                        sy-=drip*int(y)/std::max(1,int(height)-1);
+                    } else if(effect==Effect::ripple_warp) {
+                        const auto wave=[](int phase) {
+                            const int triangle=16-std::abs(phase%64-32);
+                            return triangle*(32-std::abs(triangle))/16;
+                        };
+                        sx+=wave(int(y/step))*int(step);
+                        sy+=wave(int(x/step))*int(step)/4;
+                    } else if(effect==Effect::barrel_warp) {
+                        const int dx=int(x)-int(width)/2,dy=int(y)-int(height)/2;
+                        const int nx=dx*128/std::max(1,int(width)),ny=dy*128/std::max(1,int(height));
+                        const int lens=192+(nx*nx+ny*ny)/64;
+                        sx=int(width)/2+dx*lens/256;sy=int(height)/2+dy*lens/256;
+                    } else if(effect==Effect::venetian) {
+                        const int size=int(step)*12;
+                        sy=int(y)/size*size+(int(y)%size)/2+size/4;
+                        sx+=(int(y)/size%2?1:-1)*int(step)*6;
+                    } else if(effect==Effect::checker_fold) {
+                        const int size=int(step)*24,tx=int(x)/size,ty=int(y)/size;
+                        if((tx+ty)%2) sx=tx*size+size-1-int(x)%size;
+                        else sy=ty*size+size-1-int(y)%size;
+                    } else if(effect==Effect::twist) {
+                        const int dx=int(x)-int(width)/2,dy=int(y)-int(height)/2;
+                        const int turn=std::clamp(96-(std::abs(dx)+std::abs(dy))/int(step),0,96);
+                        sx-=dy*turn/128;sy+=dx*turn/128;
+                    } else if(effect==Effect::ring_ripple) {
+                        const int dx=int(x)-int(width)/2,dy=int(y)-int(height)/2;
+                        const int radius=std::max(std::abs(dx),std::abs(dy))+std::min(std::abs(dx),std::abs(dy))*3/8;
+                        const int wave=16-std::abs((radius/int(step))%64-32);
+                        sx+=dx*wave*int(step)/std::max(int(step),radius);
+                        sy+=dy*wave*int(step)/std::max(int(step),radius);
+                    } else if(effect==Effect::shard_split) {
+                        const int size=int(step)*32;
+                        const int side=(int(x)%size+int(y)%size<size)?1:-1;
+                        sx+=side*int(step)*12;sy-=side*int(step)*8;
+                    }
+                    rgba[i*4+channel]=std::uint8_t((scratch[i*4+channel]*(100-intensity)
+                        +sample(sx,sy,channel)*intensity+50)/100);
+                }
+                continue;
+            }
             const auto light = luma(i);
             bool edge = false;
-            if (effect == Effect::cel_drawn || effect == Effect::ink || effect == Effect::neon
-                || effect == Effect::blueprint || effect == Effect::comic || effect == Effect::vaporwave) {
+            if (effect == Effect::ink || effect == Effect::neon
+                || effect == Effect::blueprint || effect == Effect::vaporwave || effect==Effect::chalk
+                || effect==Effect::stained_glass || effect==Effect::hologram || effect==Effect::pencil
+                || effect==Effect::woodcut || effect==Effect::xray || effect==Effect::pop_art
+                || decorative_material(effect)) {
                 const auto right = std::size_t(y) * width + std::min(x + step, width - 1);
                 const auto below = std::size_t(std::min(y + step, height - 1)) * width + x;
                 edge = std::abs(light - luma(right)) > 28 || std::abs(light - luma(below)) > 28;
             }
+            if(effect==Effect::cel_drawn || effect==Effect::comic) {
+                edge=false;
+                for(const auto offset:{std::array<int,2>{-1,0},{1,0},{0,-1},{0,1}}) {
+                    const auto nx=std::clamp(int(x)+offset[0]*int(step),0,int(width)-1);
+                    const auto ny=std::clamp(int(y)+offset[1]*int(step),0,int(height)-1);
+                    const auto n=std::size_t(ny)*width+nx;
+                    if(frame.layer_tags()[n]==std::uint8_t(PixelLayer::two_d)) continue;
+                    // Draw inside the brighter side of a boundary, avoiding
+                    // doubled dark borders and outlines around HUD lettering.
+                    edge |= light-luma(n)>40;
+                }
+            }
             // A bounded nine-tap bright pass in source-pixel units. Never
             // source light from HUD pixels, nor paint glow over the HUD.
             std::array<int, 3> glow{};
+            std::array<int,3> wash{};
+            if(effect==Effect::oil_paint || effect==Effect::mosaic) {
+                std::array<int,4> counts{};
+                std::array<std::array<int,3>,4> sums{};
+                for(int dy=-1;dy<=1;++dy) for(int dx=-1;dx<=1;++dx) {
+                    const int bx=effect==Effect::mosaic?int(x/(step*3)*(step*3)+step):int(x);
+                    const int by=effect==Effect::mosaic?int(y/(step*3)*(step*3)+step):int(y);
+                    const auto nx=std::clamp(bx+dx*int(step),0,int(width)-1);
+                    const auto ny=std::clamp(by+dy*int(step),0,int(height)-1);
+                    const auto n=std::size_t(ny)*width+nx;
+                    if(frame.layer_tags()[n]==std::uint8_t(PixelLayer::two_d)
+                        || is_world(frame.layer_tags()[n])!=background) continue;
+                    const int bin=effect==Effect::mosaic?0:luma(n)/64;
+                    ++counts[bin];for(unsigned c=0;c<3;++c) sums[bin][c]+=scratch[n*4+c];
+                }
+                int best=0;for(int b=1;b<4;++b) if(counts[b]>counts[best]) best=b;
+                for(unsigned c=0;c<3;++c) wash[c]=counts[best]?sums[best][c]/counts[best]:scratch[i*4+c];
+            }
+            if(effect==Effect::watercolour) {
+                int weight=0;
+                for(int dy=-1;dy<=1;++dy) for(int dx=-1;dx<=1;++dx) {
+                    const auto nx=std::clamp(int(x)+dx*int(step),0,int(width)-1);
+                    const auto ny=std::clamp(int(y)+dy*int(step),0,int(height)-1);
+                    const auto n=std::size_t(ny)*width+nx;
+                    if(frame.layer_tags()[n]==std::uint8_t(PixelLayer::two_d)
+                        || is_world(frame.layer_tags()[n])!=background || std::abs(light-luma(n))>32) continue;
+                    const int w=dx==0 && dy==0?4:1;weight+=w;
+                    for(unsigned c=0;c<3;++c) wash[c]+=scratch[n*4+c]*w;
+                }
+                for(auto& c:wash) c/=std::max(1,weight);
+            }
             if (effect == Effect::bloom) {
                 for (int dy = -1; dy <= 1; ++dy) for (int dx = -1; dx <= 1; ++dx) {
                     const auto nx = std::clamp(int(x) + dx * int(step), 0, int(width) - 1);
@@ -66,7 +197,72 @@ inline void apply_effect(Effect model_effect, const Framebuffer& frame,
             for (unsigned c = 0; c < 3; ++c) {
                 auto value = int(scratch[i * 4 + c]);
                 switch (effect) {
-                case Effect::cel_drawn: value = edge ? value / 6 : std::min(255, ((value + 21) / 43) * 43); break;
+                case Effect::silver: case Effect::brass: case Effect::rose_gold:
+                case Effect::titanium: case Effect::amethyst: case Effect::sapphire:
+                case Effect::opal: case Effect::marble: case Effect::graphite:
+                case Effect::molten_glass: {
+                    const int shine=std::max(0,light-105);
+                    const int specular=shine*shine/90;
+                    const auto shade=[&](std::array<int,3> base,std::array<int,3> diffuse,
+                        std::array<int,3> highlight,int edge_light=0) {
+                        return std::clamp(base[c]+light*diffuse[c]/255
+                            +specular*highlight[c]/255+(edge?edge_light:0),0,255);
+                    };
+                    switch(effect) {
+                    case Effect::silver: value=shade({31,36,46},{175,190,208},{235,245,255},20);break;
+                    case Effect::brass: value=shade({55,37,8},{165,127,42},{255,224,120},14);break;
+                    case Effect::rose_gold: value=shade({53,24,25},{177,112,99},{255,205,191},16);break;
+                    case Effect::titanium: value=shade({20,30,42},{117,145,171},{185,220,255},22);break;
+                    case Effect::amethyst: value=shade({24,8,40},{108,43,156},{212,129,255},28);break;
+                    case Effect::sapphire: value=shade({6,18,54},{26,85,167},{110,190,255},26);break;
+                    case Effect::opal: {
+                        const int spectrum=std::clamp(180-std::abs((light*3+int(c)*107)%360-180),0,180);
+                        value=std::clamp(80+light/3+spectrum/3+specular/2+(edge?20:0),0,255);break;
+                    }
+                    case Effect::marble: {
+                        const int vein=std::abs(int(scratch[i*4])-int(scratch[i*4+1]))
+                            +std::abs(int(scratch[i*4+1])-int(scratch[i*4+2]));
+                        value=std::clamp(178+light/5-vein/5+std::array<int,3>{8,5,0}[c]
+                            +specular/4+(edge?10:0),0,255);break;
+                    }
+                    case Effect::graphite: value=shade({11,14,18},{56,67,78},{148,165,181},12);break;
+                    case Effect::molten_glass: {
+                        const int ember=std::max(0,light-65)*2;
+                        value=std::clamp(std::array<int,3>{24,8,5}[c]
+                            +ember*std::array<int,3>{220,68,12}[c]/255
+                            +specular*std::array<int,3>{255,171,85}[c]/255+(edge?18:0),0,255);break;
+                    }
+                    default: break;
+                    }
+                    break;
+                }
+                case Effect::ruby: case Effect::jade: case Effect::porcelain: {
+                    const int shine=std::max(0,light-128),specular=shine*shine/64;
+                    if(effect==Effect::ruby) value=std::array<int,3>{40,3,12}[c]+light*std::array<int,3>{180,12,42}[c]/255
+                        +specular*std::array<int,3>{255,115,145}[c]/255+(edge?std::array<int,3>{50,15,22}[c]:0);
+                    else if(effect==Effect::jade) value=std::array<int,3>{6,30,20}[c]+light*std::array<int,3>{65,145,90}[c]/255
+                        +specular*std::array<int,3>{120,230,170}[c]/255+(edge?std::array<int,3>{20,35,25}[c]:0);
+                    else value=25+light*std::array<int,3>{200,190,166}[c]/255+specular/3+(edge?18:0);
+                    value=std::min(255,value);break;
+                }
+                // Palette-light-driven facets remain attached to the model,
+                // rather than sliding a screen-space rainbow over it.
+                case Effect::prism: case Effect::glass: case Effect::obsidian: case Effect::pearl: {
+                    const int phase=(light*2+int(c)*128)%384;
+                    const int spectrum=std::clamp(255-std::abs(phase-192)*4,0,255);
+                    const int shine=std::max(0,light-128);
+                    const int specular=shine*shine/64;
+                    if(effect==Effect::prism) value=std::min(255,24+spectrum*3/4+specular/2+(edge?48:0));
+                    else if(effect==Effect::glass) value=std::min(255,value/8+light/4+std::array<int,3>{30,65,85}[c]+specular/2+(edge?75:0));
+                    else if(effect==Effect::obsidian) value=std::min(255,std::array<int,3>{9,7,18}[c]+light/16+specular*3/4+(edge?36:0));
+                    else value=std::min(255,125+light/4+spectrum/5+specular/4+(edge?18:0));
+                    break;
+                }
+                case Effect::cel_drawn: {
+                    const int peak=std::max({int(scratch[i*4]),int(scratch[i*4+1]),int(scratch[i*4+2]),1});
+                    const int band=std::min(255,((peak+25)/51)*51);
+                    value=edge?value/4:(value*band+peak/2)/peak;break;
+                }
                 case Effect::ink: value = edge ? 16 : (light < 30 ? 24 : 235); break;
                 case Effect::neon: value = edge ? (c == 0 ? 35 : 255) : value / 5; break;
                 case Effect::monochrome: value = light; break;
@@ -106,8 +302,9 @@ inline void apply_effect(Effect model_effect, const Framebuffer& frame,
                     break;
                 case Effect::pastel: value = 96 + value * 5 / 8; break;
                 case Effect::comic: {
-                    const auto dot = (x / step) % 3 == 1 && (y / step) % 3 == 1 && light < 180;
-                    value = edge || dot ? 18 : std::min(255, ((value + 31) / 64) * 64);
+                    const int peak=std::max({int(scratch[i*4]),int(scratch[i*4+1]),int(scratch[i*4+2]),1});
+                    const int band=std::min(255,((peak+31)/64)*64);
+                    value=edge?value/5:(value*band+peak/2)/peak;
                     break;
                 }
                 case Effect::vaporwave: {
@@ -115,6 +312,128 @@ inline void apply_effect(Effect model_effect, const Framebuffer& frame,
                     value = (shadow[c] * (255 - light) + highlight[c] * light) / 255;
                     if (edge) value = c == 1 ? 75 : 255;
                     break;
+                }
+                case Effect::posterized: value=std::min(255,((value+25)/51)*51);break;
+                case Effect::ice: {
+                    constexpr std::array<int,3> low{8,24,65},high{224,250,246};
+                    value=(low[c]*(255-light)+high[c]*light)/255;break;
+                }
+                case Effect::film: {
+                    constexpr std::array<int,3> tint{106,100,87},lift{9,4,6};
+                    value=std::min(255,(value*value*(765-2*value)/65025)*tint[c]/100+lift[c]);break;
+                }
+                case Effect::negative: value=255-value;break;
+                case Effect::solarized: value=value<128?value*2:(255-value)*2;break;
+                case Effect::amber: value=light*std::array<int,3>{255,176,32}[c]/255;break;
+                case Effect::emerald: value=light*std::array<int,3>{55,255,130}[c]/255;break;
+                case Effect::cyanotype: {
+                    constexpr std::array<int,3> low{8,22,70},high{224,246,240};
+                    value=(low[c]*(255-light)+high[c]*light)/255;break;
+                }
+                case Effect::copper: {
+                    constexpr std::array<int,3> low{30,10,8},high{255,190,120};
+                    value=(low[c]*(255-light)+high[c]*light)/255;break;
+                }
+                case Effect::lavender: {
+                    constexpr std::array<int,3> low{35,12,65},high{250,215,255};
+                    value=(low[c]*(255-light)+high[c]*light)/255;break;
+                }
+                case Effect::cga: {
+                    constexpr std::array<std::array<int,3>,4> colours{{{0,0,0},{0,170,170},{170,0,170},{255,255,255}}};
+                    value=colours[std::min(3,light/64)][c];break;
+                }
+                case Effect::scanlines: if((y/step)%2) value=value*3/5;break;
+                case Effect::watercolour: value=24+std::min(255,((wash[c]+15)/32)*32)*7/8;break;
+                case Effect::chalk: value=edge?235:12+light/10;break;
+                case Effect::emboss: {
+                    const auto n=std::size_t(y)*width+(x>=step?x-step:0);
+                    const int neighbour=frame.layer_tags()[n]==std::uint8_t(PixelLayer::two_d)?light:luma(n);
+                    value=std::clamp(128+2*(light-neighbour),0,255);break;
+                }
+                case Effect::bleach_bypass: {
+                    // Silver-retention look: luminance overlay, strong partial
+                    // desaturation and crushed blacks, not a subtle colour tint.
+                    const int overlay=light<128?2*value*light/255:255-2*(255-value)*(255-light)/255;
+                    const int silver=(overlay+3*light)/4;
+                    value=std::clamp((silver-112)*7/4+112,0,255);break;
+                }
+                case Effect::stained_glass: value=edge?8:std::clamp(((value*5/4-24+31)/64)*64+16,0,255);break;
+                case Effect::risograph: {
+                    const int red=std::max(0,int(scratch[i*4])-int(scratch[i*4+2]));
+                    const int ink=(255-light)*3/4;
+                    constexpr std::array<int,3> paper{250,237,208},blue{205,155,65},coral{0,110,120};
+                    value=std::clamp(paper[c]-ink*blue[c]/255-red*coral[c]/255,0,255);break;
+                }
+                case Effect::hologram: {
+                    const int energy=edge?255:24+light*3/4;
+                    value=energy*std::array<int,3>{32,210,255}[c]/255;
+                    if((y/step)%4==3) value=value*2/5;break;
+                }
+                case Effect::mosaic: value=((x/step)%3==0 || (y/step)%3==0)?wash[c]*2/3:std::min(255,wash[c]+10);break;
+                case Effect::pencil: value=edge?32:std::clamp(246-(255-light)*(255-light)/510,0,255);break;
+                case Effect::oil_paint: value=std::clamp((wash[c]-128)*6/5+128,0,255);break;
+                case Effect::teal_orange: {
+                    // Split-tone shadows/highlights while retaining source detail.
+                    constexpr std::array<int,3> low{0,64,80},high{255,180,92};
+                    const auto tone=(low[c]*(255-light)+high[c]*light)/255;
+                    value=(value+tone*2)/3;break;
+                }
+                case Effect::handheld: {
+                    constexpr std::array<std::array<int,3>,4> colours{{
+                        {15,56,15},{48,98,48},{139,172,15},{155,188,15}}};
+                    value=colours[std::min(3,light/64)][c];break;
+                }
+                case Effect::duotone: {
+                    constexpr std::array<int,3> low{14,17,54},high{255,189,101};
+                    value=(low[c]*(255-light)+high[c]*light)/255;break;
+                }
+                case Effect::tritone: {
+                    constexpr std::array<int,3> low{10,48,71},mid{194,58,112},high{255,239,193};
+                    value=light<128?(low[c]*(128-light)+mid[c]*light)/128
+                        :(mid[c]*(255-light)+high[c]*(light-128))/127;break;
+                }
+                case Effect::woodcut:
+                    value=edge || light<78?std::array<int,3>{25,30,29}[c]
+                        :light<166?std::array<int,3>{180,115,73}[c]
+                        :std::array<int,3>{248,224,170}[c];break;
+                case Effect::xray: {
+                    const int inverse=255-light;
+                    value=std::clamp(std::array<int,3>{5,25,47}[c]
+                        +inverse*std::array<int,3>{80,185,220}[c]/255+(edge?70:0),0,255);break;
+                }
+                case Effect::pop_art: {
+                    constexpr std::array<std::array<int,3>,3> inks{{{255,220,35},{243,48,135},{29,207,235}}};
+                    const unsigned hue=scratch[i*4+2]>scratch[i*4] && scratch[i*4+2]>scratch[i*4+1]?2U:
+                        scratch[i*4+1]>scratch[i*4]?1U:0U;
+                    value=edge?22:(light<72?inks[hue][c]/3:inks[hue][c]);break;
+                }
+                case Effect::iridescent: {
+                    const int phase=(light*3+int(scratch[i*4])-int(scratch[i*4+1])+int(c)*111+768)%384;
+                    value=std::clamp(36+std::max(0,255-std::abs(phase-192)*3)*3/4,0,255);break;
+                }
+                case Effect::crt_phosphor: {
+                    const unsigned stripe=(x/step)%3U;
+                    value=std::clamp(value*(c==stripe?115:43)/100,0,255);
+                    if((y/step)%3U==2U) value=value*3/4;
+                    break;
+                }
+                case Effect::noir: {
+                    const int grey=std::clamp((light-95)*2+80,0,255);
+                    const bool red=scratch[i*4]>scratch[i*4+1]*6/5
+                        && scratch[i*4]>scratch[i*4+2]*6/5 && scratch[i*4]>90;
+                    value=red?(c==0?std::max(grey,int(scratch[i*4])):grey/5):grey;break;
+                }
+                case Effect::uv_glow: {
+                    const int energy=std::max({int(scratch[i*4]),int(scratch[i*4+1]),int(scratch[i*4+2])});
+                    value=std::clamp(std::array<int,3>{12,5,34}[c]
+                        +energy*std::array<int,3>{130,65,215}[c]/255
+                        +std::max(0,energy-150)*std::array<int,3>{80,170,40}[c]/105,0,255);break;
+                }
+                case Effect::topographic: {
+                    const int band=light/32;
+                    value=light%32<4?std::array<int,3>{239,229,170}[c]
+                        :std::clamp(std::array<int,3>{18,46,34}[c]
+                            +band*std::array<int,3>{23,19,12}[c],0,255);break;
                 }
                 default: break;
                 }

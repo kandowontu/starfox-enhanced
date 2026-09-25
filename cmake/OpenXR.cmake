@@ -1,19 +1,5 @@
 # Kept opt-in so ordinary/console builds do not acquire an XR dependency.
-# Shared ray expansion must never silently compile an old embedded binary.
-# The checker hashes transitive HLSL includes and needs no shader compiler.
-find_package(Python3 REQUIRED COMPONENTS Interpreter)
-execute_process(COMMAND "${Python3_EXECUTABLE}"
-    "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_vr_ray_shader.py" --check
-    COMMAND_ERROR_IS_FATAL ANY)
-file(GLOB_RECURSE starfox_ray_shader_helpers CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/*.hlsli"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/vr/shaders/*.hlsli")
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/vr/shaders/ray_expand.hlsl"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/vr/shaders/ray_expand_spirv.hpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_vr_ray_shader.py"
-    "${CMAKE_CURRENT_SOURCE_DIR}/tools/portable_shader_source.py"
-    ${starfox_ray_shader_helpers})
+include("${CMAKE_CURRENT_LIST_DIR}/VRShaderChecks.cmake")
 if(WINDOWS_STORE OR SWITCH OR VITA OR IOS)
     message(FATAL_ERROR "The OpenXR build currently targets desktop Windows/Linux and Android, not this platform.")
 endif()
@@ -65,6 +51,7 @@ target_sources(starfox_vr_core PRIVATE src/vr/vulkan_scene_buffer.cpp)
 target_sources(starfox_vr_core PRIVATE src/vr/vulkan_span_pipeline.cpp)
 target_sources(starfox_vr_core PRIVATE src/vr/vulkan_source_storage.cpp)
 target_sources(starfox_vr_core PRIVATE src/vr/vulkan_scene_textures.cpp)
+target_sources(starfox_vr_core PRIVATE src/vr/vulkan_connected_grid.cpp)
 target_sources(starfox_vr_core PRIVATE src/vr/vulkan_depth_targets.cpp)
 target_sources(starfox_vr_core PRIVATE src/vr/shape_mesh.cpp)
 target_sources(starfox_vr_core PRIVATE src/vr/shape_bsp.cpp)
@@ -102,6 +89,33 @@ if(ANDROID)
     target_link_libraries(starfox_quest PRIVATE starfox_vr_game)
 endif()
 if(NOT ANDROID)
+    if(STARFOX_EMBED_RUNTIME_ASSETS)
+        add_executable(starfox_vr_backdrop_check tests/vr_backdrop_resource_tests.cpp)
+        target_link_libraries(starfox_vr_backdrop_check PRIVATE starfox_vr_game)
+        if(BUILD_TESTING)
+            add_test(NAME starfox_vr_backdrop_check COMMAND starfox_vr_backdrop_check)
+            set_tests_properties(starfox_vr_backdrop_check PROPERTIES LABELS vr TIMEOUT 60)
+        endif()
+    endif()
+    add_executable(starfox_pcvr src/vr/desktop_main.cpp)
+    target_link_libraries(starfox_pcvr PRIVATE starfox_vr_game SDL3::SDL3)
+    if(MINGW)
+        target_link_options(starfox_pcvr PRIVATE -static -static-libgcc -static-libstdc++)
+    endif()
+    install(TARGETS starfox_pcvr RUNTIME DESTINATION . COMPONENT pcvr)
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/tools/package/PCVR-START-HERE.txt"
+        DESTINATION . RENAME START-HERE.txt COMPONENT pcvr)
+    if(WIN32)
+        install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/tools/package/BUILD-ASSETS.bat"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/package/LAUNCH-PCVR.bat"
+            DESTINATION . COMPONENT pcvr)
+    endif()
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/THIRD_PARTY_NOTICES.md"
+        "${CMAKE_CURRENT_SOURCE_DIR}/CREDITS.md" "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE-XBRZ.txt"
+        DESTINATION . COMPONENT pcvr)
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/README.md"
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/misaki.txt"
+        DESTINATION licenses/fonts COMPONENT pcvr)
     add_executable(starfox_vr_cache_check tests/vulkan_pipeline_cache_tests.cpp)
     target_link_libraries(starfox_vr_cache_check PRIVATE starfox_vr_core)
     add_executable(starfox_vr_application_tests tests/vr_application_tests.cpp)
@@ -141,6 +155,13 @@ if(NOT ANDROID)
     target_include_directories(starfox_material_check PRIVATE include)
     target_compile_features(starfox_material_check PRIVATE cxx_std_20)
     if(BUILD_TESTING)
+        add_test(NAME starfox_pcvr_help COMMAND starfox_pcvr --help)
+        set_tests_properties(starfox_pcvr_help PROPERTIES LABELS vr TIMEOUT 10
+            PASS_REGULAR_EXPRESSION "Requires a Vulkan-capable GPU")
+        add_test(NAME starfox_vr_shader_freshness
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_vr_shader_freshness.py"
+                --cmake "${CMAKE_COMMAND}" --generator "${CMAKE_GENERATOR}")
+        set_tests_properties(starfox_vr_shader_freshness PROPERTIES LABELS vr TIMEOUT 120)
         add_test(NAME starfox_vr_ray_topology_check COMMAND starfox_vr_ray_topology_check)
         enable_testing()
         # These checks use mocks/synthetic inputs and need no connected HMD.

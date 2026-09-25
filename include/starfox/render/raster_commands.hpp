@@ -23,6 +23,19 @@ struct RasterCommand {
     // texture_offset is aligned byte offset, u_mask is aligned byte stride,
     // v_mask is row count. Bits use absolute stored-frame X/Y coordinates.
     // Textured commands use these fields for texture scroll instead.
+    // textured=4 is SNES OBJ 4bpp: texture_offset points to a 64 KiB VRAM
+    // snapshot, u/v are unclipped stored origins, du is draw scale, dv size,
+    // reserved0 is the base byte address, reserved1 bits 0/1 are X/Y flips.
+    // textured=5 composites indexed layers: u/v logical offsets, du/dv source/
+    // destination scale, u_mask/v_mask stored source extents, even/odd mosaic
+    // origins, reserved0 mosaic step; dither enables per-pixel tags at reserved1.
+    // textured=6 decodes 24 font bytes (12 little-endian 16-bit rows): u/v
+    // unclipped stored origin, du draw scale, dv output glyph height.
+    // textured=7 decodes 8 bitmap-font row bytes: same origin/scale, dv square
+    // output edge, nearest-neighbour source sampling (not endpoint sampling).
+    // textured=8 decodes a 32x40 column-major SNES 4bpp portrait (640 bytes).
+    // u/v stored origin, du scale, dv enables the source 7:6 aspect correction.
+    // Index zero is opaque; colour_base is added to all 16 possible indices.
     std::uint32_t has_surface{},textured{},reserved0{},reserved1{};
 };
 static_assert(sizeof(RasterCommand)==96);
@@ -42,6 +55,11 @@ public:
         const auto offset=std::uint32_t(texels.size());
         texels.insert(texels.end(),pixels.begin(),pixels.end());
         textures_.emplace(pixels.data(),offset);return offset;
+    }
+    // Mutable cartridge memory must not use pointer-only texture deduplication.
+    std::uint32_t snapshot(std::span<const std::uint8_t> bytes) {
+        const auto offset=std::uint32_t(texels.size());
+        texels.insert(texels.end(),bytes.begin(),bytes.end());return offset;
     }
     void bin_rows() {
         const auto tiles=(width_+63)/64;

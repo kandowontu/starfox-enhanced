@@ -37,11 +37,9 @@ keeping full-height text and all main-page entries visible without scrolling.
 Enhanced Lighting, HDR Effect, Ray Tracing, Chromatic Aberration, Model Effects,
 and Model Effect Intensity. B or BACK returns to
 the corresponding main-page entry; live Preview stays active in either submenu.
-`MODEL EFFECTS` and `WORLD EFFECTS` independently offer OFF,
-INK, NEON, MONOCHROME, DITHERED, SEPIA,
-THERMAL, NIGHT VISION, PASTEL, COMIC, and VAPORWAVE. The newer styles add warm
-vintage tones, a false-color heat palette, green scanlines, soft colors,
-halftone shading, and a purple/cyan palette respectively. CEL-DRAWN is model-only;
+`MODEL EFFECTS` and `WORLD EFFECTS` independently offer drawn, retro, colour,
+and stylized looks. The latest effects are DUOTONE, TRITONE, WOODCUT, X-RAY,
+POP ART, IRIDESCENT, CRT PHOSPHOR, NOIR, UV GLOW, and TOPOGRAPHIC. CEL-DRAWN is model-only;
 BLUEPRINT is world-only. World effects
 cover the ground, sky, scenery and stars. Each graphics submenu provides its
 effect intensity from 0–100% in 10% steps. Controller Remap remains in Options. All effect choices

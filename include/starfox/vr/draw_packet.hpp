@@ -28,7 +28,7 @@ inline bool same_draw_geometry(std::span<const DrawPacket> a,std::span<const Dra
         const auto xl=x.line_view(),yl=y.line_view();
         const bool same_lines=xl.size()==yl.size() && (xl.data()==yl.data() || std::equal(xl.begin(),xl.end(),yl.begin()));
         if(!x.deferred.empty() || !y.deferred.empty() || !same_vertices
-            || !same_lines || x.texels!=y.texels) return false;
+            || !same_lines || !x.same_texels(y)) return false;
     }
     return true;
 }

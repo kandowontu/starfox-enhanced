@@ -1,4 +1,5 @@
 #include "starfox/render/gpu_raster.hpp"
+#include "starfox/render/temporal_jitter.hpp"
 #include <cstring>
 #include <bit>
 #include <cmath>
@@ -30,7 +31,61 @@ void replay_raster_commands(const RasterCommands& batch,Framebuffer& frame,Surfa
                 }
                 const auto dither_scale=int(std::max(1U,c.reserved0));
                 auto colour=c.dither && (((x/dither_scale)^(y/dither_scale))&1)?c.odd:c.even;
-                if(c.textured) {
+                auto pixel_tag=c.tag;
+                if(c.textured==8) {
+                    if(c.du<=0 || c.texture_offset>batch.texels.size() || batch.texels.size()-c.texture_offset<640) continue;
+                    const int px=c.dv?((x-c.u)*6+2)/(7*c.du):(x-c.u)/c.du,py=(y-c.v)/c.du;
+                    if(px<0 || px>=32 || py<0 || py>=40) continue;
+                    const auto at=c.texture_offset+((px/8)*5+py/8)*32+(py%8)*2;
+                    unsigned ink=0;
+                    for(unsigned plane=0;plane<4;++plane)
+                        ink|=((batch.texels[at+(plane/2)*16+plane%2]>>(7-px%8))&1U)<<plane;
+                    colour=std::uint8_t(c.colour_base+ink);
+                } else if(c.textured==7) {
+                    if(c.du<=0 || (c.dv!=8 && c.dv!=12) || c.texture_offset>batch.texels.size()
+                        || batch.texels.size()-c.texture_offset<8) continue;
+                    const auto column=(x-c.u)/c.du,row=(y-c.v)/c.du;
+                    if(column<0 || column>=c.dv || row<0 || row>=c.dv) continue;
+                    if(!(batch.texels[c.texture_offset+row*8/c.dv]&(0x80U>>(column*8/c.dv)))) continue;
+                } else if(c.textured==6) {
+                    if(c.du<=0 || c.dv<2 || c.texture_offset>batch.texels.size()
+                        || batch.texels.size()-c.texture_offset<24) continue;
+                    const auto column=(x-c.u)/c.du,row=(y-c.v)/c.du;
+                    if(column<0 || column>=16 || row<0 || row>=c.dv) continue;
+                    const auto at=c.texture_offset+std::uint32_t(row*11/(c.dv-1))*2;
+                    const auto bits=std::uint32_t(batch.texels[at])|(std::uint32_t(batch.texels[at+1])<<8);
+                    if(!(bits&(0x8000U>>column))) continue;
+                } else if(c.textured==5) {
+                    if(c.du<=0 || c.dv<=0 || !c.reserved0) continue;
+                    const auto size=std::uint64_t(c.u_mask)*c.v_mask;
+                    if(c.texture_offset>batch.texels.size() || size>batch.texels.size()-c.texture_offset
+                        || (c.dither && (c.reserved1>batch.texels.size() || size>batch.texels.size()-c.reserved1))) continue;
+                    const auto snap=[&](int value,int origin) {
+                        const int step=c.reserved0,delta=value-origin;
+                        return (delta<0?-((-delta+step-1)/step):delta/step)*step+origin;
+                    };
+                    const int sx=snap(x/c.dv,int(c.even))-c.u,sy=snap(y/c.dv,int(c.odd))-c.v;
+                    if(sx<0 || sy<0 || sx>=int(c.u_mask)/c.du || sy>=int(c.v_mask)/c.du) continue;
+                    const auto ix=sx*c.du+((x%c.dv*2+1)*c.du)/(c.dv*2);
+                    const auto iy=sy*c.du+((y%c.dv*2+1)*c.du)/(c.dv*2);
+                    const auto at=std::size_t(iy)*c.u_mask+ix;
+                    colour=batch.texels[c.texture_offset+at];if(!colour) continue;
+                    if(c.dither) pixel_tag=batch.texels[c.reserved1+at];
+                } else if(c.textured==4) {
+                    if(c.du<=0 || c.dv<=0 || c.texture_offset>batch.texels.size()
+                        || batch.texels.size()-c.texture_offset<65536) continue;
+                    auto u=(x-c.u)/c.du,v=(y-c.v)/c.du;
+                    if(u<0 || v<0 || u>=c.dv || v>=c.dv) continue;
+                    if(c.reserved1&1U) u=c.dv-1-u;
+                    if(c.reserved1&2U) v=c.dv-1-v;
+                    const auto address=(c.reserved0+(v/8)*512+(u/8)*32+(v&7)*2)&65535U;
+                    const auto bit=7-(u&7);
+                    const auto byte=[&](unsigned delta){return batch.texels[c.texture_offset+((address+delta)&65535U)];};
+                    const auto texel=((byte(0)>>bit)&1U)|(((byte(1)>>bit)&1U)<<1U)
+                        |(((byte(16)>>bit)&1U)<<2U)|(((byte(17)>>bit)&1U)<<3U);
+                    if(!texel) continue;
+                    colour=c.colour_base+texel;
+                } else if(c.textured) {
                     const auto dx=std::uint32_t(x-c.left);
                     std::uint32_t u,v;
                     if(c.textured==1) {
@@ -49,7 +104,7 @@ void replay_raster_commands(const RasterCommands& batch,Framebuffer& frame,Surfa
                     colour=std::uint8_t(c.colour_base+texel);
                     if(c.textured==2 && (c.reserved0&256)) colour=std::uint8_t(c.reserved0);
                 }
-                frame.set_stored(x,y,std::uint8_t(colour),PixelLayer(c.tag));
+                frame.set_stored(x,y,std::uint8_t(colour),PixelLayer(pixel_tag));
                 if(surfaces && c.has_surface) surfaces->set(x,y,
                     {c.surface[0],c.surface[1],c.surface[2],c.surface[3]},std::uint8_t(colour));
             }
@@ -161,12 +216,18 @@ struct GpuRaster::Impl {
         SDL_GPUTransferBufferCreateInfo info{usage,bytes,0};
         target=SDL_CreateGPUTransferBuffer(device,&info);require_raster(target);capacity=bytes;
     }
-    void render(RasterCommands& batch,Framebuffer* frame,SurfaceBuffer* surfaces,bool keep_surfaces,bool gpu_binning=false,SDL_GPUCommandBuffer* borrowed=nullptr,bool coverage=false) {
+    void render(RasterCommands& batch,Framebuffer* frame,SurfaceBuffer* surfaces,bool keep_surfaces,bool gpu_binning=false,SDL_GPUCommandBuffer* borrowed=nullptr,bool coverage=false,std::array<std::uint32_t,2> raster_size={},std::array<float,2> jitter={}) {
+        if(!valid_raster_jitter(jitter)) throw std::runtime_error("Invalid raster jitter");
         if(borrowed && (fence || command || !retired_fences.empty())) throw std::runtime_error("Finish submitted raster work before borrowing a command buffer");
         if(!borrowed) {if(frame || SDL_getenv("STARFOX_TEST_SERIAL_RASTER")) finish();else retire_submission();}
         resident_valid=false;
-        const std::size_t count=std::size_t(batch.width())*batch.height();
-        if(!count || count>UINT32_MAX/20 || (frame && (frame->stored_width()!=batch.width() || frame->stored_height()!=batch.height()))
+        const bool custom=raster_size[0] || raster_size[1];
+        if(custom && (!borrowed || frame || surfaces || !raster_size[0] || !raster_size[1]
+            || raster_size[0]>8192 || raster_size[1]>8192)) throw std::runtime_error("Invalid raster output size");
+        const auto output_width=custom?raster_size[0]:batch.width(),output_height=custom?raster_size[1]:batch.height();
+        const std::size_t count=std::size_t(output_width)*output_height;
+        if(!batch.width() || !batch.height() || batch.width()>32767 || batch.height()>32767
+            || !count || count>UINT32_MAX/20 || (frame && (frame->stored_width()!=batch.width() || frame->stored_height()!=batch.height()))
             || (surfaces && (surfaces->width()!=batch.width() || surfaces->height()!=batch.height())))
             throw std::runtime_error("Invalid native raster dimensions");
         const bool gpu_bins=gpu_binning || SDL_getenv("STARFOX_TEST_GPU_BINS")!=nullptr;
@@ -228,7 +289,7 @@ struct GpuRaster::Impl {
                 SDL_DispatchGPUCompute(bin_pass,std::max(1U,(work+63)/64),1,1);SDL_EndGPUComputePass(bin_pass);
             }
         }
-        const Uint32 settings[]{batch.width(),batch.height(),keep_surfaces?1U:0U,(gpu_bins?1U:0U)|(coverage?0x40000000U:0U),0,0,keep_surfaces?1U:0U,0,Uint32(batch.texels.size()),0,0,0,0,0,0,0,0,0,0,0};
+        const Uint32 settings[]{batch.width(),batch.height(),keep_surfaces?1U:0U,(gpu_bins?1U:0U)|(coverage?0x40000000U:0U),0,0,keep_surfaces?1U:0U,0,Uint32(batch.texels.size()),custom?output_width:0,custom?output_height:0,0,0,0,0,0,0,0,0,0,std::bit_cast<Uint32>(jitter[0]),std::bit_cast<Uint32>(jitter[1]),0,0};
         SDL_PushGPUComputeUniformData(command,0,settings,sizeof(settings));
         buffer(6,16);
         SDL_GPUStorageBufferReadWriteBinding outputs[3]{};outputs[0].buffer=buffers[4];outputs[1].buffer=buffers[5];outputs[2].buffer=buffers[6];
@@ -236,10 +297,12 @@ struct GpuRaster::Impl {
         auto* pass=SDL_BeginGPUComputePass(command,nullptr,0,outputs,3);require_raster(pass);
         SDL_GPUBuffer* inputs[]{buffers[0],buffers[1],buffers[2],buffers[3],buffers[0],buffers[0],buffers[0],buffers[0]};
         SDL_BindGPUComputePipeline(pass,pipeline);SDL_BindGPUComputeStorageBuffers(pass,0,inputs,8);
-        SDL_DispatchGPUCompute(pass,(batch.width()+63)/64,batch.height(),1);SDL_EndGPUComputePass(pass);
-        width=batch.width();height=batch.height();resident_surfaces=keep_surfaces;
+        SDL_DispatchGPUCompute(pass,(output_width+63)/64,output_height,1);SDL_EndGPUComputePass(pass);
+        width=output_width;height=output_height;resident_surfaces=keep_surfaces;
         if(borrowed) {command=nullptr;++generation;return;}
         if(frame) {
+        if(!buffers[4] || (surfaces && !buffers[5]))
+            throw std::runtime_error("Native raster readback source is missing");
         copy=SDL_BeginGPUCopyPass(command);require_raster(copy);
         for(unsigned i=0;i<(surfaces?2U:1U);++i) {
             SDL_GPUBufferRegion source{buffers[4+i],0,i?surface_bytes:pixel_bytes};
@@ -268,7 +331,8 @@ struct GpuRaster::Impl {
         SDL_UnmapGPUTransferBuffer(device,download);
     }
     void readback(Framebuffer& frame,SurfaceBuffer* surfaces) {
-        if(!resident_valid || frame.stored_width()!=width || frame.stored_height()!=height
+        if(!resident_valid || !device || !buffers[4] || (surfaces && !buffers[5])
+            || frame.stored_width()!=width || frame.stored_height()!=height
             || (surfaces && (!resident_surfaces || surfaces->width()!=width || surfaces->height()!=height)))
             throw std::runtime_error("Incompatible native raster readback");
         finish();
@@ -326,13 +390,13 @@ bool GpuRaster::render_resident(void* device,RasterCommands& batch,bool surfaces
     (void)device;(void)batch;(void)surfaces;(void)gpu_binning;return false;
 #endif
 }
-GpuRasterOutput GpuRaster::enqueue_commands(void* device,void* command,RasterCommands& batch,bool surfaces,bool gpu_binning) {
+GpuRasterOutput GpuRaster::enqueue_commands(void* device,void* command,RasterCommands& batch,bool surfaces,bool gpu_binning,std::array<std::uint32_t,2> raster_size,std::array<float,2> jitter) {
 #if defined(STARFOX_SDL_GPU_EFFECTS)
     if(!device || !command) return {};
     if(!impl_ || impl_->device!=device) impl_=std::make_unique<Impl>();
     try {
         if(!impl_->device) impl_->initialize(static_cast<SDL_GPUDevice*>(device),gpu_binning);
-        impl_->render(batch,nullptr,nullptr,surfaces,gpu_binning,static_cast<SDL_GPUCommandBuffer*>(command),true);
+        impl_->render(batch,nullptr,nullptr,surfaces,gpu_binning,static_cast<SDL_GPUCommandBuffer*>(command),true,raster_size,jitter);
         impl_->status="Raster commands enqueued on caller command buffer";
         return {device,impl_->buffers[4],surfaces?impl_->buffers[5]:nullptr,impl_->width,impl_->height,impl_->generation};
     }catch(const std::exception& error){
@@ -353,12 +417,19 @@ GpuRasterOutput GpuRaster::resident_output() const {
 GpuRasterOutput GpuRaster::enqueue_row_spans(void* device,void* command,void* spans,
     std::uint32_t polygon_count,std::uint32_t width,std::uint32_t height,bool surfaces,void* texels,bool pixel_coverage,
     const GpuRasterOutput* background,bool wave_rows,std::int16_t wave_offset,std::uint32_t wave_frame,std::uint32_t texel_bytes,
-    const GpuGeometryDepthInput* geometry_depth) {
+    const GpuGeometryDepthInput* geometry_depth,std::array<std::uint32_t,2> raster_size,std::array<float,2> jitter) {
 #if defined(STARFOX_SDL_GPU_EFFECTS)
     if(!device || !command || (!spans && polygon_count!=0)) return {};
     if(!impl_ || impl_->device!=device) impl_=std::make_unique<Impl>();
     try {
-        const auto pixels=std::uint64_t(width)*height;
+        const bool custom=raster_size[0] || raster_size[1];
+        if(!valid_raster_jitter(jitter) || (jitter!=std::array<float,2>{} && (background || (geometry_depth && !geometry_depth->screen_aligned))))
+            throw std::runtime_error("Invalid row-span jitter");
+        if(custom && (!raster_size[0] || !raster_size[1] || raster_size[0]>8192 || raster_size[1]>8192
+            || background || (geometry_depth && !geometry_depth->screen_aligned) || width>32767 || height>32767))
+            throw std::runtime_error("Invalid independent row-span output");
+        const auto outputWidth=custom?raster_size[0]:width,outputHeight=custom?raster_size[1]:height;
+        const auto pixels=std::uint64_t(outputWidth)*outputHeight;
         if(!width || !height || polygon_count>=0x40000000U
             || pixels>UINT32_MAX/16 || std::uint64_t(polygon_count)*height>UINT32_MAX/96)
             throw std::runtime_error("Invalid GPU row-span dimensions");
@@ -399,7 +470,10 @@ GpuRasterOutput GpuRaster::enqueue_row_spans(void* device,void* command,void* sp
             SDL_PushGPUComputeUniformData(cmd,0,bin_settings,sizeof(bin_settings));
             SDL_GPUStorageBufferReadWriteBinding bindings[2]{};
             bindings[0].buffer=impl_->buffers[1];bindings[1].buffer=impl_->buffers[2];
-            bindings[0].cycle=bindings[1].cycle=true;
+            // Scratch bins are consumed by the immediately following pass.
+            // Queue ordering permits reuse; cycling here retains one large
+            // bin allocation for every terrain patch in a submitted frame.
+            bindings[0].cycle=bindings[1].cycle=false;
             auto* bin_pass=SDL_BeginGPUComputePass(cmd,nullptr,0,bindings,2);require_raster(bin_pass);
             SDL_BindGPUComputePipeline(bin_pass,impl_->bins_pipeline);
             auto* input=static_cast<SDL_GPUBuffer*>(spans);SDL_BindGPUComputeStorageBuffers(bin_pass,0,&input,1);
@@ -408,16 +482,20 @@ GpuRasterOutput GpuRaster::enqueue_row_spans(void* device,void* command,void* sp
         const Uint32 settings[]{width,height,output_surfaces?1U:0U,0x80000000U|(pixel_coverage?0x40000000U:0U)|polygon_count,
             background?1U:0U,background && background->surfaces?1U:0U,surfaces?1U:0U,
             wave_rows?(1U|(std::uint32_t(std::uint16_t(wave_offset))<<1U)|((wave_frame&15U)<<17U)):(tiled?0x80000000U:0U),
-            texels?texel_bytes:0U,0,0,0,
+            texels?texel_bytes:0U,custom?outputWidth:0,custom?outputHeight:0,0,
             output_depth?1U:0U,geometry_depth?geometry_depth->count:0U,background && background->geometry_depth?1U:0U,0,
             std::bit_cast<Uint32>(geometry_depth?geometry_depth->focal_x:1.f),
             std::bit_cast<Uint32>(geometry_depth?geometry_depth->focal_y:1.f),
             std::bit_cast<Uint32>(geometry_depth?geometry_depth->center_x:0.f),
-            std::bit_cast<Uint32>(geometry_depth?geometry_depth->center_y:0.f)};
+            std::bit_cast<Uint32>(geometry_depth?geometry_depth->center_y:0.f),
+            std::bit_cast<Uint32>(jitter[0]),std::bit_cast<Uint32>(jitter[1]),0,0};
         SDL_PushGPUComputeUniformData(cmd,0,settings,sizeof(settings));
         SDL_GPUStorageBufferReadWriteBinding outputs[3]{};
         outputs[0].buffer=impl_->buffers[4];outputs[1].buffer=impl_->buffers[5];
-        outputs[2].buffer=impl_->buffers[6];outputs[0].cycle=outputs[1].cycle=outputs[2].cycle=true;
+        outputs[2].buffer=impl_->buffers[6];
+        // Fused draws alternate two non-aliasing renderers. The previous
+        // contents have already been consumed before this ordered write.
+        outputs[0].cycle=outputs[1].cycle=outputs[2].cycle=background==nullptr;
         auto* pass=SDL_BeginGPUComputePass(cmd,nullptr,0,outputs,3);require_raster(pass);
         SDL_BindGPUComputePipeline(pass,impl_->pipeline);
         // Bins are unused for row spans. For solid-only input, texels also
@@ -430,9 +508,9 @@ GpuRasterOutput GpuRaster::enqueue_row_spans(void* device,void* command,void* sp
             geometry_depth?static_cast<SDL_GPUBuffer*>(geometry_depth->planes):source,
             background && background->geometry_depth?static_cast<SDL_GPUBuffer*>(background->geometry_depth):source};
         SDL_BindGPUComputeStorageBuffers(pass,0,inputs,8);
-        SDL_DispatchGPUCompute(pass,(width+63)/64,height,1);SDL_EndGPUComputePass(pass);
+        SDL_DispatchGPUCompute(pass,(outputWidth+63)/64,outputHeight,1);SDL_EndGPUComputePass(pass);
         impl_->status="GPU-generated row spans rasterized resident";
-        return {device,impl_->buffers[4],output_surfaces?impl_->buffers[5]:nullptr,width,height,++impl_->generation,
+        return {device,impl_->buffers[4],output_surfaces?impl_->buffers[5]:nullptr,outputWidth,outputHeight,++impl_->generation,
             output_depth?impl_->buffers[6]:nullptr};
     }catch(const std::exception& error){impl_->status=error.what();return {};}
 #endif

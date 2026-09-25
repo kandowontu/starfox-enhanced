@@ -32,10 +32,10 @@ public:
     GpuTemporalTextures enqueue(void* device,void* command,void* camera_depth,void* motion,
         std::uint32_t width,std::uint32_t height,float near_plane,float far_plane,bool reset,
         const TemporalGroundInputs* ground=nullptr);
-    // Restore exact two_d-tagged foreground from the original after neural
+    // Restore exact HUD and non-terrain tilemap artwork after neural
     // evaluation. This is output protection, not pre-evaluation HUD exclusion.
     void* restore_hud(void* device,void* command,void* original_rgba,void* reconstructed_rgba,
-        void* packed_pixels,std::uint32_t width,std::uint32_t height);
+        void* packed_pixels,std::uint32_t width,std::uint32_t height,bool preserve_artwork=true);
     void release_device() noexcept;
     const std::string& status() const;
 private:

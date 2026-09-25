@@ -163,6 +163,9 @@ public:
         cpu_.upload_oam(source, length);
     }
     void begin_superfx_bitmap_frame() { cpu_.begin_superfx_bitmap_frame(); }
+    [[nodiscard]] std::optional<bool> dialogue_speaking(bool alternate) const noexcept {
+        return cpu_.dialogue_speaking(alternate);
+    }
     void submit_superfx_bitmap() { cpu_.submit_superfx_bitmap(); }
     void set_bg2_vertical_offsets_enabled(bool enabled) noexcept {
         cpu_.set_bg2_vertical_offsets_enabled(enabled);

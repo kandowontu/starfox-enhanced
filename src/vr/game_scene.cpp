@@ -107,6 +107,13 @@ GameSceneHistory::GameSceneHistory(const simulation::GameSimulation& game,
     if(!hole.empty() && !background_lists.empty()
         && (hole.front()&0xff0000U)==(background_lists.front()&0xff0000U))
         blackhole_background_=static_cast<uint16_t>(hole.front()-background_lists.front());
+    constexpr std::array vortex_names{"BG_3_7C","BG_6_6C","BG_6_6D","BG_6_6E"};
+    for(size_t i=0;i<vortex_names.size();++i) {
+        const auto& value=symbols.find(vortex_names[i]);
+        if(!value.empty() && !background_lists.empty()
+            && (value.front()&0xff0000U)==(background_lists.front()&0xff0000U))
+            final_vortex_backgrounds_[i]=static_cast<uint16_t>(value.front()-background_lists.front());
+    }
     if(!dimension.empty() && !background_lists.empty()
         && (dimension.front()&0xff0000U)==(background_lists.front()&0xff0000U))
         dimension_background_=static_cast<uint16_t>(dimension.front()-background_lists.front());
@@ -141,11 +148,19 @@ void GameSceneHistory::capture() {
     next->shadow_height=std::bit_cast<int16_t>(word(9));
     next->game_frame=game_.map().peek_ram_byte(addresses_[7]).value()&0x7fU;
     next->flow=game_.flow_state();next->player=game_.player();
+    next->background_colour_subtract=game_.game_over_background_subtract();
     next->particles=game_.particles().particles();
     next->model_scale=game_.model_scale_multiplier();
     next->colour_table_override=game_.model_colour_table_override();
     next->meters=game_.peek_meter_state();
     auto presentation_ppu=std::make_shared<simulation::SnesPpuState>(game_.map().ppu_state());
+    // The authored final room switches to the Mode-2 abstract/vortex sky while
+    // INATUNNEL can remain set. Its background is not corridor geometry: only
+    // presentation drops the tunnel mask, leaving native gameplay untouched.
+    const bool final_vortex_sky=presentation_ppu->background_mode==2
+        && std::any_of(final_vortex_backgrounds_.begin(),final_vortex_backgrounds_.end(),
+            [&](uint16_t id){return id && game_.map().background()==id;});
+    if(final_vortex_sky) presentation_ppu->tunnel_scene=false;
     // The colony cross-section is authored with WATER, not INATUNNEL=1.
     // In VR it is still an enclosed center-window scene, unlike open Titania water.
     if(presentation_ppu->background_mode==1 && colony_background_
@@ -201,6 +216,10 @@ void GameSceneHistory::capture() {
             // The ocean shoreline is row 352, eight pixels below the usual
             // landscape horizon. Keep its island above the flattened receiver.
             next->landscape_atlas_origin=i==24?224:(i==19 || i==20 || i==22)?248:(i==17 || i==18 || i==21)?240:i==6?(next->meters.extended?16:272):232;
+            // EX's snowy entry landscapes end mountains at row 351. The
+            // shared 112-row horizon must begin the receiver at row 352,
+            // otherwise enhanced sky leaves eight native mountain rows below it.
+            if(next->meters.extended && (i==14 || i==15)) next->landscape_atlas_origin=240;
         }
     if(next->meters.extended && next->ppu->background_mode==2
         && comet_background_!=0 && game_.map().background()==comet_background_) {
@@ -294,7 +313,7 @@ void GameSceneHistory::capture() {
     // Zeroing that offset puts the belt near the sphere's vertical extremes.
     const bool asteroid_sky=asteroid_star_background_!=0
         && next->background_id==asteroid_star_background_;
-    next->background_retain_sky_scroll=next->background_ex_face_planets || blackhole_sky
+    next->background_retain_sky_scroll=next->background_ex_face_planets || blackhole_sky || final_vortex_sky
         || menu_dimension_sphere || asteroid_sky;
     next->background_star_sphere=menu_pattern_sphere || next->background_retain_sky_scroll || (next->ppu->background_mode==2
         && ((credit_stars && (!next->meters.extended || next->flow==simulation::GameFlowState::intro

@@ -10,6 +10,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <vector>
+#include <set>
 #include <filesystem>
 #include <fstream>
 
@@ -48,7 +49,7 @@ int main(int argc, char** argv) try {
     if(filter.enqueue(nullptr,nullptr,nullptr,17,11).buffer)
         throw std::runtime_error("ScaleFX accepted missing device/input");
     unsigned cases=0;
-    for(const auto dimensions: {std::array<Uint32,2>{17,11}, {1,1}, {31,23}, {7,3}, {17,11}}) {
+    for(const auto dimensions: {std::array<Uint32,2>{17,11}, {1,1}, {31,23}, {7,3}, {17,11}, {400,224}}) {
     const auto width=dimensions[0],height=dimensions[1];
     const Uint32 bytes=width*height*sizeof(Pixel);
     for (unsigned i=0;i<1;++i) {
@@ -132,6 +133,7 @@ int main(int argc, char** argv) try {
         SDL_ReleaseGPUFence(d.gpu,fence);require(waited);
         const auto* pixels=static_cast<const Pixel*>(SDL_MapGPUTransferBuffer(d.gpu,d.download,false));require(pixels);
         bool valid=true;
+        const std::set<Pixel> existingColours(input.begin(),input.end());
         unsigned reconstructed=0;
         for (unsigned y=0;y<height*3;++y) for(unsigned x=0;x<width*3;++x) {
             const auto& p=pixels[y*width*3+x];
@@ -143,8 +145,7 @@ int main(int argc, char** argv) try {
             reconstructed += p != input[(y/3)*width+x/3];
             // ScaleFX must only select existing colours, preserve every central
             // subpixel and leave a constant image unchanged, including edges.
-            bool existing=false;
-            for (const auto& colour:input) existing=existing || p==colour;
+            const bool existing=existingColours.contains(p);
             valid=valid && existing;
             if ((x%3==1 && y%3==1) || pattern==0)
                 valid=valid && p==input[(y/3)*width+x/3];

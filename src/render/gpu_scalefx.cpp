@@ -37,20 +37,33 @@ struct GpuScaleFx::Impl {
             using namespace scalefx_shader;
             const unsigned char* spv[]{spirv0,spirv1,spirv2,spirv3,spirv4,spirv5};
             const size_t sizes[]{sizeof(spirv0),sizeof(spirv1),sizeof(spirv2),sizeof(spirv3),sizeof(spirv4),sizeof(spirv5)};
+#if defined(__APPLE__)
             const char* msl[]{metal0,metal1,metal2,metal3,metal4,metal5};
+#endif
+#if defined(_WIN32)
             const unsigned char* native[]{dxil0,dxil1,dxil2,dxil3,dxil4,dxil5};
             const size_t native_sizes[]{sizeof(dxil0),sizeof(dxil1),sizeof(dxil2),sizeof(dxil3),sizeof(dxil4),sizeof(dxil5)};
+#endif
             const auto formats=SDL_GetGPUShaderFormats(device);
             if(!(formats&(SDL_GPU_SHADERFORMAT_SPIRV|SDL_GPU_SHADERFORMAT_MSL|SDL_GPU_SHADERFORMAT_DXIL)))
                 throw std::runtime_error("ScaleFX requires Vulkan, Metal or D3D12");
             for(unsigned i=0;i<6;++i) {
                 SDL_GPUComputePipelineCreateInfo info{};
-                const bool vulkan=(formats&SDL_GPU_SHADERFORMAT_SPIRV)!=0;
-                const bool metal=!vulkan && (formats&SDL_GPU_SHADERFORMAT_MSL)!=0;
-                info.format=vulkan?SDL_GPU_SHADERFORMAT_SPIRV:metal?SDL_GPU_SHADERFORMAT_MSL:SDL_GPU_SHADERFORMAT_DXIL;
-                info.code=vulkan?spv[i]:metal?reinterpret_cast<const Uint8*>(msl[i]):native[i];
-                info.code_size=vulkan?sizes[i]:metal?std::strlen(msl[i]):native_sizes[i];
-                info.entrypoint=metal?"main0":"main";
+                if(formats&SDL_GPU_SHADERFORMAT_SPIRV) {
+                    info.format=SDL_GPU_SHADERFORMAT_SPIRV;info.code=spv[i];info.code_size=sizes[i];info.entrypoint="main";
+                }
+#if defined(__APPLE__)
+                else if(formats&SDL_GPU_SHADERFORMAT_MSL) {
+                    info.format=SDL_GPU_SHADERFORMAT_MSL;info.code=reinterpret_cast<const Uint8*>(msl[i]);
+                    info.code_size=std::strlen(msl[i]);info.entrypoint="main0";
+                }
+#endif
+#if defined(_WIN32)
+                else if(formats&SDL_GPU_SHADERFORMAT_DXIL) {
+                    info.format=SDL_GPU_SHADERFORMAT_DXIL;info.code=native[i];info.code_size=native_sizes[i];info.entrypoint="main";
+                }
+#endif
+                else throw std::runtime_error("ScaleFX native shader format unsupported");
                 info.num_readonly_storage_buffers=i==5?0:3;info.num_readwrite_storage_buffers=1;
                 info.num_readonly_storage_textures=i==5?1:0;
                 info.num_uniform_buffers=1;info.threadcount_x=8;info.threadcount_y=8;info.threadcount_z=1;

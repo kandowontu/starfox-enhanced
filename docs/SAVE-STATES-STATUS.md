@@ -1,5 +1,90 @@
 # Save-state implementation status (unreleased)
 
+## Smooth environment clock continuation — September 20
+
+The desktop runtime now appends an optional 64-bit environment clock position
+to its RUN container. Older containers load using the cartridge counter as the
+initial phase. Invalid large clock values and trailing bytes reject before
+live state is committed. This does not change the GAME cartridge archive.
+
+Clock tests cover interpolation, 16-bit counter wrap, pause, repeated ticks,
+scene cuts and restored phase. Actual old-format SDL load checks pass for
+Original/EX, as do new save/load/slot-selector checks. Fresh-process final-GPU
+continuation with Original Drift and EX Swirl passes 30 image comparisons and
+13 PCM signatures each at SaveFrame 120. Evidence:
+`tmp/state-sky-motion-continuation`, `tmp/state-sky-motion-continuation-ex`.
+The continuation harness now pins all six environment fields and optionally
+enables a chosen SkyMotion, avoiding inherited user options in default runs.
+
+## Environment archive and restore cache — September 20
+
+All selectable values of the six environment fields now round-trip in actual
+Original/EX game archives, including a combined nondefault configuration.
+Checks discover each serialized byte by differential payload comparison,
+reject checksum-valid out-of-range values and partial environment tails,
+verify pre-environment archives default enhancements off, and prove rejection
+does not mutate the live game. Unit/Original/EX suites pass 3/3 (50.81 seconds).
+
+The desktop load handoff now invalidates cached atlas classification as well
+as temporal rendering history. Previously a same-background-ID restore could
+reuse classification from the scene it replaced. This is a cache-lifecycle
+correction; no specific before/after visible corruption is claimed.
+
+Actual SDL save/load/slot-selector event checks pass in Original and EX with
+Enhanced Sky requested (`tmp/state-enhanced-sky-{original,ex}`). Those indexed
+captures verify the input/state path, not final enhanced-sky visual parity.
+
+## Long special-route continuation harness — September 20
+
+The continuation tool now isolates and restores STARFOX/SDL diagnostic settings,
+selects D3D12/Vulkan explicitly and pins optional enhancements off. GodMode is
+an explicit fixture option. Indexed captures start at the save/comparison window
+instead of writing every warm-up frame; presentation-sequence behavior is
+unchanged. Wait observations are bounded to 60 seconds and report the same PID,
+with no automatic restart. SaveFrame now allows 30,000 for later route states.
+
+EX Comet at SaveFrame 5000, fresh-process restore, passes 60 indexed frame
+comparisons and 24 mixed-PCM signatures. The inspected frame 5010 still depicts
+the approach, not the boss, so this is not boss-state acceptance. Evidence:
+`tmp/state-comet-boss-sep20` (the preliminary directory name is misleading).
+This run uses native indexed captures rather than final GPU presentation;
+no full-composition or physical audible acceptance is inferred.
+
+The later SaveFrame 18000 run also passes all 60 indexed comparisons and 23
+mixed-PCM block signatures in a fresh process. Inspected frame 18010 shows the
+active ENEMY meter and Comet boss encounter, unlike the earlier approach.
+Evidence: `tmp/state-comet-late-sep20/{baseline,restore}`. This establishes a
+bounded active-boss continuation sample, not an entire fight/defeat transition.
+Only 130 baseline BMPs were written instead of over 18,000 warm-up images.
+
+## All selectable effect archives — September 20
+
+Replaced the handpicked style list with every selectable entry from the shared
+model/world menu order. Original and EX round-trip each layer independently,
+checking exact IDs and complete archive equality. This includes all eight new
+Manipulations styles on models and the six spatial styles on world layers.
+Checksum-valid world archives containing model-only Trails/Long Exposure are
+explicitly rejected. Existing Ice/Crosshatch migration, invalid-ID and live-state
+immutability checks remain. State unit/Original/EX suites pass 3/3 (92.42 s).
+This verifies serialized selection compatibility, not serialization of temporal
+GPU history (which intentionally resets) or all-stage restore coverage.
+
+## Grouped-style archive compatibility (September 19)
+
+Original and EX real-cartridge state tests now round-trip Gold Metal, Copper
+Metal, Teal/Orange and Handheld, preserving their exact serialized IDs and
+unrelated state bytes. Checksum-valid legacy Ice payloads are constructed by
+isolating the actual effect byte through differential serialization, not a
+hardcoded archive offset. Both model and world Ice migrate to Cyanotype; the
+reserialized archive matches the corresponding current Cyanotype archive.
+
+Out-of-range IDs and styles invalid for their layer (Gold on world, Blueprint
+on models) are rejected without changing live state. Existing cheat/continuation,
+audio-command, checksum and atomic-file tests remain in the same run.
+Windows state unit + Original + EX suites pass 3/3 in 75.36s. This closes the
+new style compatibility test gap, not physical keyboard/UI or all-level restore
+acceptance. No game executable changes were required for this test addition.
+
 ## Cheat archive compatibility (September 12)
 
 Added real-cartridge tests for pre-extension (no optional cheat bytes),
@@ -232,3 +317,19 @@ Original/EX direct-audio tests also cover fresh/same-device SPC restore,
 24 subsequent ticks with new sound commands, audible boss music, uploads
 interrupted halfway, filter/carry continuity and corrupt/truncated rejection.
 The audible test failed without the carry-buffer extension and passes with it.
+# Save-slot controller navigation follow-up (September 19)
+
+The slot selector now uses fixed menu gamepad navigation rather than gameplay
+bindings. Rebinding steering/fire no longer changes slot movement or confirm.
+Keyboard events remain separate, avoiding double-counted navigation. Opening
+the selector seeds its latch from held controls; subsequent actions remain
+press-only. The shared menu sampler reuses the same gamepad-only helper.
+
+Fresh Windows and native Linux input tests pass with every gameplay action
+remapped to one button, checking seven fixed controls and held-action rejection.
+Both desktop executables rebuild. Actual Ctrl-F1 save / Ctrl-F2 load / Ctrl-F3
+open / Right sequences pass for Original and EX; the EX screenshot was inspected
+and shows SLOT 1. Evidence: `tmp/slot-navigation-original-sep19` and
+`tmp/slot-navigation-ex-sep19` (runtime logs, isolated slots, selector BMPs).
+These captures exercise keyboard events; controller behavior is covered by the
+SDL virtual-device test, not a physical controller run.

@@ -1,10 +1,35 @@
 #include "starfox/vr/application.hpp"
 #include "starfox/vr/cartridge_save.hpp"
+#include "starfox/vr/packet_route.hpp"
 #include "starfox/state/files.hpp"
 #include <algorithm>
 #include <stdexcept>
 #include <iostream>
 int main() try {
+    {
+        using namespace starfox::vr;
+        SceneVertex vertex{};
+        if(packet_route({},{})!=PacketRoute::empty) throw std::runtime_error("Empty routing inventory");
+        const std::pair<uint32_t,PacketRoute> fixtures[]{
+            {0x28000005U,PacketRoute::sprite},{0x28000007U,PacketRoute::sprite},
+            {0x80000000U,PacketRoute::particle},{0x80000006U,PacketRoute::particle},
+            {134217728U|1030U,PacketRoute::text},{68U,PacketRoute::grid},
+            {132U,PacketRoute::dust},{132U|2048U,PacketRoute::dust},
+            {132U|16384U,PacketRoute::dust},{512U,PacketRoute::cpu_connected_grid},
+            {512U|4194304U,PacketRoute::connected_grid},
+            {4U,PacketRoute::ordinary},{0x80000008U,PacketRoute::procedural}};
+        for(const auto& [flags,expected]:fixtures) {
+            vertex.texture[3]=flags;
+            const auto one=std::span<const SceneVertex>(&vertex,1);
+            if(packet_route(one,{})!=expected || packet_route({},one)!=expected)
+                throw std::runtime_error("Triangle/line producer classification mismatch");
+        }
+        SceneVertex particle{};particle.texture[3]=0x80000000U;
+        vertex.texture[3]=512U;
+        if(packet_route(std::span(&vertex,1),std::span(&particle,1))!=PacketRoute::procedural)
+            throw std::runtime_error("Mixed producer packet hidden by triangle-only classification");
+        std::cout<<"Producer inventory includes line-only and connected-grid CPU paths\n";
+    }
     starfox::vr::ApplicationHost host;
     unsigned polls=0;
     host.frame_limit=0;host.time_limit=std::chrono::seconds(0);

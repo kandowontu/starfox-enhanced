@@ -21,8 +21,10 @@ presentation, widescreen support, and optional visual enhancements.
    the executable, or set `STARFOX_RETAIL_ROM` to its path. Mobile apps provide
    a first-launch file picker.
 3. The game validates your ROM and creates `Starfox-Assets.BIN` locally.
-   Keep that companion with the application; it may need rebuilding after
-   updates to the embedded assets.
+   On macOS it is saved in your writable application data folder, not inside
+   the `.app` bundle (which may be read-only under Gatekeeper). On other
+   desktop platforms, keep the companion with the application. It may need
+   rebuilding after updates to the embedded assets.
 4. Choose **Original** or **Star Fox EX**, adjust your options, then select
    **Start Game** from the main menu.
 
@@ -127,8 +129,11 @@ once per press; B or Back returns from submenus.
 
 ## Saves and upgrades
 
-Desktop builds are portable: keep these files beside the executable when
-moving or upgrading the game. Use a writable folder, not a read-only directory.
+Windows/Linux desktop builds are portable: keep these files beside the
+executable when moving or upgrading. macOS stores them in its writable user
+application-data folder so an unsigned, Gatekeeper-translocated `.app` can
+import a ROM without writing into its read-only bundle. Older macOS bundle
+settings/saves are copied there on first launch when available.
 
 | File | Purpose |
 |---|---|

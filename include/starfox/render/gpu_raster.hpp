@@ -9,6 +9,8 @@ void replay_raster_commands(const RasterCommands&,Framebuffer&,SurfaceBuffer*,bo
 // an optional float4 normal/depth buffer. Consumers must use the same device.
 // Bit 27 denotes explicitly classified terrain in a background draw; it must
 // follow visible ownership, never be inherited through model/HUD overwrites.
+// Bit 28 marks a world sprite that retains its 2D styling tag but must not be
+// excluded from temporal reconstruction or restored as screen-space HUD.
 struct GpuRasterOutput {
     void* device{};
     void* pixels{};
@@ -26,6 +28,7 @@ struct GpuGeometryDepthInput {
     void* planes{}; // float4 camera-space plane (normal.xyz, dot(normal, point)).
     std::uint32_t count{};
     float focal_x{},focal_y{},center_x{},center_y{};
+    bool screen_aligned{}; // Constant-Z sprite planes tolerate sample remapping.
 };
 class GpuRaster {
 public:
@@ -55,13 +58,13 @@ public:
         std::uint32_t polygon_count,std::uint32_t width,std::uint32_t height,bool surface_metadata=false,void* texels=nullptr,bool pixel_coverage=false,
         const GpuRasterOutput* background=nullptr,bool wave_rows=false,
         std::int16_t wave_offset=0,std::uint32_t wave_frame=0,std::uint32_t texel_bytes=0,
-        const GpuGeometryDepthInput* geometry_depth=nullptr);
+        const GpuGeometryDepthInput* geometry_depth=nullptr,std::array<std::uint32_t,2> raster_size={},std::array<float,2> raster_jitter={});
     // Upload legacy raster commands onto a caller-owned command buffer, for
     // ordered interleaving with GpuModel/GpuScene. No submit/readback/wait.
     // Result has explicit write coverage; consume before the next operation.
     // Caller cancels the command on failure. Do not mix with pending submits.
     GpuRasterOutput enqueue_commands(void* device,void* command,RasterCommands&,
-        bool surface_metadata=false,bool gpu_binning=false);
+        bool surface_metadata=false,bool gpu_binning=false,std::array<std::uint32_t,2> raster_size={},std::array<float,2> raster_jitter={});
     // With pixel_coverage=true, packed bit 26 marks every geometry write,
     // including palette index zero. Used when merging separate model layers.
     [[nodiscard]] GpuRasterOutput resident_output() const;
