@@ -7,6 +7,11 @@ on:
         description: Existing GitHub release tag to receive the artifacts
         required: false
         default: ''
+      quest_only:
+        description: Validate only the Quest build while diagnosing its runner
+        type: boolean
+        required: false
+        default: false
   push:
     tags:
       - 'v*'
@@ -16,6 +21,7 @@ permissions:
 
 jobs:
   windows-x64:
+    if: ${{ !inputs.quest_only }}
     name: Windows x64 runtime and standalone asset builder
     runs-on: windows-2022
     steps:
@@ -100,6 +106,7 @@ jobs:
             StarFoxAssetBuilder-0.0.8-windows-x64.zip --clobber
 
   windows-x86:
+    if: ${{ !inputs.quest_only }}
     name: Windows x86 runtime
     runs-on: windows-latest
     steps:
@@ -155,6 +162,7 @@ jobs:
             StarFoxEnhanced-0.0.8-windows-x86.zip --clobber
 
   xbox-uwp-x64:
+    if: ${{ !inputs.quest_only }}
     name: Xbox UWP x64 (Developer Mode)
     # Keep the legacy UWP/C++ packaging workload and its redistributable
     # Microsoft.VCLibs framework package available. windows-latest moved to
@@ -219,6 +227,7 @@ jobs:
             StarFoxEnhanced-0.0.8-xbox-uwp-x64.zip --clobber
 
   linux-x64:
+    if: ${{ !inputs.quest_only }}
     name: Linux x64 native runtime
     runs-on: ubuntu-24.04
     steps:
@@ -275,6 +284,7 @@ jobs:
             StarFoxEnhanced-0.0.8-linux-x64.zip --clobber
 
   macos-universal:
+    if: ${{ !inputs.quest_only }}
     name: macOS universal (unsigned)
     runs-on: macos-15
     steps:
@@ -319,6 +329,7 @@ jobs:
             StarFoxEnhanced-0.0.8-macos-universal.zip --clobber
 
   ios-device:
+    if: ${{ !inputs.quest_only }}
     name: iOS arm64 device (unsigned)
     runs-on: macos-15
     steps:
@@ -363,6 +374,7 @@ jobs:
             StarFoxEnhanced-0.0.8-ios-arm64-unsigned.zip --clobber
 
   android-arm64:
+    if: ${{ !inputs.quest_only }}
     name: Android arm64 development APK
     runs-on: ubuntu-latest
     steps:
@@ -470,6 +482,23 @@ jobs:
             exit 1
           fi
           chmod +x tools/build_android.sh platform/android/gradlew
+          # The private runner has repeatedly disappeared during Quest native
+          # compilation without a compiler diagnostic. Record its actual
+          # memory/disk pressure so a failed validation run is actionable.
+          (
+            while true; do
+              echo "--- Quest runner resources $(date -u +%FT%TZ) ---"
+              free -m
+              df -h "$GITHUB_WORKSPACE"
+              ps -eo pid,ppid,rss,vsz,comm --sort=-rss | sed -n '1,12p'
+              for stat in /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.events; do
+                if [[ -r "$stat" ]]; then printf '%s: ' "$stat"; tr '\n' ' ' < "$stat"; echo; fi
+              done
+              sleep 20
+            done
+          ) &
+          monitor_pid=$!
+          trap 'kill "$monitor_pid" 2>/dev/null || true' EXIT
           tools/build_android.sh "$GITHUB_WORKSPACE" release quest
       - name: Verify and package Quest APK
         shell: bash
@@ -504,6 +533,7 @@ jobs:
           draft: true
 
   windows-pcvr:
+    if: ${{ !inputs.quest_only }}
     name: Windows x64 OpenXR PCVR development build
     runs-on: windows-latest
     steps:
@@ -556,6 +586,7 @@ jobs:
           draft: true
 
   switch-homebrew:
+    if: ${{ !inputs.quest_only }}
     name: Nintendo Switch homebrew NRO
     runs-on: ubuntu-latest
     container:
@@ -590,6 +621,7 @@ jobs:
           draft: true
 
   vita-homebrew:
+    if: ${{ !inputs.quest_only }}
     name: PS Vita native VPK
     runs-on: ubuntu-latest
     container:
@@ -630,7 +662,7 @@ jobs:
   release-checksums:
     name: Release package checksums
     needs: [windows-x64, windows-x86, xbox-uwp-x64, linux-x64, macos-universal, ios-device, android-arm64, quest-arm64, windows-pcvr, switch-homebrew, vita-homebrew]
-    if: github.event_name == 'push' || inputs.release_tag != ''
+    if: ${{ !inputs.quest_only && (github.event_name == 'push' || inputs.release_tag != '') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
